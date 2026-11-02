@@ -1600,9 +1600,24 @@ function discoveredLegs() {
     return [];
   }
 }
+function gatedLegs() {
+  try {
+    const file = import_path3.default.join(process.cwd(), "data", "proxy-pool-gated.json");
+    if (!import_fs2.default.existsSync(file)) return [];
+    const raw = JSON.parse(import_fs2.default.readFileSync(file, "utf8"));
+    const ceiling = Number(process.env.T1S_PROXY_GATED_MAX_LATENCY_MS || 8e3);
+    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
+    return rows.map((x) => ({ url: normalize(String(x?.url || "")), ms: Number(x?.ms || 0) })).filter((x) => !!x.url && Number.isFinite(x.ms) && x.ms > 0 && x.ms <= ceiling);
+  } catch {
+    return [];
+  }
+}
 function loadLegs() {
   const envRaw = process.env.T1S_PROXY_LIST || "";
-  const fromFile = envRaw ? [] : discoveredLegs();
+  const merged = [...discoveredLegs(), ...gatedLegs()];
+  const uniq = /* @__PURE__ */ new Map();
+  for (const leg of merged) if (!uniq.has(leg.url)) uniq.set(leg.url, leg);
+  const fromFile = envRaw ? [] : Array.from(uniq.values());
   const raw = envRaw || fromFile.map((f) => f.url).join(",");
   if (raw === signature) return legs;
   signature = raw;
@@ -7341,8 +7356,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
             let lastBody = "";
-            for (const path17 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path17}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
+            for (const path18 of oyoCityPaths(city)) {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path18}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -7352,7 +7367,7 @@ var init_hotels = __esm({
               if (r.status !== 200) continue;
               const state = parseOyoPreloadedState(r.body);
               const hotels = parseOyoHotels(state || {});
-              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path17 });
+              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path18 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
@@ -7372,8 +7387,8 @@ var init_hotels = __esm({
             if (!city || city.length < 3) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
-            for (const path17 of emtCityPaths(city)) {
-              const r = await cffiFetch(`https://www.easemytrip.com/${path17}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+            for (const path18 of emtCityPaths(city)) {
+              const r = await cffiFetch(`https://www.easemytrip.com/${path18}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
@@ -7384,7 +7399,7 @@ var init_hotels = __esm({
               if (!items.length) continue;
               const links = parseEmtHotelLinks(r.body);
               const hotels = parseEmtHotels(items, links);
-              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path17 });
+              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path18 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
@@ -15740,6 +15755,381 @@ var init_expediaFlights = __esm({
   }
 });
 
+// server/common/proxyDiscovery.ts
+function proxyLatencyBudget() {
+  return Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
+}
+function normalizeProxy(raw) {
+  const t = raw.trim();
+  if (!t) return "";
+  if (/^(https?|socks[45]):\/\//i.test(t)) return t;
+  if (/^\d{1,3}(\.\d{1,3}){3}:\d{2,5}$/.test(t)) return `http://${t}`;
+  return "";
+}
+async function fetchList(source) {
+  try {
+    const r = await cffiFetch(source.url, {
+      impersonate: "chrome",
+      timeoutMs: 12e3,
+      headers: { Accept: "text/plain,text/html,*/*" }
+    });
+    if (r.status !== 200) {
+      log.warn("ProxyDiscovery", `${source.name} HTTP ${r.status}`);
+      return [];
+    }
+    const text = r.body;
+    const out = [];
+    for (const m of text.matchAll(/(?:(?:https?|socks[45]):\/\/)?(\d{1,3}(?:\.\d{1,3}){3}:\d{2,5})/g)) {
+      const url = normalizeProxy(m[0]);
+      if (url) out.push({ url, source: source.name });
+    }
+    return out;
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `${source.name} unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
+    return [];
+  }
+}
+async function probeProxy(candidate, target) {
+  const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
+  const startedAt = Date.now();
+  let res = null;
+  let err = null;
+  try {
+    res = await cffiFetch(target?.url || PROBE_TARGET, {
+      proxy: candidate.url,
+      timeoutMs: Math.max(budget * 2, 1500),
+      impersonate: "chrome",
+      ...target?.method ? { method: target.method } : {},
+      ...target?.headers ? { headers: target.headers } : {},
+      ...target?.body ? { body: target.body } : {}
+    });
+  } catch (e2) {
+    err = e2;
+  }
+  const ms = Date.now() - startedAt;
+  const status = Number(res?.status || 0);
+  const body = String(res?.body || "").slice(0, 400).toLowerCase();
+  const gated = /captcha|just a moment|access denied|blocked|challenge/.test(body);
+  if (err) return { url: candidate.url, ok: false, ms, status, reason: String(err.message || err).slice(0, 90) };
+  if (status !== 200) return { url: candidate.url, ok: false, ms, status, reason: `status ${status}` };
+  if (gated) return { url: candidate.url, ok: false, ms, status, reason: "gated page" };
+  if (target?.expectSubstring && !String(res?.body || "").toLowerCase().includes(target.expectSubstring.toLowerCase())) {
+    return { url: candidate.url, ok: false, ms, status, reason: "target payload missing" };
+  }
+  if (ms > budget) return { url: candidate.url, ok: false, ms, status, reason: `slow ${ms}ms > ${budget}ms` };
+  return { url: candidate.url, ok: true, ms, status, reason: "ok" };
+}
+async function runProxyDiscovery(opts = {}) {
+  const startedAt = /* @__PURE__ */ new Date();
+  const target = opts.target;
+  const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
+  const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
+  const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
+  const lists = await Promise.all(SOURCES.map(fetchList));
+  const seen = /* @__PURE__ */ new Set();
+  const candidates = [];
+  for (const row of lists.flat()) {
+    if (seen.has(row.url)) continue;
+    seen.add(row.url);
+    candidates.push(row);
+    if (candidates.length >= limit) break;
+  }
+  const kept = [];
+  let dropped = 0;
+  let cursor2 = 0;
+  const workers = Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, async () => {
+    while (cursor2 < candidates.length) {
+      const c = candidates[cursor2++];
+      const r = await probeProxy(c, target);
+      if (r.ok) kept.push(r);
+      else dropped++;
+    }
+  });
+  await Promise.all(workers);
+  kept.sort((a, b) => a.ms - b.ms);
+  const payload = {
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    budgetMs: budget,
+    probeTarget: target?.label || target?.url || PROBE_TARGET,
+    proxies: kept.map((k) => ({ url: k.url, ms: k.ms }))
+  };
+  const poolFile = opts.poolFile || POOL_FILE;
+  try {
+    import_fs4.default.mkdirSync(import_path4.default.dirname(poolFile), { recursive: true });
+    import_fs4.default.writeFileSync(poolFile, JSON.stringify(payload, null, 2));
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `could not store pool: ${String(e2?.message || e2).slice(0, 80)}`);
+  }
+  const srcOf = (url) => candidates.find((c) => c.url === url)?.source || "sweep";
+  const storedInDb = await storeValidatedProxies(kept, srcOf);
+  const report = {
+    startedAt: startedAt.toISOString(),
+    finishedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    budgetMs: budget,
+    found: candidates.length,
+    probed: candidates.length,
+    passed: kept.length,
+    persistedToDb: storedInDb,
+    kept: kept.slice(0, 40),
+    dropped,
+    storedIn: poolFile,
+    durationMs: Date.now() - startedAt.getTime()
+  };
+  log.info("ProxyDiscovery", `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
+  return report;
+}
+async function ensureProxyTable() {
+  try {
+    const store4 = getStore();
+    await store4.execute(
+      `CREATE TABLE IF NOT EXISTS proxy_pool (
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         url VARCHAR(255) NOT NULL,
+         source VARCHAR(64) NULL,
+         latency_ms INT NOT NULL DEFAULT 0,
+         ok_count INT NOT NULL DEFAULT 0,
+         fail_count INT NOT NULL DEFAULT 0,
+         enabled TINYINT NOT NULL DEFAULT 1,
+         last_error VARCHAR(180) NULL,
+         last_checked_at DATETIME NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         UNIQUE KEY uniq_proxy_url (url)
+       )`
+    );
+    return true;
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `proxy_pool table unavailable: ${String(e2?.message || e2).slice(0, 100)}`);
+    return false;
+  }
+}
+async function storeValidatedProxies(rows, sourceOf) {
+  if (!rows.length) return false;
+  if (!await ensureProxyTable()) return false;
+  try {
+    const store4 = getStore();
+    for (const r of rows) {
+      await store4.execute(
+        `INSERT INTO proxy_pool (url, source, latency_ms, ok_count, last_checked_at)
+         VALUES (?, ?, ?, 1, NOW())
+         ON DUPLICATE KEY UPDATE latency_ms = VALUES(latency_ms), ok_count = ok_count + 1,
+           enabled = 1, last_error = NULL, last_checked_at = NOW()`,
+        [r.url, sourceOf(r.url).slice(0, 64), r.ms]
+      );
+    }
+    return true;
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `proxy store failed: ${String(e2?.message || e2).slice(0, 100)}`);
+    return false;
+  }
+}
+async function listStoredProxies() {
+  const budget = proxyLatencyBudget();
+  if (await ensureProxyTable()) {
+    try {
+      const store4 = getStore();
+      const rows = await store4.query(
+        `SELECT url, source, latency_ms, ok_count, fail_count, enabled, last_error, last_checked_at
+         FROM proxy_pool ORDER BY enabled DESC, latency_ms ASC LIMIT 200`
+      );
+      if (Array.isArray(rows) && rows.length) {
+        return {
+          budgetMs: budget,
+          source: "mysql",
+          rows: rows.map((r) => ({
+            url: String(r.url),
+            source: String(r.source || ""),
+            latencyMs: Number(r.latency_ms) || 0,
+            okCount: Number(r.ok_count) || 0,
+            failCount: Number(r.fail_count) || 0,
+            enabled: !!Number(r.enabled),
+            lastError: String(r.last_error || ""),
+            lastCheckedAt: r.last_checked_at ? new Date(r.last_checked_at).toISOString() : null
+          }))
+        };
+      }
+    } catch (e2) {
+      log.debug("ProxyDiscovery", "listStoredProxies fell back to file", { error: String(e2).slice(0, 80) });
+    }
+  }
+  const file = readDiscoveredPool();
+  return {
+    budgetMs: budget,
+    source: "file",
+    rows: file.map((f) => ({
+      url: f.url,
+      source: "sweep",
+      latencyMs: f.ms,
+      okCount: 1,
+      failCount: 0,
+      enabled: true,
+      lastError: "",
+      lastCheckedAt: null
+    }))
+  };
+}
+function readDiscoveredPool() {
+  try {
+    const raw = JSON.parse(import_fs4.default.readFileSync(POOL_FILE, "utf8"));
+    const budget = proxyLatencyBudget();
+    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
+    return rows.map((r) => ({ url: String(r?.url || ""), ms: Number(r?.ms || 0) })).filter((r) => r.url && Number.isFinite(r.ms) && r.ms > 0 && r.ms <= budget);
+  } catch {
+    return [];
+  }
+}
+var import_fs4, import_path4, POOL_FILE, GATED_POOL_FILE, SOURCES, PROBE_TARGET;
+var init_proxyDiscovery = __esm({
+  "server/common/proxyDiscovery.ts"() {
+    import_fs4 = __toESM(require("fs"), 1);
+    import_path4 = __toESM(require("path"), 1);
+    init_curlCffiFetch();
+    init_db();
+    init_logger();
+    POOL_FILE = import_path4.default.join(process.cwd(), "data", "proxy-pool.json");
+    GATED_POOL_FILE = import_path4.default.join(process.cwd(), "data", "proxy-pool-gated.json");
+    SOURCES = [
+      { name: "proxyscrape-http", url: "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=protocolipport&format=text" },
+      { name: "proxyscrape-https", url: "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=https&proxy_format=protocolipport&format=text" },
+      { name: "proxy-list-download", url: "https://www.proxy-list.download/api/v1/get?type=http" }
+    ];
+    PROBE_TARGET = process.env.T1S_PROXY_PROBE_URL || "https://api.ipify.org?format=json";
+  }
+});
+
+// server/common/gateHeal.ts
+var gateHeal_exports = {};
+__export(gateHeal_exports, {
+  GATE_TARGETS: () => GATE_TARGETS,
+  autoHealGatedSources: () => autoHealGatedSources,
+  gateKeyFor: () => gateKeyFor,
+  gatedPoolSize: () => gatedPoolSize,
+  healGatedSource: () => healGatedSource
+});
+function gateKeyFor(sourceId, message = "") {
+  const s = `${sourceId} ${message}`.toLowerCase();
+  if (s.includes("indigo")) return "indigo";
+  return null;
+}
+function readState(file = STATE_FILE) {
+  try {
+    return JSON.parse(import_node_fs3.default.readFileSync(file, "utf8")) || {};
+  } catch {
+    return {};
+  }
+}
+function writeState(state, file = STATE_FILE) {
+  try {
+    import_node_fs3.default.mkdirSync(import_node_path3.default.dirname(file), { recursive: true });
+    import_node_fs3.default.writeFileSync(file, JSON.stringify(state, null, 2));
+  } catch (e2) {
+    log.warn("GateHeal", `state not written: ${String(e2?.message || e2).slice(0, 80)}`);
+  }
+}
+function gatedPoolSize(file = GATED_POOL_FILE) {
+  try {
+    const raw = JSON.parse(import_node_fs3.default.readFileSync(file, "utf8"));
+    return Array.isArray(raw?.proxies) ? raw.proxies.length : 0;
+  } catch {
+    return 0;
+  }
+}
+async function healGatedSource(key, opts = {}) {
+  const target = GATE_TARGETS[key];
+  if (!target) return { source: key, ran: false, reason: "no heal target for this source", tried: 0, kept: 0 };
+  const now = (opts.now || Date.now)();
+  const stateFile = opts.stateFile || STATE_FILE;
+  const poolFile = opts.poolFile || GATED_POOL_FILE;
+  const state = readState(stateFile);
+  const last = state[key];
+  if (!opts.force && last && now - last.at < HEAL_COOLDOWN_MS) {
+    return {
+      source: key,
+      ran: false,
+      tried: 0,
+      kept: gatedPoolSize(opts.poolFile),
+      reason: `cooling down (${Math.round((HEAL_COOLDOWN_MS - (now - last.at)) / 6e4)}m left)`
+    };
+  }
+  const discover = opts.discover || runProxyDiscovery;
+  try {
+    const report = await discover({ target, poolFile, limit: opts.limit ?? 60, concurrency: 8 });
+    state[key] = { at: now, kept: report.kept.length, tried: report.probed ?? 0 };
+    writeState(state, stateFile);
+    const result = {
+      source: key,
+      ran: true,
+      reason: report.kept.length ? `${report.kept.length} proxy hop(s) pass ${target.label || key}` : "no candidate passed the gated request",
+      tried: report.probed ?? 0,
+      kept: report.kept.length,
+      storedAt: report.finishedAt ? String(report.finishedAt) : void 0
+    };
+    log.info("GateHeal", `${key}: ${result.reason} (tried ${result.tried})`);
+    return result;
+  } catch (e2) {
+    const msg = String(e2?.message || e2).slice(0, 120);
+    log.warn("GateHeal", `${key} sweep failed: ${msg}`);
+    return { source: key, ran: true, reason: `sweep failed: ${msg}`, tried: 0, kept: gatedPoolSize() };
+  }
+}
+function autoHealGatedSources(failures, deps = {}) {
+  const keys = /* @__PURE__ */ new Set();
+  for (const f of failures || []) {
+    const key = gateKeyFor(String(f?.source || ""), String(f?.message || ""));
+    if (key) keys.add(key);
+  }
+  if (!keys.size) return Promise.resolve([]);
+  const heal = deps.heal || healGatedSource;
+  return Promise.all(Array.from(keys).map((k) => heal(k).catch(() => ({ source: k, ran: false, reason: "failed", tried: 0, kept: 0 }))));
+}
+var import_node_fs3, import_node_path3, STATE_FILE, HEAL_COOLDOWN_MS, GATE_TARGETS;
+var init_gateHeal = __esm({
+  "server/common/gateHeal.ts"() {
+    import_node_fs3 = __toESM(require("node:fs"), 1);
+    import_node_path3 = __toESM(require("node:path"), 1);
+    init_logger();
+    init_proxyDiscovery();
+    STATE_FILE = import_node_path3.default.join(process.cwd(), "data", "gate-heal.json");
+    HEAL_COOLDOWN_MS = Number(process.env.T1S_GATE_HEAL_COOLDOWN_MS || 30 * 6e4);
+    GATE_TARGETS = {
+      indigo: {
+        label: "indigo-mobile-search",
+        url: "https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search",
+        method: "POST",
+        headers: {
+          user_key: "43b557c03fc85cc213e91df0f526cc7a",
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        // A real IDR->DEL search a week out: cheap, deterministic, and answered by the same edge.
+        body: JSON.stringify({
+          criteria: [{
+            dates: {
+              beginDate: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10).replace(/-/g, ""),
+              endDate: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10).replace(/-/g, "")
+            },
+            flightFilters: { type: "All" },
+            stations: { originStationCodes: ["IDR"], destinationStationCodes: ["DEL"] }
+          }],
+          tripType: "ONE_WAY",
+          currencyCode: "INR",
+          paxInfo: { travelPurpose: "", adultCount: 1, childrenCount: 0, infantCount: 0, seniorCitizenCount: 0, extraSeat: 0 },
+          specialFare: "",
+          promoCode: "",
+          bookingPurpose: "",
+          marketType: "",
+          doubleSeatSelected: false,
+          tripleSeatSelected: false,
+          selectedTripIndex: 0
+        }),
+        // Any real answer carries flight data; a challenge/empty page does not.
+        expectSubstring: "flight",
+        maxMs: 8e3
+      }
+    };
+  }
+});
+
 // server/workers/verticals/flights.ts
 function routeFromQuery(raw) {
   const KNOWN_CODES = /* @__PURE__ */ new Set(["DEL", "BOM", "BLR", "HYD", "MAA", "CCU", "PNQ", "AMD", "JAI", "GOI", "LKO", "NAG", "IDR", "STV", "PAT", "BHO", "CJB", "COK", "GAU", "IXC", "DED", "ATQ", "VNS", "SXR", "TRV", "VTZ", "IXM", "UDR", "JDH", "IXR", "RPR", "BBI", "IMF", "IXL", "IXB", "IXU", "IXE", "BDQ", "RAJ", "IXJ", "IXD", "GOP", "JRG", "DIB", "TEZ", "KNU", "MYQ", "HBX", "IXG", "KLH", "ISK", "SAG", "TIR", "DXB", "SIN", "LHR", "JFK", "BKK", "KUL", "DOH", "AUH", "SHJ"]);
@@ -17380,6 +17770,7 @@ var init_flights = __esm({
               throw new AcquisitionError("SERVER_ERROR", `IndiGo API unreachable on all ladder rungs (${indigoErrs.filter(Boolean).join(" | ") || "transport errors"})`);
             }
             if (r.status === 403 || r.status === 429) {
+              void Promise.resolve().then(() => (init_gateHeal(), gateHeal_exports)).then((m) => m.autoHealGatedSources([{ source: "w_flights_indigo", message: `HTTP ${r.status}` }])).catch(() => void 0);
               try {
                 const dayFares = await indigoWebFareCalendar(cffiFetch, from, to, dep);
                 const calItems = indigoDayFareItems(dayFares, ctx.source, rt.from, rt.to, from, to, dep);
@@ -18870,24 +19261,24 @@ var init_indriveIntercity = __esm({
 });
 
 // server/common/geoProxy.ts
-async function throttledNominatim(path17) {
-  const hit = cache4.get(path17);
+async function throttledNominatim(path18) {
+  const hit = cache4.get(path18);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCallAt = Date.now();
   try {
-    const r = await fetch(`${NOMINATIM}${path17}`, {
+    const r = await fetch(`${NOMINATIM}${path18}`, {
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path17.slice(0, 60)}`);
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path18.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(path17, { at: Date.now(), value });
+    cache4.set(path18, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -18897,16 +19288,16 @@ async function throttledNominatim(path17) {
 async function geoSearch(q3, limit = 6) {
   const clean3 = q3.trim().slice(0, 120);
   if (clean3.length < 2) return [];
-  const path17 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
-  const rows = await throttledNominatim(path17);
+  const path18 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path18);
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
 }
 async function geoReverse(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const la = lat.toFixed(6), lo = lng.toFixed(6);
-  const path17 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
-  const row = await throttledNominatim(path17);
+  const path18 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path18);
   const a = row?.address;
   if (!row || !a) return null;
   const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
@@ -18921,24 +19312,24 @@ async function geoReverse(lat, lng) {
     pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
   };
 }
-async function throttledPhoton(path17) {
-  const hit = cache4.get(path17);
+async function throttledPhoton(path18) {
+  const hit = cache4.get(path18);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastPhotonAt + PHOTON_MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastPhotonAt = Date.now();
   try {
-    const r = await fetch(`${PHOTON}${path17}`, {
+    const r = await fetch(`${PHOTON}${path18}`, {
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(6e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path17.slice(0, 60)}`);
+      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path18.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(`photon:${path17}`, { at: Date.now(), value });
+    cache4.set(`photon:${path18}`, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Photon unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -19027,9 +19418,9 @@ async function rapidoServedCities(fetchText) {
   const xml = await fetchText(CITIES_SITEMAP);
   const cities = [];
   for (const m of xml.matchAll(/<loc>https:\/\/www\.rapido\.bike\/([^/]+)\/main-page<\/loc>/g)) {
-    const path17 = m[1];
-    if (!path17 || path17.includes(".")) continue;
-    cities.push({ name: decodeURIComponent(path17).replace(/[_%20]/g, " ").trim(), mainPagePath: path17 });
+    const path18 = m[1];
+    if (!path18 || path18.includes(".")) continue;
+    cities.push({ name: decodeURIComponent(path18).replace(/[_%20]/g, " ").trim(), mainPagePath: path18 });
   }
   if (!cities.length) throw new Error(`Rapido cities sitemap carried no city pages (len=${xml.length})`);
   citiesCache = { at: Date.now(), cities };
@@ -19377,12 +19768,12 @@ async function initThiqa() {
     if (wsha !== RAPIDO_THIQA_WASM_B64_SHA256) throw new Error(`thiqa wasm sha256 mismatch (${wsha})`);
     const gsha = (0, import_crypto12.createHash)("sha256").update(RAPIDO_THIQA_GLUE, "utf8").digest("hex");
     if (gsha !== RAPIDO_THIQA_GLUE_SHA256) throw new Error(`thiqa glue sha256 mismatch (${gsha})`);
-    const dir = import_path4.default.join(import_os.default.tmpdir(), "try1s-rapido-thiqa");
-    import_fs4.default.mkdirSync(dir, { recursive: true });
-    const wasmPath = import_path4.default.join(dir, "platform-mobile-sdks-thiqa-kmp.wasm");
-    import_fs4.default.writeFileSync(wasmPath, wasm);
+    const dir = import_path5.default.join(import_os.default.tmpdir(), "try1s-rapido-thiqa");
+    import_fs5.default.mkdirSync(dir, { recursive: true });
+    const wasmPath = import_path5.default.join(dir, "platform-mobile-sdks-thiqa-kmp.wasm");
+    import_fs5.default.writeFileSync(wasmPath, wasm);
     const wasmFileUrl = `file://${wasmPath}`;
-    const META = `{url:'file://${import_path4.default.join(dir, "harness.js")}',resolve:function(p){return '${wasmFileUrl}'}}`;
+    const META = `{url:'file://${import_path5.default.join(dir, "harness.js")}',resolve:function(p){return '${wasmFileUrl}'}}`;
     let glue = RAPIDO_THIQA_GLUE.replace(/\bexport\s+/g, "").replace(/import\.meta/g, META).replace(/window\.location\.hostname/g, `'m.rapido.bike'`);
     const fakeFetch = () => Promise.resolve(new Response(wasm, { status: 200, headers: { "Content-Type": "application/wasm" } }));
     const instantiate = new Function("fetch", `${glue}
@@ -19647,13 +20038,13 @@ function buildRapidoFareRows(inp) {
   void route2;
   return rows;
 }
-var import_crypto12, import_fs4, import_os, import_path4, M_RAPIDO, FARE_URL, SERVICES_URL, DEVICE_HEADERS, DEVICE_ID, sigCfg, thiqaMod, thiqaBrokenUntil, servicesCache;
+var import_crypto12, import_fs5, import_os, import_path5, M_RAPIDO, FARE_URL, SERVICES_URL, DEVICE_HEADERS, DEVICE_ID, sigCfg, thiqaMod, thiqaBrokenUntil, servicesCache;
 var init_rapidoFares = __esm({
   "server/workers/parsers/rapidoFares.ts"() {
     import_crypto12 = require("crypto");
-    import_fs4 = __toESM(require("fs"), 1);
+    import_fs5 = __toESM(require("fs"), 1);
     import_os = __toESM(require("os"), 1);
-    import_path4 = __toESM(require("path"), 1);
+    import_path5 = __toESM(require("path"), 1);
     init_contract();
     init_curlCffiFetch();
     init_rapidoThiqaAsset();
@@ -24845,9 +25236,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path17, timeoutMs = 12e3) {
+async function gwJson(host, path18, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path17}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path18}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -25029,15 +25420,15 @@ async function fetchWithTimeout(url, ms, init = {}) {
 }
 async function ensureDataset() {
   try {
-    const stale = !(0, import_node_fs3.existsSync)(RATINGS_FILE) || Date.now() - (0, import_node_fs3.statSync)(RATINGS_FILE).mtimeMs > RATINGS_TTL_MS;
+    const stale = !(0, import_node_fs4.existsSync)(RATINGS_FILE) || Date.now() - (0, import_node_fs4.statSync)(RATINGS_FILE).mtimeMs > RATINGS_TTL_MS;
     if (!stale) return true;
     const res = await fetchWithTimeout(RATINGS_URL, 6e4);
-    if (!res.ok || !res.body) return (0, import_node_fs3.existsSync)(RATINGS_FILE);
-    await (0, import_promises.pipeline)(res.body, (0, import_node_fs3.createWriteStream)(RATINGS_FILE));
+    if (!res.ok || !res.body) return (0, import_node_fs4.existsSync)(RATINGS_FILE);
+    await (0, import_promises.pipeline)(res.body, (0, import_node_fs4.createWriteStream)(RATINGS_FILE));
     tconstIndex = null;
     return true;
   } catch {
-    return (0, import_node_fs3.existsSync)(RATINGS_FILE);
+    return (0, import_node_fs4.existsSync)(RATINGS_FILE);
   }
 }
 function datasetPromise() {
@@ -25058,7 +25449,7 @@ async function lookupTconst(tt) {
   for (const k of ratingCache.keys()) if (k) wanted.add(k);
   return new Promise((resolve) => {
     let found = null;
-    const rl = import_node_readline.default.createInterface({ input: (0, import_node_fs3.createReadStream)(RATINGS_FILE).pipe((0, import_node_zlib.createGunzip)()) });
+    const rl = import_node_readline.default.createInterface({ input: (0, import_node_fs4.createReadStream)(RATINGS_FILE).pipe((0, import_node_zlib.createGunzip)()) });
     rl.on("line", (line) => {
       const tab = line.indexOf("	");
       if (tab <= 0) return;
@@ -25140,17 +25531,17 @@ async function imdbRatingFor(title) {
     return null;
   }
 }
-var import_node_zlib, import_node_fs3, import_node_os, import_node_path3, import_promises, import_node_readline, RATINGS_URL, RATINGS_FILE, RATINGS_TTL_MS, CACHE_TTL_MS2, ratingCache, titleCache, tconstIndex, datasetReady, normTitle;
+var import_node_zlib, import_node_fs4, import_node_os, import_node_path4, import_promises, import_node_readline, RATINGS_URL, RATINGS_FILE, RATINGS_TTL_MS, CACHE_TTL_MS2, ratingCache, titleCache, tconstIndex, datasetReady, normTitle;
 var init_imdbRatings = __esm({
   "server/workers/parsers/imdbRatings.ts"() {
     import_node_zlib = require("node:zlib");
-    import_node_fs3 = require("node:fs");
+    import_node_fs4 = require("node:fs");
     import_node_os = require("node:os");
-    import_node_path3 = require("node:path");
+    import_node_path4 = require("node:path");
     import_promises = require("node:stream/promises");
     import_node_readline = __toESM(require("node:readline"), 1);
     RATINGS_URL = "https://datasets.imdbws.com/title.ratings.tsv.gz";
-    RATINGS_FILE = (0, import_node_path3.join)((0, import_node_os.tmpdir)(), "imdb-title-ratings.tsv.gz");
+    RATINGS_FILE = (0, import_node_path4.join)((0, import_node_os.tmpdir)(), "imdb-title-ratings.tsv.gz");
     RATINGS_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
     CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
     ratingCache = /* @__PURE__ */ new Map();
@@ -28799,7 +29190,7 @@ var init_freshness = __esm({
 function load7() {
   if (cache5) return cache5;
   try {
-    cache5 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
+    cache5 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE, "utf8"));
   } catch {
     cache5 = {};
   }
@@ -28810,8 +29201,8 @@ function persist2() {
   saveTimer2 = setTimeout(() => {
     saveTimer2 = null;
     try {
-      import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(CACHE_FILE), { recursive: true });
-      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache5 || {}));
+      import_node_fs5.default.mkdirSync(import_node_path5.default.dirname(CACHE_FILE), { recursive: true });
+      import_node_fs5.default.writeFileSync(CACHE_FILE, JSON.stringify(cache5 || {}));
     } catch {
     }
   }, 1500);
@@ -28895,13 +29286,13 @@ function resolveLenderLogo(rawName) {
   inflight2.set(key, p);
   return p;
 }
-var import_node_fs4, import_node_path4, UA3, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
+var import_node_fs5, import_node_path5, UA3, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
 var init_lenderLogo = __esm({
   "server/pipeline/lenderLogo.ts"() {
-    import_node_fs4 = __toESM(require("node:fs"), 1);
-    import_node_path4 = __toESM(require("node:path"), 1);
+    import_node_fs5 = __toESM(require("node:fs"), 1);
+    import_node_path5 = __toESM(require("node:path"), 1);
     UA3 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
-    CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos-v2.json");
+    CACHE_FILE = import_node_path5.default.join(process.cwd(), "data", "lender-logos-v2.json");
     MISS_TTL_MS = 7 * 864e5;
     FETCH_TIMEOUT_MS = 4e3;
     cache5 = null;
@@ -29093,26 +29484,26 @@ function loadRegistry() {
   try {
     const candidates = [];
     try {
-      candidates.push(import_path5.default.join(import_path5.default.dirname((0, import_url.fileURLToPath)(import_meta2.url)), "campaigns.csv"));
+      candidates.push(import_path6.default.join(import_path6.default.dirname((0, import_url.fileURLToPath)(import_meta2.url)), "campaigns.csv"));
     } catch {
     }
     try {
       const d = typeof globalThis.__dirname === "string" ? globalThis.__dirname : null;
-      if (d) candidates.push(import_path5.default.join(d, "campaigns.csv"));
+      if (d) candidates.push(import_path6.default.join(d, "campaigns.csv"));
     } catch {
     }
-    candidates.push(import_path5.default.join(process.cwd(), "server", "affiliate", "linkinr", "campaigns.csv"));
-    candidates.push(import_path5.default.join(process.cwd(), "campaigns.csv"));
+    candidates.push(import_path6.default.join(process.cwd(), "server", "affiliate", "linkinr", "campaigns.csv"));
+    candidates.push(import_path6.default.join(process.cwd(), "campaigns.csv"));
     const csvPath = candidates.find((c) => {
       try {
-        import_fs5.default.accessSync(c);
+        import_fs6.default.accessSync(c);
         return true;
       } catch {
         return false;
       }
     });
     if (!csvPath) throw new Error(`campaigns.csv not found (tried ${candidates.length} paths)`);
-    const text = import_fs5.default.readFileSync(csvPath, "utf8");
+    const text = import_fs6.default.readFileSync(csvPath, "utf8");
     const rows = parseCsv(text);
     if (!rows.length) return campaignByDomain = map;
     const header = rows[0].map((h) => h.trim().toLowerCase());
@@ -29188,11 +29579,11 @@ function linkinrStats() {
   const m = loadRegistry();
   return { campaigns: m.size, domains: m.size, enabled: linkinrEnabled() };
 }
-var import_fs5, import_path5, import_crypto22, import_url, import_meta2, campaignByDomain;
+var import_fs6, import_path6, import_crypto22, import_url, import_meta2, campaignByDomain;
 var init_linkinr = __esm({
   "server/affiliate/linkinr/index.ts"() {
-    import_fs5 = __toESM(require("fs"), 1);
-    import_path5 = __toESM(require("path"), 1);
+    import_fs6 = __toESM(require("fs"), 1);
+    import_path6 = __toESM(require("path"), 1);
     import_crypto22 = __toESM(require("crypto"), 1);
     import_url = require("url");
     import_meta2 = {};
@@ -31025,7 +31416,7 @@ async function guardBackground(name, fn) {
 }
 function readBoots() {
   try {
-    const raw = JSON.parse(import_node_fs5.default.readFileSync(BOOT_FILE(), "utf8"));
+    const raw = JSON.parse(import_node_fs6.default.readFileSync(BOOT_FILE(), "utf8"));
     return { boots: Array.isArray(raw?.boots) ? raw.boots.filter((n) => Number.isFinite(n)) : [], quietUntil: Number(raw?.quietUntil) || void 0 };
   } catch {
     return { boots: [] };
@@ -31033,8 +31424,8 @@ function readBoots() {
 }
 function writeBoots(logged) {
   try {
-    import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
-    import_node_fs5.default.writeFileSync(BOOT_FILE(), JSON.stringify(logged));
+    import_node_fs6.default.mkdirSync(dataDir, { recursive: true });
+    import_node_fs6.default.writeFileSync(BOOT_FILE(), JSON.stringify(logged));
   } catch {
   }
 }
@@ -31056,15 +31447,15 @@ function noteBoot(now = Date.now()) {
 }
 function startDeleteHold(ms, why = "owner stop") {
   try {
-    import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
-    import_node_fs5.default.writeFileSync(HOLD_FILE(), JSON.stringify({ until: Date.now() + ms, why }));
+    import_node_fs6.default.mkdirSync(dataDir, { recursive: true });
+    import_node_fs6.default.writeFileSync(HOLD_FILE(), JSON.stringify({ until: Date.now() + ms, why }));
     log.warn("Governor", `Background duties paused for ${Math.round(ms / 6e4)} min (${why})`);
   } catch {
   }
 }
 function deleteHoldActive(now = Date.now()) {
   try {
-    const raw = JSON.parse(import_node_fs5.default.readFileSync(HOLD_FILE(), "utf8"));
+    const raw = JSON.parse(import_node_fs6.default.readFileSync(HOLD_FILE(), "utf8"));
     return Number(raw?.until) > now;
   } catch {
     return false;
@@ -31072,16 +31463,16 @@ function deleteHoldActive(now = Date.now()) {
 }
 function clearDeleteHold() {
   try {
-    import_node_fs5.default.unlinkSync(HOLD_FILE());
+    import_node_fs6.default.unlinkSync(HOLD_FILE());
   } catch {
   }
 }
-var import_node_fs5, import_node_os2, import_node_path5, import_node_v8, SAMPLE_MS, CPU_HIGH, CPU_CRITICAL, LOAD_HIGH, LOAD_CRITICAL, HEAP_HIGH, cpuPct, pressure, sampling, lastCpu, lastCpuAt, lastReason, envOff, heapPct, resourceSnapshot, BOOT_FILE, STORM_WINDOW_MS, STORM_BOOTS, QUIET_HOLD_MS, HOLD_FILE, hasSharedDb;
+var import_node_fs6, import_node_os2, import_node_path6, import_node_v8, SAMPLE_MS, CPU_HIGH, CPU_CRITICAL, LOAD_HIGH, LOAD_CRITICAL, HEAP_HIGH, cpuPct, pressure, sampling, lastCpu, lastCpuAt, lastReason, envOff, heapPct, resourceSnapshot, BOOT_FILE, STORM_WINDOW_MS, STORM_BOOTS, QUIET_HOLD_MS, HOLD_FILE, hasSharedDb;
 var init_resourceGuard = __esm({
   "server/common/resourceGuard.ts"() {
-    import_node_fs5 = __toESM(require("node:fs"), 1);
+    import_node_fs6 = __toESM(require("node:fs"), 1);
     import_node_os2 = __toESM(require("node:os"), 1);
-    import_node_path5 = __toESM(require("node:path"), 1);
+    import_node_path6 = __toESM(require("node:path"), 1);
     import_node_v8 = __toESM(require("node:v8"), 1);
     init_settings();
     init_logger();
@@ -31123,11 +31514,11 @@ var init_resourceGuard = __esm({
         reason: lastReason
       };
     };
-    BOOT_FILE = () => import_node_path5.default.join(dataDir, "boots.json");
+    BOOT_FILE = () => import_node_path6.default.join(dataDir, "boots.json");
     STORM_WINDOW_MS = 30 * 6e4;
     STORM_BOOTS = 4;
     QUIET_HOLD_MS = 30 * 6e4;
-    HOLD_FILE = () => import_node_path5.default.join(dataDir, "background-hold.json");
+    HOLD_FILE = () => import_node_path6.default.join(dataDir, "background-hold.json");
     hasSharedDb = () => Boolean(settings.mysqlUrl);
   }
 });
@@ -35248,239 +35639,6 @@ var init_liveSearchGate = __esm({
   }
 });
 
-// server/common/proxyDiscovery.ts
-function proxyLatencyBudget() {
-  return Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
-}
-function normalizeProxy(raw) {
-  const t = raw.trim();
-  if (!t) return "";
-  if (/^(https?|socks[45]):\/\//i.test(t)) return t;
-  if (/^\d{1,3}(\.\d{1,3}){3}:\d{2,5}$/.test(t)) return `http://${t}`;
-  return "";
-}
-async function fetchList(source) {
-  try {
-    const r = await cffiFetch(source.url, {
-      impersonate: "chrome",
-      timeoutMs: 12e3,
-      headers: { Accept: "text/plain,text/html,*/*" }
-    });
-    if (r.status !== 200) {
-      log.warn("ProxyDiscovery", `${source.name} HTTP ${r.status}`);
-      return [];
-    }
-    const text = r.body;
-    const out = [];
-    for (const m of text.matchAll(/(?:(?:https?|socks[45]):\/\/)?(\d{1,3}(?:\.\d{1,3}){3}:\d{2,5})/g)) {
-      const url = normalizeProxy(m[0]);
-      if (url) out.push({ url, source: source.name });
-    }
-    return out;
-  } catch (e2) {
-    log.warn("ProxyDiscovery", `${source.name} unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
-    return [];
-  }
-}
-async function probeProxy(candidate) {
-  const budget = proxyLatencyBudget();
-  const startedAt = Date.now();
-  let res = null;
-  let err = null;
-  try {
-    res = await cffiFetch(PROBE_TARGET, {
-      proxy: candidate.url,
-      timeoutMs: Math.max(budget * 2, 1500),
-      impersonate: "chrome"
-    });
-  } catch (e2) {
-    err = e2;
-  }
-  const ms = Date.now() - startedAt;
-  const status = Number(res?.status || 0);
-  const body = String(res?.body || "").slice(0, 400).toLowerCase();
-  const gated = /captcha|just a moment|access denied|blocked|challenge/.test(body);
-  if (err) return { url: candidate.url, ok: false, ms, status, reason: String(err.message || err).slice(0, 90) };
-  if (status !== 200) return { url: candidate.url, ok: false, ms, status, reason: `status ${status}` };
-  if (gated) return { url: candidate.url, ok: false, ms, status, reason: "gated page" };
-  if (ms > budget) return { url: candidate.url, ok: false, ms, status, reason: `slow ${ms}ms > ${budget}ms` };
-  return { url: candidate.url, ok: true, ms, status, reason: "ok" };
-}
-async function runProxyDiscovery(opts = {}) {
-  const startedAt = /* @__PURE__ */ new Date();
-  const budget = proxyLatencyBudget();
-  const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
-  const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
-  const lists = await Promise.all(SOURCES.map(fetchList));
-  const seen = /* @__PURE__ */ new Set();
-  const candidates = [];
-  for (const row of lists.flat()) {
-    if (seen.has(row.url)) continue;
-    seen.add(row.url);
-    candidates.push(row);
-    if (candidates.length >= limit) break;
-  }
-  const kept = [];
-  let dropped = 0;
-  let cursor2 = 0;
-  const workers = Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, async () => {
-    while (cursor2 < candidates.length) {
-      const c = candidates[cursor2++];
-      const r = await probeProxy(c);
-      if (r.ok) kept.push(r);
-      else dropped++;
-    }
-  });
-  await Promise.all(workers);
-  kept.sort((a, b) => a.ms - b.ms);
-  const payload = {
-    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    budgetMs: budget,
-    probeTarget: PROBE_TARGET,
-    proxies: kept.map((k) => ({ url: k.url, ms: k.ms }))
-  };
-  try {
-    import_fs6.default.mkdirSync(import_path6.default.dirname(POOL_FILE), { recursive: true });
-    import_fs6.default.writeFileSync(POOL_FILE, JSON.stringify(payload, null, 2));
-  } catch (e2) {
-    log.warn("ProxyDiscovery", `could not store pool: ${String(e2?.message || e2).slice(0, 80)}`);
-  }
-  const srcOf = (url) => candidates.find((c) => c.url === url)?.source || "sweep";
-  const storedInDb = await storeValidatedProxies(kept, srcOf);
-  const report = {
-    startedAt: startedAt.toISOString(),
-    finishedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    budgetMs: budget,
-    found: candidates.length,
-    probed: candidates.length,
-    passed: kept.length,
-    persistedToDb: storedInDb,
-    kept: kept.slice(0, 40),
-    dropped,
-    storedIn: POOL_FILE,
-    durationMs: Date.now() - startedAt.getTime()
-  };
-  log.info("ProxyDiscovery", `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
-  return report;
-}
-async function ensureProxyTable() {
-  try {
-    const store4 = getStore();
-    await store4.execute(
-      `CREATE TABLE IF NOT EXISTS proxy_pool (
-         id INT AUTO_INCREMENT PRIMARY KEY,
-         url VARCHAR(255) NOT NULL,
-         source VARCHAR(64) NULL,
-         latency_ms INT NOT NULL DEFAULT 0,
-         ok_count INT NOT NULL DEFAULT 0,
-         fail_count INT NOT NULL DEFAULT 0,
-         enabled TINYINT NOT NULL DEFAULT 1,
-         last_error VARCHAR(180) NULL,
-         last_checked_at DATETIME NULL,
-         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-         UNIQUE KEY uniq_proxy_url (url)
-       )`
-    );
-    return true;
-  } catch (e2) {
-    log.warn("ProxyDiscovery", `proxy_pool table unavailable: ${String(e2?.message || e2).slice(0, 100)}`);
-    return false;
-  }
-}
-async function storeValidatedProxies(rows, sourceOf) {
-  if (!rows.length) return false;
-  if (!await ensureProxyTable()) return false;
-  try {
-    const store4 = getStore();
-    for (const r of rows) {
-      await store4.execute(
-        `INSERT INTO proxy_pool (url, source, latency_ms, ok_count, last_checked_at)
-         VALUES (?, ?, ?, 1, NOW())
-         ON DUPLICATE KEY UPDATE latency_ms = VALUES(latency_ms), ok_count = ok_count + 1,
-           enabled = 1, last_error = NULL, last_checked_at = NOW()`,
-        [r.url, sourceOf(r.url).slice(0, 64), r.ms]
-      );
-    }
-    return true;
-  } catch (e2) {
-    log.warn("ProxyDiscovery", `proxy store failed: ${String(e2?.message || e2).slice(0, 100)}`);
-    return false;
-  }
-}
-async function listStoredProxies() {
-  const budget = proxyLatencyBudget();
-  if (await ensureProxyTable()) {
-    try {
-      const store4 = getStore();
-      const rows = await store4.query(
-        `SELECT url, source, latency_ms, ok_count, fail_count, enabled, last_error, last_checked_at
-         FROM proxy_pool ORDER BY enabled DESC, latency_ms ASC LIMIT 200`
-      );
-      if (Array.isArray(rows) && rows.length) {
-        return {
-          budgetMs: budget,
-          source: "mysql",
-          rows: rows.map((r) => ({
-            url: String(r.url),
-            source: String(r.source || ""),
-            latencyMs: Number(r.latency_ms) || 0,
-            okCount: Number(r.ok_count) || 0,
-            failCount: Number(r.fail_count) || 0,
-            enabled: !!Number(r.enabled),
-            lastError: String(r.last_error || ""),
-            lastCheckedAt: r.last_checked_at ? new Date(r.last_checked_at).toISOString() : null
-          }))
-        };
-      }
-    } catch (e2) {
-      log.debug("ProxyDiscovery", "listStoredProxies fell back to file", { error: String(e2).slice(0, 80) });
-    }
-  }
-  const file = readDiscoveredPool();
-  return {
-    budgetMs: budget,
-    source: "file",
-    rows: file.map((f) => ({
-      url: f.url,
-      source: "sweep",
-      latencyMs: f.ms,
-      okCount: 1,
-      failCount: 0,
-      enabled: true,
-      lastError: "",
-      lastCheckedAt: null
-    }))
-  };
-}
-function readDiscoveredPool() {
-  try {
-    const raw = JSON.parse(import_fs6.default.readFileSync(POOL_FILE, "utf8"));
-    const budget = proxyLatencyBudget();
-    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
-    return rows.map((r) => ({ url: String(r?.url || ""), ms: Number(r?.ms || 0) })).filter((r) => r.url && Number.isFinite(r.ms) && r.ms > 0 && r.ms <= budget);
-  } catch {
-    return [];
-  }
-}
-var import_fs6, import_path6, POOL_FILE, SOURCES, PROBE_TARGET;
-var init_proxyDiscovery = __esm({
-  "server/common/proxyDiscovery.ts"() {
-    import_fs6 = __toESM(require("fs"), 1);
-    import_path6 = __toESM(require("path"), 1);
-    init_curlCffiFetch();
-    init_db();
-    init_logger();
-    POOL_FILE = import_path6.default.join(process.cwd(), "data", "proxy-pool.json");
-    SOURCES = [
-      { name: "proxyscrape-http", url: "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=protocolipport&format=text" },
-      { name: "proxyscrape-https", url: "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=https&proxy_format=protocolipport&format=text" },
-      { name: "proxy-list-download", url: "https://www.proxy-list.download/api/v1/get?type=http" }
-    ];
-    PROBE_TARGET = process.env.T1S_PROXY_PROBE_URL || "https://api.ipify.org?format=json";
-  }
-});
-
 // server/movies/freshMovieLink.ts
 function movieShowDate(now = /* @__PURE__ */ new Date()) {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
@@ -37895,7 +38053,7 @@ var init_cabDeeplink = __esm({
 function load8() {
   if (cache8) return cache8;
   try {
-    cache8 = JSON.parse(import_node_fs6.default.readFileSync(CACHE_FILE2, "utf8"));
+    cache8 = JSON.parse(import_node_fs7.default.readFileSync(CACHE_FILE2, "utf8"));
   } catch {
     cache8 = {};
   }
@@ -37906,8 +38064,8 @@ function persist4() {
   saveTimer3 = setTimeout(() => {
     saveTimer3 = null;
     try {
-      import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(CACHE_FILE2), { recursive: true });
-      import_node_fs6.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache8 || {}));
+      import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(CACHE_FILE2), { recursive: true });
+      import_node_fs7.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache8 || {}));
     } catch {
     }
   }, 1500);
@@ -37967,13 +38125,13 @@ function resolveMerchantCrispLogo(rawName) {
   inflight3.set(key, p);
   return p;
 }
-var import_node_fs6, import_node_path6, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
+var import_node_fs7, import_node_path7, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
 var init_merchantCrispLogo = __esm({
   "server/pipeline/merchantCrispLogo.ts"() {
-    import_node_fs6 = __toESM(require("node:fs"), 1);
-    import_node_path6 = __toESM(require("node:path"), 1);
+    import_node_fs7 = __toESM(require("node:fs"), 1);
+    import_node_path7 = __toESM(require("node:path"), 1);
     UA4 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
-    CACHE_FILE2 = import_node_path6.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
+    CACHE_FILE2 = import_node_path7.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
     MISS_TTL_MS2 = 7 * 864e5;
     FETCH_TIMEOUT_MS3 = 4e3;
     cache8 = null;
@@ -39991,7 +40149,7 @@ function fcmServiceAccount() {
   let text = raw;
   if (!text && file) {
     try {
-      text = import_node_fs7.default.readFileSync(file, "utf8");
+      text = import_node_fs8.default.readFileSync(file, "utf8");
     } catch (e2) {
       log.warn("Push", `FCM service account file unreadable: ${clip3(e2?.message || e2, 80)}`);
       return null;
@@ -40315,11 +40473,11 @@ async function pushStats() {
   }
   return { web, android, inactive, sent24h, vapidReady, fcmReady: fcmServiceAccount() !== null };
 }
-var import_crypto30, import_node_fs7, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip3, httpsImage, fcmTokenCache;
+var import_crypto30, import_node_fs8, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip3, httpsImage, fcmTokenCache;
 var init_push = __esm({
   "server/push/push.ts"() {
     import_crypto30 = __toESM(require("crypto"), 1);
-    import_node_fs7 = __toESM(require("node:fs"), 1);
+    import_node_fs8 = __toESM(require("node:fs"), 1);
     init_db();
     init_logger();
     webpushLib = null;
@@ -43056,11 +43214,11 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path7, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
+var import_promises2, import_node_path8, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
-    import_node_path7 = require("node:path");
+    import_node_path8 = require("node:path");
     import_express2 = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
@@ -43687,7 +43845,7 @@ var init_routes = __esm({
     apiRouter.get("/version", async (_req, res) => {
       let bundle = null;
       try {
-        const html = await (0, import_promises2.readFile)((0, import_node_path7.join)(process.cwd(), "dist/index.html"), "utf8");
+        const html = await (0, import_promises2.readFile)((0, import_node_path8.join)(process.cwd(), "dist/index.html"), "utf8");
         bundle = (html.match(/assets\/index-[A-Za-z0-9_-]+\.js/) || [null])[0];
       } catch {
         bundle = null;
@@ -43714,6 +43872,28 @@ var init_routes = __esm({
         res.json({ ok: true, ...list, rotation: proxyPoolStatus() });
       } catch (e2) {
         res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 200) });
+      }
+    });
+    apiRouter.post("/admin/gate-heal", authMiddleware, requireAdmin, async (req, res) => {
+      try {
+        const { healGatedSource: healGatedSource2, gatedPoolSize: gatedPoolSize2, GATE_TARGETS: GATE_TARGETS2 } = await Promise.resolve().then(() => (init_gateHeal(), gateHeal_exports));
+        const source = String((req.body || {}).source || "indigo");
+        if (!GATE_TARGETS2[source]) {
+          res.status(400).json({ error: `no heal target for '${source}'`, available: Object.keys(GATE_TARGETS2) });
+          return;
+        }
+        const result = await healGatedSource2(source, { force: true });
+        res.json({ ...result, gatedPool: gatedPoolSize2() });
+      } catch (e2) {
+        res.status(500).json({ error: String(e2?.message || e2).slice(0, 160) });
+      }
+    });
+    apiRouter.get("/admin/gate-heal", authMiddleware, requireAdmin, async (_req, res) => {
+      try {
+        const { gatedPoolSize: gatedPoolSize2, GATE_TARGETS: GATE_TARGETS2 } = await Promise.resolve().then(() => (init_gateHeal(), gateHeal_exports));
+        res.json({ targets: Object.keys(GATE_TARGETS2), gatedPool: gatedPoolSize2() });
+      } catch (e2) {
+        res.status(500).json({ error: String(e2?.message || e2).slice(0, 160) });
       }
     });
     apiRouter.post("/admin/proxy-discover", authMiddleware, requireAdmin, async (req, res) => {
@@ -49351,18 +49531,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path17, params = {}) {
+      async apiGet(path18, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path17}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path18}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path17, params);
+          return this.apiGet(path18, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path17} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path18} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -49402,9 +49582,9 @@ var init_admitad = __esm({
         }
         for (const wid of websiteIds) {
           if (offers.length >= maxOffers) break;
-          const path17 = `/coupons/website/${encodeURIComponent(wid)}/`;
+          const path18 = `/coupons/website/${encodeURIComponent(wid)}/`;
           for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-            const j = await this.apiGet(path17, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+            const j = await this.apiGet(path18, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
             const results = j?.results || [];
             if (results.length === 0) break;
             for (const c of results) {
@@ -49579,12 +49759,12 @@ var init_cuelinks = __esm({
       }
       async authenticate() {
       }
-      async api(path17, init) {
-        const res = await fetch(`${settings.cuelinks.apiBase}${path17}`, {
+      async api(path18, init) {
+        const res = await fetch(`${settings.cuelinks.apiBase}${path18}`, {
           ...init,
           headers: { Authorization: `Token ${settings.cuelinks.apiKey}`, "Content-Type": "application/json", ...init?.headers || {} }
         });
-        if (!res.ok) throw new Error(`cuelinks: ${path17} HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`cuelinks: ${path18} HTTP ${res.status}`);
         return res.json();
       }
       /** Live coupons/deals across joined campaigns. Paginates a few pages; every
@@ -50305,8 +50485,8 @@ function listSeoPaths() {
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, "bus")}`);
   return [...new Set(paths)];
 }
-function resolveAppRoute(path17) {
-  const seg = path17.replace(/\/+$/, "").split("/").filter(Boolean);
+function resolveAppRoute(path18) {
+  const seg = path18.replace(/\/+$/, "").split("/").filter(Boolean);
   if (seg.length === 0) return null;
   const head3 = seg[0];
   const tail = seg[1];
@@ -50359,8 +50539,8 @@ function resolveAppRoute(path17) {
   }
   return { vertical: vid };
 }
-function resolveSeoPage(path17) {
-  let clean3 = path17.split("?")[0].replace(/\/+$/, "") || "/";
+function resolveSeoPage(path18) {
+  let clean3 = path18.split("?")[0].replace(/\/+$/, "") || "/";
   const ALIAS = {
     movie: "movies",
     cab: "cabs",
@@ -51137,14 +51317,14 @@ var init_staticPages = __esm({
   .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 22px; margin: 14px 0; }
   footer { border-top: 1px solid #e2e8f0; margin-top: 30px; padding-top: 16px; color: #64748b; font-size: 13px; }
 `;
-    shell = (title, description, path17, body) => `<!doctype html>
+    shell = (title, description, path18, body) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${title}</title>
 <meta name="description" content="${description}" />
-<link rel="canonical" href="${SEO_HOST}${path17}" />
+<link rel="canonical" href="${SEO_HOST}${path18}" />
 <meta name="robots" content="index, follow" />
 <meta property="og:title" content="${title}" />
 <meta property="og:description" content="${description}" />
@@ -51220,18 +51400,18 @@ async function productSitemapPaths(limit = 200) {
 }
 function readWarmFile() {
   try {
-    const fs17 = require("node:fs");
-    if (fs17.existsSync(WARM_FILE)) return fs17.readFileSync(WARM_FILE, "utf8");
+    const fs18 = require("node:fs");
+    if (fs18.existsSync(WARM_FILE)) return fs18.readFileSync(WARM_FILE, "utf8");
   } catch {
   }
   return null;
 }
 function writeWarmFile(xml) {
   try {
-    const fs17 = require("node:fs");
-    const path17 = require("node:path");
-    fs17.mkdirSync(path17.dirname(WARM_FILE), { recursive: true });
-    fs17.writeFileSync(WARM_FILE, xml);
+    const fs18 = require("node:fs");
+    const path18 = require("node:path");
+    fs18.mkdirSync(path18.dirname(WARM_FILE), { recursive: true });
+    fs18.writeFileSync(WARM_FILE, xml);
   } catch {
   }
 }
@@ -51367,18 +51547,18 @@ async function mysqlLock(name) {
   }
 }
 function fileLock(name) {
-  const file = import_node_path8.default.join(dataDir, `singleton-${name}.lock`);
+  const file = import_node_path9.default.join(dataDir, `singleton-${name}.lock`);
   try {
-    const st = import_node_fs8.default.statSync(file);
+    const st = import_node_fs9.default.statSync(file);
     if (Date.now() - st.mtimeMs < STALE_MS) return false;
-    import_node_fs8.default.unlinkSync(file);
+    import_node_fs9.default.unlinkSync(file);
   } catch {
   }
   try {
-    import_node_fs8.default.mkdirSync(dataDir, { recursive: true });
-    const fd = import_node_fs8.default.openSync(file, "wx");
-    import_node_fs8.default.writeSync(fd, String(process.pid));
-    import_node_fs8.default.closeSync(fd);
+    import_node_fs9.default.mkdirSync(dataDir, { recursive: true });
+    const fd = import_node_fs9.default.openSync(file, "wx");
+    import_node_fs9.default.writeSync(fd, String(process.pid));
+    import_node_fs9.default.closeSync(fd);
     return true;
   } catch {
     return false;
@@ -51407,11 +51587,11 @@ async function runSingleton(name, fn) {
   await fn();
   return true;
 }
-var import_node_fs8, import_node_path8, import_promise3, STALE_MS;
+var import_node_fs9, import_node_path9, import_promise3, STALE_MS;
 var init_singleton = __esm({
   "server/common/singleton.ts"() {
-    import_node_fs8 = __toESM(require("node:fs"), 1);
-    import_node_path8 = __toESM(require("node:path"), 1);
+    import_node_fs9 = __toESM(require("node:fs"), 1);
+    import_node_path9 = __toESM(require("node:path"), 1);
     import_promise3 = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();
@@ -51805,8 +51985,8 @@ __export(render_exports, {
   enhanceHtml: () => enhanceHtml,
   listSeoPaths: () => listSeoPaths
 });
-function jsonLd(path17) {
-  const page = resolveSeoPage(path17);
+function jsonLd(path18) {
+  const page = resolveSeoPage(path18);
   const blocks = [];
   const org = {
     "@context": "https://schema.org",
@@ -51817,7 +51997,7 @@ function jsonLd(path17) {
     description: "Independent metasearch engine comparing live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in India."
   };
   blocks.push(JSON.stringify(org));
-  if (path17 === "/") {
+  if (path18 === "/") {
     blocks.push(JSON.stringify({
       "@context": "https://schema.org",
       "@type": "WebSite",
@@ -51892,8 +52072,8 @@ function prerenderLoader(page) {
     </div>
   </div>`;
 }
-function prerenderBody(path17) {
-  const page = resolveSeoPage(path17);
+function prerenderBody(path18) {
+  const page = resolveSeoPage(path18);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
     <dt>${esc6(f.q)}</dt><dd>${esc6(f.a)}</dd>`).join("");
@@ -51913,12 +52093,12 @@ function prerenderBody(path17) {
     `</section>`
   ].join("");
 }
-function enhanceHtml(html, path17) {
-  const page = resolveSeoPage(path17);
-  const isNoindex = /^\/(admin|merchant|api)/.test(path17);
+function enhanceHtml(html, path18) {
+  const page = resolveSeoPage(path18);
+  const isNoindex = /^\/(admin|merchant|api)/.test(path18);
   const title = page ? page.title : DEFAULT_TITLE;
   const desc = page ? page.description : DEFAULT_DESC;
-  const canonical = `${SEO_HOST}${(path17 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
+  const canonical = `${SEO_HOST}${(path18 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
   out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc6(title)}</title>`);
   out = out.replace(
@@ -51952,11 +52132,11 @@ function enhanceHtml(html, path17) {
     `<link rel="alternate" hreflang="en-in" href="${esc6(canonical)}" />`,
     `<link rel="alternate" hreflang="x-default" href="${esc6(canonical)}" />`
   ];
-  if (!isNoindex) for (const b of jsonLd(path17)) head3.push(`<script type="application/ld+json">${b}</script>`);
+  if (!isNoindex) for (const b of jsonLd(path18)) head3.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head3.join("\n")}
 </head>`);
   if (!isNoindex) {
-    const body = prerenderBody(path17);
+    const body = prerenderBody(path18);
     if (body) {
       out = out.replace(/<div id="root"><\/div>/, `<div id="root">${body}</div>`);
     }
@@ -51982,12 +52162,12 @@ __export(liveSnapshot_exports, {
   snapshotForPath: () => snapshotForPath,
   snapshotJsonLd: () => snapshotJsonLd
 });
-function placementTokens(path17) {
-  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path17.replace(/\/+$/, ""));
+function placementTokens(path18) {
+  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path18.replace(/\/+$/, ""));
   if (prod) {
     return prod[1].split("-").filter((t) => t.length > 1 && !/^(the|and|for|with)$/.test(t));
   }
-  const route2 = resolveAppRoute(path17);
+  const route2 = resolveAppRoute(path18);
   const hint = `${route2?.query || ""}`.replace(/\([^)]*\)/g, " ").toLowerCase();
   return hint.replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
 }
@@ -51999,9 +52179,9 @@ function productMatches(slug5, title) {
   const hit = want.filter((t) => have.has(t) || [...have].some((h) => h.startsWith(t) || t.startsWith(h))).length;
   return hit / want.length >= 0.8;
 }
-function selectSnapshotRows(candidates, path17, max = MAX_ROWS, bySlug = false) {
+function selectSnapshotRows(candidates, path18, max = MAX_ROWS, bySlug = false) {
   if (bySlug) {
-    const slug5 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path17.replace(/\/+$/, ""))?.[1] || "";
+    const slug5 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path18.replace(/\/+$/, ""))?.[1] || "";
     const pool3 = candidates.filter((r) => productMatches(slug5, r.title));
     const seen0 = /* @__PURE__ */ new Set();
     const out0 = [];
@@ -52014,7 +52194,7 @@ function selectSnapshotRows(candidates, path17, max = MAX_ROWS, bySlug = false) 
     }
     return out0;
   }
-  const tokens2 = placementTokens(path17);
+  const tokens2 = placementTokens(path18);
   const relevant = tokens2.length ? candidates.filter((r) => {
     const t = ` ${r.title.toLowerCase()} ${String(r.seller || "").toLowerCase()} `;
     return tokens2.every((tok) => t.includes(tok));
@@ -52047,9 +52227,9 @@ function renderSnapshotHtml(snapshot, heading = "Latest verified prices") {
     `</section>`
   ].join("");
 }
-function snapshotJsonLd(snapshot, path17) {
+function snapshotJsonLd(snapshot, path18) {
   if (!snapshot || !snapshot.rows.length) return null;
-  const page = resolveSeoPage(path17);
+  const page = resolveSeoPage(path18);
   return JSON.stringify({
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -52071,15 +52251,15 @@ function snapshotJsonLd(snapshot, path17) {
     }))
   });
 }
-async function snapshotForPath(path17) {
-  const page = resolveSeoPage(path17);
+async function snapshotForPath(path18) {
+  const page = resolveSeoPage(path18);
   if (!page) return null;
-  const key = (path17 || "/").replace(/\/+$/, "") || "/";
+  const key = (path18 || "/").replace(/\/+$/, "") || "/";
   const hit = cache10.get(key);
   if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) return hit.snap;
   let snap = null;
   try {
-    const route2 = resolveAppRoute(path17);
+    const route2 = resolveAppRoute(path18);
     const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(key);
     const verticals = prod ? ["ecommerce", "grocery"] : route2?.vertical ? [route2.vertical] : [];
     if (verticals.length) {
@@ -52228,14 +52408,14 @@ var TRUTH_POST_PATHS = [
   "/api/client-diag"
 ];
 var isMaskable = (req) => {
-  const path17 = (req.path || req.originalUrl || "").split("?")[0];
-  if (!path17.startsWith("/api/")) return false;
-  if (path17.startsWith("/api/admin")) return false;
-  if (path17.startsWith("/api/version") || path17.startsWith("/api/health")) return false;
-  if (path17.startsWith("/api/client-diag")) return false;
+  const path18 = (req.path || req.originalUrl || "").split("?")[0];
+  if (!path18.startsWith("/api/")) return false;
+  if (path18.startsWith("/api/admin")) return false;
+  if (path18.startsWith("/api/version") || path18.startsWith("/api/health")) return false;
+  if (path18.startsWith("/api/client-diag")) return false;
   if (req.method === "GET" || req.method === "HEAD") return true;
   if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
-    return !TRUTH_POST_PATHS.some((p) => path17.startsWith(p));
+    return !TRUTH_POST_PATHS.some((p) => path18.startsWith(p));
   }
   return false;
 };
@@ -52256,7 +52436,7 @@ function gracefulPublicStatus(app, options = {}) {
       }
       res.status(200);
       const base = body && typeof body === "object" && !Array.isArray(body) ? body : {};
-      const path17 = String(req.path || req.originalUrl || "").split("?")[0];
+      const path18 = String(req.path || req.originalUrl || "").split("?")[0];
       const masked = {
         ...base,
         success: false,
@@ -52266,7 +52446,7 @@ function gracefulPublicStatus(app, options = {}) {
         retryAfterSec: 4,
         notice: "Still gathering results from the sources. Retrying automatically."
       };
-      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path17)) {
+      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path18)) {
         const current = Array.isArray(masked.results) ? masked.results : [];
         if (!current.length) {
           try {
@@ -52296,18 +52476,18 @@ var import_compression = __toESM(require("compression"), 1);
 
 // server/common/canonicalHost.ts
 var APEX_HOST = "try1second.com";
-function isVerificationPath(path17) {
-  return String(path17 || "").toLowerCase().startsWith("/.well-known/");
+function isVerificationPath(path18) {
+  return String(path18 || "").toLowerCase().startsWith("/.well-known/");
 }
 function apexRedirectEnabled() {
   return String(process.env.FORCE_WWW_REDIRECT || "").trim() === "1";
 }
-function shouldRedirectApexToWww(host, path17) {
+function shouldRedirectApexToWww(host, path18) {
   if (!apexRedirectEnabled()) return false;
   const h = String(host || "").toLowerCase();
   const isApex = h === APEX_HOST || new RegExp(`^${APEX_HOST.replace(/\./g, "\\.")}:\\d+$`).test(h);
   if (!isApex) return false;
-  if (isVerificationPath(String(path17 || ""))) return false;
+  if (isVerificationPath(String(path18 || ""))) return false;
   return true;
 }
 function canonicalWwwUrl(originalUrl) {
@@ -52347,8 +52527,8 @@ async function createApp() {
       next(err);
       return;
     }
-    const path17 = String(req?.path || req?.originalUrl || "");
-    const publicRead = path17.startsWith("/api/") && !path17.startsWith("/api/admin");
+    const path18 = String(req?.path || req?.originalUrl || "");
+    const publicRead = path18.startsWith("/api/") && !path18.startsWith("/api/admin");
     res.status(publicRead ? 200 : 400).json({
       success: false,
       ok: false,

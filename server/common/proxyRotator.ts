@@ -120,9 +120,32 @@ function discoveredLegs(): Array<{ url: string; ms: number }> {
   }
 }
 
+/**
+ * Owner 2 Nov: legs validated against a GATED partner edge (data/proxy-pool-gated.json, written
+ * by gateHeal) are merged in with a wider latency ceiling — a hop that beats Akamai at 3s is
+ * still worth having when the alternative is zero IndiGo rows.
+ */
+function gatedLegs(): Array<{ url: string; ms: number }> {
+  try {
+    const file = path.join(process.cwd(), 'data', 'proxy-pool-gated.json');
+    if (!fs.existsSync(file)) return [];
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const ceiling = Number(process.env.T1S_PROXY_GATED_MAX_LATENCY_MS || 8000);
+    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
+    return rows
+      .map((x: any) => ({ url: normalize(String(x?.url || '')), ms: Number(x?.ms || 0) }))
+      .filter((x: { url: string; ms: number }) => !!x.url && Number.isFinite(x.ms) && x.ms > 0 && x.ms <= ceiling);
+  } catch {
+    return [];
+  }
+}
+
 function loadLegs(): ProxyLeg[] {
   const envRaw = process.env.T1S_PROXY_LIST || '';
-  const fromFile = envRaw ? [] : discoveredLegs();
+  const merged = [...discoveredLegs(), ...gatedLegs()];
+  const uniq = new Map<string, { url: string; ms: number }>();
+  for (const leg of merged) if (!uniq.has(leg.url)) uniq.set(leg.url, leg);
+  const fromFile = envRaw ? [] : Array.from(uniq.values());
   const raw = envRaw || fromFile.map((f) => f.url).join(',');
   if (raw === signature) return legs;
   signature = raw;

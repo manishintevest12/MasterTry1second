@@ -1680,8 +1680,15 @@ export const flightsWorker: VerticalWorker = {
           throw new AcquisitionError('SERVER_ERROR', `IndiGo API unreachable on all ladder rungs (${indigoErrs.filter(Boolean).join(' | ') || 'transport errors'})`);
         }
         if (r.status === 403 || r.status === 429) {
-          // Akamai edge block on the mobile search API is the expected case from
-          // datacenter IPs — try the web fare-calendar fallback before giving up.
+          // Owner 2 Nov (self-healing rule): an Akamai block must repair itself. Kick a
+          // background sweep that validates public proxy exits against THIS gated request and
+          // stores the winners in data/proxy-pool-gated.json, which the rotator reads with a
+          // wider ceiling — so the next IndiGo call rotates through an accepted hop. Fire and
+          // forget: the current answer stays honest, the sweep never blocks the search.
+          void import('../../common/gateHeal')
+            .then((m) => m.autoHealGatedSources([{ source: 'w_flights_indigo', message: `HTTP ${r.status}` }]))
+            .catch(() => undefined);
+          // Try the web fare-calendar fallback before giving up.
           try {
             const dayFares = await indigoWebFareCalendar(cffiFetch, from, to, dep);
             const calItems = indigoDayFareItems(dayFares, ctx.source, rt.from, rt.to, from, to, dep);

@@ -27,6 +27,24 @@ export interface ProxyCandidate {
   source: string;
 }
 
+/**
+ * Owner 2 Nov ("indigo abhi v baki hai isko fix kro kaise v"): a proxy is only useful if it
+ * can pass the SAME edge that is gating the source, so discovery can be pointed at a real
+ * gated request instead of the neutral ipify probe. A candidate that answers IndiGo's Akamai
+ * edge is kept; one that merely reaches the internet is not.
+ */
+export interface ProbeTarget {
+  url: string;
+  method?: 'GET' | 'POST';
+  headers?: Record<string, string>;
+  body?: string;
+  /** Response must contain this (lowercased) to count as a pass. */
+  expectSubstring?: string;
+  /** Latency ceiling for this target (a partner search is slower than ipify). */
+  maxMs?: number;
+  label?: string;
+}
+
 export interface ProxyProbeResult {
   url: string;
   ok: boolean;
@@ -51,6 +69,12 @@ export interface DiscoveryReport {
 }
 
 const POOL_FILE = path.join(process.cwd(), 'data', 'proxy-pool.json');
+/**
+ * A sweep validated against a partner edge (IndiGo's Akamai, ...) keeps its winners here.
+ * They are slower than the 500ms generic budget, so they live in their own file and the
+ * rotator reads them with a wider ceiling instead of silently filtering them out.
+ */
+export const GATED_POOL_FILE = path.join(process.cwd(), 'data', 'proxy-pool-gated.json');
 
 /** Public, no-key lists. Each entry is parsed for ip:port pairs. */
 const SOURCES: Array<{ name: string; url: string }> = [
@@ -103,18 +127,21 @@ async function fetchList(source: { name: string; url: string }): Promise<ProxyCa
 }
 
 /** Measures one candidate. Success = HTTP 200 inside the budget, no gate markers. */
-export async function probeProxy(candidate: ProxyCandidate): Promise<ProxyProbeResult> {
-  const budget = proxyLatencyBudget();
+export async function probeProxy(candidate: ProxyCandidate, target?: ProbeTarget): Promise<ProxyProbeResult> {
+  const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
   const startedAt = Date.now();
   let res: any = null;
   let err: any = null;
   try {
     // cffiFetch (not the inner direct call) so a candidate that dies mid-handshake
     // cannot take the probe down with it; proxy passed per call, no pool recursion.
-    res = await cffiFetch(PROBE_TARGET, {
+    res = await cffiFetch(target?.url || PROBE_TARGET, {
       proxy: candidate.url,
       timeoutMs: Math.max(budget * 2, 1500),
       impersonate: 'chrome',
+      ...(target?.method ? { method: target.method } : {}),
+      ...(target?.headers ? { headers: target.headers } : {}),
+      ...(target?.body ? { body: target.body } : {}),
     });
   } catch (e: any) {
     err = e;
@@ -126,6 +153,9 @@ export async function probeProxy(candidate: ProxyCandidate): Promise<ProxyProbeR
   if (err) return { url: candidate.url, ok: false, ms, status, reason: String(err.message || err).slice(0, 90) };
   if (status !== 200) return { url: candidate.url, ok: false, ms, status, reason: `status ${status}` };
   if (gated) return { url: candidate.url, ok: false, ms, status, reason: 'gated page' };
+  if (target?.expectSubstring && !String(res?.body || '').toLowerCase().includes(target.expectSubstring.toLowerCase())) {
+    return { url: candidate.url, ok: false, ms, status, reason: 'target payload missing' };
+  }
   if (ms > budget) return { url: candidate.url, ok: false, ms, status, reason: `slow ${ms}ms > ${budget}ms` };
   return { url: candidate.url, ok: true, ms, status, reason: 'ok' };
 }
@@ -134,9 +164,10 @@ export async function probeProxy(candidate: ProxyCandidate): Promise<ProxyProbeR
  * Discovers, probes and persists. `limit` caps how many candidates are probed so an
  * admin click can never turn into hundreds of outbound connections.
  */
-export async function runProxyDiscovery(opts: { limit?: number; concurrency?: number } = {}): Promise<DiscoveryReport> {
+export async function runProxyDiscovery(opts: { limit?: number; concurrency?: number; target?: ProbeTarget; poolFile?: string } = {}): Promise<DiscoveryReport> {
   const startedAt = new Date();
-  const budget = proxyLatencyBudget();
+  const target = opts.target;
+  const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
   const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
   const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
 
@@ -156,7 +187,7 @@ export async function runProxyDiscovery(opts: { limit?: number; concurrency?: nu
   const workers = Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, async () => {
     while (cursor < candidates.length) {
       const c = candidates[cursor++];
-      const r = await probeProxy(c);
+      const r = await probeProxy(c, target);
       if (r.ok) kept.push(r); else dropped++;
     }
   });
@@ -166,12 +197,13 @@ export async function runProxyDiscovery(opts: { limit?: number; concurrency?: nu
   const payload = {
     updatedAt: new Date().toISOString(),
     budgetMs: budget,
-    probeTarget: PROBE_TARGET,
+    probeTarget: target?.label || target?.url || PROBE_TARGET,
     proxies: kept.map((k) => ({ url: k.url, ms: k.ms })),
   };
+  const poolFile = opts.poolFile || POOL_FILE;
   try {
-    fs.mkdirSync(path.dirname(POOL_FILE), { recursive: true });
-    fs.writeFileSync(POOL_FILE, JSON.stringify(payload, null, 2));
+    fs.mkdirSync(path.dirname(poolFile), { recursive: true });
+    fs.writeFileSync(poolFile, JSON.stringify(payload, null, 2));
   } catch (e: any) {
     log.warn('ProxyDiscovery', `could not store pool: ${String(e?.message || e).slice(0, 80)}`);
   }
@@ -189,7 +221,7 @@ export async function runProxyDiscovery(opts: { limit?: number; concurrency?: nu
     persistedToDb: storedInDb,
     kept: kept.slice(0, 40),
     dropped,
-    storedIn: POOL_FILE,
+    storedIn: poolFile,
     durationMs: Date.now() - startedAt.getTime(),
   };
   log.info('ProxyDiscovery', `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);

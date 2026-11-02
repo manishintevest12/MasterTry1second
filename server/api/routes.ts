@@ -1276,6 +1276,32 @@ apiRouter.get('/admin/proxy-list', authMiddleware, requireAdmin, async (_req, re
   }
 });
 
+apiRouter.post('/admin/gate-heal', authMiddleware, requireAdmin, async (req, res) => {
+  // Owner 2 Nov: one-click proof that a gated partner (IndiGo/Akamai) can be healed on the
+  // host, without waiting for a search to trip the automatic sweep.
+  try {
+    const { healGatedSource, gatedPoolSize, GATE_TARGETS } = await import('../common/gateHeal');
+    const source = String((req.body || {}).source || 'indigo');
+    if (!GATE_TARGETS[source]) {
+      res.status(400).json({ error: `no heal target for '${source}'`, available: Object.keys(GATE_TARGETS) });
+      return;
+    }
+    const result = await healGatedSource(source, { force: true });
+    res.json({ ...result, gatedPool: gatedPoolSize() });
+  } catch (e: any) {
+    res.status(500).json({ error: String(e?.message || e).slice(0, 160) });
+  }
+});
+
+apiRouter.get('/admin/gate-heal', authMiddleware, requireAdmin, async (_req, res) => {
+  try {
+    const { gatedPoolSize, GATE_TARGETS } = await import('../common/gateHeal');
+    res.json({ targets: Object.keys(GATE_TARGETS), gatedPool: gatedPoolSize() });
+  } catch (e: any) {
+    res.status(500).json({ error: String(e?.message || e).slice(0, 160) });
+  }
+});
+
 apiRouter.post('/admin/proxy-discover', authMiddleware, requireAdmin, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
