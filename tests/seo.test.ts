@@ -27,6 +27,12 @@ const run = async () => {
   // 2. Every sitemap URL is a real page with content
   const titles = new Set<string>();
   for (const p of paths) {
+    // OWNER 2 Nov: the editorial guides are served by their own renderer (server/seo/guidePages.ts)
+    // and are pinned by tests/guidePages.test.ts, so they are not part of the SeoPage corpus.
+    if (p === '/guides' || p.startsWith('/guides/')) continue;
+    // Same for the crawlable legal/support pages (server/seo/legalPages.ts, pinned by
+    // tests/legalPages.test.ts) - they are real HTML, just not SeoPage records.
+    if (['/about', '/contact', '/privacy', '/privacy-policy', '/terms', '/faq', '/affiliate-disclosure'].includes(p)) continue;
     const page = resolveSeoPage(p);
     assert.ok(page, `sitemap URL ${p} has no SEO page`);
     assert.ok(page.title.length > 10 && page.title.length <= 65 + 30, `title sane at ${p}`);

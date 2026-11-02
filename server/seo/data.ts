@@ -15,6 +15,8 @@
 
 export const SEO_HOST = 'https://www.try1second.com';
 
+import { GUIDE_SLUGS } from './guides';
+
 export interface SeoFaq { q: string; a: string }
 export interface SeoPage {
   path: string;
@@ -349,9 +351,12 @@ function routeSlug(a: string, b: string, noun: string): string {
 // ============ Path resolution ============
 
 export function listSeoPaths(): string[] {
+  // Editorial guides (server/seo/guides.ts) are part of the AdSense "unique value" surface.
+  const guidePaths = GUIDE_SLUGS.map((s) => `/guides/${s}`);
   // OWNER 2 Nov (AdSense "Low value content"): the support/legal URLs are now real pages, so the
   // sitemap lists every one of them instead of a lone '/privacy' that answered the SPA shell.
   const paths: string[] = [
+    ...guidePaths,
     '/',
     '/about',
     '/privacy-policy',
@@ -360,6 +365,7 @@ export function listSeoPaths(): string[] {
     '/affiliate-disclosure',
     '/faq',
     '/contact',
+    '/guides',
   ];
   for (const v of VERTICALS) {
     paths.push(`/${v.slug}`);

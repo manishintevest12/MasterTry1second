@@ -2621,10 +2621,10 @@ var init_seatLink = __esm({
 
 // server/workers/verticalWorker.ts
 function looksLikeChallenge(body) {
-  const head2 = body.slice(0, 6e3);
+  const head3 = body.slice(0, 6e3);
   const shell2 = body.length < 12e4;
   const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|bm-verify|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
-  return markers.test(head2) && !/application\/ld\+json/i.test(head2) || shell2 && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
+  return markers.test(head3) && !/application\/ld\+json/i.test(head3) || shell2 && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
 }
 async function runTask(worker, task, source, query) {
   const started3 = Date.now();
@@ -2817,12 +2817,12 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start = -1, inStr = false, esc6 = false;
+  let depth = 0, start = -1, inStr = false, esc7 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc6) esc6 = false;
-      else if (ch === "\\") esc6 = true;
+      if (esc7) esc7 = false;
+      else if (ch === "\\") esc7 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -2937,12 +2937,12 @@ function parseMyntra(html, source, pageUrl) {
     const start = /window\.__myx\s*=\s*\{/.exec(html);
     if (start) {
       const from = start.index + start[0].length - 1;
-      let depth = 0, inStr = false, esc6 = false, end = -1;
+      let depth = 0, inStr = false, esc7 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
         if (inStr) {
-          if (esc6) esc6 = false;
-          else if (ch === "\\") esc6 = true;
+          if (esc7) esc7 = false;
+          else if (ch === "\\") esc7 = true;
           else if (ch === '"') inStr = false;
           continue;
         }
@@ -3832,12 +3832,12 @@ function extractRelianceState(html) {
   if (eq < 0) return null;
   const s = html.slice(eq + 1).trimStart();
   if (s[0] !== "{") return null;
-  let depth = 0, inStr = false, esc6 = false, end = -1;
+  let depth = 0, inStr = false, esc7 = false, end = -1;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
-      if (esc6) esc6 = false;
-      else if (ch === "\\") esc6 = true;
+      if (esc7) esc7 = false;
+      else if (ch === "\\") esc7 = true;
       else if (ch === '"') inStr = false;
     } else if (ch === '"') inStr = true;
     else if (ch === "{") depth++;
@@ -5570,12 +5570,12 @@ function extractInitialState(body) {
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
-  let depth = 0, inStr = false, esc6 = false, end = -1;
+  let depth = 0, inStr = false, esc7 = false, end = -1;
   for (; i < body.length; i++) {
     const c = body[i];
     if (inStr) {
-      if (esc6) esc6 = false;
-      else if (c === "\\") esc6 = true;
+      if (esc7) esc7 = false;
+      else if (c === "\\") esc7 = true;
       else if (c === '"') inStr = false;
       continue;
     }
@@ -5706,12 +5706,12 @@ function parseMmtHotelLanding(body) {
       continue;
     }
     const objStart = j;
-    let depth = 0, inStr = false, esc6 = false, end = -1;
+    let depth = 0, inStr = false, esc7 = false, end = -1;
     for (; j < body.length; j++) {
       const c = body[j];
       if (inStr) {
-        if (esc6) esc6 = false;
-        else if (c === "\\") esc6 = true;
+        if (esc7) esc7 = false;
+        else if (c === "\\") esc7 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -10422,15 +10422,15 @@ function extractAaDataSchedule(pageHtml) {
   if (i < 0) return null;
   const start = pageHtml.indexOf("{", i + 20);
   if (start < 0) return null;
-  let depth = 0, end = -1, inStr = false, esc6 = false;
+  let depth = 0, end = -1, inStr = false, esc7 = false;
   for (let k = start; k < pageHtml.length; k++) {
     const c = pageHtml[k];
-    if (esc6) {
-      esc6 = false;
+    if (esc7) {
+      esc7 = false;
       continue;
     }
     if (c === "\\") {
-      esc6 = true;
+      esc7 = true;
       continue;
     }
     if (c === '"') {
@@ -18544,8 +18544,8 @@ function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
   const norm7 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
-  const esc6 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(`^${esc6}\\b`);
+  const esc7 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc7}\\b`);
   return cities.find((c) => norm7(c.name) === t) || cities.find((c) => rx.test(norm7(c.name))) || cities.find((c) => norm7(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
@@ -19431,11 +19431,11 @@ function uberIndiaCityFor(place) {
   const t = canonCity(place);
   const hit = BY_CANON.get(t);
   if (hit) return hit;
-  const esc6 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc7 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let best = null;
   let bestLen = 0;
   for (const [k, v] of BY_CANON) {
-    if (new RegExp(`\\b${esc6(k)}\\b`).test(t) || new RegExp(`\\b${esc6(t)}\\b`).test(k)) {
+    if (new RegExp(`\\b${esc7(k)}\\b`).test(t) || new RegExp(`\\b${esc7(t)}\\b`).test(k)) {
       if (k.length > bestLen) {
         best = v;
         bestLen = k.length;
@@ -25689,12 +25689,12 @@ function ixigoFlightText(html) {
 function parseObjectAt(text, start) {
   let depth = 0;
   let inStr = false;
-  let esc6 = false;
+  let esc7 = false;
   for (let i = start; i < text.length; i += 1) {
     const ch = text[i];
     if (inStr) {
-      if (esc6) esc6 = false;
-      else if (ch === "\\") esc6 = true;
+      if (esc7) esc7 = false;
+      else if (ch === "\\") esc7 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -30621,9 +30621,9 @@ async function verifyImage(url) {
   try {
     const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 8e3, headers: { Range: "bytes=0-63" } });
     if (r.status !== 200 && r.status !== 206) return false;
-    const head2 = String(r.body || "").slice(0, 64);
-    if (/^\x89PNG|\xff\xd8\xff/.test(head2)) return true;
-    if (/^(RIFF)/.test(head2) && head2.slice(8, 12) === "WEBP") return true;
+    const head3 = String(r.body || "").slice(0, 64);
+    if (/^\x89PNG|\xff\xd8\xff/.test(head3)) return true;
+    if (/^(RIFF)/.test(head3) && head3.slice(8, 12) === "WEBP") return true;
     return false;
   } catch {
     return false;
@@ -32375,8 +32375,8 @@ function routeFilter(offers, query) {
   });
 }
 function destinationFilter(offers, query) {
-  const head2 = String(query.rawQuery || "").split(",")[0];
-  const q3 = normPlace2(head2);
+  const head3 = String(query.rawQuery || "").split(",")[0];
+  const q3 = normPlace2(head3);
   const city = (query.location?.city || "").toLowerCase();
   const target = q3.city || city;
   if (!target) return offers;
@@ -35927,9 +35927,9 @@ function groupSameProduct(items, extra = () => ({})) {
       q3.isLowest = i === 0 && q3.price > 0;
     });
     const priced = members.filter((m) => m.primaryPrice > 0).sort((a, b) => a.primaryPrice - b.primaryPrice);
-    const head2 = members[0].vertical === "creditcards" ? [...members].sort((a, b) => Object.keys(a.specs || {}).length - Object.keys(b.specs || {}).length).pop() : priced[0] || members[0];
+    const head3 = members[0].vertical === "creditcards" ? [...members].sort((a, b) => Object.keys(a.specs || {}).length - Object.keys(b.specs || {}).length).pop() : priced[0] || members[0];
     const withImg = members.find((m) => m.imageUrl);
-    const mergedSpecs = { ...head2.specs || {} };
+    const mergedSpecs = { ...head3.specs || {} };
     const FEATURE_KEYS = [
       "theatres",
       "theatre count",
@@ -35955,7 +35955,7 @@ function groupSameProduct(items, extra = () => ({})) {
     const normKey2 = (k) => k.replace(/_/g, " ").toLowerCase();
     const have = new Set(Object.keys(mergedSpecs).map(normKey2));
     for (const m of members) {
-      if (m === head2) continue;
+      if (m === head3) continue;
       for (const [k, v] of Object.entries(m.specs || {})) {
         const nk = normKey2(k);
         const wanted = FEATURE_KEYS.includes(nk) || /theatre|imdb|critic|trailer|price band|shows|rating/.test(nk) || members[0].vertical === "creditcards";
@@ -35966,7 +35966,7 @@ function groupSameProduct(items, extra = () => ({})) {
         }
       }
     }
-    out.push({ ...head2, specs: mergedSpecs, imageUrl: head2.imageUrl || withImg?.imageUrl, sellerQuotes: quotes });
+    out.push({ ...head3, specs: mergedSpecs, imageUrl: head3.imageUrl || withImg?.imageUrl, sellerQuotes: quotes });
   }
   return out;
 }
@@ -37041,7 +37041,7 @@ function errorPage(title, message) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
 }
 async function adBlockHtml(slotKey) {
-  const esc6 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const esc7 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   let client = "";
   let slot2 = "";
   let customHtml = "";
@@ -37062,7 +37062,7 @@ async function adBlockHtml(slotKey) {
   }
   if (customHtml.trim()) return customHtml;
   if (!client || !slot2) return "";
-  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc6(client)}" data-ad-slot="${esc6(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc7(client)}" data-ad-slot="${esc7(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
 }
 function renderInterstitialPage(opts) {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -38040,11 +38040,11 @@ function finalizeSection(items, maxPerMerchant = 3, target = 12, minItems = 6, s
 }
 async function verifyLiveArt(items, maxProbes = 30) {
   if (!items.length) return items;
-  const head2 = items.slice(0, maxProbes);
-  const urls = [...new Set(head2.map((i) => i.image).filter(Boolean))];
+  const head3 = items.slice(0, maxProbes);
+  const urls = [...new Set(head3.map((i) => i.image).filter(Boolean))];
   const results = await Promise.all(urls.map((u) => logoAnswers(u)));
   const live = new Set(urls.filter((u, i) => results[i]));
-  const verified = head2.filter((it) => live.has(it.image || ""));
+  const verified = head3.filter((it) => live.has(it.image || ""));
   if (verified.length === 0) return items;
   return verified;
 }
@@ -38445,22 +38445,22 @@ function normalizeTypedProductQuery(t) {
 function searchableTitle(t) {
   const paren = t.match(/\(([^)]{2,40})\)/);
   const noParen = t.replace(/\([^)]*\)/g, " ");
-  let head2 = noParen.split(/\s*[,|]\s*|\s+-\s+|\s+with\s+/i)[0].replace(/\/(\d+)\b/g, "").replace(/\s+/g, " ").trim();
-  const words2 = head2.split(" ");
-  if (words2.length > 8) head2 = words2.slice(0, 8).join(" ");
+  let head3 = noParen.split(/\s*[,|]\s*|\s+-\s+|\s+with\s+/i)[0].replace(/\/(\d+)\b/g, "").replace(/\s+/g, " ").trim();
+  const words2 = head3.split(" ");
+  if (words2.length > 8) head3 = words2.slice(0, 8).join(" ");
   const cap = paren && /\d+\s?(gb|tb|ml|l|kg|g)\b/i.test(paren[1]) ? ` ${paren[1].match(/\d+\s?(gb|tb|ml|l|kg|g)\b/i)[0].replace(/\s+/, "")}` : "";
-  return (head2 + cap).trim() || t.slice(0, 80);
+  return (head3 + cap).trim() || t.slice(0, 80);
 }
 function recoverCapacityFromDescription(title, desc) {
   const CAP = /\b\d+(?:\.\d+)?\s?(gb|tb)\b/i;
   if (!title || !desc || CAP.test(title)) return null;
   if (!CAP.test(desc)) return null;
-  const head2 = String(desc).split(/\s*[:|]\s*|\s+with\s+/i)[0].replace(/\s+/g, " ").trim();
-  if (!CAP.test(head2) || head2.length > 90) return null;
+  const head3 = String(desc).split(/\s*[:|]\s*|\s+with\s+/i)[0].replace(/\s+/g, " ").trim();
+  if (!CAP.test(head3) || head3.length > 90) return null;
   const titleWords = title.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const headWords = head2.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const headWords = head3.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!titleWords || !headWords.includes(titleWords)) return null;
-  return head2;
+  return head3;
 }
 function isMerchantNameTitle(title, domain, merchant) {
   if (!title) return false;
@@ -42143,9 +42143,9 @@ __export(routes_exports, {
 });
 function deployedCommit() {
   try {
-    const head2 = require("fs").readFileSync(require("path").join(process.cwd(), ".git", "HEAD"), "utf8").trim();
-    if (!head2.startsWith("ref:")) return head2.slice(0, 7);
-    const ref = require("path").join(process.cwd(), ".git", head2.replace("ref:", "").trim());
+    const head3 = require("fs").readFileSync(require("path").join(process.cwd(), ".git", "HEAD"), "utf8").trim();
+    if (!head3.startsWith("ref:")) return head3.slice(0, 7);
+    const ref = require("path").join(process.cwd(), ".git", head3.replace("ref:", "").trim());
     return require("fs").readFileSync(ref, "utf8").trim().slice(0, 7);
   } catch {
     return process.env.BUILD_COMMIT || "unknown";
@@ -44769,18 +44769,18 @@ var init_routes = __esm({
       } catch {
       }
       const appName = (scheme.split("://")[0] || "app").replace(/^olacabs$/, "ola");
-      const esc6 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const esc7 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Opening ${esc6(appName)}\u2026</title>
+<title>Opening ${esc7(appName)}\u2026</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
 .muted{color:#94a3b8;font-size:13px;margin-top:10px}.ad{margin-top:18px;background:#fff;border-radius:12px;padding:8px;color:#0f172a}</style></head><body><div class="card">
-<h2 style="margin:0 0 6px">Opening ${esc6(appName)}</h2>
-<p class="muted">Handing your pickup and drop to the ${esc6(appName)} app\u2026</p>
-<a class="btn" href="${esc6(tracked)}">Continue on the website</a>
+<h2 style="margin:0 0 6px">Opening ${esc7(appName)}</h2>
+<p class="muted">Handing your pickup and drop to the ${esc7(appName)} app\u2026</p>
+<a class="btn" href="${esc7(tracked)}">Continue on the website</a>
 ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
-<p class="muted">Fare and availability are shown by ${esc6(appName)} itself.</p>
+<p class="muted">Fare and availability are shown by ${esc7(appName)} itself.</p>
 </div>
 <script>
   var scheme = ${JSON.stringify(scheme)};
@@ -45203,12 +45203,12 @@ function parseMyx(html) {
   const start = /window\.__myx\s*=\s*\{/.exec(html);
   if (!start) return null;
   const from = start.index + start[0].length - 1;
-  let depth = 0, inStr = false, esc6 = false, end = -1;
+  let depth = 0, inStr = false, esc7 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc6) esc6 = false;
-      else if (ch === "\\") esc6 = true;
+      if (esc7) esc7 = false;
+      else if (ch === "\\") esc7 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -48286,9 +48286,9 @@ var init_adminRoutes = __esm({
           try {
             const ctrl = new AbortController();
             const timer = setTimeout(() => ctrl.abort(), 6e3);
-            const head2 = await fetch(url, { method: "HEAD", signal: ctrl.signal, redirect: "follow" }).finally(() => clearTimeout(timer));
-            const type = String(head2.headers.get("content-type") || "");
-            return head2.ok && (!type || type.startsWith("image/")) ? { id: Number(r.id), ok: true } : { id: Number(r.id), ok: false, reason: `HTTP ${head2.status}${type ? ` ${type}` : ""}` };
+            const head3 = await fetch(url, { method: "HEAD", signal: ctrl.signal, redirect: "follow" }).finally(() => clearTimeout(timer));
+            const type = String(head3.headers.get("content-type") || "");
+            return head3.ok && (!type || type.startsWith("image/")) ? { id: Number(r.id), ok: true } : { id: Number(r.id), ok: false, reason: `HTTP ${head3.status}${type ? ` ${type}` : ""}` };
           } catch (e2) {
             return { id: Number(r.id), ok: false, reason: String(e2?.name === "AbortError" ? "timed out" : e2?.message || e2).slice(0, 120) };
           }
@@ -49582,6 +49582,342 @@ var init_loopWatchdog = __esm({
   }
 });
 
+// server/seo/guides.ts
+var GUIDES, GUIDE_BY_SLUG, GUIDE_SLUGS;
+var init_guides = __esm({
+  "server/seo/guides.ts"() {
+    GUIDES = [
+      {
+        slug: "how-try1second-compares-prices",
+        title: "How Try1Second Compares Live Prices (And What It Cannot See)",
+        description: "How the scan works, why the same seat or room has a different price on every seller, what our ranking means, and the limits you should know before you book.",
+        headline: "How the comparison works, end to end",
+        verticals: ["flights", "hotels", "bus", "cab", "grocery", "food", "movies"],
+        updated: "2026-11-02",
+        blocks: [
+          { t: "h2", x: "What actually happens when you search" },
+          {
+            t: "p",
+            x: "You type one query. We fan it out to the seller sites and airline, hotel, bus, cab and merchant systems that publish that product, read the price each one returns for the exact route, dates and party size you asked for, and then show the answers side by side. Each row is one seller quoting one option, not an average and not an estimate."
+          },
+          {
+            t: "p",
+            x: "The scan is done live. That is why a result page sometimes fills in over a few seconds: the first sellers answer quickly, and slower ones (airline systems, hotel chains, ticketing platforms) arrive after. When a seller refuses to answer, we say so in the scan status instead of quietly filling the gap with an older price."
+          },
+          { t: "h2", x: "Why the same seat or room is priced differently everywhere" },
+          {
+            t: "p",
+            x: "A fare or a room rate is not a single number. It is a set of rules applied to a base price. The rules differ by seller, so the checkout total differs even when the base looks identical."
+          },
+          {
+            t: "ul",
+            items: [
+              "Seller margin and commission: a travel agent and an airline app can sell the same seat with different mark-ups.",
+              'Fare class rules: the cheapest bucket sells out first, so two sellers quoting "economy" may be quoting different booking classes with different baggage and change rules.',
+              "Taxes, surcharges and convenience fees: some sellers show a fare before fees, others after. Always compare the final payable amount.",
+              "Bank offers and cashback: a card discount can change the ranking, and it is usually conditional on a minimum spend or a specific card network.",
+              "Time: inventory is repriced continuously. Two scans a minute apart can legitimately differ."
+            ]
+          },
+          { t: "h2", x: "What our ranking means, and what it does not" },
+          {
+            t: "p",
+            x: "Our default sort is by the effective price we read from each seller: the number that includes the mandatory fees that seller publishes. Optional extras, seat selection, extra baggage, insurance add-ons and pay-at-hotel surcharges are shown by the partner on their own checkout, not always in the quote we receive. A row is a quote, not a guarantee: the partner is the seller of record."
+          },
+          { t: "h2", x: "Limits you should know" },
+          {
+            t: "ul",
+            items: [
+              "If a seller hides prices behind a login or a bot check, we cannot read it. We show that the source was attempted and why it failed rather than inventing a number.",
+              'Some sellers quote only a starting price for a category. Treat that as "from" pricing, not the price of the specific seat, room or seat class you want.',
+              "Our cache exists to answer instantly, and a cached answer is always re-verified against the seller when you open the offer. If the seller has moved on, the seller page wins."
+            ]
+          },
+          { t: "h2", x: "How we make money (and why it does not change your price)" },
+          {
+            t: "p",
+            x: "When you leave for a partner site and complete a purchase, the partner may pay us a commission. That commission is paid by the partner out of its own margin; it is not added to your checkout, and it never reorders our results. If a seller pays us nothing, it still appears if it has the better price. Our affiliate disclosure page spells this out in full."
+          }
+        ]
+      },
+      {
+        slug: "flight-fare-checklist-india",
+        title: "Flight Fare Checklist: The Fees That Change Your Real Ticket Price",
+        description: "A practical checklist for comparing Indian domestic flight fares: baggage, cancellation rules, convenience fees, seat and meal charges, date-change cost and the bank offers that actually apply.",
+        headline: "What to check before you pay for a flight",
+        verticals: ["flights"],
+        updated: "2026-11-02",
+        blocks: [
+          { t: "h2", x: "Start from the total, then compare the conditions" },
+          {
+            t: "p",
+            x: "Two tickets for the same flight can differ by more than the fare difference suggests. Sort by the final payable amount, then use the list below to check that the cheaper row is genuinely cheaper for your trip."
+          },
+          { t: "h2", x: "The pre-booking checklist" },
+          {
+            t: "ul",
+            items: [
+              "Baggage: check-in allowance and cabin allowance separately. A low fare with cabin-only baggage is often the most expensive option once you add a checked bag.",
+              'Cancellation and date change: read the penalty plus the fare difference. "Non-refundable" usually still refunds taxes, but the penalty can exceed the fare.',
+              "Convenience fee: charged per passenger per sector by most agents. It is sometimes waived on the airline app and rarely on a metasearch exit.",
+              "Seat and meal selection: priced per segment, and usually cheaper before check-in than during it.",
+              "Departure airport and terminal: two airports in the same city can be an hour apart. Check the terminal before you choose the cheaper fare.",
+              "Onward connection: if you are booking separate tickets, a delay is your risk, not the airline's. Leave a real buffer.",
+              "Bank offer conditions: minimum spend, specific card network, limited seats per offer, and often no combination with other codes."
+            ]
+          },
+          { t: "h2", x: "Why fares move while you are deciding" },
+          {
+            t: "p",
+            x: "Airlines sell in fare buckets. When the cheapest bucket empties, the next one becomes the lowest available price, so the visible fare rises without any promotion ending. This is normal inventory behaviour, not a pricing trick by the comparison site. Booking earlier is the only reliable defence, and flexibility on date or time is worth more than any coupon."
+          },
+          { t: "h2", x: "When a seller shows a fare we could not confirm" },
+          {
+            t: "p",
+            x: "If an airline or agent does not answer our scan, we show that the source failed rather than showing an old price. On the results page, an offer that says the fare could not be confirmed is a routing aid: it takes you to the seller's own search, where the live price is authoritative."
+          },
+          { t: "h2", x: "The one-line rule" },
+          {
+            t: "p",
+            x: "Compare the amount that leaves your bank account, including baggage and cancellation risk, not the headline fare. Our comparison gives you the candidates; the partner page is where you confirm."
+          }
+        ]
+      },
+      {
+        slug: "hotel-booking-fees-guide",
+        title: "Hotel Booking Fees Explained: What the Nightly Rate Leaves Out",
+        description: "How hotel quotes differ across sellers: taxes and service charges, pay-at-hotel versus prepaid, cancellation windows, resort fees, extra-guest charges and why two sellers quote the same room differently.",
+        headline: "The charges that sit behind a hotel nightly rate",
+        verticals: ["hotels"],
+        updated: "2026-11-02",
+        blocks: [
+          { t: "h2", x: "The room rate is only the starting point" },
+          {
+            t: "p",
+            x: "Hotel pricing has more moving parts than any other travel vertical, because the same physical room can be sold as several different products: room only, with breakfast, with dinner, refundable, non-refundable, prepaid, or pay at the property. Two sellers showing a similar nightly figure may be selling different products."
+          },
+          { t: "h2", x: "Compare these seven things" },
+          {
+            t: "ul",
+            items: [
+              "Total for the stay: nightly rate multiplied by nights, plus taxes and any service charge the seller adds. Some markets quote before tax, some after.",
+              'Cancellation window and penalty: "free cancellation until 48 hours before" and "non-refundable" are completely different products at similar prices.',
+              "Prepaid or pay at hotel: prepaid is usually cheaper but locks your money; pay-at-hotel may add a deposit or an exchange-rate difference on the final bill.",
+              "Occupancy: a room quoted for two adults can add a per-person charge for a third guest or for children above the property's age cut-off.",
+              "Meal plan: breakfast for two, for the whole stay, can be worth more than a small rate difference.",
+              "Resort or city fee: collected by the property at check-in in some destinations and invisible in the online quote.",
+              "Room and bed type: the cheapest row is often the base category. Confirm the bed type and smoking preference before paying."
+            ]
+          },
+          { t: "h2", x: "Why the same hotel looks cheaper on one site" },
+          {
+            t: "p",
+            x: "Hotels publish negotiated rates to different channels, and chains run member-only rates on their own site. A channel manager may also hold a promotional rate that only one reseller sees. That is why a comparison is worth doing, and why the cheapest row is worth reading carefully rather than clicking immediately: check that the dates, occupancy and cancellation terms match what you intended."
+          },
+          { t: "h2", x: "Dates matter more than anything else" },
+          {
+            t: "p",
+            x: "A hotel search is meaningless without an exact check-in and check-out date and a party size. Every offer we show is requested for the dates and guests you picked; if a seller returns a rate for different dates, we drop it rather than show you a rate you cannot book."
+          },
+          { t: "h2", x: "What to do if a property does not appear" },
+          {
+            t: "p",
+            x: "Some chains block automated reads or answer only a member session. When that happens the scan status names the source that did not answer, and you can go straight to that chain. We would rather show a shorter list than a list with invented rates."
+          }
+        ]
+      },
+      {
+        slug: "cab-fare-surge-guide",
+        title: "Cab Fare Reality Check: Surge, Waiting Charges and the Fare Nobody Quotes",
+        description: "How ride-hailing quotes are built: base fare, distance and time slabs, surge multipliers, waiting and cancellation fees, tolls and parking, plus why a quote can change the moment you open the app.",
+        headline: "Why ride quotes change, and what to compare",
+        verticals: ["cab"],
+        updated: "2026-11-02",
+        blocks: [
+          { t: "h2", x: "A cab quote is a live estimate, not a tariff" },
+          {
+            t: "p",
+            x: "Ride-hailing prices are computed per request from the route, the traffic model, driver supply in that zone and the product you picked. Two apps quoting the same trip can differ sharply in the same minute, and the same app can quote differently two minutes later. That volatility is the reason a comparison is useful and the reason no comparison can promise a fixed price."
+          },
+          { t: "h2", x: "What the number on screen includes" },
+          {
+            t: "ul",
+            items: [
+              "Base fare plus distance and time components for the route the app computed.",
+              "Surge or peak multiplier, which reflects local demand at that moment.",
+              "Taxes and platform fees, which vary by city and by product.",
+              "Usually not included: tolls, parking, state permits on intercity trips, and waiting time after the free window."
+            ]
+          },
+          { t: "h2", x: "Compare the product, not just the price" },
+          {
+            t: "p",
+            x: "A cheaper quote is often a smaller or shared product. Check the vehicle category, the seating capacity and whether the trip is a shared ride. For airport runs, check the pickup point: kerbside pickups at large Indian airports charge an entry fee that some apps add to your bill and others do not."
+          },
+          { t: "h2", x: "Cancellation and waiting charges" },
+          {
+            t: "p",
+            x: "Most apps charge for cancelling after a driver is assigned, and start billing waiting time after a short free window. Those charges are set by the app, not by us, and they are the most common source of a bill that does not match the quote."
+          },
+          { t: "h2", x: "Intercity and outstation trips" },
+          {
+            t: "p",
+            x: "For outstation travel, ask for the inclusive kilometre allowance, the per-kilometre rate beyond it, the driver allowance and whether return tolls are included. A lower per-kilometre rate with a short included distance can cost more than a slightly higher rate with a longer one."
+          },
+          { t: "h2", x: 'Why one app may show a "fare unavailable" row' },
+          {
+            t: "p",
+            x: "Some apps serve fares only to a signed-in session. We say so plainly instead of guessing: the row links you to that app's own search, where the live quote is the only one that matters."
+          }
+        ]
+      },
+      {
+        slug: "quick-commerce-price-guide",
+        title: "Quick Commerce: Why Your Grocery Cart Costs More Than the Item Prices",
+        description: "Delivery fees, handling charges, small-cart fees, rain and peak surcharges, pack-size tricks, member pricing and MRP versus discounted price - the full cost of a ten-minute grocery order.",
+        headline: "The real cost of a ten-minute grocery order",
+        verticals: ["grocery"],
+        updated: "2026-11-02",
+        blocks: [
+          { t: "h2", x: "Item price is the smallest part of the story" },
+          {
+            t: "p",
+            x: "A grocery order's total is built from the item total, a delivery fee, a handling or platform fee, sometimes a small-cart fee, and any surge the platform applies during rain, peak hours or high demand. Two apps that show the same item price can land at very different totals for the same basket."
+          },
+          { t: "h2", x: "Compare per unit, not per pack" },
+          {
+            t: "p",
+            x: 'Pack sizes change often and are rarely round numbers. A "value pack" can cost more per gram than two smaller packs of the same product. Compare the price per 100 g or per litre, which is what the unit price on our comparison lets you do, and check that the pack size in the row is the one you actually want.'
+          },
+          { t: "h2", x: "Checklist before you pay" },
+          {
+            t: "ul",
+            items: [
+              "Free-delivery threshold: many platforms waive the fee above a cart value. Adding a genuinely needed item can cost less than paying the fee.",
+              "Member or subscription pricing: visible only after you sign in, and it can change the ranking of two otherwise identical offers.",
+              "MRP versus discounted price: confirm the discount is against the printed MRP, not an inflated reference price.",
+              "Substitution policy: if an item is out of stock, does the platform refund or replace? A replacement can quietly change your total.",
+              "Freshness and expiry: for dairy, produce and bakery, the cheapest listing is not always the best value if the shelf life is short.",
+              "Handling fee on heavy items: water cans, bulk staples and large packs can carry an extra charge at checkout."
+            ]
+          },
+          { t: "h2", x: "Why an item disappears between two searches" },
+          {
+            t: "p",
+            x: "Quick-commerce inventory lives in a dark store that serves your pincode. Availability changes as stock moves, and a store can go offline for a few minutes during a reshuffle. If an item vanishes, it is usually the store's stock, not the comparison."
+          },
+          { t: "h2", x: "What we do and do not show" },
+          {
+            t: "p",
+            x: "We show the item price each store published for your pincode, along with the pack size we could read. We do not invent a delivery fee or a total we cannot verify: the checkout total is on the store's own app, and that is the number you should trust."
+          }
+        ]
+      },
+      {
+        slug: "food-delivery-fee-guide",
+        title: "Food Delivery Charges Explained: Delivery, Packaging, Surge and Menu Mark-up",
+        description: "Why the same biryani costs more in an app than at the restaurant: menu mark-up, packaging charges, delivery fees by distance, surge, coupon conditions and the minimum order value.",
+        headline: "Why the same dish costs more in an app",
+        verticals: ["food"],
+        updated: "2026-11-02",
+        blocks: [
+          { t: "h2", x: "The four layers between a menu and a bill" },
+          {
+            t: "p",
+            x: "A food order total is the item total plus packaging, plus delivery, plus taxes, minus coupons. Each layer behaves differently, and each platform sets them independently for the same restaurant."
+          },
+          { t: "h2", x: "Menu price is not always the restaurant price" },
+          {
+            t: "p",
+            x: "Many restaurants list a higher price inside delivery apps than on their own menu to cover commission. That is why a dish that costs one amount in the app can cost less when you order directly from the restaurant, and why comparing platforms is only half the job."
+          },
+          { t: "h2", x: "What to check before ordering" },
+          {
+            t: "ul",
+            items: [
+              "Packaging charge per item: it is not a delivery fee and it does not disappear with a free-delivery coupon.",
+              "Distance-based delivery fee: the same restaurant can be cheap or expensive depending on how far the platform routes the order from.",
+              "Surge or rain fee: applied at checkout, sometimes only after you add items to the cart.",
+              'Coupon conditions: minimum order value, selected restaurants only, new-user only, or capped discount. An "up to 50% off" coupon usually has a ceiling.',
+              "Minimum order value: below it, the platform adds a fee instead of refusing the order.",
+              "Portion and packaging quality: for a group order, one larger pack is often cheaper per serving than two small ones."
+            ]
+          },
+          { t: "h2", x: "Ordering for a group without overpaying" },
+          {
+            t: "p",
+            x: "Group orders are where fee stacking hurts most. Build the cart in one platform first, note the item total, packaging and delivery fee separately, then rebuild the identical cart elsewhere. Per-item packaging usually scales with the number of distinct dishes, not with quantity, so consolidating similar items (one large biryani instead of three small ones) often removes a fee layer. Restaurants also cap the number of free packaging units, so a large order can jump in cost at a pack-size boundary."
+          },
+          { t: "h2", x: "Dietary and allergy information" },
+          {
+            t: "p",
+            x: "Platforms label vegetarian and non-vegetarian dishes, but a label is not a guarantee about the kitchen: shared fryers, shared tandoors and shared prep surfaces are normal in a busy kitchen. For a serious allergy, call the restaurant before ordering and confirm the specific dish, because the app listing rarely carries an ingredients list you can rely on. For Jain or no-onion-no-garlic requests, use the restaurant instructions field and still confirm by phone for a strict requirement."
+          },
+          { t: "h2", x: "Compare the dish, not the banner" },
+          {
+            t: "p",
+            x: "A platform showing a big coupon can still be the more expensive option once packaging and delivery are added. Add the same items in both carts and compare the final payable amount; that is the only number that matters."
+          },
+          { t: "h2", x: "When a restaurant is missing from one app" },
+          {
+            t: "p",
+            x: "Restaurants choose their platforms and can pause delivery during peak hours. A missing listing usually means the restaurant is offline or exclusive elsewhere, not that we dropped it."
+          }
+        ]
+      },
+      {
+        slug: "movie-ticket-fees-guide",
+        title: "Movie Tickets: Convenience Fees, Seat Classes and Where the Money Goes",
+        description: "How cinema ticket totals are built: base ticket, seat class, convenience fee per ticket, food and beverage rules, cancellation windows and why the same show costs different amounts on different apps.",
+        headline: "Reading a cinema bill correctly",
+        verticals: ["movies"],
+        updated: "2026-11-02",
+        blocks: [
+          { t: "h2", x: "Three numbers decide what you pay" },
+          {
+            t: "p",
+            x: "For a cinema ticket, the base price depends on the seat class and the show time, the platform adds a convenience fee per ticket, and the cinema may charge separately for food and beverage. Two apps selling the same show can therefore differ by the fee alone, while the base ticket stays identical."
+          },
+          { t: "h2", x: "Checklist" },
+          {
+            t: "ul",
+            items: [
+              "Seat class: recliner, premium and base seats are different products with different prices in the same hall.",
+              "Show time: late-night and first-show pricing can differ from prime time on the same day.",
+              "Convenience fee: usually per ticket, sometimes capped, rarely refundable along with a cancelled ticket.",
+              "Cancellation window: some chains allow cancellation up to a cutoff before the show, others do not. Check before paying for a group.",
+              "Food and beverage: outside food rules differ by chain and by state; a combo bought with the ticket is often cheaper than at the counter.",
+              "Language and format: 3D, IMAX and dubbed versions carry different pricing for the same film."
+            ]
+          },
+          { t: "h2", x: "Accessible and companion seating" },
+          {
+            t: "p",
+            x: "Wheelchair spaces and companion seats are usually sold in a separate quota rather than through the normal seat map, and some chains price them differently. If the seat map will not let you select an accessible seat, the cinema counter is the reliable route; buying a standard seat online and asking at the venue can leave you with a seat that cannot be changed at short notice."
+          },
+          { t: "h2", x: "If the show is cancelled or you cannot attend" },
+          {
+            t: "p",
+            x: "When a cinema cancels a show, the refund path runs through whoever sold the ticket, and the convenience fee is the part most often excluded. When you simply cannot attend, check the cancellation cut-off before the show: some apps allow cancellation until a fixed time before the start, others not at all, and a group booking is refunded as individual tickets rather than as one amount."
+          },
+          { t: "h2", x: "Why a show sometimes shows no price" },
+          {
+            t: "p",
+            x: "Cinema chains publish seat availability and pricing through different systems, and some list a show before pricing is released. When a show has no published price, we show the showtime and the booking link rather than a guessed number."
+          },
+          { t: "h2", x: "Group bookings" },
+          {
+            t: "p",
+            x: "Fees multiply per ticket, so for a family of five the platform fee can exceed the difference between two seat classes. Compare the final amount for the number of seats you actually need, not the single-ticket price."
+          }
+        ]
+      }
+    ];
+    GUIDE_BY_SLUG = Object.fromEntries(GUIDES.map((g) => [g.slug, g]));
+    GUIDE_SLUGS = GUIDES.map((g) => g.slug);
+  }
+});
+
 // server/seo/data.ts
 function verticalBySlug(slug5) {
   return VERTICALS2.find((v) => v.slug === slug5.replace(/\/$/, ""));
@@ -49590,7 +49926,9 @@ function routeSlug(a, b, noun) {
   return `${a}-to-${b}-${noun}`;
 }
 function listSeoPaths() {
+  const guidePaths = GUIDE_SLUGS.map((s) => `/guides/${s}`);
   const paths = [
+    ...guidePaths,
     "/",
     "/about",
     "/privacy-policy",
@@ -49598,7 +49936,8 @@ function listSeoPaths() {
     "/terms",
     "/affiliate-disclosure",
     "/faq",
-    "/contact"
+    "/contact",
+    "/guides"
   ];
   for (const v of VERTICALS2) {
     paths.push(`/${v.slug}`);
@@ -49618,7 +49957,7 @@ function listSeoPaths() {
 function resolveAppRoute(path17) {
   const seg = path17.replace(/\/+$/, "").split("/").filter(Boolean);
   if (seg.length === 0) return null;
-  const head2 = seg[0];
+  const head3 = seg[0];
   const tail = seg[1];
   const vmap = {
     flights: "flights",
@@ -49635,15 +49974,15 @@ function resolveAppRoute(path17) {
     "bank-accounts": "account",
     banking: "banking"
   };
-  const vid = vmap[head2];
+  const vid = vmap[head3];
   if (!vid) return null;
   if (!tail) return { vertical: vid };
-  if (head2 === "flights" || head2 === "bus") {
+  if (head3 === "flights" || head3 === "bus") {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-(flights|bus)$/.exec(tail);
     if (m) {
       const A = m[1].replace(/-/g, " "), B = m[2].replace(/-/g, " ");
       const pretty = (x) => titleCase(x);
-      if (head2 === "flights") {
+      if (head3 === "flights") {
         const aI = IATA3[m[1]] ? ` (${IATA3[m[1]]})` : "";
         const bI = IATA3[m[2]] ? ` (${IATA3[m[2]]})` : "";
         return { vertical: "flights", query: `${pretty(A)}${aI} to ${pretty(B)}${bI}` };
@@ -49652,7 +49991,7 @@ function resolveAppRoute(path17) {
     }
     return { vertical: vid };
   }
-  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head2)) {
+  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head3)) {
     return { vertical: vid, query: cityName(tail) };
   }
   const table = {
@@ -49662,8 +50001,8 @@ function resolveAppRoute(path17) {
     "credit-cards": CARD_TYPES,
     banking: BANKING_TYPES
   };
-  if (table[head2]) {
-    const t = table[head2].find((x) => x.slug === tail);
+  if (table[head3]) {
+    const t = table[head3].find((x) => x.slug === tail);
     if (t) return { vertical: vid, query: t.query };
     return { vertical: vid };
   }
@@ -49749,9 +50088,9 @@ function resolveSeoPage(path17) {
     };
   }
   const seg = clean3.split("/").filter(Boolean);
-  const head2 = seg[0];
+  const head3 = seg[0];
   const tail = seg[1];
-  const meta = verticalBySlug(head2);
+  const meta = verticalBySlug(head3);
   if (!meta) return null;
   if (!tail) {
     return {
@@ -49765,7 +50104,7 @@ function resolveSeoPage(path17) {
       links: seoLinksFor(clean3)
     };
   }
-  if (head2 === "flights" && /-to-.*-flights$/.test(tail)) {
+  if (head3 === "flights" && /-to-.*-flights$/.test(tail)) {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-flights$/.exec(tail);
     const A = cityName(m[1]), B = cityName(m[2]);
     const aI = IATA3[m[1]], bI = IATA3[m[2]];
@@ -49795,7 +50134,7 @@ function resolveSeoPage(path17) {
       ]
     };
   }
-  if (head2 === "bus" && /-to-.*-bus$/.test(tail)) {
+  if (head3 === "bus" && /-to-.*-bus$/.test(tail)) {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-bus$/.exec(tail);
     const A = cityName(m[1]), B = cityName(m[2]);
     return {
@@ -49820,7 +50159,7 @@ function resolveSeoPage(path17) {
       ]
     };
   }
-  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head2)) {
+  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head3)) {
     const c = cityName(tail);
     const vmeta = meta;
     const nounMap = {
@@ -49830,7 +50169,7 @@ function resolveSeoPage(path17) {
       food: "food delivery prices",
       movies: "movie ticket prices"
     };
-    const noun = nounMap[head2] || vmeta.label.toLowerCase();
+    const noun = nounMap[head3] || vmeta.label.toLowerCase();
     const others = CITIES.filter((x) => x.slug !== tail).slice(0, 6);
     return {
       path: clean3,
@@ -49846,11 +50185,11 @@ function resolveSeoPage(path17) {
         { q: `How do you get ${c} prices?`, a: `Live queries to every provider that serves ${c} at search time \u2014 no stale listings, no manual uploads.` },
         { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` }
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: vmeta.label, path: `/${head2}` }, { name: c, path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: vmeta.label, path: `/${head3}` }, { name: c, path: clean3 }],
       links: [
-        { label: `${vmeta.label} home`, href: `/${head2}` },
-        ...others.map((x) => ({ label: `${vmeta.label} in ${x.name}`, href: `/${head2}/${x.slug}` })),
-        ...head2 === "hotels" ? [{ label: `${c} flights search`, href: "/flights" }] : []
+        { label: `${vmeta.label} home`, href: `/${head3}` },
+        ...others.map((x) => ({ label: `${vmeta.label} in ${x.name}`, href: `/${head3}/${x.slug}` })),
+        ...head3 === "hotels" ? [{ label: `${c} flights search`, href: "/flights" }] : []
       ]
     };
   }
@@ -49861,11 +50200,11 @@ function resolveSeoPage(path17) {
     "credit-cards": CARD_TYPES,
     banking: BANKING_TYPES
   };
-  if (table[head2]) {
-    const t = table[head2].find((x) => x.slug === tail);
+  if (table[head3]) {
+    const t = table[head3].find((x) => x.slug === tail);
     if (!t) return null;
     const label = t.label;
-    const isEcom = head2 === "ecommerce";
+    const isEcom = head3 === "ecommerce";
     return {
       path: clean3,
       title: isEcom ? `Compare ${label} Prices Across Amazon, Flipkart & More | Try1Second` : `Compare ${label} \u2014 Live Rates & Offers Across India | Try1Second`,
@@ -49882,30 +50221,31 @@ function resolveSeoPage(path17) {
         { q: `How fresh are the ${label.toLowerCase()} results?`, a: "Every number is scanned live from provider sources at search time \u2014 the page never shows stale manual listings." },
         { q: "Is this comparison free?", a: "Yes. Comparison is always free; we may earn a commission when you complete a purchase or application on the provider\u2019s site." }
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: `/${head2}` }, { name: label, path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: `/${head3}` }, { name: label, path: clean3 }],
       links: [
-        { label: `${meta.label} home`, href: `/${head2}` },
-        ...table[head2].filter((x) => x.slug !== tail).slice(0, 6).map((x) => ({ label: x.label, href: `/${head2}/${x.slug}` }))
+        { label: `${meta.label} home`, href: `/${head3}` },
+        ...table[head3].filter((x) => x.slug !== tail).slice(0, 6).map((x) => ({ label: x.label, href: `/${head3}/${x.slug}` }))
       ]
     };
   }
   return null;
 }
 function seoLinksFor(verticalPath) {
-  const head2 = verticalPath.split("/").filter(Boolean)[0];
+  const head3 = verticalPath.split("/").filter(Boolean)[0];
   const links = [];
-  if (head2 === "flights") {
+  if (head3 === "flights") {
     for (const [a, b] of FLIGHT_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} flights`, href: `/flights/${routeSlug(a, b, "flights")}` });
-  } else if (head2 === "bus") {
+  } else if (head3 === "bus") {
     for (const [a, b] of BUS_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} buses`, href: `/bus/${routeSlug(a, b, "bus")}` });
-  } else if (["hotels", "cabs", "grocery", "food", "movies"].includes(head2)) {
-    for (const c of CITIES.slice(0, 8)) links.push({ label: `${cityName(c.slug)}`, href: `/${head2}/${c.slug}` });
+  } else if (["hotels", "cabs", "grocery", "food", "movies"].includes(head3)) {
+    for (const c of CITIES.slice(0, 8)) links.push({ label: `${cityName(c.slug)}`, href: `/${head3}/${c.slug}` });
   }
   return links;
 }
 var SEO_HOST, CITIES, IATA3, FLIGHT_ROUTES, BUS_ROUTES, VERTICALS2, ECOM_CATS, LOAN_TYPES, INSURANCE_TYPES, CARD_TYPES, BANKING_TYPES, titleCase, cityName, cityList;
 var init_data = __esm({
   "server/seo/data.ts"() {
+    init_guides();
     SEO_HOST = "https://www.try1second.com";
     CITIES = [
       { slug: "mumbai", name: "Mumbai" },
@@ -50728,6 +51068,158 @@ var init_singleton = __esm({
   }
 });
 
+// server/seo/guidePages.ts
+var guidePages_exports = {};
+__export(guidePages_exports, {
+  GUIDE_SLUGS: () => GUIDE_SLUGS2,
+  renderGuidePage: () => renderGuidePage,
+  renderGuidesIndex: () => renderGuidesIndex
+});
+function blocksHtml(g) {
+  return g.blocks.map((b) => {
+    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${esc3(i)}</li>`).join("")}</ul>`;
+    if (b.t === "p") return `<p>${esc3(b.x)}</p>`;
+    return `<${b.t}>${esc3(b.x)}</${b.t}>`;
+  }).join("\n");
+}
+function faqJsonLd(g) {
+  const qa = g.blocks.filter((b) => b.t === "h2" && b.x.includes("?"));
+  if (!qa.length) return "";
+  const entries2 = qa.map((q3) => {
+    const src2 = g.blocks[g.blocks.indexOf(q3) + 1];
+    const answer = src2 ? src2.t === "p" ? src2.x : src2.t === "ul" ? src2.items.join(" ") : g.description : g.description;
+    return {
+      "@type": "Question",
+      name: q3.x,
+      acceptedAnswer: { "@type": "Answer", text: answer }
+    };
+  });
+  return `<script type="application/ld+json">${JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: entries2
+  })}</script>
+`;
+}
+function articleJsonLd(g, origin) {
+  return `<script type="application/ld+json">${JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: g.headline,
+    description: g.description,
+    dateModified: g.updated,
+    datePublished: g.updated,
+    inLanguage: "en-IN",
+    mainEntityOfPage: `${origin}/guides/${g.slug}`,
+    author: { "@type": "Organization", name: "Try1Second" },
+    publisher: { "@type": "Organization", name: "Try1Second", url: origin }
+  })}</script>
+`;
+}
+function renderGuidePage(slug5, origin) {
+  const g = GUIDE_BY_SLUG[slug5];
+  if (!g) return void 0;
+  const canonical = `${origin}/guides/${slug5}`;
+  const related = GUIDES.filter((x) => x.slug !== slug5).slice(0, 3);
+  const verticalLinks = g.verticals.map((v) => `<a class="cta" href="/${v}">Compare ${esc3(v)} prices</a>`).join(" ");
+  return `${head2(g.title, g.description, canonical, articleJsonLd(g, origin) + faqJsonLd(g))}
+<body>
+${nav()}
+<main>
+<h1>${esc3(g.title)}</h1>
+<p class="meta">Try1Second editorial \xB7 Updated ${esc3(g.updated)} \xB7 ${g.verticals.length} vertical${g.verticals.length > 1 ? "s" : ""} covered</p>
+<p class="lede">${esc3(g.headline)} \u2014 ${esc3(g.description)}</p>
+${blocksHtml(g)}
+<p>${verticalLinks}</p>
+<h2>More buying guides</h2>
+${related.map(
+    (r) => `<div class="card"><h3><a href="/guides/${r.slug}">${esc3(r.title)}</a></h3><p>${esc3(r.description)}</p></div>`
+  ).join("")}
+</main>
+${footer()}
+</body>
+</html>`;
+}
+function renderGuidesIndex(origin) {
+  const canonical = `${origin}/guides`;
+  return `${head2(
+    "Buying Guides: What Comparison Prices Leave Out \u2014 Try1Second",
+    "Practical guides to Indian price comparison: flight fare rules, hotel charges, cab surge, quick-commerce fees, food delivery costs and cinema ticket fees.",
+    canonical
+  )}
+<body>
+${nav()}
+<main>
+<h1>Buying guides</h1>
+<p class="meta">Try1Second editorial \xB7 ${GUIDES.length} guides \xB7 Updated ${GUIDES[0]?.updated || ""}</p>
+<p class="lede">Every guide explains how a price is built, which fees the headline number leaves out, and what to check before you pay. We write these from the mechanics of each marketplace, not from sponsored placements.</p>
+${GUIDES.map(
+    (g) => `<div class="card"><h3><a href="/guides/${g.slug}">${esc3(g.title)}</a></h3><p>${esc3(g.description)}</p></div>`
+  ).join("\n")}
+</main>
+${footer()}
+</body>
+</html>`;
+}
+var esc3, STYLE2, head2, nav, footer, GUIDE_SLUGS2;
+var init_guidePages = __esm({
+  "server/seo/guidePages.ts"() {
+    init_guides();
+    esc3 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    STYLE2 = `
+:root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:var(--ink);font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+header{border-bottom:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header a.brand{font-weight:800;text-decoration:none;color:var(--ink);font-size:17px}
+header a.brand span{color:var(--brand)}
+header .spacer{flex:1}
+header nav a{color:var(--muted);text-decoration:none;font-size:14px;margin-left:14px;white-space:nowrap}
+header nav a:hover{color:var(--brand)}
+main{max-width:780px;margin:0 auto;padding:28px 20px 56px}
+h1{font-size:27px;line-height:1.25;margin:0 0 6px}
+h2{font-size:19px;margin:28px 0 8px}
+p{margin:12px 0;color:#1f2937}
+ul{margin:10px 0 18px;padding-left:22px}
+li{margin:7px 0;color:#1f2937}
+.meta{color:var(--muted);font-size:13px;margin:0 0 18px}
+.lede{font-size:17px;color:#111827;margin:0 0 20px}
+.cta{display:inline-block;margin:6px 0 4px;background:var(--brand);color:#fff;text-decoration:none;font-weight:700;padding:10px 16px;border-radius:10px}
+.card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+.card h3{margin:0 0 4px;font-size:16px}
+.card a{color:var(--brand);text-decoration:none;font-weight:600}
+.card p{margin:4px 0 0;font-size:14px;color:var(--muted)}
+footer{border-top:1px solid var(--line);padding:18px 20px 34px;color:var(--muted);font-size:13px;text-align:center}
+footer a{color:var(--muted);text-decoration:none;margin:0 6px}
+`;
+    head2 = (title, description, canonical, extra = "") => `<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc3(title)}</title>
+<meta name="description" content="${esc3(description)}" />
+<link rel="canonical" href="${esc3(canonical)}" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="${esc3(title)}" />
+<meta property="og:description" content="${esc3(description)}" />
+<meta property="og:url" content="${esc3(canonical)}" />
+<style>${STYLE2}</style>
+${extra}</head>`;
+    nav = () => `<header>
+  <a class="brand" href="/">Try1<span>Second</span></a>
+  <span class="spacer"></span>
+  <nav><a href="/">Compare prices</a><a href="/guides">Guides</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
+</header>`;
+    footer = () => `<footer>
+  <p><a href="/guides">All guides</a><a href="/about">About</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/affiliate-disclosure">Affiliate disclosure</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></p>
+  <p>Try1Second is a metasearch engine. We compare prices; the purchase and its terms belong to the partner you choose.</p>
+</footer>`;
+    GUIDE_SLUGS2 = GUIDES.map((g) => g.slug);
+  }
+});
+
 // server/seo/legalContent.ts
 var LEGAL_PAGES, LEGAL_SLUGS;
 var init_legalContent = __esm({
@@ -50838,7 +51330,7 @@ __export(legalPages_exports, {
   LEGAL_ALIASES: () => LEGAL_ALIASES,
   renderLegalPage: () => renderLegalPage
 });
-function blocksHtml(page) {
+function blocksHtml2(page) {
   const out = [];
   let inList = false;
   const closeList = () => {
@@ -50854,16 +51346,16 @@ function blocksHtml(page) {
         out.push("<ul>");
         inList = true;
       }
-      out.push(`<li>${esc3(b.x)}</li>`);
+      out.push(`<li>${esc4(b.x)}</li>`);
       continue;
     }
     closeList();
-    if (b.t === "p") out.push(`<p>${esc3(b.x)}</p>`);
+    if (b.t === "p") out.push(`<p>${esc4(b.x)}</p>`);
     else {
       if (!seenFirstHeading) {
-        out.push(`<h1>${esc3(b.x)}</h1>`);
+        out.push(`<h1>${esc4(b.x)}</h1>`);
         seenFirstHeading = true;
-      } else out.push(`<h2>${esc3(b.x)}</h2>`);
+      } else out.push(`<h2>${esc4(b.x)}</h2>`);
     }
   }
   closeList();
@@ -50879,14 +51371,14 @@ function renderLegalPage(slug5, origin) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc3(page.title)}</title>
-<meta name="description" content="${esc3(page.description)}" />
-<link rel="canonical" href="${esc3(canonical)}" />
+<title>${esc4(page.title)}</title>
+<meta name="description" content="${esc4(page.description)}" />
+<link rel="canonical" href="${esc4(canonical)}" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="${esc3(page.title)}" />
-<meta property="og:description" content="${esc3(page.description)}" />
-<meta property="og:url" content="${esc3(canonical)}" />
+<meta property="og:title" content="${esc4(page.title)}" />
+<meta property="og:description" content="${esc4(page.description)}" />
+<meta property="og:url" content="${esc4(canonical)}" />
 <style>
 :root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
 *{box-sizing:border-box}
@@ -50918,7 +51410,7 @@ footer a:hover{color:var(--brand)}
 </header>
 <main>
 <p class="updated">Last updated: November 2026 \xB7 Try1Second is an Indian metasearch engine, not a merchant.</p>
-${blocksHtml(page)}
+${blocksHtml2(page)}
 </main>
 <footer>
   <p>${others}</p>
@@ -50927,11 +51419,11 @@ ${blocksHtml(page)}
 </body>
 </html>`;
 }
-var esc3, NAV_LABEL, LEGAL_ALIASES;
+var esc4, NAV_LABEL, LEGAL_ALIASES;
 var init_legalPages = __esm({
   "server/seo/legalPages.ts"() {
     init_legalContent();
-    esc3 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc4 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     NAV_LABEL = {
       about: "About",
       "privacy-policy": "Privacy",
@@ -51033,7 +51525,7 @@ function prerenderLoader(page) {
       </div>`).join("");
   return `<div data-t1s-prerender="loader" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f9f9fb;min-height:100vh">
     <div style="max-width:720px;margin:0 auto;padding:28px 16px 8px">
-      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc4(page.h1)}</h1>
+      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc5(page.h1)}</h1>
       <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#374151;margin-bottom:10px">
         <span style="width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block"></span>
         <span>Checking live prices&hellip;</span>
@@ -51053,16 +51545,16 @@ function prerenderBody(path17) {
   const page = resolveSeoPage(path17);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
-    <dt>${esc4(f.q)}</dt><dd>${esc4(f.a)}</dd>`).join("");
-  const links = page.links.slice(0, 10).map((l) => `<a href="${esc4(l.href)}">${esc4(l.label)}</a>`).join("");
+    <dt>${esc5(f.q)}</dt><dd>${esc5(f.a)}</dd>`).join("");
+  const links = page.links.slice(0, 10).map((l) => `<a href="${esc5(l.href)}">${esc5(l.label)}</a>`).join("");
   return [
     prerenderLoader(page),
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 40px">`,
     `<nav aria-label="Breadcrumb" style="font-size:12px;color:#6b7280;margin-bottom:8px">`,
-    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc4(b.name) : `<a href="${esc4(b.path)}" style="color:#6b7280">${esc4(b.name)}</a>`)).join(""),
+    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc5(b.name) : `<a href="${esc5(b.path)}" style="color:#6b7280">${esc5(b.name)}</a>`)).join(""),
     `</nav>`,
-    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc4(page.h1)}</h1>`,
-    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc4(p)}</p>`),
+    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc5(page.h1)}</h1>`,
+    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc5(p)}</p>`),
     `<h2 style="font-size:15px;margin:20px 0 8px">Frequently asked questions</h2>`,
     `<dl style="font-size:13.5px;line-height:1.6;color:#374151">${faqHtml}</dl>`,
     links ? `<h2 style="font-size:15px;margin:20px 0 8px">Popular comparisons</h2><p style="font-size:13px;line-height:2">${links}</p>` : "",
@@ -51077,24 +51569,24 @@ function enhanceHtml(html, path17) {
   const desc = page ? page.description : DEFAULT_DESC;
   const canonical = `${SEO_HOST}${(path17 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
-  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc4(title)}</title>`);
+  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc5(title)}</title>`);
   out = out.replace(
     /<meta name="description" content="[^"]*" \/>/,
-    `<meta name="description" content="${esc4(desc)}" />`
+    `<meta name="description" content="${esc5(desc)}" />`
   );
   out = out.replace(
     /<meta property="og:title" content="[^"]*" \/>/,
-    `<meta property="og:title" content="${esc4(title)}" />`
+    `<meta property="og:title" content="${esc5(title)}" />`
   );
   out = out.replace(
     /<meta property="og:description" content="[^"]*" \/>/,
-    `<meta property="og:description" content="${esc4(desc)}" />`
+    `<meta property="og:description" content="${esc5(desc)}" />`
   );
-  const head2 = [
-    `<link rel="canonical" href="${esc4(canonical)}" />`,
-    `<meta property="og:url" content="${esc4(canonical)}" />`,
-    `<meta name="twitter:title" content="${esc4(title)}" />`,
-    `<meta name="twitter:description" content="${esc4(desc)}" />`,
+  const head3 = [
+    `<link rel="canonical" href="${esc5(canonical)}" />`,
+    `<meta property="og:url" content="${esc5(canonical)}" />`,
+    `<meta name="twitter:title" content="${esc5(title)}" />`,
+    `<meta name="twitter:description" content="${esc5(desc)}" />`,
     `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />`,
     `<meta name="geo.region" content="IN" />`,
     `<meta name="geo.placename" content="India" />`,
@@ -51106,11 +51598,11 @@ function enhanceHtml(html, path17) {
     `<meta property="og:image:alt" content="Try1Second \u2014 live price comparison across flights, hotels, cabs, groceries and finance in India" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:image" content="${SEO_HOST}/og-image.jpg" />`,
-    `<link rel="alternate" hreflang="en-in" href="${esc4(canonical)}" />`,
-    `<link rel="alternate" hreflang="x-default" href="${esc4(canonical)}" />`
+    `<link rel="alternate" hreflang="en-in" href="${esc5(canonical)}" />`,
+    `<link rel="alternate" hreflang="x-default" href="${esc5(canonical)}" />`
   ];
-  if (!isNoindex) for (const b of jsonLd(path17)) head2.push(`<script type="application/ld+json">${b}</script>`);
-  out = out.replace("</head>", `${head2.join("\n")}
+  if (!isNoindex) for (const b of jsonLd(path17)) head3.push(`<script type="application/ld+json">${b}</script>`);
+  out = out.replace("</head>", `${head3.join("\n")}
 </head>`);
   if (!isNoindex) {
     const body = prerenderBody(path17);
@@ -51120,11 +51612,11 @@ function enhanceHtml(html, path17) {
   }
   return out;
 }
-var esc4, DEFAULT_TITLE, DEFAULT_DESC;
+var esc5, DEFAULT_TITLE, DEFAULT_DESC;
 var init_render = __esm({
   "server/seo/render.ts"() {
     init_data();
-    esc4 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc5 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     DEFAULT_TITLE = "Try1Second \u2014 One Second Is All It Takes to Find the Lowest Price";
     DEFAULT_DESC = "Compare live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in one second.";
   }
@@ -51192,15 +51684,15 @@ function renderSnapshotHtml(snapshot, heading = "Latest verified prices") {
   if (!snapshot || !snapshot.rows.length) return "";
   const items = snapshot.rows.map((r) => `
     <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
-      <span style="min-width:0;font-size:13.5px;color:#111827">${esc5(r.title)}</span>
-      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc5(inr(r.price))}</span>
-      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc5(r.seller)}</span>
+      <span style="min-width:0;font-size:13.5px;color:#111827">${esc6(r.title)}</span>
+      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc6(inr(r.price))}</span>
+      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc6(r.seller)}</span>
     </li>`).join("");
   return [
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:0 16px 8px">`,
-    `<h2 style="font-size:15px;margin:18px 0 6px">${esc5(heading)}</h2>`,
+    `<h2 style="font-size:15px;margin:18px 0 6px">${esc6(heading)}</h2>`,
     `<ul style="list-style:none;padding:0;margin:0">${items}</ul>`,
-    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc5(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
+    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc6(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
     `</section>`
   ].join("");
 }
@@ -51260,14 +51752,14 @@ async function snapshotForPath(path17) {
 function clearSnapshotCache() {
   cache10.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc5, inr, slugOf2;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc6, inr, slugOf2;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
     SNAPSHOT_TTL_MS = 10 * 6e4;
     MAX_ROWS = 6;
     cache10 = /* @__PURE__ */ new Map();
-    esc5 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc6 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf2 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
   }
@@ -51595,6 +52087,26 @@ async function createApp() {
     }
     res.status(404).send("Not found");
   });
+  {
+    const { renderGuidePage: renderGuidePage2, renderGuidesIndex: renderGuidesIndex2, GUIDE_SLUGS: GUIDE_SLUGS3 } = await Promise.resolve().then(() => (init_guidePages(), guidePages_exports));
+    const ORIGIN = "https://www.try1second.com";
+    app.get("/guides", (_req, res) => {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(renderGuidesIndex2(ORIGIN));
+    });
+    app.get("/guides/:slug", (req, res) => {
+      const html = renderGuidePage2(String(req.params.slug || ""), ORIGIN);
+      if (!html) {
+        res.status(404).type("text/plain").send("Guide not found");
+        return;
+      }
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(html);
+    });
+    void GUIDE_SLUGS3;
+  }
   {
     const { renderLegalPage: renderLegalPage2, LEGAL_ALIASES: LEGAL_ALIASES2 } = await Promise.resolve().then(() => (init_legalPages(), legalPages_exports));
     const ORIGIN = "https://www.try1second.com";

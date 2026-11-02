@@ -223,6 +223,30 @@ export async function createApp(): Promise<express.Express> {
     res.status(404).send('Not found');
   });
 
+  // EDITORIAL GUIDES (owner 2 Nov: AdSense "Low value content" also asks for "authentic, high-quality
+  // information" - a feed of partner prices alone is thin content). Original copy, Article + FAQ
+  // structured data, no ad unit on these routes.
+  {
+    const { renderGuidePage, renderGuidesIndex, GUIDE_SLUGS } = await import('./seo/guidePages');
+    const ORIGIN = 'https://www.try1second.com';
+    app.get('/guides', (_req: Request, res: Response) => {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(renderGuidesIndex(ORIGIN));
+    });
+    app.get('/guides/:slug', (req: Request, res: Response) => {
+      const html = renderGuidePage(String(req.params.slug || ''), ORIGIN);
+      if (!html) {
+        res.status(404).type('text/plain').send('Guide not found');
+        return;
+      }
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(html);
+    });
+    void GUIDE_SLUGS;
+  }
+
   // CRAWLABLE LEGAL / SUPPORT PAGES (owner 2 Nov: AdSense "Needs attention - Low value content").
   // These paths used to fall through to the SPA shell, which answers 200 with ~27 words and the
   // homepage title - a reviewer reads that as "no privacy policy, no terms, no contact page".
