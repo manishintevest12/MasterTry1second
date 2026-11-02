@@ -39,12 +39,24 @@ test('malformed or empty destinations are never webview-only by accident', () =>
   assert.equal(keepsWebviewExit('https://bookmyshow.com.evil.example/x'), false);
 });
 
-test('the intent redirect in /api/out is gated by keepsWebviewExit', () => {
+test('EVERY in-app webview exit loads inside the app browser (owner rule 2 Nov)', () => {
   const src = readFileSync(new URL('../server/api/routes.ts', import.meta.url), 'utf8');
-  assert.match(src, /appHandlesIntents\(ua\) && !keepsWebviewExit\(freshDestination\)/,
-    'the webview intent hop must never fire for a webview-only partner');
-  // The interstitial's one-tap "Open in the app" is unaffected (browser users, not our app).
-  assert.match(src, /appIntent = androidIntentUrl\(direct, dl\.trackingUrl\)/);
+  const start = src.indexOf("if (isInAppWebView(req.headers['user-agent'])) {");
+  assert.ok(start > 0, 'the webview branch must exist in /api/out');
+  const raw = src.slice(start, src.indexOf('\n  }', start));
+  // Strip comments: the explanation legitimately NAMES the old intent:// url.
+  const block = raw.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  // No OS app hop may survive on the webview path: that is what opened Chrome.
+  assert.doesNotMatch(block, /intent:\/\//, 'the webview branch must never build an intent:// url');
+  assert.doesNotMatch(block, /androidIntentUrl/, 'the webview branch must not hand off to the OS');
+  assert.match(block, /res\.redirect\(302, dl\.trackingUrl\)/,
+    'the webview must load the tracked https URL directly, so it stays in our own browser');
+});
+
+test('the interstitial one-tap app hop skips ticketing partners only', () => {
+  const src = readFileSync(new URL('../server/api/routes.ts', import.meta.url), 'utf8');
+  // Browser users (not our app) still get the optional one-tap app hop, minus ticketing.
+  assert.match(src, /!keepsWebviewExit\(freshDestination\)\) \{\s*\n\s*appIntent = androidIntentUrl\(direct, dl\.trackingUrl\)/);
 });
 
 test('every webview-only host is also a known app target', () => {

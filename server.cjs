@@ -37624,15 +37624,6 @@ function androidIntentUrl(target, webUrl) {
 function isAndroid(ua) {
   return /android/i.test(String(ua || ""));
 }
-function appBuildMarker(ua) {
-  const m = String(ua || "").match(/Try1SecondApp\/(\d+(?:\.\d+)?)/);
-  return m ? m[1] : null;
-}
-function appHandlesIntents(ua) {
-  const v = appBuildMarker(ua);
-  if (!v) return false;
-  return parseFloat(v) >= 1.9;
-}
 var BY_HOST, norm6, BY_NAME, WEBVIEW_ONLY_HOSTS;
 var init_appTargets = __esm({
   "server/affiliate/appTargets.ts"() {
@@ -45123,12 +45114,6 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       const dl = await buildSecureDeeplink(freshDestination);
       await recordPointerClick(freshDestination, resolved.offerId, dl.network);
       if (isInAppWebView(req.headers["user-agent"])) {
-        const ua = String(req.headers["user-agent"] || "");
-        const direct = directAppTarget(freshDestination);
-        if (direct && isAndroid(ua) && appHandlesIntents(ua) && !keepsWebviewExit(freshDestination)) {
-          res.redirect(302, androidIntentUrl(direct, dl.trackingUrl));
-          return;
-        }
         res.redirect(302, dl.trackingUrl);
         return;
       }
@@ -45145,7 +45130,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       let appIntent = null;
       try {
         const direct = directAppTarget(freshDestination);
-        if (direct && isAndroid(String(req.headers["user-agent"] || ""))) {
+        if (direct && isAndroid(String(req.headers["user-agent"] || "")) && !keepsWebviewExit(freshDestination)) {
           appIntent = androidIntentUrl(direct, dl.trackingUrl);
         }
       } catch {

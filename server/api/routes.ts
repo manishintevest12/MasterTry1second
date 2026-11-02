@@ -44,7 +44,7 @@ import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from 
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback } from '../affiliate/deeplink';
 import { isCabAppScheme } from '../affiliate/cabLinks';
 import { createInterstitialPointer, isInAppWebView, adBlockHtml } from '../redirect/interstitial';
-import { directAppTarget, androidIntentUrl, isAndroid, appHandlesIntents, keepsWebviewExit } from '../affiliate/appTargets';
+import { directAppTarget, androidIntentUrl, isAndroid, keepsWebviewExit } from '../affiliate/appTargets';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { cachedSection } from './cachedSections';
@@ -3244,15 +3244,15 @@ apiRouter.get('/out', async (req, res) => {
   // opens when installed and the same paid link opens otherwise. Older installs and iOS keep
   // the instant plain redirect: their webview blocks non-http navigations.
   if (isInAppWebView(req.headers['user-agent'])) {
-    const ua = String(req.headers['user-agent'] || '');
-    const direct = directAppTarget(freshDestination);
-    // Owner 2 Nov: ticketing exits (BookMyShow / District / Cinépolis / TicketNew) must stay
-    // in the in-app browser — the intent hop opened the partner app or a Chrome tab and lost
-    // our dark header + hidden URL ("phle iske andar hi aata tha ... pr ab ni krta hai").
-    if (direct && isAndroid(ua) && appHandlesIntents(ua) && !keepsWebviewExit(freshDestination)) {
-      res.redirect(302, androidIntentUrl(direct, dl.trackingUrl));
-      return;
-    }
+    // Owner 2 Nov (FINAL RULE): "muje sb verticals pr hr website redirection pr aisa hi
+    // chaiye results app mai" — EVERY merchant exit, in EVERY vertical, must load inside the
+    // app's own browser (dark header, hidden URL). The old app-to-app intent hop is gone from
+    // the webview path for good: it handed `intent://…package=<partner>…` to the OS, which
+    // opened the partner app or (when that app is missing) CHROME with the fallback URL — a
+    // plain browser tab that lost our header and the tracked flow (owner's screenshots).
+    // The tracked https URL is loaded directly, so /api/out tracking, the affiliate wrap and
+    // the in-app chrome all stay intact for flights, hotels, bus, cab, movies, food, grocery,
+    // ecommerce, loans, insurance, credit cards and accounts alike.
     res.redirect(302, dl.trackingUrl);
     return;
   }
@@ -3273,7 +3273,9 @@ apiRouter.get('/out', async (req, res) => {
   let appIntent: string | null = null;
   try {
     const direct = directAppTarget(freshDestination);
-    if (direct && isAndroid(String(req.headers['user-agent'] || ''))) {
+    // Ticketing partners keep the plain web flow even on the interstitial: a booking is a
+    // multi-step seat-selection journey, so no "Open in the app" hop is offered for them.
+    if (direct && isAndroid(String(req.headers['user-agent'] || '')) && !keepsWebviewExit(freshDestination)) {
       appIntent = androidIntentUrl(direct, dl.trackingUrl);
     }
   } catch { /* web-only nicety */ }
