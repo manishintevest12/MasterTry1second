@@ -26,6 +26,21 @@ const STATE_FILE = path.join(process.cwd(), 'data', 'gate-heal.json');
 /** How long a heal attempt is trusted before another one may run for the same source. */
 const HEAL_COOLDOWN_MS = Number(process.env.T1S_GATE_HEAL_COOLDOWN_MS || 30 * 60_000);
 
+/**
+ * Owner rule (resource budget) + measured reality 2 Nov: IndiGo's edge needs a valid Akamai
+ * cookie, not a nicer IP, so repeated sweeps keep finding nothing. A source that yields 0 hops
+ * N times in a row therefore backs off instead of re-sweeping every 30 minutes.
+ *   0-1 zero runs  -> normal cooldown
+ *   2-3 zero runs  -> 6h
+ *   4+  zero runs  -> 24h
+ * Any sweep that finds a hop resets the streak.
+ */
+function cooldownFor(zeroStreak: number): number {
+  if (zeroStreak >= 4) return 24 * 60 * 60_000;
+  if (zeroStreak >= 2) return 6 * 60 * 60_000;
+  return HEAL_COOLDOWN_MS;
+}
+
 export interface GateHealResult {
   source: string;
   ran: boolean;
@@ -80,7 +95,9 @@ export function gateKeyFor(sourceId: string, message = ''): string | null {
   return null;
 }
 
-function readState(file = STATE_FILE): Record<string, { at: number; kept: number; tried: number }> {
+type HealState = { at: number; kept: number; tried: number; zeroStreak?: number };
+
+function readState(file = STATE_FILE): Record<string, HealState> {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8')) || {};
   } catch {
@@ -88,7 +105,7 @@ function readState(file = STATE_FILE): Record<string, { at: number; kept: number
   }
 }
 
-function writeState(state: Record<string, { at: number; kept: number; tried: number }>, file = STATE_FILE): void {
+function writeState(state: Record<string, HealState>, file = STATE_FILE): void {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(state, null, 2));
@@ -125,17 +142,20 @@ export async function healGatedSource(
   const poolFile = opts.poolFile || GATED_POOL_FILE;
   const state = readState(stateFile);
   const last = state[key];
-  if (!opts.force && last && now - last.at < HEAL_COOLDOWN_MS) {
+  const cooldown = cooldownFor(Number(last?.zeroStreak || 0));
+  if (!opts.force && last && now - last.at < cooldown) {
+    const left = Math.round((cooldown - (now - last.at)) / 60_000);
     return {
       source: key, ran: false, tried: 0, kept: gatedPoolSize(opts.poolFile),
-      reason: `cooling down (${Math.round((HEAL_COOLDOWN_MS - (now - last.at)) / 60_000)}m left)`,
+      reason: `cooling down (${left}m left, ${Number(last.zeroStreak || 0)} empty sweep(s) in a row)`,
     };
   }
 
   const discover = opts.discover || runProxyDiscovery;
   try {
     const report = await discover({ target, poolFile, limit: opts.limit ?? 60, concurrency: 8 });
-    state[key] = { at: now, kept: report.kept.length, tried: report.probed ?? 0 };
+    const zeroStreak = report.kept.length ? 0 : Number(last?.zeroStreak || 0) + 1;
+    state[key] = { at: now, kept: report.kept.length, tried: report.probed ?? 0, zeroStreak };
     writeState(state, stateFile);
     const result: GateHealResult = {
       source: key,

@@ -121,3 +121,41 @@ test('the rotator reads the gated pool with a wider ceiling', () => {
   const pool = readDiscoveredPool();
   assert.ok(Array.isArray(pool));
 });
+
+test('repeated empty sweeps back off instead of re-sweeping every 30 minutes', async () => {
+  const dir = tmp();
+  const poolFile = path.join(dir, 'gated.json');
+  const stateFile = path.join(dir, 'state.json');
+  let calls = 0;
+  const empty: any = async () => { calls++; return { probed: 40, kept: [], passed: 0 }; };
+  const t0 = Date.now();
+  // 1st: no history -> 30m cooldown honoured
+  await healGatedSource('indigo', { discover: empty, poolFile, stateFile, now: () => t0 });
+  // 2nd, 31m later: allowed
+  await healGatedSource('indigo', { discover: empty, poolFile, stateFile, now: () => t0 + 31 * 60_000 });
+  assert.equal(calls, 2);
+  // 3rd, one hour after the 2nd: two empty sweeps in a row -> 6h window, so it must be refused
+  const blocked = await healGatedSource('indigo', { discover: empty, poolFile, stateFile, now: () => t0 + 91 * 60_000 });
+  assert.equal(blocked.ran, false);
+  assert.match(blocked.reason, /empty sweep\(s\) in a row/);
+  assert.equal(calls, 2);
+  // 4th, 7h after the 2nd: window expired, sweep runs again and now yields a 24h window
+  await healGatedSource('indigo', { discover: empty, poolFile, stateFile, now: () => t0 + 7 * 60 * 60_000 });
+  assert.equal(calls, 3);
+  const blocked24 = await healGatedSource('indigo', { discover: empty, poolFile, stateFile, now: () => t0 + 8 * 60 * 60_000 });
+  assert.equal(blocked24.ran, false);
+  assert.equal(calls, 3);
+});
+
+test('a sweep that finds a hop resets the empty streak', async () => {
+  const dir = tmp();
+  const poolFile = path.join(dir, 'gated.json');
+  const stateFile = path.join(dir, 'state.json');
+  const state = { indigo: { at: 0, kept: 0, tried: 40, zeroStreak: 5 } };
+  fs.writeFileSync(stateFile, JSON.stringify(state));
+  const good: any = async () => ({ probed: 40, kept: [{ url: 'http://9.9.9.9:8080', ok: true, ms: 900, status: 200, reason: 'ok' }], passed: 1 });
+  const res = await healGatedSource('indigo', { force: true, discover: good, poolFile, stateFile });
+  assert.equal(res.kept, 1);
+  const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.equal(saved.indigo.zeroStreak, 0);
+});

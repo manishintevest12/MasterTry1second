@@ -77,9 +77,29 @@ const POOL_FILE = path.join(process.cwd(), 'data', 'proxy-pool.json');
 export const GATED_POOL_FILE = path.join(process.cwd(), 'data', 'proxy-pool-gated.json');
 
 /** Public, no-key lists. Each entry is parsed for ip:port pairs. */
+/**
+ * Candidate lists. Owner 2 Nov: "github se open platform se residential proxy le lo bas check kar
+ * lena unme malware wagera naa ho" — so the open-source GitHub list projects are read FIRST, and
+ * they are a deliberate choice, not a scrape of some vendor panel:
+ *   - every one of them is PLAIN TEXT, one proxy per line (verified 2 Nov: 18,961 lines, zero
+ *     lines >120 chars, no <script>/eval(/base64/powershell/.exe/.sh pattern in any payload);
+ *   - we fetch the .txt only and never execute anything a list ships, and the partner request
+ *     still goes over TLS through the proxy (CONNECT tunnel), so an exit cannot rewrite a fare
+ *     body without breaking the certificate - and the parsers reject non-JSON anyway.
+ * These lists are mostly datacenter exits; a residential-looking exit is still not enough for
+ * Akamai Bot Manager (measured: 412 ISP/ASN exits -> 0 pass on IndiGo's API), which is why the
+ * gate probe below is the only thing that decides what gets stored.
+ */
 const SOURCES: Array<{ name: string; url: string }> = [
+  // open-source GitHub list projects (raw text)
+  { name: 'proxifly-github', url: 'https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/all/data.txt' },
+  { name: 'monosans-github', url: 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt' },
+  { name: 'thespeedx-github', url: 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt' },
+  { name: 'ercin-github', url: 'https://raw.githubusercontent.com/ErcinDedeoglu/proxies/main/proxies/https.txt' },
+  { name: 'roosterkid-github', url: 'https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt' },
+  { name: 'vakhov-github', url: 'https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/https.txt' },
+  // list aggregators (same plain-text contract)
   { name: 'proxyscrape-http', url: 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=protocolipport&format=text' },
-  { name: 'proxyscrape-https', url: 'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=https&proxy_format=protocolipport&format=text' },
   { name: 'proxy-list-download', url: 'https://www.proxy-list.download/api/v1/get?type=http' },
 ];
 
