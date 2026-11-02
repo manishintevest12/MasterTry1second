@@ -12,6 +12,7 @@ import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
+import { runProxyDiscovery } from '../common/proxyDiscovery';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, recallGoodForVertical, rememberGood } from '../search/lastKnownGood';
 import { allowPending, forgetPending, pollKey } from './pollBudget';
@@ -990,7 +991,7 @@ function hostOfPublic(u: string): string {
   try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; }
 }
 
-function offerToComparisonItem(o: any) {
+function offerToComparisonItem(o: any, reqTravel: { date?: string; return?: string; city?: string; route?: string } = {}) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
   // Module 4: masking pointer — affiliate tokens are built server-side at click
@@ -998,8 +999,23 @@ function offerToComparisonItem(o: any) {
   // Owner 24 Oct (payment-page deeplinks): rows without a product URL fall back
   // to the merchant's own SEARCH page for this exact item — the user always
   // lands where they can buy/pay; never a blank tab, never an invented URL.
-  const travelCtx = { route: o.travel?.route, date: o.travel?.date };
-  const rawDest = String(o.sellerUrl || '') || merchantSearchFallback(String(o.vendor || o.seller || ''), String(o.title || ''), String(o.vertical || ''), travelCtx);
+  // Owner 1 Nov ("deeplink partner ke galat/home page par le jata hai"): a persisted
+  // catalogue row carries the URL it was mined with — for hotels that meant a stale
+  // check-in date and a hardcoded 1 night, so every later search opened the wrong stay
+  // dates (or the OTA's home). Date-sensitive verticals are therefore RE-MINTED from the
+  // request's own dates; the stored URL is only kept when the request names no dates.
+  const travelCtx = {
+    route: o.travel?.route || reqTravel.route,
+    date: reqTravel.date || o.travel?.date,
+    return: reqTravel.return,
+    city: reqTravel.city || o.travel?.city,
+  };
+  const vertical = String(o.vertical || '');
+  const dateSensitive = vertical === 'hotels' || vertical === 'flights' || vertical === 'bus';
+  const rebuilt = dateSensitive && (reqTravel.date || reqTravel.route)
+    ? merchantSearchFallback(String(o.vendor || o.seller || ''), String(o.title || ''), vertical, travelCtx)
+    : '';
+  const rawDest = rebuilt || String(o.sellerUrl || '') || merchantSearchFallback(String(o.vendor || o.seller || ''), String(o.title || ''), vertical, travelCtx);
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || '') }) : '';
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || 'Verified source'));
   const attrs: Record<string, string> = o.attributes || {};
@@ -1236,6 +1252,22 @@ apiRouter.get('/admin/load/health', authMiddleware, requireAdmin, async (_req, r
 apiRouter.get('/admin/proxy-pool', authMiddleware, requireAdmin, (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ok: true, ...proxyPoolStatus() });
+});
+
+// OWNER 1 Nov ("proxy dhoondo jo 500ms se kam de, phir rotation banao"): runs the
+// discovery + sub-500ms validation sweep and stores the passing exits where the
+// rotator reads them. Admin-only: it opens outbound connections to public proxies.
+apiRouter.post('/admin/proxy-discover', authMiddleware, requireAdmin, async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const report = await runProxyDiscovery({
+      limit: Number(req.body?.limit) || 60,
+      concurrency: Number(req.body?.concurrency) || 6,
+    });
+    res.json({ ok: true, ...report, pool: proxyPoolStatus() });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: String(e?.message || e).slice(0, 200) });
+  }
 });
 
 apiRouter.post('/scrape/live', async (req, res) => {
@@ -1542,8 +1574,17 @@ apiRouter.post('/scrape/live', async (req, res) => {
   // gated-down list). Build a local list instead — the cached object is never touched.
   const keptResults = kept.map((x) => x.o) as any[];
   // Map to the legacy shape; honestNotice is surfaced instead of fabricated deals
+  const reqTravelDates = {
+    date: input.travelDates?.depart,
+    return: input.travelDates?.return,
+    city: input.city,
+    route: (() => {
+      const q = String(input.query || '');
+      return /\bto\b/i.test(q) ? q : undefined;
+    })(),
+  };
   const mappedItems = keptResults.map((o: any) => {
-    const item = offerToComparisonItem(o);
+    const item = offerToComparisonItem(o, reqTravelDates);
     return req.body.vertical === 'movie' ? { ...item, vertical: 'movie', category: 'movie' }
       : req.body.vertical === 'account' ? { ...item, vertical: 'account', category: 'account' }
       : item;

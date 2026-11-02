@@ -193,7 +193,7 @@ class _LocationHintFieldState extends State<LocationHintField> {
                     var addr = (p['address'] ?? '').toString();
                     final km = (p['distanceKm'] as num?)?.toDouble();
                     if (km != null) {
-                      final dist = km < 1 ? '\${(km * 1000).round()} m' : '\$km km';
+                      final dist = km < 1 ? '${(km * 1000).round()} m' : '$km km';
                       addr = addr.isEmpty ? dist : '\$addr \u00b7 \$dist';
                     }
                     return _row(

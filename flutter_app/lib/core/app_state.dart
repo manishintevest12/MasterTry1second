@@ -403,7 +403,7 @@ class AppState extends ChangeNotifier {
       final items = feed.deals.map((d) {
         final price = 0.0;
         return CompareItem(
-          id: 'acct-\${d.id}',
+          id: 'acct-${d.id}',
           vertical: 'account',
           title: d.title,
           subtitle: d.merchantName,
@@ -412,9 +412,9 @@ class AppState extends ChangeNotifier {
           description: d.description ?? '',
           primaryPrice: price,
           priceAvailable: false,
-          features: [if (d.discountText != null && d.discountText!.isNotEmpty) d.discountText!, if (d.code != null && d.code!.isNotEmpty) 'Code: \${d.code}'],
+          features: [if (d.discountText != null && d.discountText!.isNotEmpty) d.discountText!, if (d.code != null && d.code!.isNotEmpty) 'Code: ${d.code}'],
           specs: {'description': d.description ?? '', 'terms': d.terms ?? ''},
-          sellerQuotes: [SellerQuote(id: 'acct-sq-\${d.id}', sellerName: d.merchantName, price: 0, url: d.goUrl, isLowest: true, badge: 'Verified Offer')],
+          sellerQuotes: [SellerQuote(id: 'acct-sq-${d.id}', sellerName: d.merchantName, price: 0, url: d.goUrl, isLowest: true, badge: 'Verified Offer')],
         );
       }).toList();
       return LiveResponse(items, ['deals_registry'], ['deals_registry'], [], 'deals-registry', 50);

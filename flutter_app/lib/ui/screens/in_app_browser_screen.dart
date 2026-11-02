@@ -99,6 +99,26 @@ class InAppBrowserScreen extends StatefulWidget {
   State<InAppBrowserScreen> createState() => _InAppBrowserScreenState();
 }
 
+/// Keeps a partner page alive inside our webview: popups are re-routed into the
+/// same view, and a mobile viewport is forced so OTA booking widgets initialise.
+const String _popupShim = r'''
+(function () {
+  if (window.__t1sPopupShim) return;
+  window.__t1sPopupShim = true;
+  var go = function (u) { try { if (u) window.location.href = u; } catch (e) {} return null; };
+  window.open = function (u) { return go(u); };
+  document.addEventListener('click', function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[target="_blank"]') : null;
+    if (a && a.href) { ev.preventDefault(); window.location.href = a.href; }
+  }, true);
+  var m = document.querySelector('meta[name="viewport"]');
+  if (!m) { m = document.createElement('meta'); m.name = 'viewport'; document.head.appendChild(m); }
+  if ((m.content || '').indexOf('width=device-width') === -1) {
+    m.content = 'width=device-width, initial-scale=1, maximum-scale=5';
+  }
+})();
+''';
+
 class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
   WebViewController? _controller;
   String _currentUrl = '';
@@ -123,15 +143,35 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
       ..setUserAgent(
           'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) '
           'Chrome/128.0.0.0 Mobile Safari/537.36 Try1SecondApp/1.9')
+      // Owner 1 Nov ("partner site khul hi nahi raha, white page"): OTA sites
+      // (Gotogate/Expedia/IndiGo/MMT) blank out inside a webview when
+      //   (a) DOM storage / IndexedDB is off — their fare engine keeps session +
+      //       search state there and renders nothing without it,
+      //   (b) `window.open`/target=_blank is dropped — the search submit opens a
+      //       new window and our webview silently discards it (page stays white),
+      //   (c) the fixed viewport keeps desktop layout and the booking widget
+      //       never initialises on a small screen.
+      // All three are turned partner-friendly here. Nothing on our own screens
+      // changes; this only affects the partner page loaded inside the browser.
+      ..setBackgroundColor(const Color(0xFFFFFFFF))
+      ..enableZoom(false)
       ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (url) => _set(url: url, loading: true),
-        onPageFinished: (url) => _syncState(url: url, loading: false),
+        onPageFinished: (url) {
+          _syncState(url: url, loading: false);
+          _controller?.runJavaScript(_popupShim);
+        },
         // App-to-app (owner 30 Oct): a merchant exit can arrive as
         // `intent://...#Intent;package=<partner>;S.browser_fallback_url=<paid url>;end`,
         // or as a partner scheme (uber://, olacabs://, blinkit://, swiggy://...). A webview
         // cannot resolve either, so it is handed to the OS: the partner's installed app
         // opens, and when it is missing the engine's browser_fallback_url (our tracked
         // affiliate link) loads here instead — the click is never lost either way.
+        onPageStarted: (url) {
+          _set(url: url, loading: true);
+          // Redirect window.open into the SAME webview so a partner "Search"
+          // button that opens a new tab still renders here instead of a blank page.
+          _controller?.runJavaScript(_popupShim);
+        },
         onNavigationRequest: (req) {
           if (AppHandoff.isExternalHandoff(req.url)) {
             _handOff(req.url);
@@ -141,9 +181,9 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
               ? NavigationDecision.navigate
               : NavigationDecision.prevent;
         },
-      ))
-      ..loadRequest(Uri.parse(widget.url));
+      ));
     _controller = c;
+    c.loadRequest(Uri.parse(widget.url));
   }
 
   /// Hands a partner app URL to the OS and keeps a paid fallback if the app is absent.

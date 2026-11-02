@@ -1917,9 +1917,9 @@ class Try1SecondApi {
   /// city, pincode) + exact coords, optional distance when user coords are given.
   Future<List<Map<String, dynamic>>> geoSuggest(String q,
       {double? lat, double? lng}) async {
-    var path = '/api/geo/suggest?q=\${Uri.encodeQueryComponent(q)}';
+    var path = '/api/geo/suggest?q=${Uri.encodeQueryComponent(q)}';
     if (lat != null && lng != null) {
-      path += '&lat=\${lat.toStringAsFixed(5)}&lng=\${lng.toStringAsFixed(5)}';
+      path += '&lat=${lat.toStringAsFixed(5)}&lng=${lng.toStringAsFixed(5)}';
     }
     final res = await _get(path);
     return [

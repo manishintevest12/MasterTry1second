@@ -211,6 +211,10 @@ export async function cffiFetch(
       tried.add(leg.url);
       let res: CffiResponse | null = null;
       let err: any = null;
+      // Owner 1 Nov: the 500ms budget is proven by real traffic, so each attempt
+      // carries its own round-trip to the rotator (no probe requests, nothing that
+      // could look like scraping).
+      const startedAt = Date.now();
       try {
         res = await cffiFetchDirect(url, { ...opts, proxy: leg.url });
       } catch (e) {
@@ -222,6 +226,7 @@ export async function cffiFetch(
         status: res?.status,
         gated: legGated,
         error: err ? String(err.message || err) : undefined,
+        ms: Date.now() - startedAt,
       });
       if (res && !legGated) return { ...res, via: 'proxy' };
       if (res) {

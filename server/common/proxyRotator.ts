@@ -29,6 +29,8 @@
  * Tuning: T1S_PROXY_TRIES (default 2) rotated retries per request on a gate.
  */
 
+import fs from 'fs';
+import path from 'path';
 export interface ProxyLeg {
   url: string;
   /** Password masked, for logs and the admin view. */
@@ -42,7 +44,23 @@ export interface ProxyLeg {
   usedAt: number;
   lastError: string;
   lastStatus: number;
+  /** EWMA of measured round-trip ms through this exit (0 = never measured). */
+  latencyMs: number;
+  /** How many real attempts fed latencyMs. */
+  samples: number;
+  /** Attempts whose measured time missed the budget (kept for the admin view). */
+  slow: number;
 }
+
+/**
+ * OWNER 1 Nov ("aisa proxy dhoondo jo 500ms se kam de, phir uska rotation banao"):
+ * a leg is only preferred when its measured round-trip is inside this budget.
+ * Measurement comes from REAL traffic (self-healing, no probe traffic); legs that
+ * never answered fast are still usable as a last resort so a slow pool can never
+ * turn a working source into zero rows.
+ */
+const LATENCY_BUDGET_MS = Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
+const EWMA_ALPHA = 0.4;
 
 const PARK_LADDER_MS = [60_000, 300_000, 1_200_000];
 const HOPELESS_PARK_MS = 3_600_000;
@@ -81,8 +99,31 @@ let legs: ProxyLeg[] = [];
 let cursor = 0;
 let signature = '';
 
+/**
+ * Owner 1 Nov: a validated pool written by proxyDiscovery (exits measured under the
+ * latency budget) is used when T1S_PROXY_LIST is not set, so the sub-500ms sweep has
+ * an effect without the owner editing any env var. Read locally (no import) to keep
+ * the rotator free of a cycle: discovery -> cffiFetch -> rotator.
+ */
+function discoveredLegs(): Array<{ url: string; ms: number }> {
+  try {
+    const file = path.join(process.cwd(), 'data', 'proxy-pool.json');
+    if (!fs.existsSync(file)) return [];
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const budget = Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500);
+    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
+    return rows
+      .map((r: any) => ({ url: normalize(String(r?.url || '')), ms: Number(r?.ms || 0) }))
+      .filter((r: { url: string; ms: number }) => !!r.url && Number.isFinite(r.ms) && r.ms > 0 && r.ms <= budget);
+  } catch {
+    return [];
+  }
+}
+
 function loadLegs(): ProxyLeg[] {
-  const raw = process.env.T1S_PROXY_LIST || '';
+  const envRaw = process.env.T1S_PROXY_LIST || '';
+  const fromFile = envRaw ? [] : discoveredLegs();
+  const raw = envRaw || fromFile.map((f) => f.url).join(',');
   if (raw === signature) return legs;
   signature = raw;
   const seen = new Set<string>();
@@ -92,6 +133,7 @@ function loadLegs(): ProxyLeg[] {
     if (!url || seen.has(url)) continue;
     seen.add(url);
     const existing = legs.find((l) => l.url === url);
+    const preset = fromFile.find((f) => f.url === url);
     next.push(existing ?? {
       url,
       label: maskProxy(url),
@@ -102,6 +144,10 @@ function loadLegs(): ProxyLeg[] {
       usedAt: 0,
       lastError: '',
       lastStatus: 0,
+      // A discovered leg starts with the latency the sweep actually measured.
+      latencyMs: preset ? Math.round(preset.ms) : 0,
+      samples: preset ? 1 : 0,
+      slow: 0,
     });
     if (next.length >= MAX_LEGS) break;
   }
@@ -132,22 +178,51 @@ export function rotationEnabled(): boolean {
  * Next leg to try. `skip` holds legs already attempted for this request. Parked legs are
  * skipped while any healthy one remains; if every leg is parked the longest-parked is reused.
  */
+export function proxyLatencyBudgetMs(): number {
+  return LATENCY_BUDGET_MS;
+}
+
+/** True when a leg has been measured at or under the budget. */
+export function withinBudget(leg: ProxyLeg): boolean {
+  return leg.samples > 0 && leg.latencyMs > 0 && leg.latencyMs <= LATENCY_BUDGET_MS;
+}
+
 export function nextProxy(skip: Set<string> = new Set()): ProxyLeg | null {
   const pool = loadLegs().filter((l) => !skip.has(l.url));
   if (!pool.length) return null;
   const now = Date.now();
   const healthy = pool.filter((l) => l.parkedUntil <= now);
-  const ordered = (healthy.length ? healthy : pool.slice().sort((a, b) => a.parkedUntil - b.parkedUntil));
-  const leg = ordered[cursor % ordered.length];
+  const usable = healthy.length ? healthy : pool.slice().sort((a, b) => a.parkedUntil - b.parkedUntil);
+  // Fast lane first: measured-in-budget legs ordered fastest-first with a rotating
+  // cursor so we still spread load across them; unmeasured legs next (they get their
+  // first sample from real traffic); slow legs only as the last resort.
+  const fast = usable.filter((l) => withinBudget(l)).sort((a, b) => a.latencyMs - b.latencyMs);
+  const unmeasured = usable.filter((l) => l.samples === 0);
+  const slow = usable.filter((l) => l.samples > 0 && !withinBudget(l));
+  const ring = (arr: ProxyLeg[]): ProxyLeg[] => (arr.length ? arr.slice(cursor % arr.length).concat(arr.slice(0, cursor % arr.length)) : []);
+  const ordered = [...ring(fast), ...ring(unmeasured), ...ring(slow)];
+  const leg = ordered[0] || null;
   cursor = (cursor + 1) % Math.max(1, loadLegs().length);
-  return leg || null;
+  return leg;
 }
 
-export function noteProxyResult(url: string, result: { ok: boolean; status?: number; gated?: boolean; error?: string }): void {
+export function noteProxyResult(
+  url: string,
+  result: { ok: boolean; status?: number; gated?: boolean; error?: string; ms?: number },
+): void {
   const leg = loadLegs().find((l) => l.url === url);
   if (!leg) return;
   leg.usedAt = Date.now();
   leg.lastStatus = result.status || 0;
+  // Latency is measured on REAL requests only: a fast exit is proven by the traffic
+  // it actually carried, and a gated/timeout answer never counts as a fast sample.
+  const ms = Number(result.ms);
+  if (Number.isFinite(ms) && ms > 0) {
+    if (leg.latencyMs > 0) leg.latencyMs = Math.round(leg.latencyMs * (1 - EWMA_ALPHA) + ms * EWMA_ALPHA);
+    else leg.latencyMs = Math.round(ms);
+    leg.samples += 1;
+    if (ms > LATENCY_BUDGET_MS) leg.slow += 1;
+  }
   if (result.ok && !result.gated) {
     leg.ok += 1;
     leg.streak = 0;
@@ -181,7 +256,13 @@ export interface ProxyPoolView {
     lastStatus: number;
     lastError: string;
     usedSecAgo: number | null;
+    latencyMs: number;
+    samples: number;
+    withinBudgetMs: boolean;
+    slow: number;
   }>;
+  latencyBudgetMs: number;
+  fast: number;
 }
 
 export function proxyPoolStatus(): ProxyPoolView {
@@ -193,6 +274,8 @@ export function proxyPoolStatus(): ProxyPoolView {
     size: legs.length,
     healthy: legs.filter((l) => l.parkedUntil <= now).length,
     parked: legs.filter((l) => l.parkedUntil > now).length,
+    latencyBudgetMs: LATENCY_BUDGET_MS,
+    fast: legs.filter((l) => l.parkedUntil <= now && withinBudget(l)).length,
     legs: legs.map((l) => ({
       label: l.label,
       ok: l.ok,
@@ -202,6 +285,10 @@ export function proxyPoolStatus(): ProxyPoolView {
       lastStatus: l.lastStatus,
       lastError: l.lastError,
       usedSecAgo: l.usedAt ? Math.round((now - l.usedAt) / 1000) : null,
+      latencyMs: l.latencyMs,
+      samples: l.samples,
+      withinBudgetMs: withinBudget(l),
+      slow: l.slow,
     })),
   };
 }

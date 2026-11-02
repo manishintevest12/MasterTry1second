@@ -16,6 +16,8 @@ export interface TravelCtx {
   route?: string;
   date?: string;
   city?: string;
+  /** Return date (ISO) for stay verticals — nights are computed from date→return. */
+  return?: string;
 }
 
 const IATA: Record<string, string> = {
@@ -198,8 +200,28 @@ export function merchantDeepLink(merchant: string, title: string, vertical?: str
   // ---------------- hotels ----------------
   if (vertical === 'hotels' || has('hotel', 'stay', 'rooms', 'oyo')) {
     const ci = d ? d.iso : '';
+    // Owner 1 Nov ("deeplink galat page par le jata hai"): every stay link used a
+    // hardcoded 1 night, so a 19-21 Nov search opened a 19-20 Nov page and the OTA
+    // showed other/empty rates. The real checkout follows the request's return date,
+    // and nights = checkout - checkin (default 1 night only when no return was asked).
+    const nights = (() => {
+      if (!d) return 0;
+      const r0 = dates(ctx.return);
+      if (r0) {
+        const a = Date.parse(`${d.iso}T00:00:00Z`);
+        const b = Date.parse(`${r0.iso}T00:00:00Z`);
+        const n = Math.round((b - a) / 86_400_000);
+        if (Number.isFinite(n) && n > 0) return Math.min(n, 30);
+      }
+      return 1;
+    })();
     const co = (() => {
       if (!d) return '';
+      if (nights > 0) {
+        const dt = new Date(`${d.iso}T00:00:00Z`);
+        dt.setUTCDate(dt.getUTCDate() + nights);
+        return dt.toISOString().slice(0, 10);
+      }
       const dt = new Date(`${d.iso}T00:00:00Z`);
       dt.setUTCDate(dt.getUTCDate() + 1);
       return dt.toISOString().slice(0, 10);
@@ -210,9 +232,9 @@ export function merchantDeepLink(merchant: string, title: string, vertical?: str
     // own search uses); marriott/hilton/traveloka are bot-gated (403) — their search
     // entry pages are linked, never a fabricated payload. hostelworld/happyeasygo
     // resolve only at their search home, so that is what we link.
-    if (has('hotels.com')) return `https://www.hotels.com/Hotel-Search?destination=${cq || 'Goa'}`;
-    if (has('hotwire')) return `https://www.hotwire.com/hotels/search?destination=${cq}`;
-    if (has('orbitz')) return `https://www.orbitz.com/Hotel-Search?destination=${cq}`;
+    if (has('hotels.com')) return `https://www.hotels.com/Hotel-Search?destination=${cq || 'Goa'}${ci ? `&startDate=${ci}&endDate=${co}` : ''}&adults=2`;
+    if (has('hotwire')) return `https://www.hotwire.com/hotels/search?destination=${cq}${ci ? `&startDate=${ci}&endDate=${co}` : ''}`;
+    if (has('orbitz')) return `https://www.orbitz.com/Hotel-Search?destination=${cq}${ci ? `&startDate=${ci}&endDate=${co}` : ''}`;
     if (has('traveloka')) return 'https://www.traveloka.com/en-in/hotel';
     if (has('hostelworld')) return 'https://www.hostelworld.com/';
     if (has('destinia')) return 'https://www.destinia.com/hotels';
@@ -232,19 +254,27 @@ export function merchantDeepLink(merchant: string, title: string, vertical?: str
       return city ? `https://www.booking.com/searchresults.html?ss=${cq}${ci ? `&checkin=${ci}&checkout=${co}` : ''}&group_adults=2&no_rooms=1&group_children=0` : 'https://www.booking.com/searchresults.html';
     }
     if (has('agoda')) {
-      return city ? `https://www.agoda.com/search?q=${cq}${ci ? `&checkIn=${ci}&los=1` : ''}` : 'https://www.agoda.com/';
+      return city
+        ? `https://www.agoda.com/search?q=${cq}${ci ? `&checkIn=${ci}&checkOut=${co}&los=${nights || 1}&adults=2&rooms=1` : ''}`
+        : 'https://www.agoda.com/';
     }
     if (has('yatra')) {
-      return city ? `https://www.yatra.com/hotels/hotels-in-${slug(city)}` : 'https://www.yatra.com/hotels';
+      return city
+        ? `https://www.yatra.com/hotels/hotels-in-${slug(city)}${ci ? `?checkin=${d!.dmy.replace(/\//g, '-')}&checkout=${co.split('-').reverse().join('-')}&rooms=1&adults=2` : ''}`
+        : 'https://www.yatra.com/hotels';
     }
     if (has('cleartrip')) {
-      return city ? `https://www.cleartrip.com/hotels/india/${slug(city)}-hotels` : 'https://www.cleartrip.com/hotels';
+      return city
+        ? `https://www.cleartrip.com/hotels/india/${slug(city)}-hotels${ci ? `?checkin=${d!.dmy.replace(/\//g, '-')}&checkout=${co.split('-').reverse().join('-')}&rooms=1&adults=2` : ''}`
+        : 'https://www.cleartrip.com/hotels';
     }
     if (has('easemytrip', 'ease my trip')) {
       return city ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}` : 'https://www.easemytrip.com/hotels/';
     }
     if (has('oyo')) {
-      return city ? `https://www.oyorooms.com/search?location=${cq}` : 'https://www.oyorooms.com/';
+      return city
+        ? `https://www.oyorooms.com/search?location=${cq}${ci ? `&checkin=${ci}&checkout=${co}&rooms=1&guests=2` : ''}`
+        : 'https://www.oyorooms.com/';
     }
     if (has('saffron')) {
       return city ? `https://www.saffronstays.com/search?q=${cq}` : 'https://www.saffronstays.com/';
