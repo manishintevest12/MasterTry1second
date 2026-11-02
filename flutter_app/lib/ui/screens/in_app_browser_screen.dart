@@ -7,6 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'product_screen.dart';
 import 'package:try1second/core/app_handoff.dart';
 import 'package:try1second/core/nav_stack.dart';
+import 'package:try1second/ui/widgets/kit.dart';
 
 /// Derives a friendly seller name from the redirect's final host, mirroring the
 /// seller labels the engine itself uses (Air India, MakeMyTrip, redBus, ...).
@@ -123,6 +124,10 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
   WebViewController? _controller;
   String _currentUrl = '';
   bool _loading = true;
+  /// Owner 2 Nov: until the partner page paints its first frame the webview shows a
+  /// bare white rectangle. That gap is now filled by the seller's logo + 'Opening …'
+  /// (approved by the owner from the Ixigo video: 'Partner logo + Opening').
+  bool _firstPaint = false;
   /// Own-history back/forward (webview canGoBack lies after redirect chains).
   late final BrowserNavStack _nav;
 
@@ -158,6 +163,9 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (url) {
           _syncState(url: url, loading: false);
+          // First real paint: drop the "Opening <seller>" card. Refresh/navigation
+          // later in the session does not bring it back.
+          if (!_firstPaint) _set(firstPaint: true);
           _controller?.runJavaScript(_popupShim);
         },
         // App-to-app (owner 30 Oct): a merchant exit can arrive as
@@ -197,11 +205,12 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
     }
   }
 
-  void _set({String? url, bool? loading}) {
+  void _set({String? url, bool? loading, bool? firstPaint}) {
     if (!mounted) return;
     setState(() {
       if (url != null) _currentUrl = url;
       if (loading != null) _loading = loading;
+      if (firstPaint != null) _firstPaint = firstPaint;
     });
   }
 
@@ -273,6 +282,13 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
                 },
               ),
             ),
+          // Owner 2 Nov (approved): instead of a blank white screen while the
+          // partner's first frame is still loading, show its own logo and
+          // "Opening <seller>…" — the same thing the partner's app-splash shows.
+          if (!_firstPaint && _controller != null)
+            Positioned.fill(
+              child: _OpeningCard(name: name, url: _currentUrl.isEmpty ? widget.url : _currentUrl),
+            ),
           Positioned(
             top: 0,
             left: 0,
@@ -300,6 +316,43 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
             onExpand: _expand,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// White "opening" surface shown under the dark header until the merchant page
+/// paints. Owner-approved copy: seller logo + `Opening <seller>…`.
+class _OpeningCard extends StatelessWidget {
+  const _OpeningCard({required this.name, required this.url});
+
+  final String name;
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    final host = (Uri.tryParse(url)?.host ?? '').replaceFirst(RegExp(r'^www\.'), '');
+    return ColoredBox(
+      color: Colors.white,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SiteLogo(host.isEmpty ? 'google.com' : host, size: 64),
+            const SizedBox(height: 18),
+            Text(
+              'Opening $name…',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: Color(0xFF131725)),
+            ),
+            const SizedBox(height: 14),
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2.2, color: Color(0xFFE60000)),
+            ),
+          ],
+        ),
       ),
     );
   }
