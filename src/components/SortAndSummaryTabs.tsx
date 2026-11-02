@@ -118,7 +118,15 @@ export const SortAndSummaryTabs: React.FC = () => {
             <Award className="w-3.5 h-3.5 text-amber-600" />
           </div>
           <span className="text-xs text-slate-500 font-mono tabular-nums mt-1 font-semibold">
-            {highestRatedItem?.rating} ★ ({highestRatedItem?.reviewCount.toLocaleString('en-IN')})
+            {highestRatedItem?.rating} ★
+            {/* OWNER 2 Nov ("flight vertical me Something went wrong"): the optional chain
+                stopped at the item, so reviewCount.toLocaleString() threw
+                "Cannot read properties of undefined (reading 'toLocaleString')" on every
+                flight row (airlines carry a rating but no review count). The count is now
+                only rendered when the source actually published one. */}
+            {highestRatedItem?.reviewCount != null && (
+              <> ({Number(highestRatedItem.reviewCount).toLocaleString('en-IN')})</>
+            )}
           </span>
         </button>
       </div>
