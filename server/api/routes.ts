@@ -1033,8 +1033,15 @@ function offerToComparisonItem(o: any, reqTravel: { date?: string; return?: stri
     // Owner 22 Oct (flight cards missing times / not grouping / no image):
     // parsers publish 'departure'/'arrival' attributes while cards + group keys read
     // 'departure time'/'arrival time' — normalize once so every surface agrees.
-    if (attrs['departure'] && !specs['departure time']) specs['departure time'] = String(attrs['departure']);
-    if (attrs['arrival'] && !specs['arrival time']) specs['arrival time'] = String(attrs['arrival']);
+    // OWNER 2 Nov ("abhi v flight time nahi aa raha", Air India / Air India Express cards):
+    // those two parsers publish departure_time / arrival_time while this normalizer only
+    // looked at departure / arrival, so the cards reached the app AND the web with an empty
+    // time slot even though the API payload had 07:45 -> 09:15. Measured IDR-DEL 5 Nov: 7
+    // priced rows arrived timeless this way. Every published spelling is now accepted.
+    const depSpec = attrs['departure'] ?? attrs['departure_time'] ?? attrs['dep_time'] ?? attrs['depTime'];
+    const arrSpec = attrs['arrival'] ?? attrs['arrival_time'] ?? attrs['arr_time'] ?? attrs['arrTime'];
+    if (depSpec && !specs['departure time']) specs['departure time'] = String(depSpec);
+    if (arrSpec && !specs['arrival time']) specs['arrival time'] = String(arrSpec);
     if (!specs['flight number']) {
       // Flight number published in the title itself (e.g. "IndiGo 6E6627 · ...").
       // Code must contain a letter so years/dates ("2026-10-29") never match.

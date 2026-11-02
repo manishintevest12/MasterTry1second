@@ -42358,8 +42358,10 @@ function offerToComparisonItem(o, reqTravel = {}) {
     specs["airline"] = String(o.brand);
   }
   if (String(o.vertical) === "flights") {
-    if (attrs["departure"] && !specs["departure time"]) specs["departure time"] = String(attrs["departure"]);
-    if (attrs["arrival"] && !specs["arrival time"]) specs["arrival time"] = String(attrs["arrival"]);
+    const depSpec = attrs["departure"] ?? attrs["departure_time"] ?? attrs["dep_time"] ?? attrs["depTime"];
+    const arrSpec = attrs["arrival"] ?? attrs["arrival_time"] ?? attrs["arr_time"] ?? attrs["arrTime"];
+    if (depSpec && !specs["departure time"]) specs["departure time"] = String(depSpec);
+    if (arrSpec && !specs["arrival time"]) specs["arrival time"] = String(arrSpec);
     if (!specs["flight number"]) {
       const m = String(o.title || "").match(/\b([0-9]?[A-Z][A-Z0-9]?)\s?(\d{3,4})\b/);
       if (m) specs["flight number"] = `${m[1]}${m[2]}`;
