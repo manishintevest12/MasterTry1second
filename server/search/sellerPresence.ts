@@ -191,6 +191,24 @@ export async function buildFlightSellerPresence(
       .map((o) => `${o.seller || ''}`.toLowerCase().trim())
       .filter(Boolean),
   );
+  // OWNER 2 Nov ("indigo ka site abhi v date and time wise fare nahi de raha"): the
+  // suppression above matches the RESELLER name (ixigo, Goibibo, Cleartrip...), so an
+  // IndiGo presence card still appeared - claiming "live fare feed is not reachable" -
+  // while the very same answer already carried dated, timed IndiGo fares from those
+  // resellers (measured IDR-DEL 5 Nov: 86 IndiGo rows with departure/arrival, and the
+  // card said fares were unavailable). A carrier is now also considered present when a
+  // PRICED row in this answer is that airline, whichever shop published it.
+  const carrierPresent = (seller: string): boolean => {
+    const needle = String(seller || '').toLowerCase().replace(/\s*air\s*$/i, '').trim();
+    if (!needle) return false;
+    return combined.some((o) => {
+      const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+      if (!(price > 0)) return false;
+      const attrs = ((o as any).attributes || {}) as Record<string, unknown>;
+      const hay = `${attrs.airline || ''} ${(o as any).title || ''} ${(o as any).brand || ''}`.toLowerCase();
+      return hay.includes(needle);
+    });
+  };
   const out: NormalizedOffer[] = [];
   // HONEST NO-SERVICE (owner 24 Oct): when a seller's own live source SUCCEEDED
   // this search (its API answered us) yet returned no priced row, that is a
@@ -203,6 +221,7 @@ export async function buildFlightSellerPresence(
   const succeeded = new Set((succeededSourceIds || []).map((x) => String(x)));
   for (const cfg of PRESENCE_SELLERS) {
     if (presentSellers.has(cfg.seller.toLowerCase())) continue;
+    if (carrierPresent(cfg.seller)) continue; // airline already answering with priced fares
     if (succeeded.has(cfg.sourceId)) continue; // honest empty from the seller's own API
     // CATALOGUE PARTIAL (24 Oct owner report): the instant cache-paint has no
     // acquisition outcome, so the check above never fires and "Price unavailable"

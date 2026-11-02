@@ -70,6 +70,53 @@ var init_badRequestLog = __esm({
   }
 });
 
+// server/search/lastKnownGood.ts
+function searchKey(input) {
+  return [
+    norm(input.vertical || ""),
+    norm(input.query || ""),
+    norm(input.city || ""),
+    norm(input.pincode || ""),
+    norm(input.travelDates?.depart || "")
+  ].join("|");
+}
+function rememberGood(input, rows, servedFrom = "") {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const key = searchKey(input);
+  if (!key.trim()) return;
+  store.set(key, { rows, at: Date.now(), servedFrom });
+  if (store.size > MAX_ENTRIES) {
+    const oldest = [...store.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, store.size - MAX_ENTRIES);
+    for (const [k] of oldest) store.delete(k);
+  }
+}
+function recallGood(input, maxAgeMs = 6 * 60 * 60 * 1e3) {
+  const hit = store.get(searchKey(input));
+  if (!hit || !hit.rows.length) return null;
+  if (Date.now() - hit.at > maxAgeMs) return null;
+  return hit;
+}
+function recallGoodForVertical(vertical, maxAgeMs = 6 * 60 * 60 * 1e3) {
+  const v = norm(vertical);
+  if (!v) return null;
+  let best = null;
+  for (const [key, hit] of store) {
+    if (!key.startsWith(`${v}|`)) continue;
+    if (!hit.rows.length) continue;
+    if (Date.now() - hit.at > maxAgeMs) continue;
+    if (!best || hit.at > best.at) best = hit;
+  }
+  return best;
+}
+var MAX_ENTRIES, store, norm;
+var init_lastKnownGood = __esm({
+  "server/search/lastKnownGood.ts"() {
+    MAX_ENTRIES = 400;
+    store = /* @__PURE__ */ new Map();
+    norm = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+});
+
 // server/marketing/appLinkVerify.ts
 var appLinkVerify_exports = {};
 __export(appLinkVerify_exports, {
@@ -843,17 +890,17 @@ function sanitizeBindParams(params) {
   return (params || []).map(normalizeSqlValue);
 }
 async function closeStoreConnections() {
-  const current = store;
+  const current = store2;
   if (current && typeof current.close === "function") {
     try {
       await current.close();
     } catch {
     }
   }
-  store = null;
+  store2 = null;
 }
 function getStore() {
-  if (store) return store;
+  if (store2) return store2;
   if (settings.mysqlUrl) {
     try {
       const pool2 = import_promise.default.createPool({
@@ -875,16 +922,16 @@ function getStore() {
         timezone: "Z"
         // KVM4 sizing: small pool, bounded queue
       });
-      store = new MysqlStore(pool2);
+      store2 = new MysqlStore(pool2);
       log.info("DataStore", "MySQL/MariaDB pool initialized (durable source of truth)");
     } catch (err) {
       log.error("DataStore", "MySQL pool init failed, using file fallback", { error: err.message });
-      store = new FileStore();
+      store2 = new FileStore();
     }
   } else {
-    store = new FileStore();
+    store2 = new FileStore();
   }
-  return store;
+  return store2;
 }
 function localHostCandidates(configuredHost) {
   return ["localhost", "127.0.0.1"].filter((h) => h !== configuredHost.toLowerCase());
@@ -914,7 +961,7 @@ async function recoverMysqlWithLocalHost(url = settings.mysqlUrl) {
       });
       const probe = new MysqlStore(candidate);
       await probe.query("SELECT 1 AS ok");
-      store = probe;
+      store2 = probe;
       log.warn("DataStore", `MySQL access denied on host '${originalHost}' \u2014 SELF-HEALED via co-located host '${host}'. Set DB_HOST=${host} in hPanel env vars to make it permanent.`);
       return true;
     } catch (e2) {
@@ -934,7 +981,7 @@ async function recoverMysqlWithLocalHost(url = settings.mysqlUrl) {
   return false;
 }
 function resetToFileStore() {
-  store = new FileStore();
+  store2 = new FileStore();
   log.warn("DataStore", "Switched to FILE FALLBACK store (non-durable) \u2014 fix MySQL env vars and restart");
 }
 function splitSqlStatements(sql) {
@@ -1014,7 +1061,7 @@ async function runMigrations() {
   }
   return { applied: appliedNow, skipped: "mysql" };
 }
-var import_fs, import_path2, import_promise, ISO_DT, MysqlStore, FileStore, store;
+var import_fs, import_path2, import_promise, ISO_DT, MysqlStore, FileStore, store2;
 var init_db = __esm({
   "server/common/db.ts"() {
     import_fs = __toESM(require("fs"), 1);
@@ -1384,7 +1431,7 @@ var init_db = __esm({
         return true;
       }
     };
-    store = null;
+    store2 = null;
   }
 });
 
@@ -1541,8 +1588,22 @@ function normalize(entry) {
     return null;
   }
 }
+function discoveredLegs() {
+  try {
+    const file = import_path3.default.join(process.cwd(), "data", "proxy-pool.json");
+    if (!import_fs2.default.existsSync(file)) return [];
+    const raw = JSON.parse(import_fs2.default.readFileSync(file, "utf8"));
+    const budget = Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500);
+    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
+    return rows.map((r) => ({ url: normalize(String(r?.url || "")), ms: Number(r?.ms || 0) })).filter((r) => !!r.url && Number.isFinite(r.ms) && r.ms > 0 && r.ms <= budget);
+  } catch {
+    return [];
+  }
+}
 function loadLegs() {
-  const raw = process.env.T1S_PROXY_LIST || "";
+  const envRaw = process.env.T1S_PROXY_LIST || "";
+  const fromFile = envRaw ? [] : discoveredLegs();
+  const raw = envRaw || fromFile.map((f) => f.url).join(",");
   if (raw === signature) return legs;
   signature = raw;
   const seen = /* @__PURE__ */ new Set();
@@ -1552,6 +1613,7 @@ function loadLegs() {
     if (!url || seen.has(url)) continue;
     seen.add(url);
     const existing = legs.find((l) => l.url === url);
+    const preset = fromFile.find((f) => f.url === url);
     next.push(existing ?? {
       url,
       label: maskProxy(url),
@@ -1561,7 +1623,11 @@ function loadLegs() {
       parkedUntil: 0,
       usedAt: 0,
       lastError: "",
-      lastStatus: 0
+      lastStatus: 0,
+      // A discovered leg starts with the latency the sweep actually measured.
+      latencyMs: preset ? Math.round(preset.ms) : 0,
+      samples: preset ? 1 : 0,
+      slow: 0
     });
     if (next.length >= MAX_LEGS) break;
   }
@@ -1583,21 +1649,36 @@ function rotationPoolSize() {
 function rotationEnabled() {
   return !rotationDisabled() && rotationPoolSize() > 0;
 }
+function withinBudget(leg) {
+  return leg.samples > 0 && leg.latencyMs > 0 && leg.latencyMs <= LATENCY_BUDGET_MS;
+}
 function nextProxy(skip = /* @__PURE__ */ new Set()) {
   const pool2 = loadLegs().filter((l) => !skip.has(l.url));
   if (!pool2.length) return null;
   const now = Date.now();
   const healthy = pool2.filter((l) => l.parkedUntil <= now);
-  const ordered = healthy.length ? healthy : pool2.slice().sort((a, b) => a.parkedUntil - b.parkedUntil);
-  const leg = ordered[cursor % ordered.length];
+  const usable = healthy.length ? healthy : pool2.slice().sort((a, b) => a.parkedUntil - b.parkedUntil);
+  const fast = usable.filter((l) => withinBudget(l)).sort((a, b) => a.latencyMs - b.latencyMs);
+  const unmeasured = usable.filter((l) => l.samples === 0);
+  const slow = usable.filter((l) => l.samples > 0 && !withinBudget(l));
+  const ring = (arr) => arr.length ? arr.slice(cursor % arr.length).concat(arr.slice(0, cursor % arr.length)) : [];
+  const ordered = [...ring(fast), ...ring(unmeasured), ...ring(slow)];
+  const leg = ordered[0] || null;
   cursor = (cursor + 1) % Math.max(1, loadLegs().length);
-  return leg || null;
+  return leg;
 }
 function noteProxyResult(url, result) {
   const leg = loadLegs().find((l) => l.url === url);
   if (!leg) return;
   leg.usedAt = Date.now();
   leg.lastStatus = result.status || 0;
+  const ms = Number(result.ms);
+  if (Number.isFinite(ms) && ms > 0) {
+    if (leg.latencyMs > 0) leg.latencyMs = Math.round(leg.latencyMs * (1 - EWMA_ALPHA) + ms * EWMA_ALPHA);
+    else leg.latencyMs = Math.round(ms);
+    leg.samples += 1;
+    if (ms > LATENCY_BUDGET_MS) leg.slow += 1;
+  }
   if (result.ok && !result.gated) {
     leg.ok += 1;
     leg.streak = 0;
@@ -1624,6 +1705,8 @@ function proxyPoolStatus() {
     size: legs.length,
     healthy: legs.filter((l) => l.parkedUntil <= now).length,
     parked: legs.filter((l) => l.parkedUntil > now).length,
+    latencyBudgetMs: LATENCY_BUDGET_MS,
+    fast: legs.filter((l) => l.parkedUntil <= now && withinBudget(l)).length,
     legs: legs.map((l) => ({
       label: l.label,
       ok: l.ok,
@@ -1632,13 +1715,21 @@ function proxyPoolStatus() {
       parkedForSec: l.parkedUntil > now ? Math.ceil((l.parkedUntil - now) / 1e3) : 0,
       lastStatus: l.lastStatus,
       lastError: l.lastError,
-      usedSecAgo: l.usedAt ? Math.round((now - l.usedAt) / 1e3) : null
+      usedSecAgo: l.usedAt ? Math.round((now - l.usedAt) / 1e3) : null,
+      latencyMs: l.latencyMs,
+      samples: l.samples,
+      withinBudgetMs: withinBudget(l),
+      slow: l.slow
     }))
   };
 }
-var PARK_LADDER_MS, HOPELESS_PARK_MS, HOPELESS_FAILS, MAX_LEGS, legs, cursor, signature;
+var import_fs2, import_path3, LATENCY_BUDGET_MS, EWMA_ALPHA, PARK_LADDER_MS, HOPELESS_PARK_MS, HOPELESS_FAILS, MAX_LEGS, legs, cursor, signature;
 var init_proxyRotator = __esm({
   "server/common/proxyRotator.ts"() {
+    import_fs2 = __toESM(require("fs"), 1);
+    import_path3 = __toESM(require("path"), 1);
+    LATENCY_BUDGET_MS = Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
+    EWMA_ALPHA = 0.4;
     PARK_LADDER_MS = [6e4, 3e5, 12e5];
     HOPELESS_PARK_MS = 36e5;
     HOPELESS_FAILS = 5;
@@ -1967,6 +2058,7 @@ async function cffiFetch(url, opts = {}) {
       tried.add(leg.url);
       let res = null;
       let err = null;
+      const startedAt = Date.now();
       try {
         res = await cffiFetchDirect(url, { ...opts, proxy: leg.url });
       } catch (e2) {
@@ -1977,7 +2069,8 @@ async function cffiFetch(url, opts = {}) {
         ok: !!res && !legGated,
         status: res?.status,
         gated: legGated,
-        error: err ? String(err.message || err) : void 0
+        error: err ? String(err.message || err) : void 0,
+        ms: Date.now() - startedAt
       });
       if (res && !legGated) return { ...res, via: "proxy" };
       if (res) {
@@ -2405,7 +2498,7 @@ function controlUrlFor(url) {
 }
 function loadProbeState() {
   try {
-    const raw = JSON.parse((0, import_fs2.readFileSync)(PATTERN_FILE, "utf8"));
+    const raw = JSON.parse((0, import_fs3.readFileSync)(PATTERN_FILE, "utf8"));
     for (const [k, v] of Object.entries(raw || {})) {
       if (v && typeof v.at === "number") probeCache.set(k, v);
     }
@@ -2414,10 +2507,10 @@ function loadProbeState() {
 }
 function saveProbeState() {
   try {
-    (0, import_fs2.mkdirSync)("data", { recursive: true });
+    (0, import_fs3.mkdirSync)("data", { recursive: true });
     const out = {};
     for (const [k, v] of probeCache) out[k] = v;
-    (0, import_fs2.writeFileSync)(PATTERN_FILE, JSON.stringify(out, null, 2));
+    (0, import_fs3.writeFileSync)(PATTERN_FILE, JSON.stringify(out, null, 2));
   } catch {
   }
 }
@@ -2499,11 +2592,11 @@ async function enrichBusRows(items, ctx) {
     }
   }));
 }
-var import_crypto2, import_fs2, PROBE_TTL_MS, SEAT_SIGNALS, probeCache, probing, slug, PATTERN_FILE, PLATFORM_OF_SELLER;
+var import_crypto2, import_fs3, PROBE_TTL_MS, SEAT_SIGNALS, probeCache, probing, slug, PATTERN_FILE, PLATFORM_OF_SELLER;
 var init_seatLink = __esm({
   "server/bus/seatLink.ts"() {
     import_crypto2 = require("crypto");
-    import_fs2 = require("fs");
+    import_fs3 = require("fs");
     init_curlCffiFetch();
     init_logger();
     PROBE_TTL_MS = 24 * 3600 * 1e3;
@@ -5691,14 +5784,14 @@ var init_mmtHotelLanding = __esm({
 
 // server/common/cityAlias.ts
 function cityVariants(city) {
-  const n = norm(city);
+  const n = norm2(city);
   const out = [n];
   for (const g of ALIAS_GROUPS) if (g.includes(n)) {
     for (const a of g) if (!out.includes(a)) out.push(a);
   }
   return out;
 }
-var ALIAS_GROUPS, norm, slugOf;
+var ALIAS_GROUPS, norm2, slugOf;
 var init_cityAlias = __esm({
   "server/common/cityAlias.ts"() {
     ALIAS_GROUPS = [
@@ -5723,8 +5816,8 @@ var init_cityAlias = __esm({
       ["panaji", "panjim", "goa"],
       ["ayodhya", "faizabad"]
     ];
-    norm = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-    slugOf = (s) => norm(s).replace(/\s+/g, "-");
+    norm2 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    slugOf = (s) => norm2(s).replace(/\s+/g, "-");
   }
 });
 
@@ -7248,8 +7341,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
             let lastBody = "";
-            for (const path15 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path15}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
+            for (const path17 of oyoCityPaths(city)) {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path17}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -7259,7 +7352,7 @@ var init_hotels = __esm({
               if (r.status !== 200) continue;
               const state = parseOyoPreloadedState(r.body);
               const hotels = parseOyoHotels(state || {});
-              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path15 });
+              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path17 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
@@ -7279,8 +7372,8 @@ var init_hotels = __esm({
             if (!city || city.length < 3) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
-            for (const path15 of emtCityPaths(city)) {
-              const r = await cffiFetch(`https://www.easemytrip.com/${path15}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+            for (const path17 of emtCityPaths(city)) {
+              const r = await cffiFetch(`https://www.easemytrip.com/${path17}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
@@ -7291,7 +7384,7 @@ var init_hotels = __esm({
               if (!items.length) continue;
               const links = parseEmtHotelLinks(r.body);
               const hotels = parseEmtHotels(items, links);
-              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path15 });
+              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path17 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
@@ -7778,7 +7871,7 @@ async function loadAirports() {
     const country = (f[3] || "").trim();
     if (!city || !country) continue;
     const ap = { iata, city, country, name: (f[1] || "").trim() };
-    const key = norm2(city);
+    const key = norm3(city);
     const bucket = byCity.get(key);
     if (bucket) bucket.push(ap);
     else byCity.set(key, [ap]);
@@ -7787,7 +7880,7 @@ async function loadAirports() {
   return byCity;
 }
 async function cityToAirport(city) {
-  const key = norm2(city);
+  const key = norm3(city);
   if (!key) return { code: null, city, country: "" };
   const missAt = missCache.get(key);
   if (missAt && Date.now() - missAt < TTL_MISS) return { code: null, city, country: "" };
@@ -7796,7 +7889,7 @@ async function cityToAirport(city) {
     let bucket = byCity.get(key);
     if (!bucket) {
       for (const [ck, aps] of byCity) {
-        if (aps.some((a) => norm2(a.name).includes(key))) {
+        if (aps.some((a) => norm3(a.name).includes(key))) {
           bucket = aps;
           break;
         }
@@ -7814,7 +7907,7 @@ async function cityToAirport(city) {
     return { code: null, city, country: "" };
   }
 }
-var URL_DAT, PREFERRED, PREF_RANK, IATA, TTL_OK, TTL_MISS, cache3, missCache, norm2;
+var URL_DAT, PREFERRED, PREF_RANK, IATA, TTL_OK, TTL_MISS, cache3, missCache, norm3;
 var init_airportLookup = __esm({
   "server/common/airportLookup.ts"() {
     init_logger();
@@ -7966,7 +8059,7 @@ var init_airportLookup = __esm({
     TTL_MISS = 10 * 6e4;
     cache3 = null;
     missCache = /* @__PURE__ */ new Map();
-    norm2 = (s) => s.toLowerCase().replace(/[’'’.]/g, "").replace(/\s+/g, " ").trim();
+    norm3 = (s) => s.toLowerCase().replace(/[’'’.]/g, "").replace(/\s+/g, " ").trim();
   }
 });
 
@@ -18521,24 +18614,24 @@ var init_indriveIntercity = __esm({
 });
 
 // server/common/geoProxy.ts
-async function throttledNominatim(path15) {
-  const hit = cache4.get(path15);
+async function throttledNominatim(path17) {
+  const hit = cache4.get(path17);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCallAt = Date.now();
   try {
-    const r = await fetch(`${NOMINATIM}${path15}`, {
+    const r = await fetch(`${NOMINATIM}${path17}`, {
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path15.slice(0, 60)}`);
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path17.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(path15, { at: Date.now(), value });
+    cache4.set(path17, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -18548,16 +18641,16 @@ async function throttledNominatim(path15) {
 async function geoSearch(q3, limit = 6) {
   const clean3 = q3.trim().slice(0, 120);
   if (clean3.length < 2) return [];
-  const path15 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
-  const rows = await throttledNominatim(path15);
+  const path17 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path17);
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
 }
 async function geoReverse(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const la = lat.toFixed(6), lo = lng.toFixed(6);
-  const path15 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
-  const row = await throttledNominatim(path15);
+  const path17 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path17);
   const a = row?.address;
   if (!row || !a) return null;
   const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
@@ -18572,24 +18665,24 @@ async function geoReverse(lat, lng) {
     pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
   };
 }
-async function throttledPhoton(path15) {
-  const hit = cache4.get(path15);
+async function throttledPhoton(path17) {
+  const hit = cache4.get(path17);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastPhotonAt + PHOTON_MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastPhotonAt = Date.now();
   try {
-    const r = await fetch(`${PHOTON}${path15}`, {
+    const r = await fetch(`${PHOTON}${path17}`, {
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(6e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path15.slice(0, 60)}`);
+      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path17.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(`photon:${path15}`, { at: Date.now(), value });
+    cache4.set(`photon:${path17}`, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Photon unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -18678,9 +18771,9 @@ async function rapidoServedCities(fetchText) {
   const xml = await fetchText(CITIES_SITEMAP);
   const cities = [];
   for (const m of xml.matchAll(/<loc>https:\/\/www\.rapido\.bike\/([^/]+)\/main-page<\/loc>/g)) {
-    const path15 = m[1];
-    if (!path15 || path15.includes(".")) continue;
-    cities.push({ name: decodeURIComponent(path15).replace(/[_%20]/g, " ").trim(), mainPagePath: path15 });
+    const path17 = m[1];
+    if (!path17 || path17.includes(".")) continue;
+    cities.push({ name: decodeURIComponent(path17).replace(/[_%20]/g, " ").trim(), mainPagePath: path17 });
   }
   if (!cities.length) throw new Error(`Rapido cities sitemap carried no city pages (len=${xml.length})`);
   citiesCache = { at: Date.now(), cities };
@@ -19028,12 +19121,12 @@ async function initThiqa() {
     if (wsha !== RAPIDO_THIQA_WASM_B64_SHA256) throw new Error(`thiqa wasm sha256 mismatch (${wsha})`);
     const gsha = (0, import_crypto12.createHash)("sha256").update(RAPIDO_THIQA_GLUE, "utf8").digest("hex");
     if (gsha !== RAPIDO_THIQA_GLUE_SHA256) throw new Error(`thiqa glue sha256 mismatch (${gsha})`);
-    const dir = import_path3.default.join(import_os.default.tmpdir(), "try1s-rapido-thiqa");
-    import_fs3.default.mkdirSync(dir, { recursive: true });
-    const wasmPath = import_path3.default.join(dir, "platform-mobile-sdks-thiqa-kmp.wasm");
-    import_fs3.default.writeFileSync(wasmPath, wasm);
+    const dir = import_path4.default.join(import_os.default.tmpdir(), "try1s-rapido-thiqa");
+    import_fs4.default.mkdirSync(dir, { recursive: true });
+    const wasmPath = import_path4.default.join(dir, "platform-mobile-sdks-thiqa-kmp.wasm");
+    import_fs4.default.writeFileSync(wasmPath, wasm);
     const wasmFileUrl = `file://${wasmPath}`;
-    const META = `{url:'file://${import_path3.default.join(dir, "harness.js")}',resolve:function(p){return '${wasmFileUrl}'}}`;
+    const META = `{url:'file://${import_path4.default.join(dir, "harness.js")}',resolve:function(p){return '${wasmFileUrl}'}}`;
     let glue = RAPIDO_THIQA_GLUE.replace(/\bexport\s+/g, "").replace(/import\.meta/g, META).replace(/window\.location\.hostname/g, `'m.rapido.bike'`);
     const fakeFetch = () => Promise.resolve(new Response(wasm, { status: 200, headers: { "Content-Type": "application/wasm" } }));
     const instantiate = new Function("fetch", `${glue}
@@ -19298,13 +19391,13 @@ function buildRapidoFareRows(inp) {
   void route2;
   return rows;
 }
-var import_crypto12, import_fs3, import_os, import_path3, M_RAPIDO, FARE_URL, SERVICES_URL, DEVICE_HEADERS, DEVICE_ID, sigCfg, thiqaMod, thiqaBrokenUntil, servicesCache;
+var import_crypto12, import_fs4, import_os, import_path4, M_RAPIDO, FARE_URL, SERVICES_URL, DEVICE_HEADERS, DEVICE_ID, sigCfg, thiqaMod, thiqaBrokenUntil, servicesCache;
 var init_rapidoFares = __esm({
   "server/workers/parsers/rapidoFares.ts"() {
     import_crypto12 = require("crypto");
-    import_fs3 = __toESM(require("fs"), 1);
+    import_fs4 = __toESM(require("fs"), 1);
     import_os = __toESM(require("os"), 1);
-    import_path3 = __toESM(require("path"), 1);
+    import_path4 = __toESM(require("path"), 1);
     init_contract();
     init_curlCffiFetch();
     init_rapidoThiqaAsset();
@@ -24496,9 +24589,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path15, timeoutMs = 12e3) {
+async function gwJson(host, path17, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path15}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path17}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -28744,26 +28837,26 @@ function loadRegistry() {
   try {
     const candidates = [];
     try {
-      candidates.push(import_path4.default.join(import_path4.default.dirname((0, import_url.fileURLToPath)(import_meta2.url)), "campaigns.csv"));
+      candidates.push(import_path5.default.join(import_path5.default.dirname((0, import_url.fileURLToPath)(import_meta2.url)), "campaigns.csv"));
     } catch {
     }
     try {
       const d = typeof globalThis.__dirname === "string" ? globalThis.__dirname : null;
-      if (d) candidates.push(import_path4.default.join(d, "campaigns.csv"));
+      if (d) candidates.push(import_path5.default.join(d, "campaigns.csv"));
     } catch {
     }
-    candidates.push(import_path4.default.join(process.cwd(), "server", "affiliate", "linkinr", "campaigns.csv"));
-    candidates.push(import_path4.default.join(process.cwd(), "campaigns.csv"));
+    candidates.push(import_path5.default.join(process.cwd(), "server", "affiliate", "linkinr", "campaigns.csv"));
+    candidates.push(import_path5.default.join(process.cwd(), "campaigns.csv"));
     const csvPath = candidates.find((c) => {
       try {
-        import_fs4.default.accessSync(c);
+        import_fs5.default.accessSync(c);
         return true;
       } catch {
         return false;
       }
     });
     if (!csvPath) throw new Error(`campaigns.csv not found (tried ${candidates.length} paths)`);
-    const text = import_fs4.default.readFileSync(csvPath, "utf8");
+    const text = import_fs5.default.readFileSync(csvPath, "utf8");
     const rows = parseCsv(text);
     if (!rows.length) return campaignByDomain = map;
     const header = rows[0].map((h) => h.trim().toLowerCase());
@@ -28839,11 +28932,11 @@ function linkinrStats() {
   const m = loadRegistry();
   return { campaigns: m.size, domains: m.size, enabled: linkinrEnabled() };
 }
-var import_fs4, import_path4, import_crypto22, import_url, import_meta2, campaignByDomain;
+var import_fs5, import_path5, import_crypto22, import_url, import_meta2, campaignByDomain;
 var init_linkinr = __esm({
   "server/affiliate/linkinr/index.ts"() {
-    import_fs4 = __toESM(require("fs"), 1);
-    import_path4 = __toESM(require("path"), 1);
+    import_fs5 = __toESM(require("fs"), 1);
+    import_path5 = __toESM(require("path"), 1);
     import_crypto22 = __toESM(require("crypto"), 1);
     import_url = require("url");
     import_meta2 = {};
@@ -29068,15 +29161,31 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
   }
   if (vertical === "hotels" || has("hotel", "stay", "rooms", "oyo")) {
     const ci = d ? d.iso : "";
+    const nights = (() => {
+      if (!d) return 0;
+      const r0 = dates(ctx.return);
+      if (r0) {
+        const a = Date.parse(`${d.iso}T00:00:00Z`);
+        const b = Date.parse(`${r0.iso}T00:00:00Z`);
+        const n = Math.round((b - a) / 864e5);
+        if (Number.isFinite(n) && n > 0) return Math.min(n, 30);
+      }
+      return 1;
+    })();
     const co = (() => {
       if (!d) return "";
+      if (nights > 0) {
+        const dt2 = /* @__PURE__ */ new Date(`${d.iso}T00:00:00Z`);
+        dt2.setUTCDate(dt2.getUTCDate() + nights);
+        return dt2.toISOString().slice(0, 10);
+      }
       const dt = /* @__PURE__ */ new Date(`${d.iso}T00:00:00Z`);
       dt.setUTCDate(dt.getUTCDate() + 1);
       return dt.toISOString().slice(0, 10);
     })();
-    if (has("hotels.com")) return `https://www.hotels.com/Hotel-Search?destination=${cq || "Goa"}`;
-    if (has("hotwire")) return `https://www.hotwire.com/hotels/search?destination=${cq}`;
-    if (has("orbitz")) return `https://www.orbitz.com/Hotel-Search?destination=${cq}`;
+    if (has("hotels.com")) return `https://www.hotels.com/Hotel-Search?destination=${cq || "Goa"}${ci ? `&startDate=${ci}&endDate=${co}` : ""}&adults=2`;
+    if (has("hotwire")) return `https://www.hotwire.com/hotels/search?destination=${cq}${ci ? `&startDate=${ci}&endDate=${co}` : ""}`;
+    if (has("orbitz")) return `https://www.orbitz.com/Hotel-Search?destination=${cq}${ci ? `&startDate=${ci}&endDate=${co}` : ""}`;
     if (has("traveloka")) return "https://www.traveloka.com/en-in/hotel";
     if (has("hostelworld")) return "https://www.hostelworld.com/";
     if (has("destinia")) return "https://www.destinia.com/hotels";
@@ -29096,19 +29205,19 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
       return city ? `https://www.booking.com/searchresults.html?ss=${cq}${ci ? `&checkin=${ci}&checkout=${co}` : ""}&group_adults=2&no_rooms=1&group_children=0` : "https://www.booking.com/searchresults.html";
     }
     if (has("agoda")) {
-      return city ? `https://www.agoda.com/search?q=${cq}${ci ? `&checkIn=${ci}&los=1` : ""}` : "https://www.agoda.com/";
+      return city ? `https://www.agoda.com/search?q=${cq}${ci ? `&checkIn=${ci}&checkOut=${co}&los=${nights || 1}&adults=2&rooms=1` : ""}` : "https://www.agoda.com/";
     }
     if (has("yatra")) {
-      return city ? `https://www.yatra.com/hotels/hotels-in-${slug2(city)}` : "https://www.yatra.com/hotels";
+      return city ? `https://www.yatra.com/hotels/hotels-in-${slug2(city)}${ci ? `?checkin=${d.dmy.replace(/\//g, "-")}&checkout=${co.split("-").reverse().join("-")}&rooms=1&adults=2` : ""}` : "https://www.yatra.com/hotels";
     }
     if (has("cleartrip")) {
-      return city ? `https://www.cleartrip.com/hotels/india/${slug2(city)}-hotels` : "https://www.cleartrip.com/hotels";
+      return city ? `https://www.cleartrip.com/hotels/india/${slug2(city)}-hotels${ci ? `?checkin=${d.dmy.replace(/\//g, "-")}&checkout=${co.split("-").reverse().join("-")}&rooms=1&adults=2` : ""}` : "https://www.cleartrip.com/hotels";
     }
     if (has("easemytrip", "ease my trip")) {
       return city ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}` : "https://www.easemytrip.com/hotels/";
     }
     if (has("oyo")) {
-      return city ? `https://www.oyorooms.com/search?location=${cq}` : "https://www.oyorooms.com/";
+      return city ? `https://www.oyorooms.com/search?location=${cq}${ci ? `&checkin=${ci}&checkout=${co}&rooms=1&guests=2` : ""}` : "https://www.oyorooms.com/";
     }
     if (has("saffron")) {
       return city ? `https://www.saffronstays.com/search?q=${cq}` : "https://www.saffronstays.com/";
@@ -31238,7 +31347,7 @@ var init_queryRelevance = __esm({
 
 // server/lens/ecomDepartments.ts
 function resolveEcomDepartment(query) {
-  const key = norm3(query);
+  const key = norm4(query);
   if (!key) return null;
   return ALIAS_INDEX.get(key) ?? null;
 }
@@ -31296,12 +31405,12 @@ function rowHasCategoryEvidence(title, brand, dept) {
 function filterRowsForDepartment(rows, dept) {
   return rows.filter((r) => rowMatchesDepartment(String(r?.title || ""), dept));
 }
-var HEAD_WORDS, head, norm3, DEPARTMENTS, ALIAS_INDEX, OTHER, GLOBAL_ACCESSORY;
+var HEAD_WORDS, head, norm4, DEPARTMENTS, ALIAS_INDEX, OTHER, GLOBAL_ACCESSORY;
 var init_ecomDepartments = __esm({
   "server/lens/ecomDepartments.ts"() {
     HEAD_WORDS = 7;
     head = (title) => String(title || "").toLowerCase().replace(/[|/,+]/g, " ").split(/\s+/).filter(Boolean).slice(0, HEAD_WORDS).join(" ");
-    norm3 = (s) => String(s || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+    norm4 = (s) => String(s || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
     DEPARTMENTS = [
       {
         id: "ecom-smartphones",
@@ -31433,7 +31542,7 @@ var init_ecomDepartments = __esm({
     ALIAS_INDEX = /* @__PURE__ */ new Map();
     for (const d of DEPARTMENTS) {
       for (const a of [d.id, d.label, ...d.aliases]) {
-        const k = norm3(a);
+        const k = norm4(a);
         if (k && !ALIAS_INDEX.has(k)) ALIAS_INDEX.set(k, d);
       }
     }
@@ -31980,10 +32089,22 @@ async function buildFlightSellerPresence(parsed, combined, succeededSourceIds) {
   const presentSellers = new Set(
     combined.filter((o) => (Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0) > 0).map((o) => `${o.seller || ""}`.toLowerCase().trim()).filter(Boolean)
   );
+  const carrierPresent = (seller) => {
+    const needle = String(seller || "").toLowerCase().replace(/\s*air\s*$/i, "").trim();
+    if (!needle) return false;
+    return combined.some((o) => {
+      const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+      if (!(price > 0)) return false;
+      const attrs = o.attributes || {};
+      const hay = `${attrs.airline || ""} ${o.title || ""} ${o.brand || ""}`.toLowerCase();
+      return hay.includes(needle);
+    });
+  };
   const out = [];
   const succeeded = new Set((succeededSourceIds || []).map((x) => String(x)));
   for (const cfg of PRESENCE_SELLERS) {
     if (presentSellers.has(cfg.seller.toLowerCase())) continue;
+    if (carrierPresent(cfg.seller)) continue;
     if (succeeded.has(cfg.sourceId)) continue;
     const h = getHealth(cfg.sourceId);
     if (h.lastFailureClass === "EMPTY_RESPONSE" && !cfg.showOnEmpty) continue;
@@ -32084,7 +32205,7 @@ var init_sellerPresence = __esm({
 function busOperatorKey(row) {
   const a = row.attributes || {};
   const raw = String(a["operator"] || a["bus operator"] || a["travels"] || row.title || "");
-  return norm4(raw.split(/[·|(-]/)[0] || raw);
+  return norm5(raw.split(/[·|(-]/)[0] || raw);
 }
 function clock(value) {
   const m = /(\d{1,2})[:.](\d{2})\s*([ap]\.?m\.?)?/i.exec(String(value || ""));
@@ -32151,10 +32272,10 @@ function orderTimedFirst(rows) {
 function repairBusSchedule(rows) {
   return orderTimedFirst(backfillBusSchedule(rows));
 }
-var norm4, hasTime, priceOf;
+var norm5, hasTime, priceOf;
 var init_busSchedule = __esm({
   "server/verticals/busSchedule.ts"() {
-    norm4 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(travels|travel|services|service|bus|buses|express|roadlines|roadways|transport|transportation|motors|tour|tours|and|the)\b/g, " ").replace(/\s+/g, " ").trim();
+    norm5 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(travels|travel|services|service|bus|buses|express|roadlines|roadways|transport|transportation|motors|tour|tours|and|the)\b/g, " ").replace(/\s+/g, " ").trim();
     hasTime = (row) => {
       const a = row.attributes || {};
       if (String(a["timing unavailable"] || "") === "1") return false;
@@ -32657,7 +32778,7 @@ async function findCatalogueOffers(vertical, opts = {}) {
     return await store4.query(
       `SELECT id, vertical, title, vendor, seller, location_pincode, location_city, mandatory_total, effective_price,
               currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id,
-              seller_url, brand
+              seller_url, brand, attributes
        FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT ?`,
       params
     );
@@ -32784,7 +32905,7 @@ function remember(entry) {
   const prev = memory.get(key);
   if (prev && prev.observedAt > entry.observedAt) return;
   memory.set(key, entry);
-  if (memory.size > MAX_ENTRIES) {
+  if (memory.size > MAX_ENTRIES2) {
     const oldest = memory.keys().next().value;
     if (oldest) memory.delete(oldest);
   }
@@ -32922,11 +33043,11 @@ function hasFlightSchedule(item) {
   const fromRow = timesOf(item);
   return !!(fromRow.departure && fromRow.arrival);
 }
-var MAX_ENTRIES, persistEnabled, memory, tableReady, pendingWrites, keyOf, attr, DEP_KEYS2, ARR_KEYS2, textTimes, timesOf, routeOf, flightNoOf;
+var MAX_ENTRIES2, persistEnabled, memory, tableReady, pendingWrites, keyOf, attr, DEP_KEYS2, ARR_KEYS2, textTimes, timesOf, routeOf, flightNoOf;
 var init_flightSchedule = __esm({
   "server/common/flightSchedule.ts"() {
     init_db();
-    MAX_ENTRIES = 4e3;
+    MAX_ENTRIES2 = 4e3;
     persistEnabled = () => process.env.NODE_ENV !== "test" && process.env.T1S_SCHEDULE_DB !== "off";
     memory = /* @__PURE__ */ new Map();
     tableReady = false;
@@ -33312,6 +33433,39 @@ var init_affiliateNetwork = __esm({
       ].join("|") + ")$",
       "i"
     );
+  }
+});
+
+// server/api/pollBudget.ts
+var PENDING_WINDOW_MS, KEY_TTL_MS, entries, sweep, pollKey, allowPending, forgetPending;
+var init_pollBudget = __esm({
+  "server/api/pollBudget.ts"() {
+    PENDING_WINDOW_MS = 45e3;
+    KEY_TTL_MS = 10 * 6e4;
+    entries = /* @__PURE__ */ new Map();
+    sweep = (now) => {
+      if (entries.size < 512) return;
+      for (const [key, e2] of entries) {
+        if (now - e2.seenAt > KEY_TTL_MS) entries.delete(key);
+      }
+    };
+    pollKey = (parts) => parts.map((p) => String(p ?? "").trim().toLowerCase()).join("|");
+    allowPending = (key, pending, now = Date.now()) => {
+      if (!pending) return false;
+      if (!key) return true;
+      sweep(now);
+      const existing = entries.get(key);
+      if (!existing) {
+        entries.set(key, { firstPendingAt: now, seenAt: now });
+        return true;
+      }
+      existing.seenAt = now;
+      if (now - existing.firstPendingAt > PENDING_WINDOW_MS) return false;
+      return true;
+    };
+    forgetPending = (key) => {
+      if (key) entries.delete(key);
+    };
   }
 });
 
@@ -33870,6 +34024,25 @@ async function runSearchPipeline(input) {
     v.state.reusedCache = true;
     v.latencyMs = Date.now() - totalStart;
     v.totalSearchLatencyMs = v.latencyMs;
+    if (v.state?.pendingRefresh) {
+      const busy = inflightPipelines.get(cacheKey);
+      if (busy) {
+        const settled = await Promise.race([
+          busy.then((r) => r, () => null),
+          new Promise((res) => setTimeout(() => res(null), 2500))
+        ]);
+        if (settled) {
+          for (const o of settled.results) {
+            if (o.provenance) o.provenance.replayedAfterPipeline = true;
+          }
+          settled.latencyMs = Date.now() - totalStart;
+          settled.totalSearchLatencyMs = settled.latencyMs;
+          cachePut(cacheKey, settled, ttlSec, staleSec);
+          if (!settled.state.pendingRefresh) forgetPending(pollKey([vertical, input.query, input.city, input.pincode, parsed.travelDates?.depart]));
+          return settled;
+        }
+      }
+    }
     if (!cachedSearch.fresh) {
       revalidateInBackground(cacheKey, ttlSec, () => runLivePipeline(input, parsed));
     }
@@ -34015,12 +34188,34 @@ async function buildLiveCtx(parsedIn, input) {
     reusedCatalogue: false,
     triggeredRefresh: false
   };
-  const catalogueRows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  const reqDate = String(parsed.travelDates?.depart || "").slice(0, 10);
+  const catalogueRows = await findCatalogueOffers(vertical, {
+    pincode: input.pincode,
+    city: input.city,
+    limit: 40,
+    date: reqDate || void 0
+  });
   const now = Date.now();
-  const eligible = catalogueRows.filter((r) => {
+  const ageOk = catalogueRows.filter((r) => {
     const ageSec = (now - new Date(r.fetched_at).getTime()) / 1e3;
     return ageSec < 3600 && r.validation_status !== "INVALID";
   });
+  const dateSensitive = ["flights", "hotels", "bus", "cab"].includes(String(vertical));
+  const dateOf = (r) => {
+    const a = parseCatalogueAttributes(r?.attributes);
+    const raw = String(a.travel_date || a.date || a.checkin || a.check_in || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : "";
+  };
+  const eligible = !dateSensitive || !reqDate ? ageOk : ageOk.filter((r) => dateOf(r) === reqDate);
+  const droppedForDate = ageOk.length - eligible.length;
+  if (droppedForDate > 0) {
+    log.info("Search", "catalogue rows dropped for a different travel date", {
+      vertical,
+      reqDate,
+      dropped: droppedForDate,
+      kept: eligible.length
+    });
+  }
   const catalogueOffers = String(vertical) === "flights" ? enrichFlightSchedules(eligible.map((r) => rowToOffer(r, false))) : eligible.map((r) => rowToOffer(r, false));
   const hasEligibleFresh = catalogueOffers.length > 0;
   const enabledSources = selectSources(parsed);
@@ -34291,6 +34486,7 @@ var init_searchOrchestrator = __esm({
     init_rapidoPriceGate();
     init_verticalEngine();
     init_affiliateNetwork();
+    init_pollBudget();
     BUS_PRIMARY_LIVE_SELLERS = ["abhibus", "redbus"];
     inflightPipelines = /* @__PURE__ */ new Map();
     inflightPartials = /* @__PURE__ */ new Map();
@@ -34632,7 +34828,7 @@ function cacheable(res) {
   const served = String(res.state?.servedFrom || "");
   return served !== "unavailable" && served !== "validation";
 }
-function store2(key, res) {
+function store3(key, res) {
   if (!cacheable(res)) return;
   if (repeatCache.size >= REPEAT_CACHE_MAX) {
     const entries2 = [...repeatCache.entries()].sort((a, b) => a[1].at - b[1].at);
@@ -34669,7 +34865,7 @@ async function runLiveSearch(input, opts = {}) {
     }
     return null;
   }
-  store2(key, outcome.value);
+  store3(key, outcome.value);
   return outcome.value;
 }
 var repeatCache, REPEAT_TTL_MS, REPEAT_CACHE_MAX, liveGateStats;
@@ -34687,71 +34883,236 @@ var init_liveSearchGate = __esm({
   }
 });
 
-// server/search/lastKnownGood.ts
-function searchKey(input) {
-  return [
-    norm5(input.vertical || ""),
-    norm5(input.query || ""),
-    norm5(input.city || ""),
-    norm5(input.pincode || ""),
-    norm5(input.travelDates?.depart || "")
-  ].join("|");
+// server/common/proxyDiscovery.ts
+function proxyLatencyBudget() {
+  return Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
 }
-function rememberGood(input, rows, servedFrom = "") {
-  if (!Array.isArray(rows) || rows.length === 0) return;
-  const key = searchKey(input);
-  if (!key.trim()) return;
-  store3.set(key, { rows, at: Date.now(), servedFrom });
-  if (store3.size > MAX_ENTRIES2) {
-    const oldest = [...store3.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, store3.size - MAX_ENTRIES2);
-    for (const [k] of oldest) store3.delete(k);
+function normalizeProxy(raw) {
+  const t = raw.trim();
+  if (!t) return "";
+  if (/^(https?|socks[45]):\/\//i.test(t)) return t;
+  if (/^\d{1,3}(\.\d{1,3}){3}:\d{2,5}$/.test(t)) return `http://${t}`;
+  return "";
+}
+async function fetchList(source) {
+  try {
+    const r = await cffiFetch(source.url, {
+      impersonate: "chrome",
+      timeoutMs: 12e3,
+      headers: { Accept: "text/plain,text/html,*/*" }
+    });
+    if (r.status !== 200) {
+      log.warn("ProxyDiscovery", `${source.name} HTTP ${r.status}`);
+      return [];
+    }
+    const text = r.body;
+    const out = [];
+    for (const m of text.matchAll(/(?:(?:https?|socks[45]):\/\/)?(\d{1,3}(?:\.\d{1,3}){3}:\d{2,5})/g)) {
+      const url = normalizeProxy(m[0]);
+      if (url) out.push({ url, source: source.name });
+    }
+    return out;
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `${source.name} unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
+    return [];
   }
 }
-function recallGood(input, maxAgeMs = 6 * 60 * 60 * 1e3) {
-  const hit = store3.get(searchKey(input));
-  if (!hit || !hit.rows.length) return null;
-  if (Date.now() - hit.at > maxAgeMs) return null;
-  return hit;
-}
-var MAX_ENTRIES2, store3, norm5;
-var init_lastKnownGood = __esm({
-  "server/search/lastKnownGood.ts"() {
-    MAX_ENTRIES2 = 400;
-    store3 = /* @__PURE__ */ new Map();
-    norm5 = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+async function probeProxy(candidate) {
+  const budget = proxyLatencyBudget();
+  const startedAt = Date.now();
+  let res = null;
+  let err = null;
+  try {
+    res = await cffiFetch(PROBE_TARGET, {
+      proxy: candidate.url,
+      timeoutMs: Math.max(budget * 2, 1500),
+      impersonate: "chrome"
+    });
+  } catch (e2) {
+    err = e2;
   }
-});
-
-// server/api/pollBudget.ts
-var PENDING_WINDOW_MS, KEY_TTL_MS, entries, sweep, pollKey, allowPending, forgetPending;
-var init_pollBudget = __esm({
-  "server/api/pollBudget.ts"() {
-    PENDING_WINDOW_MS = 25e3;
-    KEY_TTL_MS = 10 * 6e4;
-    entries = /* @__PURE__ */ new Map();
-    sweep = (now) => {
-      if (entries.size < 512) return;
-      for (const [key, e2] of entries) {
-        if (now - e2.seenAt > KEY_TTL_MS) entries.delete(key);
+  const ms = Date.now() - startedAt;
+  const status = Number(res?.status || 0);
+  const body = String(res?.body || "").slice(0, 400).toLowerCase();
+  const gated = /captcha|just a moment|access denied|blocked|challenge/.test(body);
+  if (err) return { url: candidate.url, ok: false, ms, status, reason: String(err.message || err).slice(0, 90) };
+  if (status !== 200) return { url: candidate.url, ok: false, ms, status, reason: `status ${status}` };
+  if (gated) return { url: candidate.url, ok: false, ms, status, reason: "gated page" };
+  if (ms > budget) return { url: candidate.url, ok: false, ms, status, reason: `slow ${ms}ms > ${budget}ms` };
+  return { url: candidate.url, ok: true, ms, status, reason: "ok" };
+}
+async function runProxyDiscovery(opts = {}) {
+  const startedAt = /* @__PURE__ */ new Date();
+  const budget = proxyLatencyBudget();
+  const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
+  const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
+  const lists = await Promise.all(SOURCES.map(fetchList));
+  const seen = /* @__PURE__ */ new Set();
+  const candidates = [];
+  for (const row of lists.flat()) {
+    if (seen.has(row.url)) continue;
+    seen.add(row.url);
+    candidates.push(row);
+    if (candidates.length >= limit) break;
+  }
+  const kept = [];
+  let dropped = 0;
+  let cursor2 = 0;
+  const workers = Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, async () => {
+    while (cursor2 < candidates.length) {
+      const c = candidates[cursor2++];
+      const r = await probeProxy(c);
+      if (r.ok) kept.push(r);
+      else dropped++;
+    }
+  });
+  await Promise.all(workers);
+  kept.sort((a, b) => a.ms - b.ms);
+  const payload = {
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    budgetMs: budget,
+    probeTarget: PROBE_TARGET,
+    proxies: kept.map((k) => ({ url: k.url, ms: k.ms }))
+  };
+  try {
+    import_fs6.default.mkdirSync(import_path6.default.dirname(POOL_FILE), { recursive: true });
+    import_fs6.default.writeFileSync(POOL_FILE, JSON.stringify(payload, null, 2));
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `could not store pool: ${String(e2?.message || e2).slice(0, 80)}`);
+  }
+  const srcOf = (url) => candidates.find((c) => c.url === url)?.source || "sweep";
+  const storedInDb = await storeValidatedProxies(kept, srcOf);
+  const report = {
+    startedAt: startedAt.toISOString(),
+    finishedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    budgetMs: budget,
+    found: candidates.length,
+    probed: candidates.length,
+    passed: kept.length,
+    persistedToDb: storedInDb,
+    kept: kept.slice(0, 40),
+    dropped,
+    storedIn: POOL_FILE,
+    durationMs: Date.now() - startedAt.getTime()
+  };
+  log.info("ProxyDiscovery", `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
+  return report;
+}
+async function ensureProxyTable() {
+  try {
+    const store4 = getStore();
+    await store4.execute(
+      `CREATE TABLE IF NOT EXISTS proxy_pool (
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         url VARCHAR(255) NOT NULL,
+         source VARCHAR(64) NULL,
+         latency_ms INT NOT NULL DEFAULT 0,
+         ok_count INT NOT NULL DEFAULT 0,
+         fail_count INT NOT NULL DEFAULT 0,
+         enabled TINYINT NOT NULL DEFAULT 1,
+         last_error VARCHAR(180) NULL,
+         last_checked_at DATETIME NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         UNIQUE KEY uniq_proxy_url (url)
+       )`
+    );
+    return true;
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `proxy_pool table unavailable: ${String(e2?.message || e2).slice(0, 100)}`);
+    return false;
+  }
+}
+async function storeValidatedProxies(rows, sourceOf) {
+  if (!rows.length) return false;
+  if (!await ensureProxyTable()) return false;
+  try {
+    const store4 = getStore();
+    for (const r of rows) {
+      await store4.execute(
+        `INSERT INTO proxy_pool (url, source, latency_ms, ok_count, last_checked_at)
+         VALUES (?, ?, ?, 1, NOW())
+         ON DUPLICATE KEY UPDATE latency_ms = VALUES(latency_ms), ok_count = ok_count + 1,
+           enabled = 1, last_error = NULL, last_checked_at = NOW()`,
+        [r.url, sourceOf(r.url).slice(0, 64), r.ms]
+      );
+    }
+    return true;
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `proxy store failed: ${String(e2?.message || e2).slice(0, 100)}`);
+    return false;
+  }
+}
+async function listStoredProxies() {
+  const budget = proxyLatencyBudget();
+  if (await ensureProxyTable()) {
+    try {
+      const store4 = getStore();
+      const rows = await store4.query(
+        `SELECT url, source, latency_ms, ok_count, fail_count, enabled, last_error, last_checked_at
+         FROM proxy_pool ORDER BY enabled DESC, latency_ms ASC LIMIT 200`
+      );
+      if (Array.isArray(rows) && rows.length) {
+        return {
+          budgetMs: budget,
+          source: "mysql",
+          rows: rows.map((r) => ({
+            url: String(r.url),
+            source: String(r.source || ""),
+            latencyMs: Number(r.latency_ms) || 0,
+            okCount: Number(r.ok_count) || 0,
+            failCount: Number(r.fail_count) || 0,
+            enabled: !!Number(r.enabled),
+            lastError: String(r.last_error || ""),
+            lastCheckedAt: r.last_checked_at ? new Date(r.last_checked_at).toISOString() : null
+          }))
+        };
       }
-    };
-    pollKey = (parts) => parts.map((p) => String(p ?? "").trim().toLowerCase()).join("|");
-    allowPending = (key, pending, now = Date.now()) => {
-      if (!pending) return false;
-      if (!key) return true;
-      sweep(now);
-      const existing = entries.get(key);
-      if (!existing) {
-        entries.set(key, { firstPendingAt: now, seenAt: now });
-        return true;
-      }
-      existing.seenAt = now;
-      if (now - existing.firstPendingAt > PENDING_WINDOW_MS) return false;
-      return true;
-    };
-    forgetPending = (key) => {
-      if (key) entries.delete(key);
-    };
+    } catch (e2) {
+      log.debug("ProxyDiscovery", "listStoredProxies fell back to file", { error: String(e2).slice(0, 80) });
+    }
+  }
+  const file = readDiscoveredPool();
+  return {
+    budgetMs: budget,
+    source: "file",
+    rows: file.map((f) => ({
+      url: f.url,
+      source: "sweep",
+      latencyMs: f.ms,
+      okCount: 1,
+      failCount: 0,
+      enabled: true,
+      lastError: "",
+      lastCheckedAt: null
+    }))
+  };
+}
+function readDiscoveredPool() {
+  try {
+    const raw = JSON.parse(import_fs6.default.readFileSync(POOL_FILE, "utf8"));
+    const budget = proxyLatencyBudget();
+    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
+    return rows.map((r) => ({ url: String(r?.url || ""), ms: Number(r?.ms || 0) })).filter((r) => r.url && Number.isFinite(r.ms) && r.ms > 0 && r.ms <= budget);
+  } catch {
+    return [];
+  }
+}
+var import_fs6, import_path6, POOL_FILE, SOURCES, PROBE_TARGET;
+var init_proxyDiscovery = __esm({
+  "server/common/proxyDiscovery.ts"() {
+    import_fs6 = __toESM(require("fs"), 1);
+    import_path6 = __toESM(require("path"), 1);
+    init_curlCffiFetch();
+    init_db();
+    init_logger();
+    POOL_FILE = import_path6.default.join(process.cwd(), "data", "proxy-pool.json");
+    SOURCES = [
+      { name: "proxyscrape-http", url: "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=protocolipport&format=text" },
+      { name: "proxyscrape-https", url: "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=https&proxy_format=protocolipport&format=text" },
+      { name: "proxy-list-download", url: "https://www.proxy-list.download/api/v1/get?type=http" }
+    ];
+    PROBE_TARGET = process.env.T1S_PROXY_PROBE_URL || "https://api.ipify.org?format=json";
   }
 });
 
@@ -39897,15 +40258,15 @@ var init_priceAlerts = __esm({
 // src/server/catalogueStore.ts
 function saveCatalogueStore(state) {
   try {
-    if (!import_fs5.default.existsSync(DATA_DIR)) {
-      import_fs5.default.mkdirSync(DATA_DIR, { recursive: true });
+    if (!import_fs7.default.existsSync(DATA_DIR)) {
+      import_fs7.default.mkdirSync(DATA_DIR, { recursive: true });
     }
     memoryState = {
       ...memoryState,
       ...state,
       lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    import_fs5.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
+    import_fs7.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
   } catch (err) {
     console.error("[CatalogueStore] Error saving persistent catalogue to disk:", err.message);
   }
@@ -39925,14 +40286,14 @@ function saveItemToCatalogue(item) {
   }
   saveCatalogueStore({ items: memoryState.items });
 }
-var import_fs5, import_path5, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
+var import_fs7, import_path7, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
 var init_catalogueStore = __esm({
   "src/server/catalogueStore.ts"() {
-    import_fs5 = __toESM(require("fs"), 1);
-    import_path5 = __toESM(require("path"), 1);
+    import_fs7 = __toESM(require("fs"), 1);
+    import_path7 = __toESM(require("path"), 1);
     import_promise2 = __toESM(require("mysql2/promise"), 1);
-    DATA_DIR = import_path5.default.resolve(process.cwd(), ".data");
-    CATALOGUE_FILE = import_path5.default.join(DATA_DIR, "catalogue.json");
+    DATA_DIR = import_path7.default.resolve(process.cwd(), ".data");
+    CATALOGUE_FILE = import_path7.default.join(DATA_DIR, "catalogue.json");
     memoryState = {
       items: [],
       leads: [],
@@ -41721,19 +42082,19 @@ async function importRows(store4, table, cols, rows) {
 async function importFileStoreIntoMysql() {
   const store4 = getStore();
   if (store4.kind !== "mysql") return;
-  const src2 = import_path6.default.join(dataDir, "devstore.json");
-  const lock = import_path6.default.join(dataDir, LOCK);
-  if (!import_fs6.default.existsSync(src2) && !import_fs6.default.existsSync(lock)) return;
+  const src2 = import_path8.default.join(dataDir, "devstore.json");
+  const lock = import_path8.default.join(dataDir, LOCK);
+  if (!import_fs8.default.existsSync(src2) && !import_fs8.default.existsSync(lock)) return;
   let claimed = false;
   try {
-    if (import_fs6.default.existsSync(src2)) import_fs6.default.renameSync(src2, lock);
+    if (import_fs8.default.existsSync(src2)) import_fs8.default.renameSync(src2, lock);
     claimed = true;
-    const data = JSON.parse(import_fs6.default.readFileSync(lock, "utf8"));
+    const data = JSON.parse(import_fs8.default.readFileSync(lock, "utf8"));
     const tables = Object.keys(data).filter((t) => Array.isArray(data[t]) && data[t].length > 0).sort((a, b) => {
       const ai = TABLE_ORDER.indexOf(a), bi = TABLE_ORDER.indexOf(b);
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
     });
-    log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs6.default.existsSync(lock) && claimed})`);
+    log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs8.default.existsSync(lock) && claimed})`);
     for (const table of tables) {
       const cols = await tableColumns(store4, table);
       if (!cols) {
@@ -41743,18 +42104,18 @@ async function importFileStoreIntoMysql() {
       const { ok: ok2, skipped } = await importRows(store4, table, cols, data[table]);
       log.info("FileImport", `'${table}': imported ${ok2}, skipped ${skipped} of ${data[table].length}`);
     }
-    const done = import_path6.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
-    import_fs6.default.renameSync(lock, done);
-    log.info("FileImport", `File-store history import complete \u2014 snapshot kept at ${import_path6.default.basename(done)}`);
+    const done = import_path8.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
+    import_fs8.default.renameSync(lock, done);
+    log.info("FileImport", `File-store history import complete \u2014 snapshot kept at ${import_path8.default.basename(done)}`);
   } catch (err) {
     log.error("FileImport", `Import failed (will resume next boot): ${err && err.message}`);
   }
 }
-var import_fs6, import_path6, LOCK, TABLE_ORDER;
+var import_fs8, import_path8, LOCK, TABLE_ORDER;
 var init_fileImport = __esm({
   "server/common/fileImport.ts"() {
-    import_fs6 = __toESM(require("fs"), 1);
-    import_path6 = __toESM(require("path"), 1);
+    import_fs8 = __toESM(require("fs"), 1);
+    import_path8 = __toESM(require("path"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -41962,11 +42323,19 @@ function hostOfPublic(u) {
     return "";
   }
 }
-function offerToComparisonItem(o) {
+function offerToComparisonItem(o, reqTravel = {}) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
-  const travelCtx = { route: o.travel?.route, date: o.travel?.date };
-  const rawDest = String(o.sellerUrl || "") || merchantSearchFallback(String(o.vendor || o.seller || ""), String(o.title || ""), String(o.vertical || ""), travelCtx);
+  const travelCtx = {
+    route: o.travel?.route || reqTravel.route,
+    date: reqTravel.date || o.travel?.date,
+    return: reqTravel.return,
+    city: reqTravel.city || o.travel?.city
+  };
+  const vertical = String(o.vertical || "");
+  const dateSensitive = vertical === "hotels" || vertical === "flights" || vertical === "bus";
+  const rebuilt = dateSensitive && (reqTravel.date || reqTravel.route) ? merchantSearchFallback(String(o.vendor || o.seller || ""), String(o.title || ""), vertical, travelCtx) : "";
+  const rawDest = rebuilt || String(o.sellerUrl || "") || merchantSearchFallback(String(o.vendor || o.seller || ""), String(o.title || ""), vertical, travelCtx);
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || "") }) : "";
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || "Verified source"));
   const attrs = o.attributes || {};
@@ -42328,6 +42697,7 @@ var init_routes = __esm({
     init_searchOrchestrator();
     init_liveSearchGate();
     init_proxyRotator();
+    init_proxyDiscovery();
     init_ecomDepartments();
     init_lastKnownGood();
     init_pollBudget();
@@ -42968,6 +43338,27 @@ var init_routes = __esm({
       res.setHeader("Cache-Control", "no-store");
       res.json({ ok: true, ...proxyPoolStatus() });
     });
+    apiRouter.get("/admin/proxy-list", authMiddleware, requireAdmin, async (_req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      try {
+        const list = await listStoredProxies();
+        res.json({ ok: true, ...list, rotation: proxyPoolStatus() });
+      } catch (e2) {
+        res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 200) });
+      }
+    });
+    apiRouter.post("/admin/proxy-discover", authMiddleware, requireAdmin, async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      try {
+        const report = await runProxyDiscovery({
+          limit: Number(req.body?.limit) || 60,
+          concurrency: Number(req.body?.concurrency) || 6
+        });
+        res.json({ ok: true, ...report, pool: proxyPoolStatus() });
+      } catch (e2) {
+        res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 200) });
+      }
+    });
     apiRouter.post("/scrape/live", async (req, res) => {
       const input = {
         query: String(req.body.query || ""),
@@ -43153,6 +43544,21 @@ var init_routes = __esm({
             });
             return;
           }
+          const verticalGood = recallGoodForVertical(String(input.vertical || ""));
+          if (verticalGood) {
+            res.json({
+              results: verticalGood.rows,
+              honestNotice: `Live sources returned only loosely related items for '${input.query}', so we are showing the last prices we verified in this vertical. They refresh automatically.`,
+              sourcesAttempted: response.state.sourcesAttempted,
+              sourcesSucceeded: response.state.sourcesSucceeded,
+              sourcesFailed: response.state.sourcesFailed,
+              servedFrom: "last_verified",
+              pendingRefresh: allowPending(chainKey, true),
+              resultsCount: verticalGood.rows.length,
+              latencyMs: response.latencyMs
+            });
+            return;
+          }
           res.json({
             results: [],
             honestNotice: `No exact matches for '${input.query}' from live sources right now. Sources returned only loosely related items, which we do not show.`,
@@ -43176,8 +43582,17 @@ var init_routes = __esm({
       }
       kept.sort((a, b) => b.hit - a.hit || Number(b.priced) - Number(a.priced) || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
       const keptResults = kept.map((x) => x.o);
+      const reqTravelDates = {
+        date: input.travelDates?.depart,
+        return: input.travelDates?.return,
+        city: input.city,
+        route: (() => {
+          const q3 = String(input.query || "");
+          return /\bto\b/i.test(q3) ? q3 : void 0;
+        })()
+      };
       const mappedItems = keptResults.map((o) => {
-        const item = offerToComparisonItem(o);
+        const item = offerToComparisonItem(o, reqTravelDates);
         return req.body.vertical === "movie" ? { ...item, vertical: "movie", category: "movie" } : req.body.vertical === "account" ? { ...item, vertical: "account", category: "account" } : item;
       });
       const brandById = /* @__PURE__ */ new Map();
@@ -48573,18 +48988,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path15, params = {}) {
+      async apiGet(path17, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path15}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path17}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path15, params);
+          return this.apiGet(path17, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path15} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path17} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -48624,9 +49039,9 @@ var init_admitad = __esm({
         }
         for (const wid of websiteIds) {
           if (offers.length >= maxOffers) break;
-          const path15 = `/coupons/website/${encodeURIComponent(wid)}/`;
+          const path17 = `/coupons/website/${encodeURIComponent(wid)}/`;
           for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-            const j = await this.apiGet(path15, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+            const j = await this.apiGet(path17, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
             const results = j?.results || [];
             if (results.length === 0) break;
             for (const c of results) {
@@ -48801,12 +49216,12 @@ var init_cuelinks = __esm({
       }
       async authenticate() {
       }
-      async api(path15, init) {
-        const res = await fetch(`${settings.cuelinks.apiBase}${path15}`, {
+      async api(path17, init) {
+        const res = await fetch(`${settings.cuelinks.apiBase}${path17}`, {
           ...init,
           headers: { Authorization: `Token ${settings.cuelinks.apiKey}`, "Content-Type": "application/json", ...init?.headers || {} }
         });
-        if (!res.ok) throw new Error(`cuelinks: ${path15} HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`cuelinks: ${path17} HTTP ${res.status}`);
         return res.json();
       }
       /** Live coupons/deals across joined campaigns. Paginates a few pages; every
@@ -49179,8 +49594,8 @@ function listSeoPaths() {
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, "bus")}`);
   return [...new Set(paths)];
 }
-function resolveAppRoute(path15) {
-  const seg = path15.replace(/\/+$/, "").split("/").filter(Boolean);
+function resolveAppRoute(path17) {
+  const seg = path17.replace(/\/+$/, "").split("/").filter(Boolean);
   if (seg.length === 0) return null;
   const head2 = seg[0];
   const tail = seg[1];
@@ -49233,8 +49648,8 @@ function resolveAppRoute(path15) {
   }
   return { vertical: vid };
 }
-function resolveSeoPage(path15) {
-  let clean3 = path15.split("?")[0].replace(/\/+$/, "") || "/";
+function resolveSeoPage(path17) {
+  let clean3 = path17.split("?")[0].replace(/\/+$/, "") || "/";
   const ALIAS = {
     movie: "movies",
     cab: "cabs",
@@ -50010,14 +50425,14 @@ var init_staticPages = __esm({
   .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 22px; margin: 14px 0; }
   footer { border-top: 1px solid #e2e8f0; margin-top: 30px; padding-top: 16px; color: #64748b; font-size: 13px; }
 `;
-    shell = (title, description, path15, body) => `<!doctype html>
+    shell = (title, description, path17, body) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${title}</title>
 <meta name="description" content="${description}" />
-<link rel="canonical" href="${SEO_HOST}${path15}" />
+<link rel="canonical" href="${SEO_HOST}${path17}" />
 <meta name="robots" content="index, follow" />
 <meta property="og:title" content="${title}" />
 <meta property="og:description" content="${description}" />
@@ -50093,18 +50508,18 @@ async function productSitemapPaths(limit = 200) {
 }
 function readWarmFile() {
   try {
-    const fs15 = require("node:fs");
-    if (fs15.existsSync(WARM_FILE)) return fs15.readFileSync(WARM_FILE, "utf8");
+    const fs17 = require("node:fs");
+    if (fs17.existsSync(WARM_FILE)) return fs17.readFileSync(WARM_FILE, "utf8");
   } catch {
   }
   return null;
 }
 function writeWarmFile(xml) {
   try {
-    const fs15 = require("node:fs");
-    const path15 = require("node:path");
-    fs15.mkdirSync(path15.dirname(WARM_FILE), { recursive: true });
-    fs15.writeFileSync(WARM_FILE, xml);
+    const fs17 = require("node:fs");
+    const path17 = require("node:path");
+    fs17.mkdirSync(path17.dirname(WARM_FILE), { recursive: true });
+    fs17.writeFileSync(WARM_FILE, xml);
   } catch {
   }
 }
@@ -50298,8 +50713,8 @@ __export(render_exports, {
   enhanceHtml: () => enhanceHtml,
   listSeoPaths: () => listSeoPaths
 });
-function jsonLd(path15) {
-  const page = resolveSeoPage(path15);
+function jsonLd(path17) {
+  const page = resolveSeoPage(path17);
   const blocks = [];
   const org = {
     "@context": "https://schema.org",
@@ -50310,7 +50725,7 @@ function jsonLd(path15) {
     description: "Independent metasearch engine comparing live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in India."
   };
   blocks.push(JSON.stringify(org));
-  if (path15 === "/") {
+  if (path17 === "/") {
     blocks.push(JSON.stringify({
       "@context": "https://schema.org",
       "@type": "WebSite",
@@ -50385,8 +50800,8 @@ function prerenderLoader(page) {
     </div>
   </div>`;
 }
-function prerenderBody(path15) {
-  const page = resolveSeoPage(path15);
+function prerenderBody(path17) {
+  const page = resolveSeoPage(path17);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
     <dt>${esc3(f.q)}</dt><dd>${esc3(f.a)}</dd>`).join("");
@@ -50406,12 +50821,12 @@ function prerenderBody(path15) {
     `</section>`
   ].join("");
 }
-function enhanceHtml(html, path15) {
-  const page = resolveSeoPage(path15);
-  const isNoindex = /^\/(admin|merchant|api)/.test(path15);
+function enhanceHtml(html, path17) {
+  const page = resolveSeoPage(path17);
+  const isNoindex = /^\/(admin|merchant|api)/.test(path17);
   const title = page ? page.title : DEFAULT_TITLE;
   const desc = page ? page.description : DEFAULT_DESC;
-  const canonical = `${SEO_HOST}${(path15 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
+  const canonical = `${SEO_HOST}${(path17 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
   out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc3(title)}</title>`);
   out = out.replace(
@@ -50445,11 +50860,11 @@ function enhanceHtml(html, path15) {
     `<link rel="alternate" hreflang="en-in" href="${esc3(canonical)}" />`,
     `<link rel="alternate" hreflang="x-default" href="${esc3(canonical)}" />`
   ];
-  if (!isNoindex) for (const b of jsonLd(path15)) head2.push(`<script type="application/ld+json">${b}</script>`);
+  if (!isNoindex) for (const b of jsonLd(path17)) head2.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head2.join("\n")}
 </head>`);
   if (!isNoindex) {
-    const body = prerenderBody(path15);
+    const body = prerenderBody(path17);
     if (body) {
       out = out.replace(/<div id="root"><\/div>/, `<div id="root">${body}</div>`);
     }
@@ -50475,12 +50890,12 @@ __export(liveSnapshot_exports, {
   snapshotForPath: () => snapshotForPath,
   snapshotJsonLd: () => snapshotJsonLd
 });
-function placementTokens(path15) {
-  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path15.replace(/\/+$/, ""));
+function placementTokens(path17) {
+  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path17.replace(/\/+$/, ""));
   if (prod) {
     return prod[1].split("-").filter((t) => t.length > 1 && !/^(the|and|for|with)$/.test(t));
   }
-  const route2 = resolveAppRoute(path15);
+  const route2 = resolveAppRoute(path17);
   const hint = `${route2?.query || ""}`.replace(/\([^)]*\)/g, " ").toLowerCase();
   return hint.replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
 }
@@ -50492,9 +50907,9 @@ function productMatches(slug5, title) {
   const hit = want.filter((t) => have.has(t) || [...have].some((h) => h.startsWith(t) || t.startsWith(h))).length;
   return hit / want.length >= 0.8;
 }
-function selectSnapshotRows(candidates, path15, max = MAX_ROWS, bySlug = false) {
+function selectSnapshotRows(candidates, path17, max = MAX_ROWS, bySlug = false) {
   if (bySlug) {
-    const slug5 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path15.replace(/\/+$/, ""))?.[1] || "";
+    const slug5 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path17.replace(/\/+$/, ""))?.[1] || "";
     const pool3 = candidates.filter((r) => productMatches(slug5, r.title));
     const seen0 = /* @__PURE__ */ new Set();
     const out0 = [];
@@ -50507,7 +50922,7 @@ function selectSnapshotRows(candidates, path15, max = MAX_ROWS, bySlug = false) 
     }
     return out0;
   }
-  const tokens2 = placementTokens(path15);
+  const tokens2 = placementTokens(path17);
   const relevant = tokens2.length ? candidates.filter((r) => {
     const t = ` ${r.title.toLowerCase()} ${String(r.seller || "").toLowerCase()} `;
     return tokens2.every((tok) => t.includes(tok));
@@ -50540,9 +50955,9 @@ function renderSnapshotHtml(snapshot, heading = "Latest verified prices") {
     `</section>`
   ].join("");
 }
-function snapshotJsonLd(snapshot, path15) {
+function snapshotJsonLd(snapshot, path17) {
   if (!snapshot || !snapshot.rows.length) return null;
-  const page = resolveSeoPage(path15);
+  const page = resolveSeoPage(path17);
   return JSON.stringify({
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -50564,15 +50979,15 @@ function snapshotJsonLd(snapshot, path15) {
     }))
   });
 }
-async function snapshotForPath(path15) {
-  const page = resolveSeoPage(path15);
+async function snapshotForPath(path17) {
+  const page = resolveSeoPage(path17);
   if (!page) return null;
-  const key = (path15 || "/").replace(/\/+$/, "") || "/";
+  const key = (path17 || "/").replace(/\/+$/, "") || "/";
   const hit = cache10.get(key);
   if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) return hit.snap;
   let snap = null;
   try {
-    const route2 = resolveAppRoute(path15);
+    const route2 = resolveAppRoute(path17);
     const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(key);
     const verticals = prod ? ["ecommerce", "grocery"] : route2?.vertical ? [route2.vertical] : [];
     if (verticals.length) {
@@ -50610,8 +51025,8 @@ var init_liveSnapshot = __esm({
 });
 
 // server.prod.ts
-var import_path8 = __toESM(require("path"), 1);
-var import_fs8 = __toESM(require("fs"), 1);
+var import_path10 = __toESM(require("path"), 1);
+var import_fs10 = __toESM(require("fs"), 1);
 var import_express6 = __toESM(require("express"), 1);
 
 // server/index.ts
@@ -50721,18 +51136,18 @@ var TRUTH_POST_PATHS = [
   "/api/client-diag"
 ];
 var isMaskable = (req) => {
-  const path15 = (req.path || req.originalUrl || "").split("?")[0];
-  if (!path15.startsWith("/api/")) return false;
-  if (path15.startsWith("/api/admin")) return false;
-  if (path15.startsWith("/api/version") || path15.startsWith("/api/health")) return false;
-  if (path15.startsWith("/api/client-diag")) return false;
+  const path17 = (req.path || req.originalUrl || "").split("?")[0];
+  if (!path17.startsWith("/api/")) return false;
+  if (path17.startsWith("/api/admin")) return false;
+  if (path17.startsWith("/api/version") || path17.startsWith("/api/health")) return false;
+  if (path17.startsWith("/api/client-diag")) return false;
   if (req.method === "GET" || req.method === "HEAD") return true;
   if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
-    return !TRUTH_POST_PATHS.some((p) => path15.startsWith(p));
+    return !TRUTH_POST_PATHS.some((p) => path17.startsWith(p));
   }
   return false;
 };
-function gracefulPublicStatus(app) {
+function gracefulPublicStatus(app, options = {}) {
   app.use((req, res, next) => {
     if (!isMaskable(req)) return next();
     const sendJson = res.json.bind(res);
@@ -50749,7 +51164,8 @@ function gracefulPublicStatus(app) {
       }
       res.status(200);
       const base = body && typeof body === "object" && !Array.isArray(body) ? body : {};
-      return sendJson({
+      const path17 = String(req.path || req.originalUrl || "").split("?")[0];
+      const masked = {
         ...base,
         success: false,
         ok: false,
@@ -50757,32 +51173,49 @@ function gracefulPublicStatus(app) {
         pendingRefresh: true,
         retryAfterSec: 4,
         notice: "Still gathering results from the sources. Retrying automatically."
-      });
+      };
+      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path17)) {
+        const current = Array.isArray(masked.results) ? masked.results : [];
+        if (!current.length) {
+          try {
+            const rows = options.fallbackRows(req);
+            if (rows && rows.length) {
+              masked.results = rows;
+              masked.resultsCount = rows.length;
+              masked.servedFrom = "last_verified";
+              masked.honestNotice = "Live sources are busy right now, so these are the prices we last verified for this vertical. They refresh automatically.";
+            }
+          } catch (_) {
+          }
+        }
+      }
+      return sendJson(masked);
     };
     next();
   });
 }
 
 // server/index.ts
-var import_path7 = __toESM(require("path"), 1);
-var import_fs7 = __toESM(require("fs"), 1);
+init_lastKnownGood();
+var import_path9 = __toESM(require("path"), 1);
+var import_fs9 = __toESM(require("fs"), 1);
 var import_express5 = __toESM(require("express"), 1);
 var import_compression = __toESM(require("compression"), 1);
 
 // server/common/canonicalHost.ts
 var APEX_HOST = "try1second.com";
-function isVerificationPath(path15) {
-  return String(path15 || "").toLowerCase().startsWith("/.well-known/");
+function isVerificationPath(path17) {
+  return String(path17 || "").toLowerCase().startsWith("/.well-known/");
 }
 function apexRedirectEnabled() {
   return String(process.env.FORCE_WWW_REDIRECT || "").trim() === "1";
 }
-function shouldRedirectApexToWww(host, path15) {
+function shouldRedirectApexToWww(host, path17) {
   if (!apexRedirectEnabled()) return false;
   const h = String(host || "").toLowerCase();
   const isApex = h === APEX_HOST || new RegExp(`^${APEX_HOST.replace(/\./g, "\\.")}:\\d+$`).test(h);
   if (!isApex) return false;
-  if (isVerificationPath(String(path15 || ""))) return false;
+  if (isVerificationPath(String(path17 || ""))) return false;
   return true;
 }
 function canonicalWwwUrl(originalUrl) {
@@ -50801,7 +51234,14 @@ async function createApp() {
   });
   app.use((0, import_compression.default)());
   app.use(lenientJsonBody("256kb"));
-  gracefulPublicStatus(app);
+  gracefulPublicStatus(app, {
+    fallbackRows: (req) => {
+      const body = req?.body && typeof req.body === "object" ? req.body : {};
+      const vertical = String(body.vertical || req?.query?.vertical || "");
+      const hit = recallGoodForVertical(vertical);
+      return hit?.rows ?? null;
+    }
+  });
   app.use((err, req, res, next) => {
     if (!err || err.type !== "entity.parse.failed" && err.type !== "entity.too.large" && err.status !== 400) {
       next(err);
@@ -50815,8 +51255,8 @@ async function createApp() {
       next(err);
       return;
     }
-    const path15 = String(req?.path || req?.originalUrl || "");
-    const publicRead = path15.startsWith("/api/") && !path15.startsWith("/api/admin");
+    const path17 = String(req?.path || req?.originalUrl || "");
+    const publicRead = path17.startsWith("/api/") && !path17.startsWith("/api/admin");
     res.status(publicRead ? 200 : 400).json({
       success: false,
       ok: false,
@@ -50884,17 +51324,17 @@ async function createApp() {
   }
   const { redirectRouteHandler: redirectRouteHandler2 } = await Promise.resolve().then(() => (init_interstitial(), interstitial_exports));
   app.get("/redirect", redirectRouteHandler2);
-  const dist = import_path7.default.resolve(__dirname2, "dist");
+  const dist = import_path9.default.resolve(__dirname2, "dist");
   void Promise.resolve().then(() => (init_sitemap(), sitemap_exports)).then((m) => m.warmSitemapSoon()).catch(() => {
   });
   app.get(/^\/google[0-9a-f]+\.html$/i, (req, res) => {
-    const name = import_path7.default.basename(req.path);
-    const candidates = [import_path7.default.join(dist, name), import_path7.default.join(process.cwd(), "public", name)];
+    const name = import_path9.default.basename(req.path);
+    const candidates = [import_path9.default.join(dist, name), import_path9.default.join(process.cwd(), "public", name)];
     for (const file of candidates) {
-      if (import_fs7.default.existsSync(file)) {
+      if (import_fs9.default.existsSync(file)) {
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.setHeader("Cache-Control", "public, max-age=3600");
-        res.send(import_fs7.default.readFileSync(file, "utf8"));
+        res.send(import_fs9.default.readFileSync(file, "utf8"));
         return;
       }
     }
@@ -50906,7 +51346,7 @@ async function createApp() {
     }
     res.status(404).send("Not found");
   });
-  if (import_fs7.default.existsSync(dist)) {
+  if (import_fs9.default.existsSync(dist)) {
     app.use(import_express5.default.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
       // hashed /assets/* files are immutable and safe to cache for a year.
@@ -50920,14 +51360,14 @@ async function createApp() {
     }));
     const { enhanceHtml: enhanceHtml2 } = await Promise.resolve().then(() => (init_render(), render_exports));
     const { snapshotForPath: snapshotForPath2, renderSnapshotHtml: renderSnapshotHtml2, snapshotJsonLd: snapshotJsonLd2 } = await Promise.resolve().then(() => (init_liveSnapshot(), liveSnapshot_exports));
-    const baseHtml = import_fs7.default.readFileSync(import_path7.default.join(dist, "index.html"), "utf8");
+    const baseHtml = import_fs9.default.readFileSync(import_path9.default.join(dist, "index.html"), "utf8");
     app.get("*", async (req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
       const acc = String(req.headers.accept || "");
       const isAsset = /\.[a-z0-9]{2,5}$/i.test(req.path.replace(/\/$/, ""));
       const wantsShell = acc === "" || acc.includes("text/html") || acc.includes("*/*");
       if (isAsset || !wantsShell) {
-        res.sendFile(import_path7.default.join(dist, "index.html"));
+        res.sendFile(import_path9.default.join(dist, "index.html"));
         return;
       }
       let html = enhanceHtml2(baseHtml, req.path);
@@ -51061,8 +51501,8 @@ var listenWithKeepAlive = (app, port, label = "Try1Second") => {
 // server.prod.ts
 async function startWorker() {
   const app = await createApp();
-  const dist = import_path8.default.resolve(process.cwd(), "dist");
-  if (import_fs8.default.existsSync(dist)) {
+  const dist = import_path10.default.resolve(process.cwd(), "dist");
+  if (import_fs10.default.existsSync(dist)) {
     app.use(import_express6.default.static(dist, {
       // index.html must never be cached (it names the current hashed bundle);
       // hashed /assets/* files are immutable and safe to cache for a year.
@@ -51073,7 +51513,7 @@ async function startWorker() {
     }));
     app.get("*", (_req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
-      res.sendFile(import_path8.default.join(dist, "index.html"));
+      res.sendFile(import_path10.default.join(dist, "index.html"));
     });
   }
   const PORT = Number(process.env.PORT || 3e3);

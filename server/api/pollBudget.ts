@@ -27,12 +27,14 @@
  * stop promising that more is coming forever.
  *
  * Travel pipelines legitimately finish at 40-60s, so the window is generous
- * (default 25s of "still working"), and every request still returns real rows the
- * moment they land - the budget only governs the FLAG, never the data.
+ * (45s of "still working" as of 2 Nov: measured movies answered BookMyShow at 0s,
+ * but District/TicketNew/Cinepolis only landed at 28s+, so a 25s window released
+ * the chain before half the cinemas were in), and every request still returns
+ * real rows the moment they land - the budget only governs the FLAG, never the data.
  */
 
 /** How long one search key may keep telling a client "more is coming". */
-export const PENDING_WINDOW_MS = 25_000;
+export const PENDING_WINDOW_MS = 45_000;
 
 /** Keys expire on their own so a long-running process cannot grow without bound. */
 const KEY_TTL_MS = 10 * 60_000;

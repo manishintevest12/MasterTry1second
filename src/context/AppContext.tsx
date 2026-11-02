@@ -902,6 +902,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // search ran invisibly. This key marks the search that is currently being acquired; while it is
   // set, the feed shows the progress panel instead of stale rows of the old search.
   const [pendingSearchKey, setPendingSearchKey] = useState<string | null>(null);
+  // Identity of the search whose answer is on screen (see the flicker fix in
+  // triggerLiveLocationScrape): a re-poll of this key never re-opens the panel.
+  const activeSearchKeyRef = useRef<string | null>(null);
   // How many extra pendingRefresh polls one search may make (2s each). The chain is
   // bounded so a source that never finishes can't hold the loader forever: after
   // MAX_PENDING_POLLS the honest "no matches" state is allowed to show.
@@ -910,7 +913,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Owner 28 Oct (every vertical like hotels): slow verticals (bus/food/movies) finish their
   // pipeline at 3-4s, so a 2s gap burned a whole cycle on an empty first answer. A 1.2s
   // cadence reaches the warmed cache sooner without extra load (the pipeline is shared).
-  const MAX_PENDING_POLLS = 10; // ~12s of background acquisition before we stop promising results
+  // OWNER 2 Nov ("results aa jata hai phir loader chalta hai phir results deta hai"): 10 polls
+  // (~12s) released the chain before the slow verticals finished - movies measured BookMyShow at
+  // 0s but District/TicketNew/Cinepolis only at 28s+, so they were often missing until the owner
+  // pressed Search again. 20 polls keeps one chain spanning ~24s like the app's kSearchMaxPolls.
+  const MAX_PENDING_POLLS = 20; // ~24s of background acquisition before we stop promising results
   // Owner 28 Oct ("loader ke baad 'No matching options found' nahi aana chahiye, result 100%"):
   // a search that settles on zero rows is not the end of the story - the pipeline often lands
   // in cache a few seconds later. Instead of leaving the user on a dead page, quietly re-ask
@@ -1028,7 +1035,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
     const travel = overrideTravel?.depart ? overrideTravel : { depart: todayIso };
     // Any new search (city, query, dates, vertical) raises the progress panel immediately.
-    setPendingSearchKey(`${vertical}|${targetQuery}|${targetLoc.city || ''}|${targetLoc.pincode || ''}|${travel.depart || ''}`);
+    // OWNER 2 Nov flicker fix: a pendingRefresh RE-POLL of the search that is already on screen
+    // is the same chain, not a new search. Raising the panel for it re-took the feed from the rows
+    // that were already rendered (results -> loader -> results -> loader, several times per
+    // search). Only a genuinely different search key opens the panel; the chain keeps updating
+    // the rows in place, and `feedProgressGate` still lets real rows win over a live chain.
+    const searchKey = `${vertical}|${targetQuery}|${targetLoc.city || ''}|${targetLoc.pincode || ''}|${travel.depart || ''}`;
+    if (activeSearchKeyRef.current !== searchKey) {
+      activeSearchKeyRef.current = searchKey;
+      setPendingSearchKey(searchKey);
+    }
     // A fresh search owns the late-row watch: cancel any earlier one so a previous vertical's
     // retry can never inject rows into this one.
     if (lateWatchTimerRef.current) { clearTimeout(lateWatchTimerRef.current); lateWatchTimerRef.current = null; }
