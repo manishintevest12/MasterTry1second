@@ -58,9 +58,21 @@ test('mmtDayFareItems prefers the exact depart date and names seller + airline',
 });
 
 test('mmtDayFareItems falls back to cheapest upcoming date, clearly labelled', () => {
-  const fares = parseMmtFareCalendar(CAL);
-  // depart date not in calendar -> cheapest upcoming wins (₹5,999 on 31 Oct)
-  const items = mmtDayFareItems(fares, src, 'Mumbai', 'New Delhi', 'BOM', 'DEL', '2026-11-15');
+  // OWNER 2 Nov: the recorded October calendar is in the past now, so this test builds its own
+  // UPCOMING fares relative to today (the parser must ignore past dates, which is exactly the
+  // date-wise accuracy we ship). Depart is not in the calendar -> cheapest upcoming must win.
+  const dd = (offsetDays: number) => {
+    const d = new Date(Date.now() + offsetDays * 86400_000);
+    return `${String(d.getUTCDate()).padStart(2, '0')}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCFullYear()).slice(2)}`;
+  };
+  const iso = (offsetDays: number) => new Date(Date.now() + offsetDays * 86400_000).toISOString().slice(0, 10);
+  const cal = JSON.stringify({ fares: {
+    [dd(4)]: { cur: '₹', fr: '7,499', txt: 'later', airlineInfo: { name: 'IndiGo', codes: ['6E'] } },
+    [dd(9)]: { cur: '₹', fr: '5,999', txt: 'cheaper', airlineInfo: { name: 'SpiceJet', codes: ['SG'] } },
+  } });
+  const fares = parseMmtFareCalendar(cal);
+  assert.equal(fares.length, 2);
+  const items = mmtDayFareItems(fares, src, 'Mumbai', 'New Delhi', 'BOM', 'DEL', iso(30));
   assert.equal(items.length, 1);
   assert.equal(items[0].price, 5999);
   assert.ok(items[0].title.includes('cheapest upcoming'));

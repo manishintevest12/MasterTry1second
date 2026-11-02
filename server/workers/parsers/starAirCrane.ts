@@ -149,11 +149,24 @@ export function starFareStrip(html: string): { dateIso: string; price: number }[
   const re = /<strong>(\d{1,2})<\/strong>[\s\S]{0,250}?>(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)[\s\S]{0,800}?price-text-with-blocks">\s*<span>INR<\/span>\s*<span>([\d,]+)<\/span>/g;
   let m: RegExpExecArray | null;
   const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  // OWNER 2 Nov (date-wise fares): the strip prints DAY NUMBERS only, so stamping every one of them
+  // with the current month mislabels the whole strip as soon as it crosses a month boundary (a
+  // 7-day strip opened on 28 Oct listed 2 Nov as 2026-10-02). Each day now resolves to its nearest
+  // occurrence that is today or later.
+  const nearestUpcoming = (day: number): string => {
+    for (let add = 0; add <= 2; add += 1) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + add, day));
+      if (d.getUTCDate() !== day) continue;
+      if (d.getTime() >= todayUtc) return d.toISOString().slice(0, 10);
+    }
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), day)).toISOString().slice(0, 10);
+  };
   while ((m = re.exec(zone))) {
     const day = Number(m[1]);
     const price = Number(m[2].replace(/,/g, ''));
     if (!day || !price) continue;
-    const iso = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const iso = nearestUpcoming(day);
     if (!strip.some((s) => s.dateIso === iso)) strip.push({ dateIso: iso, price });
   }
   return strip;

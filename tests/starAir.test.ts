@@ -66,11 +66,20 @@ test('parseStarAirAvailability: other dates emit honest empty', () => {
 
 test('starFareStrip: 7-day date-level lowest fares', () => {
   const strip = starFareStrip(KLH);
-  const byDate = Object.fromEntries(strip.map((s) => [s.dateIso, s.price]));
-  assert.equal(byDate['2026-10-26'], 7800);
-  assert.equal(byDate['2026-10-28'], 4563);
-  assert.equal(byDate['2026-10-30'], 4814);
+  // OWNER 2 Nov: the strip carries DAY NUMBERS only, so the parser resolves each day to its
+  // nearest upcoming occurrence instead of stamping the current month (a strip opened on 28 Oct
+  // used to label 2 Nov as 2026-10-02). Assertions are therefore day-of-month based and date
+  // independent - the old fixed '2026-10-26' keys started failing once October passed.
+  const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+  const byDay = Object.fromEntries(strip.map((s) => [Number(s.dateIso.slice(8, 10)), s.price]));
+  assert.deepEqual(Object.keys(byDay).map(Number).sort((a, b) => a - b), [26, 28, 30]);
+  assert.equal(byDay[26], 7800);
+  assert.equal(byDay[28], 4563);
+  assert.equal(byDay[30], 4814);
   assert.equal(strip.length, 3); // 25/27/29/31 have no service - absent honestly
+  for (const s of strip) {
+    assert.ok(new Date(`${s.dateIso}T00:00:00Z`).getTime() >= today.getTime(), `${s.dateIso} must not be in the past`);
+  }
 });
 
 test('starAirFlightItems: parity fields + Star Air direct seller', () => {

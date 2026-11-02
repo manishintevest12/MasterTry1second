@@ -905,6 +905,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Identity of the search whose answer is on screen (see the flicker fix in
   // triggerLiveLocationScrape): a re-poll of this key never re-opens the panel.
   const activeSearchKeyRef = useRef<string | null>(null);
+  // When the current chain started, so a slow cold search can release the panel once.
+  const searchStartedAtRef = useRef<number>(0);
+  const LOADER_SETTLE_CAP_MS = 12000;
   // How many extra pendingRefresh polls one search may make (2s each). The chain is
   // bounded so a source that never finishes can't hold the loader forever: after
   // MAX_PENDING_POLLS the honest "no matches" state is allowed to show.
@@ -1044,6 +1047,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (activeSearchKeyRef.current !== searchKey) {
       activeSearchKeyRef.current = searchKey;
       setPendingSearchKey(searchKey);
+      searchStartedAtRef.current = Date.now();
     }
     // A fresh search owns the late-row watch: cancel any earlier one so a previous vertical's
     // retry can never inject rows into this one.
@@ -1144,7 +1148,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           });
         }
         if (data.results && data.results.length > 0) {
-          setPendingSearchKey(null);
+          // OWNER 2 Nov: "loader pura complete hone ke baad hi results aane chahiye aur results
+          // accurate ho - abhi pehle thode rows aa jate hain, phir loader chalta hai, phir baaki
+          // rows". Partial (pendingRefresh) rows therefore keep the panel mounted; the rows are
+          // released the moment the answer settles, or after LOADER_SETTLE_CAP_MS so a
+          // never-settling vertical still shows what it has (measured cold IDR-CCU: catalogue 40
+          // rows at 0s, real 97 rows at 30s).
+          const loaderElapsed = Date.now() - (searchStartedAtRef.current || 0);
+          if (!data.pendingRefresh || loaderElapsed >= LOADER_SETTLE_CAP_MS) setPendingSearchKey(null);
           setItems((prev) => {
             // A search shows ONLY what was searched. Items of this vertical from earlier
             // searches or the catalogue are replaced by the fresh, relevance-ranked results
