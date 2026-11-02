@@ -24,6 +24,7 @@
 //     selectionKey baked in (lands on the result page with the trip selected).
 import type { RawSourceItem, SourceConfig } from '../../types';
 import { newRawItem } from '../../sources/contract';
+import { repairEtraveliDeeplink } from '../../affiliate/deeplinkDate';
 
 export const ETRAVELI_QUERY = `query SearchOnResultPage($routes: [Route!]!, $cabinClass: CabinClass, $direct: Boolean, $carrierCodes: [String], $adults: Int!, $childAges: [Int], $offset: Int, $sortTypeCode: String, $filters: [Filter!], $validWithVoucher: Boolean) {
   search(
@@ -821,7 +822,11 @@ export function etraveliFlightsItems(
     if (seen.has(key)) continue;
     seen.add(key);
     const shareable = String(f.shareableUrl || '');
-    const deeplink = shareable.startsWith('http') ? shareable
+    // Owner 2 Nov: the row's own date is gated, but the exit link used to carry the day the
+    // brand minted it for (a 19 Nov search produced /air/IDRDEL03NOV/ links showing 3 Nov
+    // fares). Repair the link from the request so Book always opens the searched date.
+    const deeplink = shareable.startsWith('http')
+      ? repairEtraveliDeeplink(shareable, { fromCode, toCode, dateIso })
       : `https://${brand.host}${searchPath || '/rf/result'}`;
     out.push(newRawItem(source, {
       title: `${carrier} ${flightNos} · ${routeLabel}`.slice(0, 200),

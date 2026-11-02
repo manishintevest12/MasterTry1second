@@ -2817,12 +2817,12 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start = -1, inStr = false, esc7 = false;
+  let depth = 0, start = -1, inStr = false, esc8 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc7) esc7 = false;
-      else if (ch === "\\") esc7 = true;
+      if (esc8) esc8 = false;
+      else if (ch === "\\") esc8 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -2937,12 +2937,12 @@ function parseMyntra(html, source, pageUrl) {
     const start = /window\.__myx\s*=\s*\{/.exec(html);
     if (start) {
       const from = start.index + start[0].length - 1;
-      let depth = 0, inStr = false, esc7 = false, end = -1;
+      let depth = 0, inStr = false, esc8 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
         if (inStr) {
-          if (esc7) esc7 = false;
-          else if (ch === "\\") esc7 = true;
+          if (esc8) esc8 = false;
+          else if (ch === "\\") esc8 = true;
           else if (ch === '"') inStr = false;
           continue;
         }
@@ -3832,12 +3832,12 @@ function extractRelianceState(html) {
   if (eq < 0) return null;
   const s = html.slice(eq + 1).trimStart();
   if (s[0] !== "{") return null;
-  let depth = 0, inStr = false, esc7 = false, end = -1;
+  let depth = 0, inStr = false, esc8 = false, end = -1;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
-      if (esc7) esc7 = false;
-      else if (ch === "\\") esc7 = true;
+      if (esc8) esc8 = false;
+      else if (ch === "\\") esc8 = true;
       else if (ch === '"') inStr = false;
     } else if (ch === '"') inStr = true;
     else if (ch === "{") depth++;
@@ -5570,12 +5570,12 @@ function extractInitialState(body) {
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
-  let depth = 0, inStr = false, esc7 = false, end = -1;
+  let depth = 0, inStr = false, esc8 = false, end = -1;
   for (; i < body.length; i++) {
     const c = body[i];
     if (inStr) {
-      if (esc7) esc7 = false;
-      else if (c === "\\") esc7 = true;
+      if (esc8) esc8 = false;
+      else if (c === "\\") esc8 = true;
       else if (c === '"') inStr = false;
       continue;
     }
@@ -5706,12 +5706,12 @@ function parseMmtHotelLanding(body) {
       continue;
     }
     const objStart = j;
-    let depth = 0, inStr = false, esc7 = false, end = -1;
+    let depth = 0, inStr = false, esc8 = false, end = -1;
     for (; j < body.length; j++) {
       const c = body[j];
       if (inStr) {
-        if (esc7) esc7 = false;
-        else if (c === "\\") esc7 = true;
+        if (esc8) esc8 = false;
+        else if (c === "\\") esc8 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -8718,6 +8718,53 @@ var init_budgetAirFlights = __esm({
   }
 });
 
+// server/affiliate/deeplinkDate.ts
+function monOf(dateIso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateIso || "").trim());
+  if (!m) return null;
+  const mm = Number(m[2]);
+  if (mm < 1 || mm > 12) return null;
+  return { dd: m[3], mon: MONTHS[mm - 1], yy: m[1].slice(2) };
+}
+function esc(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function repairEtraveliDeeplink(shareableUrl, opts) {
+  const raw = String(shareableUrl || "");
+  if (!raw) return raw;
+  const want = monOf(opts.dateIso);
+  if (!want) return raw;
+  const from = String(opts.fromCode || "").toUpperCase();
+  const to = String(opts.toCode || "").toUpperCase();
+  const pathRe = new RegExp(`/${esc(from)}${esc(to)}(\\d{2})(${MONTHS.join("|")})`, "i");
+  const pathHit = pathRe.exec(raw);
+  let out = raw;
+  if (pathHit) {
+    const samePathDay = pathHit[1] === want.dd && pathHit[2].toUpperCase() === want.mon;
+    const keyRe = new RegExp(`([?&])selectionKey=([^&]*)`, "i");
+    const keyHit = keyRe.exec(out);
+    let sameKeyDay = true;
+    if (keyHit) {
+      const key = decodeURIComponent(keyHit[2]);
+      const m = /-(\d{2})([A-Za-z]{3})(\d{2})-/.exec(key);
+      if (m) sameKeyDay = m[1] === want.dd && m[2].toUpperCase() === want.mon && m[3] === want.yy;
+    }
+    if (samePathDay && sameKeyDay) return raw;
+    out = out.replace(pathRe, `/${from}${to}${want.dd}${want.mon}`);
+    if (keyHit && !sameKeyDay) {
+      out = out.replace(keyRe, "").replace(/[?&]+$/, "").replace(/\?&/, "?");
+    }
+    return out;
+  }
+  return raw;
+}
+var MONTHS;
+var init_deeplinkDate = __esm({
+  "server/affiliate/deeplinkDate.ts"() {
+    MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  }
+});
+
 // server/workers/parsers/etraveliFlights.ts
 function etraveliSearchUrl(host) {
   return `https://${host}/graphql/SearchOnResultPage`;
@@ -8789,7 +8836,7 @@ function etraveliFlightsItems(flights, brand, source, route2, fromCode, toCode, 
     if (seen.has(key)) continue;
     seen.add(key);
     const shareable = String(f.shareableUrl || "");
-    const deeplink = shareable.startsWith("http") ? shareable : `https://${brand.host}${searchPath || "/rf/result"}`;
+    const deeplink = shareable.startsWith("http") ? repairEtraveliDeeplink(shareable, { fromCode, toCode, dateIso }) : `https://${brand.host}${searchPath || "/rf/result"}`;
     out.push(newRawItem(source, {
       title: `${carrier} ${flightNos} \xB7 ${routeLabel}`.slice(0, 200),
       brand: carrier.slice(0, 80),
@@ -8827,6 +8874,7 @@ var ETRAVELI_QUERY, GOTOGATE_IN, FLIGHTNETWORK_IN;
 var init_etraveliFlights = __esm({
   "server/workers/parsers/etraveliFlights.ts"() {
     init_contract();
+    init_deeplinkDate();
     ETRAVELI_QUERY = `query SearchOnResultPage($routes: [Route!]!, $cabinClass: CabinClass, $direct: Boolean, $carrierCodes: [String], $adults: Int!, $childAges: [Int], $offset: Int, $sortTypeCode: String, $filters: [Filter!], $validWithVoucher: Boolean) {
   search(
     routes: $routes
@@ -10555,15 +10603,15 @@ function extractAaDataSchedule(pageHtml) {
   if (i < 0) return null;
   const start = pageHtml.indexOf("{", i + 20);
   if (start < 0) return null;
-  let depth = 0, end = -1, inStr = false, esc7 = false;
+  let depth = 0, end = -1, inStr = false, esc8 = false;
   for (let k = start; k < pageHtml.length; k++) {
     const c = pageHtml[k];
-    if (esc7) {
-      esc7 = false;
+    if (esc8) {
+      esc8 = false;
       continue;
     }
     if (c === "\\") {
-      esc7 = true;
+      esc8 = true;
       continue;
     }
     if (c === '"') {
@@ -18752,8 +18800,8 @@ function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
   const norm7 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
-  const esc7 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(`^${esc7}\\b`);
+  const esc8 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc8}\\b`);
   return cities.find((c) => norm7(c.name) === t) || cities.find((c) => rx.test(norm7(c.name))) || cities.find((c) => norm7(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
@@ -19639,11 +19687,11 @@ function uberIndiaCityFor(place) {
   const t = canonCity(place);
   const hit = BY_CANON.get(t);
   if (hit) return hit;
-  const esc7 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc8 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let best = null;
   let bestLen = 0;
   for (const [k, v] of BY_CANON) {
-    if (new RegExp(`\\b${esc7(k)}\\b`).test(t) || new RegExp(`\\b${esc7(t)}\\b`).test(k)) {
+    if (new RegExp(`\\b${esc8(k)}\\b`).test(t) || new RegExp(`\\b${esc8(t)}\\b`).test(k)) {
       if (k.length > bestLen) {
         best = v;
         bestLen = k.length;
@@ -25897,12 +25945,12 @@ function ixigoFlightText(html) {
 function parseObjectAt(text, start) {
   let depth = 0;
   let inStr = false;
-  let esc7 = false;
+  let esc8 = false;
   for (let i = start; i < text.length; i += 1) {
     const ch = text[i];
     if (inStr) {
-      if (esc7) esc7 = false;
-      else if (ch === "\\") esc7 = true;
+      if (esc8) esc8 = false;
+      else if (ch === "\\") esc8 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -32242,9 +32290,9 @@ var init_bookingFlights = __esm({
 // server/search/sellerPresence.ts
 function etraveliResultsUrl(brand, rt, dIso) {
   const m = [/^\d{4}-(\d{2})-(\d{2})$/.exec(dIso || "")];
-  const MONTHS2 = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const MONTHS3 = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
   const day = m[0] ? m[0][2] : "28";
-  const mon = m[0] ? MONTHS2[parseInt(m[0][1], 10) - 1] || "OCT" : "OCT";
+  const mon = m[0] ? MONTHS3[parseInt(m[0][1], 10) - 1] || "OCT" : "OCT";
   return `https://${brand.host}/air/${rt.fromCode}${rt.toCode}${day}${mon}/1/-/-/c:Y`;
 }
 function presenceOffer(seller, sourceId, srp, note, from, to, dIso) {
@@ -33341,15 +33389,15 @@ function normalizeTravelDate(raw) {
     if (b > 12 && a <= 12) return iso2(Number(m[3]), a, b);
     return iso2(Number(m[3]), b, a);
   }
-  const MONTHS2 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const MONTHS3 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
   m = /^(\d{1,2})\s*[- ]?\s*([a-zA-Z]{3,})\.?\s*[- ,]*\s*(\d{4})$/.exec(head3);
   if (m) {
-    const mi = MONTHS2.indexOf(m[2].slice(0, 3).toLowerCase());
+    const mi = MONTHS3.indexOf(m[2].slice(0, 3).toLowerCase());
     if (mi >= 0) return iso2(Number(m[3]), mi + 1, Number(m[1]));
   }
   m = /^([a-zA-Z]{3,})\.?\s*(\d{1,2}),?\s*(\d{4})$/.exec(head3);
   if (m) {
-    const mi = MONTHS2.indexOf(m[1].slice(0, 3).toLowerCase());
+    const mi = MONTHS3.indexOf(m[1].slice(0, 3).toLowerCase());
     if (mi >= 0) return iso2(Number(m[3]), mi + 1, Number(m[2]));
   }
   return "";
@@ -37338,17 +37386,17 @@ function isInAppWebView(userAgent) {
   const ua = String(userAgent || "");
   return /Try1SecondApp|\bwv\)|WebView|com\.try1second/i.test(ua);
 }
-function esc(s) {
+function esc2(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 function jsStr(s) {
   return JSON.stringify(s).replace(/</g, "\\u003c");
 }
 function errorPage(title, message) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc2(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc2(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc2(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
 }
 async function adBlockHtml(slotKey) {
-  const esc7 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const esc8 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   let client = "";
   let slot2 = "";
   let customHtml = "";
@@ -37369,7 +37417,7 @@ async function adBlockHtml(slotKey) {
   }
   if (customHtml.trim()) return customHtml;
   if (!client || !slot2) return "";
-  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc7(client)}" data-ad-slot="${esc7(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc8(client)}" data-ad-slot="${esc8(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
 }
 function renderInterstitialPage(opts) {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -37383,7 +37431,7 @@ function renderInterstitialPage(opts) {
   const ad = opts.adSlot;
   let adBlock = "";
   if (ad?.provider === "adsense" && ad.adsense_client && ad.adsense_slot) {
-    adBlock = `<div class="ad-wrap"><ins class="adsbygoogle" style="display:block" data-ad-client="${esc(ad.adsense_client)}" data-ad-slot="${esc(ad.adsense_slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins></div><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(ad.adsense_client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+    adBlock = `<div class="ad-wrap"><ins class="adsbygoogle" style="display:block" data-ad-client="${esc2(ad.adsense_client)}" data-ad-slot="${esc2(ad.adsense_slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins></div><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(ad.adsense_client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
   } else if (ad?.provider === "custom" && ad.custom_html) {
     adBlock = `<div class="ad-wrap">${ad.custom_html}</div>`;
   }
@@ -37442,28 +37490,28 @@ function renderInterstitialPage(opts) {
   </style>
 </head>
 <body>
-<header><span class="tab"><span class="dot"></span><span class="nm">${esc(shown)}</span></span><span class="brand">Try1Second redirecting to ${esc(shown)} site</span></header>
+<header><span class="tab"><span class="dot"></span><span class="nm">${esc2(shown)}</span></span><span class="brand">Try1Second redirecting to ${esc2(shown)} site</span></header>
 <main>
   <div class="ring" aria-hidden="true"><div class="track"></div><div class="arc"></div><div class="n" id="n">${seconds}</div></div>
   <h1>Connecting to the cheapest store...</h1>
-  <h2>Sit tight \u2014 ${esc(shown)} is opening with your best price.</h2>
+  <h2>Sit tight \u2014 ${esc2(shown)} is opening with your best price.</h2>
   <!-- Owner 27 Oct: manual coupons / offers / cashback for THIS merchant, copied right here
        (the codes are added in Admin -> Offers & Coupons). Filled in by JS after load; the
        countdown and the "Go now" link never wait for it. -->
   <div id="promos" style="display:none;margin:14px 0 4px"></div>
   ${adBlock}
   <div class="store" style="margin-top:18px">
-    <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc(shown)} in <span id="s">${seconds}</span>s</span>
+    <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc2(shown)} in <span id="s">${seconds}</span>s</span>
   </div><br>
-  <a class="go" id="go" href="${esc(target)}" rel="nofollow noopener">Go now \u2192</a>
+  <a class="go" id="go" href="${esc2(target)}" rel="nofollow noopener">Go now \u2192</a>
   ${// Owner 30 Oct: the app hop is ONE TAP, never automatic — going straight to the app
   // would skip the AdSense interstitial the earnings depend on. Android gets the
   // package-targeted intent (falls back to the tracked URL by itself); iOS and the rest
   // keep the documented custom scheme when the partner publishes one.
-  opts.appIntent ? `<a class="go" style="background:#111827" href="${esc(opts.appIntent)}" rel="nofollow noopener">Open in the app \u2192</a>` : opts.appScheme ? `<a class="go" style="background:#111827" href="${esc(opts.appScheme)}" rel="nofollow noopener">Open in the app \u2192</a>` : ""}
+  opts.appIntent ? `<a class="go" style="background:#111827" href="${esc2(opts.appIntent)}" rel="nofollow noopener">Open in the app \u2192</a>` : opts.appScheme ? `<a class="go" style="background:#111827" href="${esc2(opts.appScheme)}" rel="nofollow noopener">Open in the app \u2192</a>` : ""}
   <p class="fine">We compared live prices so you pay the lowest. The store page opens automatically.</p>
 </main>
-<noscript><meta http-equiv="refresh" content="${seconds};url=${esc(target)}"></noscript>
+<noscript><meta http-equiv="refresh" content="${seconds};url=${esc2(target)}"></noscript>
 <script>
 (function () {
   var target = ${jsStr(target)};
@@ -39298,7 +39346,7 @@ function parseSpokenDate(text, now = /* @__PURE__ */ new Date()) {
   const m = t.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/);
   if (m) {
     const day = Number(m[1]);
-    const mon = MONTHS.indexOf(m[2]);
+    const mon = MONTHS2.indexOf(m[2]);
     let d = new Date(base.getFullYear(), mon, day);
     if (d < base) d = new Date(base.getFullYear() + 1, mon, day);
     if (d.getDate() === day) return isoDate2(d);
@@ -39360,7 +39408,7 @@ function interpretAssistantQuestion(raw, now = istToday()) {
     reply: categoryReply
   };
 }
-var LABEL, FILLER, MONTHS;
+var LABEL, FILLER, MONTHS2;
 var init_assistantIntent = __esm({
   "server/lens/assistantIntent.ts"() {
     init_queryUnderstanding();
@@ -39380,7 +39428,7 @@ var init_assistantIntent = __esm({
       account: "Bank Accounts"
     };
     FILLER = /\b(batao|bata\s*do|bataiye|dikhao|dikha\s*do|dikhaiye|dhundo|dhoondo|chahiye|chahie|kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|ka\s*rate|rate|rates|price|prices|fare|fares|kimat|keemat|please|pls|show|tell|me|find|search|check|what|is|are|the|of|for|a|an|i|want|need|looking|cheapest|sasta|sabse|best|flight|flights|airfare|ticket|tickets|bus|buses|hotel|hotels|cab|taxi)\b/gi;
-    MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    MONTHS2 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
   }
 });
 
@@ -45078,18 +45126,18 @@ var init_routes = __esm({
       } catch {
       }
       const appName = (scheme.split("://")[0] || "app").replace(/^olacabs$/, "ola");
-      const esc7 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const esc8 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Opening ${esc7(appName)}\u2026</title>
+<title>Opening ${esc8(appName)}\u2026</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
 .muted{color:#94a3b8;font-size:13px;margin-top:10px}.ad{margin-top:18px;background:#fff;border-radius:12px;padding:8px;color:#0f172a}</style></head><body><div class="card">
-<h2 style="margin:0 0 6px">Opening ${esc7(appName)}</h2>
-<p class="muted">Handing your pickup and drop to the ${esc7(appName)} app\u2026</p>
-<a class="btn" href="${esc7(tracked)}">Continue on the website</a>
+<h2 style="margin:0 0 6px">Opening ${esc8(appName)}</h2>
+<p class="muted">Handing your pickup and drop to the ${esc8(appName)} app\u2026</p>
+<a class="btn" href="${esc8(tracked)}">Continue on the website</a>
 ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
-<p class="muted">Fare and availability are shown by ${esc7(appName)} itself.</p>
+<p class="muted">Fare and availability are shown by ${esc8(appName)} itself.</p>
 </div>
 <script>
   var scheme = ${JSON.stringify(scheme)};
@@ -45506,12 +45554,12 @@ function parseMyx(html) {
   const start = /window\.__myx\s*=\s*\{/.exec(html);
   if (!start) return null;
   const from = start.index + start[0].length - 1;
-  let depth = 0, inStr = false, esc7 = false, end = -1;
+  let depth = 0, inStr = false, esc8 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc7) esc7 = false;
-      else if (ch === "\\") esc7 = true;
+      if (esc8) esc8 = false;
+      else if (ch === "\\") esc8 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -47083,15 +47131,15 @@ function parseAdsenseDate(raw) {
   if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
   m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(s);
   if (m) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
-  const MONTHS2 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const MONTHS3 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
   m = /^(\d{1,2})[ -]([A-Za-z]{3,})[ -](\d{4})$/.exec(s);
   if (m) {
-    const mi = MONTHS2.indexOf(m[2].slice(0, 3).toLowerCase());
+    const mi = MONTHS3.indexOf(m[2].slice(0, 3).toLowerCase());
     if (mi >= 0) return `${m[3]}-${String(mi + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   }
   m = /^([A-Za-z]{3,})[ .]+(\d{1,2}),?[ ]+(\d{4})$/.exec(s);
   if (m) {
-    const mi = MONTHS2.indexOf(m[1].slice(0, 3).toLowerCase());
+    const mi = MONTHS3.indexOf(m[1].slice(0, 3).toLowerCase());
     if (mi >= 0) return `${m[3]}-${String(mi + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
   }
   const d = new Date(s);
@@ -47503,7 +47551,7 @@ function zipStore(files) {
   eocd.writeUInt16LE(0, 20);
   return Buffer.concat([...locals, cd, eocd]);
 }
-function esc2(s) {
+function esc3(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 function colName(i) {
@@ -47522,7 +47570,7 @@ function sheetXml(s) {
       const ref = `${colName(c)}${r + 1}`;
       if (v === null || v === void 0 || v === "") return `<c r="${ref}" s="${r === 0 ? 1 : 0}"/>`;
       if (typeof v === "number" && Number.isFinite(v)) return `<c r="${ref}" s="${r === 0 ? 1 : 0}"><v>${v}</v></c>`;
-      return `<c r="${ref}" s="${r === 0 ? 1 : 0}" t="inlineStr"><is><t xml:space="preserve">${esc2(String(v))}</t></is></c>`;
+      return `<c r="${ref}" s="${r === 0 ? 1 : 0}" t="inlineStr"><is><t xml:space="preserve">${esc3(String(v))}</t></is></c>`;
     }).join("");
     return `<row r="${r + 1}"${r === 0 ? ' ht="20" customHeight="1"' : ""}>${cs}</row>`;
   }).join("");
@@ -47541,7 +47589,7 @@ function buildXlsx(sheets) {
   push("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
   push("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${safe.map((s, i) => `<sheet name="${esc2((s.name || `Sheet${i + 1}`).slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`);
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${safe.map((s, i) => `<sheet name="${esc3((s.name || `Sheet${i + 1}`).slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`);
   push("xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${safe.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
   push("xl/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -51380,9 +51428,9 @@ __export(guidePages_exports, {
 });
 function blocksHtml(g) {
   return g.blocks.map((b) => {
-    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${esc3(i)}</li>`).join("")}</ul>`;
-    if (b.t === "p") return `<p>${esc3(b.x)}</p>`;
-    return `<${b.t}>${esc3(b.x)}</${b.t}>`;
+    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${esc4(i)}</li>`).join("")}</ul>`;
+    if (b.t === "p") return `<p>${esc4(b.x)}</p>`;
+    return `<${b.t}>${esc4(b.x)}</${b.t}>`;
   }).join("\n");
 }
 function faqJsonLd(g) {
@@ -51424,19 +51472,19 @@ function renderGuidePage(slug5, origin) {
   if (!g) return void 0;
   const canonical = `${origin}/guides/${slug5}`;
   const related = GUIDES.filter((x) => x.slug !== slug5).slice(0, 3);
-  const verticalLinks = g.verticals.map((v) => `<a class="cta" href="/${v}">Compare ${esc3(v)} prices</a>`).join(" ");
+  const verticalLinks = g.verticals.map((v) => `<a class="cta" href="/${v}">Compare ${esc4(v)} prices</a>`).join(" ");
   return `${head2(g.title, g.description, canonical, articleJsonLd(g, origin) + faqJsonLd(g))}
 <body>
 ${nav()}
 <main>
-<h1>${esc3(g.title)}</h1>
-<p class="meta">Try1Second editorial \xB7 Updated ${esc3(g.updated)} \xB7 ${g.verticals.length} vertical${g.verticals.length > 1 ? "s" : ""} covered</p>
-<p class="lede">${esc3(g.headline)} \u2014 ${esc3(g.description)}</p>
+<h1>${esc4(g.title)}</h1>
+<p class="meta">Try1Second editorial \xB7 Updated ${esc4(g.updated)} \xB7 ${g.verticals.length} vertical${g.verticals.length > 1 ? "s" : ""} covered</p>
+<p class="lede">${esc4(g.headline)} \u2014 ${esc4(g.description)}</p>
 ${blocksHtml(g)}
 <p>${verticalLinks}</p>
 <h2>More buying guides</h2>
 ${related.map(
-    (r) => `<div class="card"><h3><a href="/guides/${r.slug}">${esc3(r.title)}</a></h3><p>${esc3(r.description)}</p></div>`
+    (r) => `<div class="card"><h3><a href="/guides/${r.slug}">${esc4(r.title)}</a></h3><p>${esc4(r.description)}</p></div>`
   ).join("")}
 </main>
 ${footer()}
@@ -51457,18 +51505,18 @@ ${nav()}
 <p class="meta">Try1Second editorial \xB7 ${GUIDES.length} guides \xB7 Updated ${GUIDES[0]?.updated || ""}</p>
 <p class="lede">Every guide explains how a price is built, which fees the headline number leaves out, and what to check before you pay. We write these from the mechanics of each marketplace, not from sponsored placements.</p>
 ${GUIDES.map(
-    (g) => `<div class="card"><h3><a href="/guides/${g.slug}">${esc3(g.title)}</a></h3><p>${esc3(g.description)}</p></div>`
+    (g) => `<div class="card"><h3><a href="/guides/${g.slug}">${esc4(g.title)}</a></h3><p>${esc4(g.description)}</p></div>`
   ).join("\n")}
 </main>
 ${footer()}
 </body>
 </html>`;
 }
-var esc3, STYLE2, head2, nav, footer, GUIDE_SLUGS2;
+var esc4, STYLE2, head2, nav, footer, GUIDE_SLUGS2;
 var init_guidePages = __esm({
   "server/seo/guidePages.ts"() {
     init_guides();
-    esc3 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc4 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     STYLE2 = `
 :root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
 *{box-sizing:border-box}
@@ -51500,14 +51548,14 @@ footer a{color:var(--muted);text-decoration:none;margin:0 6px}
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc3(title)}</title>
-<meta name="description" content="${esc3(description)}" />
-<link rel="canonical" href="${esc3(canonical)}" />
+<title>${esc4(title)}</title>
+<meta name="description" content="${esc4(description)}" />
+<link rel="canonical" href="${esc4(canonical)}" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="${esc3(title)}" />
-<meta property="og:description" content="${esc3(description)}" />
-<meta property="og:url" content="${esc3(canonical)}" />
+<meta property="og:title" content="${esc4(title)}" />
+<meta property="og:description" content="${esc4(description)}" />
+<meta property="og:url" content="${esc4(canonical)}" />
 <style>${STYLE2}</style>
 ${extra}</head>`;
     nav = () => `<header>
@@ -51649,16 +51697,16 @@ function blocksHtml2(page) {
         out.push("<ul>");
         inList = true;
       }
-      out.push(`<li>${esc4(b.x)}</li>`);
+      out.push(`<li>${esc5(b.x)}</li>`);
       continue;
     }
     closeList();
-    if (b.t === "p") out.push(`<p>${esc4(b.x)}</p>`);
+    if (b.t === "p") out.push(`<p>${esc5(b.x)}</p>`);
     else {
       if (!seenFirstHeading) {
-        out.push(`<h1>${esc4(b.x)}</h1>`);
+        out.push(`<h1>${esc5(b.x)}</h1>`);
         seenFirstHeading = true;
-      } else out.push(`<h2>${esc4(b.x)}</h2>`);
+      } else out.push(`<h2>${esc5(b.x)}</h2>`);
     }
   }
   closeList();
@@ -51674,14 +51722,14 @@ function renderLegalPage(slug5, origin) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc4(page.title)}</title>
-<meta name="description" content="${esc4(page.description)}" />
-<link rel="canonical" href="${esc4(canonical)}" />
+<title>${esc5(page.title)}</title>
+<meta name="description" content="${esc5(page.description)}" />
+<link rel="canonical" href="${esc5(canonical)}" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="${esc4(page.title)}" />
-<meta property="og:description" content="${esc4(page.description)}" />
-<meta property="og:url" content="${esc4(canonical)}" />
+<meta property="og:title" content="${esc5(page.title)}" />
+<meta property="og:description" content="${esc5(page.description)}" />
+<meta property="og:url" content="${esc5(canonical)}" />
 <style>
 :root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
 *{box-sizing:border-box}
@@ -51722,11 +51770,11 @@ ${blocksHtml2(page)}
 </body>
 </html>`;
 }
-var esc4, NAV_LABEL, LEGAL_ALIASES;
+var esc5, NAV_LABEL, LEGAL_ALIASES;
 var init_legalPages = __esm({
   "server/seo/legalPages.ts"() {
     init_legalContent();
-    esc4 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc5 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     NAV_LABEL = {
       about: "About",
       "privacy-policy": "Privacy",
@@ -51828,7 +51876,7 @@ function prerenderLoader(page) {
       </div>`).join("");
   return `<div data-t1s-prerender="loader" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f9f9fb;min-height:100vh">
     <div style="max-width:720px;margin:0 auto;padding:28px 16px 8px">
-      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc5(page.h1)}</h1>
+      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc6(page.h1)}</h1>
       <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#374151;margin-bottom:10px">
         <span style="width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block"></span>
         <span>Checking live prices&hellip;</span>
@@ -51848,16 +51896,16 @@ function prerenderBody(path17) {
   const page = resolveSeoPage(path17);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
-    <dt>${esc5(f.q)}</dt><dd>${esc5(f.a)}</dd>`).join("");
-  const links = page.links.slice(0, 10).map((l) => `<a href="${esc5(l.href)}">${esc5(l.label)}</a>`).join("");
+    <dt>${esc6(f.q)}</dt><dd>${esc6(f.a)}</dd>`).join("");
+  const links = page.links.slice(0, 10).map((l) => `<a href="${esc6(l.href)}">${esc6(l.label)}</a>`).join("");
   return [
     prerenderLoader(page),
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 40px">`,
     `<nav aria-label="Breadcrumb" style="font-size:12px;color:#6b7280;margin-bottom:8px">`,
-    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc5(b.name) : `<a href="${esc5(b.path)}" style="color:#6b7280">${esc5(b.name)}</a>`)).join(""),
+    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc6(b.name) : `<a href="${esc6(b.path)}" style="color:#6b7280">${esc6(b.name)}</a>`)).join(""),
     `</nav>`,
-    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc5(page.h1)}</h1>`,
-    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc5(p)}</p>`),
+    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc6(page.h1)}</h1>`,
+    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc6(p)}</p>`),
     `<h2 style="font-size:15px;margin:20px 0 8px">Frequently asked questions</h2>`,
     `<dl style="font-size:13.5px;line-height:1.6;color:#374151">${faqHtml}</dl>`,
     links ? `<h2 style="font-size:15px;margin:20px 0 8px">Popular comparisons</h2><p style="font-size:13px;line-height:2">${links}</p>` : "",
@@ -51872,24 +51920,24 @@ function enhanceHtml(html, path17) {
   const desc = page ? page.description : DEFAULT_DESC;
   const canonical = `${SEO_HOST}${(path17 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
-  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc5(title)}</title>`);
+  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc6(title)}</title>`);
   out = out.replace(
     /<meta name="description" content="[^"]*" \/>/,
-    `<meta name="description" content="${esc5(desc)}" />`
+    `<meta name="description" content="${esc6(desc)}" />`
   );
   out = out.replace(
     /<meta property="og:title" content="[^"]*" \/>/,
-    `<meta property="og:title" content="${esc5(title)}" />`
+    `<meta property="og:title" content="${esc6(title)}" />`
   );
   out = out.replace(
     /<meta property="og:description" content="[^"]*" \/>/,
-    `<meta property="og:description" content="${esc5(desc)}" />`
+    `<meta property="og:description" content="${esc6(desc)}" />`
   );
   const head3 = [
-    `<link rel="canonical" href="${esc5(canonical)}" />`,
-    `<meta property="og:url" content="${esc5(canonical)}" />`,
-    `<meta name="twitter:title" content="${esc5(title)}" />`,
-    `<meta name="twitter:description" content="${esc5(desc)}" />`,
+    `<link rel="canonical" href="${esc6(canonical)}" />`,
+    `<meta property="og:url" content="${esc6(canonical)}" />`,
+    `<meta name="twitter:title" content="${esc6(title)}" />`,
+    `<meta name="twitter:description" content="${esc6(desc)}" />`,
     `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />`,
     `<meta name="geo.region" content="IN" />`,
     `<meta name="geo.placename" content="India" />`,
@@ -51901,8 +51949,8 @@ function enhanceHtml(html, path17) {
     `<meta property="og:image:alt" content="Try1Second \u2014 live price comparison across flights, hotels, cabs, groceries and finance in India" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:image" content="${SEO_HOST}/og-image.jpg" />`,
-    `<link rel="alternate" hreflang="en-in" href="${esc5(canonical)}" />`,
-    `<link rel="alternate" hreflang="x-default" href="${esc5(canonical)}" />`
+    `<link rel="alternate" hreflang="en-in" href="${esc6(canonical)}" />`,
+    `<link rel="alternate" hreflang="x-default" href="${esc6(canonical)}" />`
   ];
   if (!isNoindex) for (const b of jsonLd(path17)) head3.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head3.join("\n")}
@@ -51915,11 +51963,11 @@ function enhanceHtml(html, path17) {
   }
   return out;
 }
-var esc5, DEFAULT_TITLE, DEFAULT_DESC;
+var esc6, DEFAULT_TITLE, DEFAULT_DESC;
 var init_render = __esm({
   "server/seo/render.ts"() {
     init_data();
-    esc5 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc6 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     DEFAULT_TITLE = "Try1Second \u2014 One Second Is All It Takes to Find the Lowest Price";
     DEFAULT_DESC = "Compare live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in one second.";
   }
@@ -51987,15 +52035,15 @@ function renderSnapshotHtml(snapshot, heading = "Latest verified prices") {
   if (!snapshot || !snapshot.rows.length) return "";
   const items = snapshot.rows.map((r) => `
     <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
-      <span style="min-width:0;font-size:13.5px;color:#111827">${esc6(r.title)}</span>
-      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc6(inr(r.price))}</span>
-      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc6(r.seller)}</span>
+      <span style="min-width:0;font-size:13.5px;color:#111827">${esc7(r.title)}</span>
+      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc7(inr(r.price))}</span>
+      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc7(r.seller)}</span>
     </li>`).join("");
   return [
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:0 16px 8px">`,
-    `<h2 style="font-size:15px;margin:18px 0 6px">${esc6(heading)}</h2>`,
+    `<h2 style="font-size:15px;margin:18px 0 6px">${esc7(heading)}</h2>`,
     `<ul style="list-style:none;padding:0;margin:0">${items}</ul>`,
-    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc6(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
+    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc7(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
     `</section>`
   ].join("");
 }
@@ -52055,14 +52103,14 @@ async function snapshotForPath(path17) {
 function clearSnapshotCache() {
   cache10.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc6, inr, slugOf2;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc7, inr, slugOf2;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
     SNAPSHOT_TTL_MS = 10 * 6e4;
     MAX_ROWS = 6;
     cache10 = /* @__PURE__ */ new Map();
-    esc6 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc7 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf2 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
   }
