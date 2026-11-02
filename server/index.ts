@@ -223,6 +223,26 @@ export async function createApp(): Promise<express.Express> {
     res.status(404).send('Not found');
   });
 
+  // CRAWLABLE LEGAL / SUPPORT PAGES (owner 2 Nov: AdSense "Needs attention - Low value content").
+  // These paths used to fall through to the SPA shell, which answers 200 with ~27 words and the
+  // homepage title - a reviewer reads that as "no privacy policy, no terms, no contact page".
+  // Registered before the static handler and before the catch-all so real HTML always wins.
+  {
+    const { renderLegalPage, LEGAL_ALIASES } = await import('./seo/legalPages');
+    const ORIGIN = 'https://www.try1second.com';
+    app.get(Object.keys(LEGAL_ALIASES), (req: Request, res: Response) => {
+      const slug = LEGAL_ALIASES[req.path.toLowerCase()] || LEGAL_ALIASES[req.path.replace(/\/$/, '').toLowerCase()];
+      const html = slug ? renderLegalPage(slug, ORIGIN) : undefined;
+      if (!html) {
+        res.status(404).type('text/plain').send('Not found');
+        return;
+      }
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(html);
+    });
+  }
+
   if (fs.existsSync(dist)) {
     app.use(express.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;

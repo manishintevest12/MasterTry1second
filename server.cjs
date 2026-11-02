@@ -2817,12 +2817,12 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start = -1, inStr = false, esc5 = false;
+  let depth = 0, start = -1, inStr = false, esc6 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc5) esc5 = false;
-      else if (ch === "\\") esc5 = true;
+      if (esc6) esc6 = false;
+      else if (ch === "\\") esc6 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -2937,12 +2937,12 @@ function parseMyntra(html, source, pageUrl) {
     const start = /window\.__myx\s*=\s*\{/.exec(html);
     if (start) {
       const from = start.index + start[0].length - 1;
-      let depth = 0, inStr = false, esc5 = false, end = -1;
+      let depth = 0, inStr = false, esc6 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
         if (inStr) {
-          if (esc5) esc5 = false;
-          else if (ch === "\\") esc5 = true;
+          if (esc6) esc6 = false;
+          else if (ch === "\\") esc6 = true;
           else if (ch === '"') inStr = false;
           continue;
         }
@@ -3832,12 +3832,12 @@ function extractRelianceState(html) {
   if (eq < 0) return null;
   const s = html.slice(eq + 1).trimStart();
   if (s[0] !== "{") return null;
-  let depth = 0, inStr = false, esc5 = false, end = -1;
+  let depth = 0, inStr = false, esc6 = false, end = -1;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
-      if (esc5) esc5 = false;
-      else if (ch === "\\") esc5 = true;
+      if (esc6) esc6 = false;
+      else if (ch === "\\") esc6 = true;
       else if (ch === '"') inStr = false;
     } else if (ch === '"') inStr = true;
     else if (ch === "{") depth++;
@@ -5570,12 +5570,12 @@ function extractInitialState(body) {
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
-  let depth = 0, inStr = false, esc5 = false, end = -1;
+  let depth = 0, inStr = false, esc6 = false, end = -1;
   for (; i < body.length; i++) {
     const c = body[i];
     if (inStr) {
-      if (esc5) esc5 = false;
-      else if (c === "\\") esc5 = true;
+      if (esc6) esc6 = false;
+      else if (c === "\\") esc6 = true;
       else if (c === '"') inStr = false;
       continue;
     }
@@ -5706,12 +5706,12 @@ function parseMmtHotelLanding(body) {
       continue;
     }
     const objStart = j;
-    let depth = 0, inStr = false, esc5 = false, end = -1;
+    let depth = 0, inStr = false, esc6 = false, end = -1;
     for (; j < body.length; j++) {
       const c = body[j];
       if (inStr) {
-        if (esc5) esc5 = false;
-        else if (c === "\\") esc5 = true;
+        if (esc6) esc6 = false;
+        else if (c === "\\") esc6 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -10422,15 +10422,15 @@ function extractAaDataSchedule(pageHtml) {
   if (i < 0) return null;
   const start = pageHtml.indexOf("{", i + 20);
   if (start < 0) return null;
-  let depth = 0, end = -1, inStr = false, esc5 = false;
+  let depth = 0, end = -1, inStr = false, esc6 = false;
   for (let k = start; k < pageHtml.length; k++) {
     const c = pageHtml[k];
-    if (esc5) {
-      esc5 = false;
+    if (esc6) {
+      esc6 = false;
       continue;
     }
     if (c === "\\") {
-      esc5 = true;
+      esc6 = true;
       continue;
     }
     if (c === '"') {
@@ -18544,8 +18544,8 @@ function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
   const norm7 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
-  const esc5 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(`^${esc5}\\b`);
+  const esc6 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc6}\\b`);
   return cities.find((c) => norm7(c.name) === t) || cities.find((c) => rx.test(norm7(c.name))) || cities.find((c) => norm7(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
@@ -19431,11 +19431,11 @@ function uberIndiaCityFor(place) {
   const t = canonCity(place);
   const hit = BY_CANON.get(t);
   if (hit) return hit;
-  const esc5 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc6 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let best = null;
   let bestLen = 0;
   for (const [k, v] of BY_CANON) {
-    if (new RegExp(`\\b${esc5(k)}\\b`).test(t) || new RegExp(`\\b${esc5(t)}\\b`).test(k)) {
+    if (new RegExp(`\\b${esc6(k)}\\b`).test(t) || new RegExp(`\\b${esc6(t)}\\b`).test(k)) {
       if (k.length > bestLen) {
         best = v;
         bestLen = k.length;
@@ -25689,12 +25689,12 @@ function ixigoFlightText(html) {
 function parseObjectAt(text, start) {
   let depth = 0;
   let inStr = false;
-  let esc5 = false;
+  let esc6 = false;
   for (let i = start; i < text.length; i += 1) {
     const ch = text[i];
     if (inStr) {
-      if (esc5) esc5 = false;
-      else if (ch === "\\") esc5 = true;
+      if (esc6) esc6 = false;
+      else if (ch === "\\") esc6 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -37041,7 +37041,7 @@ function errorPage(title, message) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
 }
 async function adBlockHtml(slotKey) {
-  const esc5 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const esc6 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   let client = "";
   let slot2 = "";
   let customHtml = "";
@@ -37062,7 +37062,7 @@ async function adBlockHtml(slotKey) {
   }
   if (customHtml.trim()) return customHtml;
   if (!client || !slot2) return "";
-  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc5(client)}" data-ad-slot="${esc5(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc6(client)}" data-ad-slot="${esc6(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
 }
 function renderInterstitialPage(opts) {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -44769,18 +44769,18 @@ var init_routes = __esm({
       } catch {
       }
       const appName = (scheme.split("://")[0] || "app").replace(/^olacabs$/, "ola");
-      const esc5 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const esc6 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Opening ${esc5(appName)}\u2026</title>
+<title>Opening ${esc6(appName)}\u2026</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
 .muted{color:#94a3b8;font-size:13px;margin-top:10px}.ad{margin-top:18px;background:#fff;border-radius:12px;padding:8px;color:#0f172a}</style></head><body><div class="card">
-<h2 style="margin:0 0 6px">Opening ${esc5(appName)}</h2>
-<p class="muted">Handing your pickup and drop to the ${esc5(appName)} app\u2026</p>
-<a class="btn" href="${esc5(tracked)}">Continue on the website</a>
+<h2 style="margin:0 0 6px">Opening ${esc6(appName)}</h2>
+<p class="muted">Handing your pickup and drop to the ${esc6(appName)} app\u2026</p>
+<a class="btn" href="${esc6(tracked)}">Continue on the website</a>
 ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
-<p class="muted">Fare and availability are shown by ${esc5(appName)} itself.</p>
+<p class="muted">Fare and availability are shown by ${esc6(appName)} itself.</p>
 </div>
 <script>
   var scheme = ${JSON.stringify(scheme)};
@@ -45203,12 +45203,12 @@ function parseMyx(html) {
   const start = /window\.__myx\s*=\s*\{/.exec(html);
   if (!start) return null;
   const from = start.index + start[0].length - 1;
-  let depth = 0, inStr = false, esc5 = false, end = -1;
+  let depth = 0, inStr = false, esc6 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc5) esc5 = false;
-      else if (ch === "\\") esc5 = true;
+      if (esc6) esc6 = false;
+      else if (ch === "\\") esc6 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -49590,7 +49590,16 @@ function routeSlug(a, b, noun) {
   return `${a}-to-${b}-${noun}`;
 }
 function listSeoPaths() {
-  const paths = ["/", "/about", "/privacy"];
+  const paths = [
+    "/",
+    "/about",
+    "/privacy-policy",
+    "/privacy",
+    "/terms",
+    "/affiliate-disclosure",
+    "/faq",
+    "/contact"
+  ];
   for (const v of VERTICALS2) {
     paths.push(`/${v.slug}`);
     if (v.id === "hotels" || v.id === "grocery" || v.id === "food" || v.id === "movie" || v.id === "cab") {
@@ -50719,6 +50728,234 @@ var init_singleton = __esm({
   }
 });
 
+// server/seo/legalContent.ts
+var LEGAL_PAGES, LEGAL_SLUGS;
+var init_legalContent = __esm({
+  "server/seo/legalContent.ts"() {
+    LEGAL_PAGES = {
+      "about": {
+        slug: "about",
+        title: "About Try1Second \u2014 Independent Multi-Vertical Price Comparison",
+        description: "Who we are: an independent Indian metasearch engine comparing live prices across flights, hotels, bus, cabs, groceries, food, movies, loans and cards in about a second.",
+        blocks: [
+          { t: "h2", x: "Welcome to Try1Second" },
+          { t: "p", x: "India's 1-Second Unified Multi-Vertical Comparison & Rewards Engine" },
+          { t: "p", x: "Every day, millions of Indian consumers juggle between 10+ different apps\u2014checking MakeMyTrip for flights, Booking.com for hotels, Amazon and Flipkart for gadgets, Blinkit and Zepto for groceries, Zomato and Swiggy for meals, and Uber vs Ola for rides. In doing so, shoppers lose 30\u201345 minutes per purchase and overpay by an average of \u20B914,000 every year due to fragmented surge pricing, obscured delivery fees, and unapplied bank discounts." },
+          { t: "h4", x: "1-Second Latency" },
+          { t: "p", x: "Direct low-latency API handshakes scan 25+ partner databases simultaneously in sub-second response times." },
+          { t: "h4", x: "Zero Hidden Fees" },
+          { t: "p", x: "Final checkout prices include taxes, convenience charges, and real-time bank cashback comparisons." },
+          { t: "h4", x: "Spin & Earn Rewards" },
+          { t: "p", x: "Every outbound click awards 1 Point. Hit 100 Points to spin the jackpot wheel for real merchant vouchers." },
+          { t: "h3", x: "Our 10 Core Verticals" },
+          { t: "p", x: "We cover all high-frequency consumer sectors with verified partner APIs:" }
+        ]
+      },
+      "privacy-policy": {
+        slug: "privacy-policy",
+        title: "Privacy Policy \u2014 Try1Second",
+        description: "How Try1Second handles your data: DPDP Act 2023 aligned, no sale of personal data, lead forms stored on our own MySQL servers and shared only with the partner you pick.",
+        blocks: [
+          { t: "h2", x: "Privacy Policy" },
+          { t: "p", x: "Last updated: October 2026 \xB7 Compliant with DPDP Act 2023" },
+          { t: "h4", x: "1. Information We Collect" },
+          { t: "li", x: "Hyper-Local Location (GPS / Pincode): When you enable location permissions, your latitude/longitude or 6-digit postal code is used strictly to query hyper-local dark stores (Blinkit, Zepto), restaurant menus (Zomato, Swiggy), and cab pickup ETAs (Uber, Ola). Location data is never stored on permanent third-party servers." },
+          { t: "li", x: 'Redirection & Referral Tracking: When you click "Select Deal" or "Book & Earn", a referral tag is appended to the merchant URL to verify click attribution and credit your 1 Point towards the Spin & Win wheel.' },
+          { t: "li", x: "Price Alerts & Watchlist: Desired target prices and notifications are cached locally in your browser storage." },
+          { t: "li", x: "Finance Enquiry Forms (Loans, Insurance, Credit Cards, Bank Accounts): When you submit an enquiry (name, age, salary, location and contact details), it is stored on our own servers in a MySQL database and shared ONLY with the specific partner bank, insurer or lender whose offer you selected, so they can contact you about that product. We never sell or rent this data, and you can request deletion anytime at info@try1second.com." },
+          { t: "h4", x: "2. Cookie & Session Policy" },
+          { t: "p", x: "We use strictly functional cookies to preserve your accumulated points, saved wishlist, and active price tracking thresholds across sessions." },
+          { t: "h4", x: "3. Security & Encryption" },
+          { t: "p", x: "All API handshakes are secured using TLS 1.3 with 256-bit encryption. Financial and credit card calculations are performed client-side; Try1Second does not store credit card numbers or banking CVVs." }
+        ]
+      },
+      "terms": {
+        slug: "terms",
+        title: "Terms of Service \u2014 Try1Second",
+        description: "Try1Second terms: we are a metasearch engine, not a merchant. Fulfilment, cancellation and refunds follow the partner you book with.",
+        blocks: [
+          { t: "h2", x: "Terms of Service" },
+          { t: "p", x: "Effective Date: October 2026" },
+          { t: "h4", x: "1. Metasearch Role & Non-Merchant Status" },
+          { t: "p", x: "Try1Second operates as an unbiased metasearch aggregation engine. When you select a flight, hotel, ride, product, loan, or policy, transaction fulfillment occurs on the verified third-party partner's platform (e.g., MakeMyTrip, Amazon, Blinkit, HDFC Bank). The partner's cancellation, refund, and service terms apply to your final purchase." },
+          { t: "h4", x: "2. Price Accuracy Guarantee & Real-Time Sync" },
+          { t: "p", x: "While our sub-second algorithms fetch real-time seller pricing, partner fares may fluctuate dynamically based on concurrent inventory changes, dynamic airline yield algorithms, or instantaneous dark-store surges. Always confirm the final price on the merchant's checkout screen before payment." },
+          { t: "h4", x: "3. Point Economy & Spin & Earn Mechanics" },
+          { t: "li", x: "Users earn 1 Try1Second Point per verified merchant redirection." },
+          { t: "li", x: "Accumulating 100 Points unlocks 1 Spin on the prize wheel." },
+          { t: "li", x: "Vouchers awarded from the prize wheel (Amazon, Swiggy, MakeMyTrip, Blinkit) carry unique redemption promo codes with individual merchant terms and expiry dates." },
+          { t: "li", x: "Points hold no standalone fiat currency value and cannot be exchanged for direct cash withdrawal." }
+        ]
+      },
+      "affiliate-disclosure": {
+        slug: "affiliate-disclosure",
+        title: "Affiliate Disclosure \u2014 Try1Second",
+        description: "How Try1Second stays free: verified affiliate partnerships, clearly disclosed, with no effect on the prices you see.",
+        blocks: [
+          { t: "h2", x: "Affiliate Disclosure & Transparency" },
+          { t: "p", x: "100% Consumer-First Pricing Transparency" },
+          { t: "p", x: "How does Try1Second make money without charging users?" },
+          { t: "p", x: "Try1Second is 100% free for consumers. We participate in verified direct affiliate partnerships with merchants such as MakeMyTrip, Amazon, Agoda, Blinkit, Uber, and PolicyBazaar. When you compare prices on our platform and complete a purchase through our redirection link, the partner merchant pays Try1Second a modest referral commission." },
+          { t: "p", x: "Crucial note: This never increases your price by even a single paisa. In fact, our comparison engine guarantees you find the absolute lowest published price, with exclusive coupons applied." },
+          { t: "h4", x: "Our Algorithmic Independence Policy" },
+          { t: "p", x: 'Sellers cannot pay to rank higher in our default "Cheapest" or "Best" metasearch sorting algorithms. Rankings are strictly dictated by mathematically verified prices, live travel durations, user review sentiments, and verified criteria scores.' }
+        ]
+      },
+      "faq": {
+        slug: "faq",
+        title: "Frequently Asked Questions \u2014 Try1Second",
+        description: "Answers about how fast prices update, where prices come from, hidden fees, cashback and rewards on Try1Second.",
+        blocks: [
+          { t: "h2", x: "Frequently Asked Questions" },
+          { t: "p", x: "Quick answers to common questions" },
+          { t: "h4", x: "How quickly are prices updated?" },
+          { t: "p", x: "Try1Second queries partner APIs in real-time. Flight fares, grocery dark-store stocks, and cab surge prices are updated every 30 to 60 seconds or instantaneously upon user search." },
+          { t: "h4", x: "How do I earn points for the Spin Wheel?" },
+          { t: "p", x: "You earn 1 point for every new friend who joins Try1Second using your personal referral link! Once your wallet reaches 100 points, the prize wheel unlocks for guaranteed gift vouchers & cashback. You can also use the tester buttons in the Spin tab to simulate referrals and test spins instantly." },
+          { t: "h4", x: "Why does Try1Second request my GPS location?" },
+          { t: "p", x: "For 10-Min Grocery, Food Delivery, and Cabs, prices and delivery times vary by exact street address. Providing your GPS or entering your 6-digit Pincode ensures you see exact dark-store availability and accurate cab pickup fares." },
+          { t: "h4", x: "Are hotel and airline quotes inclusive of taxes?" },
+          { t: "p", x: "Yes! Our primary price shows the total estimated price inclusive of base fare, airport fees, GST, and mandatory service charges so there are no surprise jumps at checkout." }
+        ]
+      },
+      "contact": {
+        slug: "contact",
+        title: "Contact Try1Second Support",
+        description: "Reach the Try1Second support desk. We respond within 24 hours, 7 days a week.",
+        blocks: [
+          { t: "h2", x: "Contact Us & Support Desk" },
+          { t: "p", x: "We respond within 24 hours \xB7 7 days a week" }
+        ]
+      }
+    };
+    LEGAL_SLUGS = Object.keys(LEGAL_PAGES);
+  }
+});
+
+// server/seo/legalPages.ts
+var legalPages_exports = {};
+__export(legalPages_exports, {
+  LEGAL_ALIASES: () => LEGAL_ALIASES,
+  renderLegalPage: () => renderLegalPage
+});
+function blocksHtml(page) {
+  const out = [];
+  let inList = false;
+  const closeList = () => {
+    if (inList) {
+      out.push("</ul>");
+      inList = false;
+    }
+  };
+  let seenFirstHeading = false;
+  for (const b of page.blocks) {
+    if (b.t === "li") {
+      if (!inList) {
+        out.push("<ul>");
+        inList = true;
+      }
+      out.push(`<li>${esc3(b.x)}</li>`);
+      continue;
+    }
+    closeList();
+    if (b.t === "p") out.push(`<p>${esc3(b.x)}</p>`);
+    else {
+      if (!seenFirstHeading) {
+        out.push(`<h1>${esc3(b.x)}</h1>`);
+        seenFirstHeading = true;
+      } else out.push(`<h2>${esc3(b.x)}</h2>`);
+    }
+  }
+  closeList();
+  return out.join("\n");
+}
+function renderLegalPage(slug5, origin) {
+  const page = LEGAL_PAGES[slug5];
+  if (!page) return void 0;
+  const canonical = `${origin}/${slug5}`;
+  const others = LEGAL_SLUGS.filter((s) => s !== slug5).map((s) => `<a href="/${s}">${NAV_LABEL[s] || s}</a>`).join(" \xB7 ");
+  return `<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc3(page.title)}</title>
+<meta name="description" content="${esc3(page.description)}" />
+<link rel="canonical" href="${esc3(canonical)}" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="${esc3(page.title)}" />
+<meta property="og:description" content="${esc3(page.description)}" />
+<meta property="og:url" content="${esc3(canonical)}" />
+<style>
+:root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+header{border-bottom:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header a.brand{font-weight:800;text-decoration:none;color:var(--ink);font-size:17px}
+header a.brand span{color:var(--brand)}
+header .spacer{flex:1}
+header nav a{color:var(--muted);text-decoration:none;font-size:14px;margin-left:14px;white-space:nowrap}
+header nav a:hover{color:var(--brand)}
+main{max-width:760px;margin:0 auto;padding:28px 20px 56px}
+h1{font-size:26px;line-height:1.25;margin:0 0 6px}
+h2{font-size:18px;margin:26px 0 8px}
+p{margin:12px 0;color:#1f2937}
+ul{margin:10px 0 18px;padding-left:22px}
+li{margin:6px 0;color:#1f2937}
+table{border-collapse:collapse}
+footer{border-top:1px solid var(--line);padding:18px 20px 34px;color:var(--muted);font-size:13px;text-align:center}
+footer a{color:var(--muted);text-decoration:none;margin:0 6px}
+footer a:hover{color:var(--brand)}
+.updated{color:var(--muted);font-size:13px;margin:0 0 18px}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/">Try1<span>Second</span></a>
+  <span class="spacer"></span>
+  <nav><a href="/">Compare prices</a>${LEGAL_SLUGS.filter((s) => s !== slug5).slice(0, 4).map((s) => `<a href="/${s}">${NAV_LABEL[s] || s}</a>`).join("")}</nav>
+</header>
+<main>
+<p class="updated">Last updated: November 2026 \xB7 Try1Second is an Indian metasearch engine, not a merchant.</p>
+${blocksHtml(page)}
+</main>
+<footer>
+  <p>${others}</p>
+  <p>\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Try1Second \xB7 <a href="/">www.try1second.com</a> \xB7 Questions? <a href="/contact">Contact support</a></p>
+</footer>
+</body>
+</html>`;
+}
+var esc3, NAV_LABEL, LEGAL_ALIASES;
+var init_legalPages = __esm({
+  "server/seo/legalPages.ts"() {
+    init_legalContent();
+    esc3 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    NAV_LABEL = {
+      about: "About",
+      "privacy-policy": "Privacy",
+      terms: "Terms",
+      "affiliate-disclosure": "Affiliate Disclosure",
+      faq: "FAQ",
+      contact: "Contact"
+    };
+    LEGAL_ALIASES = {
+      "/privacy": "privacy-policy",
+      "/privacy-policy": "privacy-policy",
+      "/terms": "terms",
+      "/terms-of-service": "terms",
+      "/disclaimer": "terms",
+      "/about": "about",
+      "/about-us": "about",
+      "/contact": "contact",
+      "/contact-us": "contact",
+      "/faq": "faq",
+      "/affiliate-disclosure": "affiliate-disclosure"
+    };
+  }
+});
+
 // server/seo/render.ts
 var render_exports = {};
 __export(render_exports, {
@@ -50796,7 +51033,7 @@ function prerenderLoader(page) {
       </div>`).join("");
   return `<div data-t1s-prerender="loader" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f9f9fb;min-height:100vh">
     <div style="max-width:720px;margin:0 auto;padding:28px 16px 8px">
-      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc3(page.h1)}</h1>
+      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc4(page.h1)}</h1>
       <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#374151;margin-bottom:10px">
         <span style="width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block"></span>
         <span>Checking live prices&hellip;</span>
@@ -50816,16 +51053,16 @@ function prerenderBody(path17) {
   const page = resolveSeoPage(path17);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
-    <dt>${esc3(f.q)}</dt><dd>${esc3(f.a)}</dd>`).join("");
-  const links = page.links.slice(0, 10).map((l) => `<a href="${esc3(l.href)}">${esc3(l.label)}</a>`).join("");
+    <dt>${esc4(f.q)}</dt><dd>${esc4(f.a)}</dd>`).join("");
+  const links = page.links.slice(0, 10).map((l) => `<a href="${esc4(l.href)}">${esc4(l.label)}</a>`).join("");
   return [
     prerenderLoader(page),
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 40px">`,
     `<nav aria-label="Breadcrumb" style="font-size:12px;color:#6b7280;margin-bottom:8px">`,
-    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc3(b.name) : `<a href="${esc3(b.path)}" style="color:#6b7280">${esc3(b.name)}</a>`)).join(""),
+    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc4(b.name) : `<a href="${esc4(b.path)}" style="color:#6b7280">${esc4(b.name)}</a>`)).join(""),
     `</nav>`,
-    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc3(page.h1)}</h1>`,
-    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc3(p)}</p>`),
+    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc4(page.h1)}</h1>`,
+    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc4(p)}</p>`),
     `<h2 style="font-size:15px;margin:20px 0 8px">Frequently asked questions</h2>`,
     `<dl style="font-size:13.5px;line-height:1.6;color:#374151">${faqHtml}</dl>`,
     links ? `<h2 style="font-size:15px;margin:20px 0 8px">Popular comparisons</h2><p style="font-size:13px;line-height:2">${links}</p>` : "",
@@ -50840,24 +51077,24 @@ function enhanceHtml(html, path17) {
   const desc = page ? page.description : DEFAULT_DESC;
   const canonical = `${SEO_HOST}${(path17 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
-  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc3(title)}</title>`);
+  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc4(title)}</title>`);
   out = out.replace(
     /<meta name="description" content="[^"]*" \/>/,
-    `<meta name="description" content="${esc3(desc)}" />`
+    `<meta name="description" content="${esc4(desc)}" />`
   );
   out = out.replace(
     /<meta property="og:title" content="[^"]*" \/>/,
-    `<meta property="og:title" content="${esc3(title)}" />`
+    `<meta property="og:title" content="${esc4(title)}" />`
   );
   out = out.replace(
     /<meta property="og:description" content="[^"]*" \/>/,
-    `<meta property="og:description" content="${esc3(desc)}" />`
+    `<meta property="og:description" content="${esc4(desc)}" />`
   );
   const head2 = [
-    `<link rel="canonical" href="${esc3(canonical)}" />`,
-    `<meta property="og:url" content="${esc3(canonical)}" />`,
-    `<meta name="twitter:title" content="${esc3(title)}" />`,
-    `<meta name="twitter:description" content="${esc3(desc)}" />`,
+    `<link rel="canonical" href="${esc4(canonical)}" />`,
+    `<meta property="og:url" content="${esc4(canonical)}" />`,
+    `<meta name="twitter:title" content="${esc4(title)}" />`,
+    `<meta name="twitter:description" content="${esc4(desc)}" />`,
     `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />`,
     `<meta name="geo.region" content="IN" />`,
     `<meta name="geo.placename" content="India" />`,
@@ -50869,8 +51106,8 @@ function enhanceHtml(html, path17) {
     `<meta property="og:image:alt" content="Try1Second \u2014 live price comparison across flights, hotels, cabs, groceries and finance in India" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:image" content="${SEO_HOST}/og-image.jpg" />`,
-    `<link rel="alternate" hreflang="en-in" href="${esc3(canonical)}" />`,
-    `<link rel="alternate" hreflang="x-default" href="${esc3(canonical)}" />`
+    `<link rel="alternate" hreflang="en-in" href="${esc4(canonical)}" />`,
+    `<link rel="alternate" hreflang="x-default" href="${esc4(canonical)}" />`
   ];
   if (!isNoindex) for (const b of jsonLd(path17)) head2.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head2.join("\n")}
@@ -50883,11 +51120,11 @@ function enhanceHtml(html, path17) {
   }
   return out;
 }
-var esc3, DEFAULT_TITLE, DEFAULT_DESC;
+var esc4, DEFAULT_TITLE, DEFAULT_DESC;
 var init_render = __esm({
   "server/seo/render.ts"() {
     init_data();
-    esc3 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc4 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     DEFAULT_TITLE = "Try1Second \u2014 One Second Is All It Takes to Find the Lowest Price";
     DEFAULT_DESC = "Compare live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in one second.";
   }
@@ -50955,15 +51192,15 @@ function renderSnapshotHtml(snapshot, heading = "Latest verified prices") {
   if (!snapshot || !snapshot.rows.length) return "";
   const items = snapshot.rows.map((r) => `
     <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
-      <span style="min-width:0;font-size:13.5px;color:#111827">${esc4(r.title)}</span>
-      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc4(inr(r.price))}</span>
-      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc4(r.seller)}</span>
+      <span style="min-width:0;font-size:13.5px;color:#111827">${esc5(r.title)}</span>
+      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc5(inr(r.price))}</span>
+      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc5(r.seller)}</span>
     </li>`).join("");
   return [
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:0 16px 8px">`,
-    `<h2 style="font-size:15px;margin:18px 0 6px">${esc4(heading)}</h2>`,
+    `<h2 style="font-size:15px;margin:18px 0 6px">${esc5(heading)}</h2>`,
     `<ul style="list-style:none;padding:0;margin:0">${items}</ul>`,
-    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc4(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
+    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc5(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
     `</section>`
   ].join("");
 }
@@ -51023,14 +51260,14 @@ async function snapshotForPath(path17) {
 function clearSnapshotCache() {
   cache10.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc4, inr, slugOf2;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc5, inr, slugOf2;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
     SNAPSHOT_TTL_MS = 10 * 6e4;
     MAX_ROWS = 6;
     cache10 = /* @__PURE__ */ new Map();
-    esc4 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc5 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf2 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
   }
@@ -51358,6 +51595,21 @@ async function createApp() {
     }
     res.status(404).send("Not found");
   });
+  {
+    const { renderLegalPage: renderLegalPage2, LEGAL_ALIASES: LEGAL_ALIASES2 } = await Promise.resolve().then(() => (init_legalPages(), legalPages_exports));
+    const ORIGIN = "https://www.try1second.com";
+    app.get(Object.keys(LEGAL_ALIASES2), (req, res) => {
+      const slug5 = LEGAL_ALIASES2[req.path.toLowerCase()] || LEGAL_ALIASES2[req.path.replace(/\/$/, "").toLowerCase()];
+      const html = slug5 ? renderLegalPage2(slug5, ORIGIN) : void 0;
+      if (!html) {
+        res.status(404).type("text/plain").send("Not found");
+        return;
+      }
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(html);
+    });
+  }
   if (import_fs9.default.existsSync(dist)) {
     app.use(import_express5.default.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;

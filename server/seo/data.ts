@@ -349,7 +349,18 @@ function routeSlug(a: string, b: string, noun: string): string {
 // ============ Path resolution ============
 
 export function listSeoPaths(): string[] {
-  const paths: string[] = ['/', '/about', '/privacy'];
+  // OWNER 2 Nov (AdSense "Low value content"): the support/legal URLs are now real pages, so the
+  // sitemap lists every one of them instead of a lone '/privacy' that answered the SPA shell.
+  const paths: string[] = [
+    '/',
+    '/about',
+    '/privacy-policy',
+    '/privacy',
+    '/terms',
+    '/affiliate-disclosure',
+    '/faq',
+    '/contact',
+  ];
   for (const v of VERTICALS) {
     paths.push(`/${v.slug}`);
     if (v.id === 'hotels' || v.id === 'grocery' || v.id === 'food' || v.id === 'movie' || v.id === 'cab') {
