@@ -1601,13 +1601,27 @@ function discoveredLegs() {
   }
 }
 function gatedLegs() {
+  const files = [
+    process.env.T1S_GATED_POOL_FILE || import_path3.default.join(process.cwd(), "data", "proxy-pool-gated.json"),
+    // committed seed: hops measured against a real gated edge, so rotation is live on the very
+    // first deploy instead of waiting for the first sweep to finish
+    process.env.T1S_PROXY_SEED_FILE || import_path3.default.join(process.cwd(), "data", "proxy-seed-hops.json")
+  ];
+  return files.flatMap((f) => legsFrom(files[0] === f ? f : f));
+}
+function legsFrom(file) {
   try {
-    const file = import_path3.default.join(process.cwd(), "data", "proxy-pool-gated.json");
     if (!import_fs2.default.existsSync(file)) return [];
     const raw = JSON.parse(import_fs2.default.readFileSync(file, "utf8"));
     const ceiling = Number(process.env.T1S_PROXY_GATED_MAX_LATENCY_MS || 8e3);
     const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
-    return rows.map((x) => ({ url: normalize(String(x?.url || "")), ms: Number(x?.ms || 0) })).filter((x) => !!x.url && Number.isFinite(x.ms) && x.ms > 0 && x.ms <= ceiling);
+    return rows.map((x) => ({
+      url: normalize(String(x?.url || "")),
+      // a hop validated by a sweep but never timed gets the ceiling's midpoint as a RANKING
+      // hint only; the first real request refines it through the normal EWMA. Never a
+      // correctness input - it cannot make a fare or a row appear.
+      ms: Number.isFinite(Number(x?.ms)) && Number(x?.ms) > 0 ? Number(x.ms) : Math.round(ceiling / 3)
+    })).filter((x) => !!x.url && Number.isFinite(x.ms) && x.ms > 0 && x.ms <= ceiling);
   } catch {
     return [];
   }
@@ -2634,6 +2648,483 @@ var init_seatLink = __esm({
   }
 });
 
+// server/common/proxyDiscovery.ts
+function proxyLatencyBudget() {
+  return Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
+}
+function normalizeProxy(raw) {
+  const t = raw.trim();
+  if (!t) return "";
+  if (/^(https?|socks[45]):\/\//i.test(t)) return t;
+  if (/^\d{1,3}(\.\d{1,3}){3}:\d{2,5}$/.test(t)) return `http://${t}`;
+  return "";
+}
+async function fetchList(source) {
+  try {
+    const r = await cffiFetch(source.url, {
+      impersonate: "chrome",
+      timeoutMs: 12e3,
+      headers: { Accept: "text/plain,text/html,*/*" }
+    });
+    if (r.status !== 200) {
+      log.warn("ProxyDiscovery", `${source.name} HTTP ${r.status}`);
+      return [];
+    }
+    const text = r.body;
+    const out = [];
+    for (const m of text.matchAll(/(?:(?:https?|socks[45]):\/\/)?(\d{1,3}(?:\.\d{1,3}){3}:\d{2,5})/g)) {
+      const url = normalizeProxy(m[0]);
+      if (url) out.push({ url, source: source.name });
+    }
+    return out;
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `${source.name} unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
+    return [];
+  }
+}
+async function probeProxy(candidate, target) {
+  const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
+  const startedAt = Date.now();
+  let res = null;
+  let err = null;
+  try {
+    res = await cffiFetch(target?.url || PROBE_TARGET, {
+      proxy: candidate.url,
+      timeoutMs: Math.max(budget * 2, 1500),
+      impersonate: "chrome",
+      ...target?.method ? { method: target.method } : {},
+      ...target?.headers ? { headers: target.headers } : {},
+      ...target?.body ? { body: target.body } : {}
+    });
+  } catch (e2) {
+    err = e2;
+  }
+  const ms = Date.now() - startedAt;
+  const status = Number(res?.status || 0);
+  const body = String(res?.body || "").slice(0, 400).toLowerCase();
+  const gated = /captcha|just a moment|access denied|blocked|challenge/.test(body);
+  if (err) return { url: candidate.url, ok: false, ms, status, reason: String(err.message || err).slice(0, 90) };
+  if (status !== 200) return { url: candidate.url, ok: false, ms, status, reason: `status ${status}` };
+  if (gated) return { url: candidate.url, ok: false, ms, status, reason: "gated page" };
+  if (target?.expectSubstring && !String(res?.body || "").toLowerCase().includes(target.expectSubstring.toLowerCase())) {
+    return { url: candidate.url, ok: false, ms, status, reason: "target payload missing" };
+  }
+  if (ms > budget) return { url: candidate.url, ok: false, ms, status, reason: `slow ${ms}ms > ${budget}ms` };
+  return { url: candidate.url, ok: true, ms, status, reason: "ok" };
+}
+async function runProxyDiscovery(opts = {}) {
+  const startedAt = /* @__PURE__ */ new Date();
+  const target = opts.target;
+  const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
+  const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
+  const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
+  const lists = await Promise.all(SOURCES.map(fetchList));
+  const seen = /* @__PURE__ */ new Set();
+  const candidates = [];
+  for (const row of lists.flat()) {
+    if (seen.has(row.url)) continue;
+    seen.add(row.url);
+    candidates.push(row);
+    if (candidates.length >= limit) break;
+  }
+  const kept = [];
+  let dropped = 0;
+  let cursor2 = 0;
+  const workers = Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, async () => {
+    while (cursor2 < candidates.length) {
+      const c = candidates[cursor2++];
+      const r = await probeProxy(c, target);
+      if (r.ok) kept.push(r);
+      else dropped++;
+    }
+  });
+  await Promise.all(workers);
+  kept.sort((a, b) => a.ms - b.ms);
+  const payload = {
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    budgetMs: budget,
+    probeTarget: target?.label || target?.url || PROBE_TARGET,
+    proxies: kept.map((k) => ({ url: k.url, ms: k.ms }))
+  };
+  const poolFile = opts.poolFile || POOL_FILE;
+  try {
+    import_fs4.default.mkdirSync(import_path4.default.dirname(poolFile), { recursive: true });
+    import_fs4.default.writeFileSync(poolFile, JSON.stringify(payload, null, 2));
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `could not store pool: ${String(e2?.message || e2).slice(0, 80)}`);
+  }
+  const srcOf = (url) => candidates.find((c) => c.url === url)?.source || "sweep";
+  const storedInDb = await storeValidatedProxies(kept, srcOf);
+  const report = {
+    startedAt: startedAt.toISOString(),
+    finishedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    budgetMs: budget,
+    found: candidates.length,
+    probed: candidates.length,
+    passed: kept.length,
+    persistedToDb: storedInDb,
+    kept: kept.slice(0, 40),
+    dropped,
+    storedIn: poolFile,
+    durationMs: Date.now() - startedAt.getTime()
+  };
+  log.info("ProxyDiscovery", `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
+  return report;
+}
+async function ensureProxyTable() {
+  try {
+    const store4 = getStore();
+    await store4.execute(
+      `CREATE TABLE IF NOT EXISTS proxy_pool (
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         url VARCHAR(255) NOT NULL,
+         source VARCHAR(64) NULL,
+         latency_ms INT NOT NULL DEFAULT 0,
+         ok_count INT NOT NULL DEFAULT 0,
+         fail_count INT NOT NULL DEFAULT 0,
+         enabled TINYINT NOT NULL DEFAULT 1,
+         last_error VARCHAR(180) NULL,
+         last_checked_at DATETIME NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         UNIQUE KEY uniq_proxy_url (url)
+       )`
+    );
+    return true;
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `proxy_pool table unavailable: ${String(e2?.message || e2).slice(0, 100)}`);
+    return false;
+  }
+}
+async function storeValidatedProxies(rows, sourceOf) {
+  if (!rows.length) return false;
+  if (!await ensureProxyTable()) return false;
+  try {
+    const store4 = getStore();
+    for (const r of rows) {
+      await store4.execute(
+        `INSERT INTO proxy_pool (url, source, latency_ms, ok_count, last_checked_at)
+         VALUES (?, ?, ?, 1, NOW())
+         ON DUPLICATE KEY UPDATE latency_ms = VALUES(latency_ms), ok_count = ok_count + 1,
+           enabled = 1, last_error = NULL, last_checked_at = NOW()`,
+        [r.url, sourceOf(r.url).slice(0, 64), r.ms]
+      );
+    }
+    return true;
+  } catch (e2) {
+    log.warn("ProxyDiscovery", `proxy store failed: ${String(e2?.message || e2).slice(0, 100)}`);
+    return false;
+  }
+}
+async function listStoredProxies() {
+  const budget = proxyLatencyBudget();
+  if (await ensureProxyTable()) {
+    try {
+      const store4 = getStore();
+      const rows = await store4.query(
+        `SELECT url, source, latency_ms, ok_count, fail_count, enabled, last_error, last_checked_at
+         FROM proxy_pool ORDER BY enabled DESC, latency_ms ASC LIMIT 200`
+      );
+      if (Array.isArray(rows) && rows.length) {
+        return {
+          budgetMs: budget,
+          source: "mysql",
+          rows: rows.map((r) => ({
+            url: String(r.url),
+            source: String(r.source || ""),
+            latencyMs: Number(r.latency_ms) || 0,
+            okCount: Number(r.ok_count) || 0,
+            failCount: Number(r.fail_count) || 0,
+            enabled: !!Number(r.enabled),
+            lastError: String(r.last_error || ""),
+            lastCheckedAt: r.last_checked_at ? new Date(r.last_checked_at).toISOString() : null
+          }))
+        };
+      }
+    } catch (e2) {
+      log.debug("ProxyDiscovery", "listStoredProxies fell back to file", { error: String(e2).slice(0, 80) });
+    }
+  }
+  const file = readDiscoveredPool();
+  return {
+    budgetMs: budget,
+    source: "file",
+    rows: file.map((f) => ({
+      url: f.url,
+      source: "sweep",
+      latencyMs: f.ms,
+      okCount: 1,
+      failCount: 0,
+      enabled: true,
+      lastError: "",
+      lastCheckedAt: null
+    }))
+  };
+}
+function readDiscoveredPool() {
+  try {
+    const raw = JSON.parse(import_fs4.default.readFileSync(POOL_FILE, "utf8"));
+    const budget = proxyLatencyBudget();
+    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
+    return rows.map((r) => ({ url: String(r?.url || ""), ms: Number(r?.ms || 0) })).filter((r) => r.url && Number.isFinite(r.ms) && r.ms > 0 && r.ms <= budget);
+  } catch {
+    return [];
+  }
+}
+var import_fs4, import_path4, POOL_FILE, GATED_POOL_FILE, SOURCES, PROBE_TARGET;
+var init_proxyDiscovery = __esm({
+  "server/common/proxyDiscovery.ts"() {
+    import_fs4 = __toESM(require("fs"), 1);
+    import_path4 = __toESM(require("path"), 1);
+    init_curlCffiFetch();
+    init_db();
+    init_logger();
+    POOL_FILE = import_path4.default.join(process.cwd(), "data", "proxy-pool.json");
+    GATED_POOL_FILE = process.env.T1S_GATED_POOL_FILE || import_path4.default.join(process.cwd(), "data", "proxy-pool-gated.json");
+    SOURCES = [
+      // open-source GitHub list projects (raw text)
+      { name: "proxifly-github", url: "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/all/data.txt" },
+      { name: "monosans-github", url: "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt" },
+      { name: "thespeedx-github", url: "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt" },
+      { name: "ercin-github", url: "https://raw.githubusercontent.com/ErcinDedeoglu/proxies/main/proxies/https.txt" },
+      { name: "roosterkid-github", url: "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt" },
+      { name: "vakhov-github", url: "https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/https.txt" },
+      // list aggregators (same plain-text contract)
+      { name: "proxyscrape-http", url: "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=protocolipport&format=text" },
+      { name: "proxy-list-download", url: "https://www.proxy-list.download/api/v1/get?type=http" }
+    ];
+    PROBE_TARGET = process.env.T1S_PROXY_PROBE_URL || "https://api.ipify.org?format=json";
+  }
+});
+
+// server/common/gateHeal.ts
+var gateHeal_exports = {};
+__export(gateHeal_exports, {
+  GATE_TARGETS: () => GATE_TARGETS,
+  autoHealGatedSources: () => autoHealGatedSources,
+  gateKeyFor: () => gateKeyFor,
+  gatedPoolSize: () => gatedPoolSize,
+  healGatedSource: () => healGatedSource
+});
+function cooldownFor(zeroStreak) {
+  if (zeroStreak >= 4) return 24 * 60 * 6e4;
+  if (zeroStreak >= 2) return 6 * 60 * 6e4;
+  return HEAL_COOLDOWN_MS;
+}
+function gateKeyFor(sourceId, message = "") {
+  const s = `${sourceId} ${message}`.toLowerCase();
+  for (const [re, key] of KEY_HINTS) if (re.test(s)) return key;
+  return null;
+}
+function readState(file = STATE_FILE) {
+  try {
+    return JSON.parse(import_node_fs3.default.readFileSync(file, "utf8")) || {};
+  } catch {
+    return {};
+  }
+}
+function writeState(state, file = STATE_FILE) {
+  try {
+    import_node_fs3.default.mkdirSync(import_node_path3.default.dirname(file), { recursive: true });
+    import_node_fs3.default.writeFileSync(file, JSON.stringify(state, null, 2));
+  } catch (e2) {
+    log.warn("GateHeal", `state not written: ${String(e2?.message || e2).slice(0, 80)}`);
+  }
+}
+function readPoolUrls(file) {
+  try {
+    const raw = JSON.parse(import_node_fs3.default.readFileSync(file, "utf8"));
+    return (Array.isArray(raw?.proxies) ? raw.proxies : []).map((x) => String(x?.url || "")).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function mergePool(file, previous) {
+  try {
+    const raw = JSON.parse(import_node_fs3.default.readFileSync(file, "utf8"));
+    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
+    const have = new Set(rows.map((r) => String(r?.url || "")));
+    for (const url of previous) if (!have.has(url)) rows.push({ url, ms: 0, carriedOver: true });
+    import_node_fs3.default.writeFileSync(file, JSON.stringify({ ...raw, proxies: rows }, null, 2));
+  } catch {
+  }
+}
+function gatedPoolSize(file = GATED_POOL_FILE) {
+  try {
+    const raw = JSON.parse(import_node_fs3.default.readFileSync(file, "utf8"));
+    return Array.isArray(raw?.proxies) ? raw.proxies.length : 0;
+  } catch {
+    return 0;
+  }
+}
+async function healGatedSource(key, opts = {}) {
+  const target = GATE_TARGETS[key];
+  if (!target) return { source: key, ran: false, reason: "no heal target for this source", tried: 0, kept: 0 };
+  const now = (opts.now || Date.now)();
+  const stateFile = opts.stateFile || STATE_FILE;
+  const poolFile = opts.poolFile || GATED_POOL_FILE;
+  const state = readState(stateFile);
+  const last = state[key];
+  const cooldown = cooldownFor(Number(last?.zeroStreak || 0));
+  if (!opts.force && last && now - last.at < cooldown) {
+    const left = Math.round((cooldown - (now - last.at)) / 6e4);
+    return {
+      source: key,
+      ran: false,
+      tried: 0,
+      kept: gatedPoolSize(opts.poolFile),
+      reason: `cooling down (${left}m left, ${Number(last.zeroStreak || 0)} empty sweep(s) in a row)`
+    };
+  }
+  const discover = opts.discover || runProxyDiscovery;
+  try {
+    const before = readPoolUrls(poolFile);
+    const report = await discover({ target, poolFile, limit: opts.limit ?? 60, concurrency: 8 });
+    if (before.length) mergePool(poolFile, before);
+    const zeroStreak = report.kept.length ? 0 : Number(last?.zeroStreak || 0) + 1;
+    state[key] = { at: now, kept: report.kept.length, tried: report.probed ?? 0, zeroStreak };
+    writeState(state, stateFile);
+    const result = {
+      source: key,
+      ran: true,
+      reason: report.kept.length ? `${report.kept.length} proxy hop(s) pass ${target.label || key}` : "no candidate passed the gated request",
+      tried: report.probed ?? 0,
+      kept: report.kept.length,
+      storedAt: report.finishedAt ? String(report.finishedAt) : void 0
+    };
+    log.info("GateHeal", `${key}: ${result.reason} (tried ${result.tried})`);
+    return result;
+  } catch (e2) {
+    const msg = String(e2?.message || e2).slice(0, 120);
+    log.warn("GateHeal", `${key} sweep failed: ${msg}`);
+    return { source: key, ran: true, reason: `sweep failed: ${msg}`, tried: 0, kept: gatedPoolSize() };
+  }
+}
+function autoHealGatedSources(failures, deps = {}) {
+  const keys = /* @__PURE__ */ new Set();
+  for (const f of failures || []) {
+    const key = gateKeyFor(String(f?.source || ""), String(f?.message || ""));
+    if (key) keys.add(key);
+  }
+  if (!keys.size) return Promise.resolve([]);
+  const heal = deps.heal || healGatedSource;
+  return Promise.all(Array.from(keys).map((k) => heal(k).catch(() => ({ source: k, ran: false, reason: "failed", tried: 0, kept: 0 }))));
+}
+var import_node_fs3, import_node_path3, STATE_FILE, HEAL_COOLDOWN_MS, UA, HTML, GATE_TARGETS, KEY_HINTS;
+var init_gateHeal = __esm({
+  "server/common/gateHeal.ts"() {
+    import_node_fs3 = __toESM(require("node:fs"), 1);
+    import_node_path3 = __toESM(require("node:path"), 1);
+    init_logger();
+    init_proxyDiscovery();
+    STATE_FILE = import_node_path3.default.join(process.cwd(), "data", "gate-heal.json");
+    HEAL_COOLDOWN_MS = Number(process.env.T1S_GATE_HEAL_COOLDOWN_MS || 30 * 6e4);
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+    HTML = { "User-Agent": UA, Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-IN,en;q=0.9" };
+    GATE_TARGETS = {
+      indigo: {
+        label: "indigo-mobile-search",
+        url: "https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search",
+        method: "POST",
+        headers: { user_key: "43b557c03fc85cc213e91df0f526cc7a", "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          criteria: [{
+            dates: {
+              beginDate: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10).replace(/-/g, ""),
+              endDate: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10).replace(/-/g, "")
+            },
+            flightFilters: { type: "All" },
+            stations: { originStationCodes: ["IDR"], destinationStationCodes: ["DEL"] }
+          }],
+          tripType: "ONE_WAY",
+          currencyCode: "INR",
+          paxInfo: { travelPurpose: "", adultCount: 1, childrenCount: 0, infantCount: 0, seniorCitizenCount: 0, extraSeat: 0 },
+          specialFare: "",
+          promoCode: "",
+          bookingPurpose: "",
+          marketType: "",
+          doubleSeatSelected: false,
+          tripleSeatSelected: false,
+          selectedTripIndex: 0
+        }),
+        expectSubstring: "flight",
+        maxMs: 8e3
+      },
+      // FLIGHTS + HOTELS: MakeMyTrip (Akamai sensor) and Goibibo (same edge family)
+      makemytrip: {
+        label: "mmt-flights-srp",
+        url: "https://www.makemytrip.com/flights/",
+        headers: HTML,
+        expectSubstring: "makemytrip",
+        maxMs: 9e3
+      },
+      goibibo: {
+        label: "goibibo-hotels",
+        url: "https://www.goibibo.com/hotels/",
+        headers: HTML,
+        expectSubstring: "goibibo",
+        maxMs: 9e3
+      },
+      // HOTELS: Booking.com challenge page + Expedia 429 + Yatra http2 reset
+      booking: {
+        label: "booking-hotels-search",
+        url: "https://www.booking.com/searchresults.html?ss=Shimla&checkin=2026-11-19&checkout=2026-11-21&group_adults=2&no_rooms=1",
+        headers: HTML,
+        expectSubstring: "shimla",
+        maxMs: 9e3
+      },
+      expedia: {
+        label: "expedia-hotels-search",
+        url: "https://www.expedia.co.in/Hotel-Search?destination=Shimla&startDate=2026-11-19&endDate=2026-11-21&adults=2",
+        headers: HTML,
+        expectSubstring: "expedia",
+        maxMs: 9e3
+      },
+      yatra: {
+        label: "yatra-hotels",
+        url: "https://hotel.yatra.com/",
+        headers: HTML,
+        expectSubstring: "yatra",
+        maxMs: 9e3
+      },
+      // FLIGHTS: StarAir 403 / SpiceJet fare-calendar 500
+      starair: {
+        label: "starair-site",
+        url: "https://www.starair.in/",
+        headers: HTML,
+        expectSubstring: "star air",
+        maxMs: 9e3
+      },
+      spicejet: {
+        label: "spicejet-site",
+        url: "https://www.spicejet.com/",
+        headers: HTML,
+        expectSubstring: "spicejet",
+        maxMs: 9e3
+      },
+      // BUS: redBus edge-blocks datacenter IPs
+      redbus: {
+        label: "redbus-route",
+        url: "https://www.redbus.in/bus-tickets/delhi-to-jaipur",
+        headers: HTML,
+        expectSubstring: "redbus",
+        maxMs: 9e3
+      }
+    };
+    KEY_HINTS = [
+      [/indigo/, "indigo"],
+      [/makemytrip|\bmmt\b/, "makemytrip"],
+      [/goibibo/, "goibibo"],
+      [/booking/, "booking"],
+      [/expedia|hotels\.com/, "expedia"],
+      [/yatra/, "yatra"],
+      [/starair|star.?air/, "starair"],
+      [/spicejet/, "spicejet"],
+      [/redbus/, "redbus"]
+    ];
+  }
+});
+
 // server/workers/verticalWorker.ts
 function looksLikeChallenge(body) {
   const head3 = body.slice(0, 6e3);
@@ -2693,6 +3184,9 @@ async function runTask(worker, task, source, query) {
   } catch (e2) {
     const fc = e2 instanceof AcquisitionError ? e2.failureClass : "UNKNOWN";
     log.debug("VerticalWorker", `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e2?.message || e2).slice(0, 140) });
+    if (fc === "ACCESS_CHALLENGE" || fc === "RATE_LIMITED" || fc === "SERVER_ERROR") {
+      void Promise.resolve().then(() => (init_gateHeal(), gateHeal_exports)).then((m) => m.autoHealGatedSources([{ source: task.sourceId, message: String(e2?.message || fc) }])).catch(() => void 0);
+    }
     const fixtures = buildDevFixtures(source, worker.vertical, String(query.rawQuery || query.entityName || ""));
     if (fixtures.length) {
       log.warn("VerticalWorker", `Using DEV fixture for ${source.id} (dev-mode fallback for ${fc})`);
@@ -6604,7 +7098,7 @@ var init_agodaHotels = __esm({
 function cityFromQuery(ctx) {
   const q3 = ctx.query;
   const raw = String(q3.rawQuery || "").trim();
-  const strip2 = (x) => x.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, " ").replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{0,4}\b/gi, " ").replace(/\b\d{1,2}(st|nd|rd|th)?\b/g, " ").replace(/\b(19|20)\d{2}\b/g, " ").replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|check-?out:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join(" ");
+  const strip2 = (x) => x.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, " ").replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{0,4}\b/gi, " ").replace(/\b(under|below|above|upto|up to|max|min|budget)\s*\d+/gi, " ").replace(/\b\d{1,2}(st|nd|rd|th)?\b/g, " ").replace(/\b\d{3,6}\b/g, " ").replace(/\b(19|20)\d{2}\b/g, " ").replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|check-?out:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price|from|to|till|until|onwards|and|with|a|an|the|some|any|show|find|get|see|need|want|looking|search|compare)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join(" ");
   const cleaned = strip2(raw);
   if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
   if (q3.location?.city) return String(q3.location.city);
@@ -7086,7 +7580,7 @@ var init_hotels = __esm({
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
-            const UA6 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+            const UA7 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             let cookies = void 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
               const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
@@ -15755,381 +16249,6 @@ var init_expediaFlights = __esm({
   }
 });
 
-// server/common/proxyDiscovery.ts
-function proxyLatencyBudget() {
-  return Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
-}
-function normalizeProxy(raw) {
-  const t = raw.trim();
-  if (!t) return "";
-  if (/^(https?|socks[45]):\/\//i.test(t)) return t;
-  if (/^\d{1,3}(\.\d{1,3}){3}:\d{2,5}$/.test(t)) return `http://${t}`;
-  return "";
-}
-async function fetchList(source) {
-  try {
-    const r = await cffiFetch(source.url, {
-      impersonate: "chrome",
-      timeoutMs: 12e3,
-      headers: { Accept: "text/plain,text/html,*/*" }
-    });
-    if (r.status !== 200) {
-      log.warn("ProxyDiscovery", `${source.name} HTTP ${r.status}`);
-      return [];
-    }
-    const text = r.body;
-    const out = [];
-    for (const m of text.matchAll(/(?:(?:https?|socks[45]):\/\/)?(\d{1,3}(?:\.\d{1,3}){3}:\d{2,5})/g)) {
-      const url = normalizeProxy(m[0]);
-      if (url) out.push({ url, source: source.name });
-    }
-    return out;
-  } catch (e2) {
-    log.warn("ProxyDiscovery", `${source.name} unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
-    return [];
-  }
-}
-async function probeProxy(candidate, target) {
-  const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
-  const startedAt = Date.now();
-  let res = null;
-  let err = null;
-  try {
-    res = await cffiFetch(target?.url || PROBE_TARGET, {
-      proxy: candidate.url,
-      timeoutMs: Math.max(budget * 2, 1500),
-      impersonate: "chrome",
-      ...target?.method ? { method: target.method } : {},
-      ...target?.headers ? { headers: target.headers } : {},
-      ...target?.body ? { body: target.body } : {}
-    });
-  } catch (e2) {
-    err = e2;
-  }
-  const ms = Date.now() - startedAt;
-  const status = Number(res?.status || 0);
-  const body = String(res?.body || "").slice(0, 400).toLowerCase();
-  const gated = /captcha|just a moment|access denied|blocked|challenge/.test(body);
-  if (err) return { url: candidate.url, ok: false, ms, status, reason: String(err.message || err).slice(0, 90) };
-  if (status !== 200) return { url: candidate.url, ok: false, ms, status, reason: `status ${status}` };
-  if (gated) return { url: candidate.url, ok: false, ms, status, reason: "gated page" };
-  if (target?.expectSubstring && !String(res?.body || "").toLowerCase().includes(target.expectSubstring.toLowerCase())) {
-    return { url: candidate.url, ok: false, ms, status, reason: "target payload missing" };
-  }
-  if (ms > budget) return { url: candidate.url, ok: false, ms, status, reason: `slow ${ms}ms > ${budget}ms` };
-  return { url: candidate.url, ok: true, ms, status, reason: "ok" };
-}
-async function runProxyDiscovery(opts = {}) {
-  const startedAt = /* @__PURE__ */ new Date();
-  const target = opts.target;
-  const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
-  const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
-  const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
-  const lists = await Promise.all(SOURCES.map(fetchList));
-  const seen = /* @__PURE__ */ new Set();
-  const candidates = [];
-  for (const row of lists.flat()) {
-    if (seen.has(row.url)) continue;
-    seen.add(row.url);
-    candidates.push(row);
-    if (candidates.length >= limit) break;
-  }
-  const kept = [];
-  let dropped = 0;
-  let cursor2 = 0;
-  const workers = Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, async () => {
-    while (cursor2 < candidates.length) {
-      const c = candidates[cursor2++];
-      const r = await probeProxy(c, target);
-      if (r.ok) kept.push(r);
-      else dropped++;
-    }
-  });
-  await Promise.all(workers);
-  kept.sort((a, b) => a.ms - b.ms);
-  const payload = {
-    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    budgetMs: budget,
-    probeTarget: target?.label || target?.url || PROBE_TARGET,
-    proxies: kept.map((k) => ({ url: k.url, ms: k.ms }))
-  };
-  const poolFile = opts.poolFile || POOL_FILE;
-  try {
-    import_fs4.default.mkdirSync(import_path4.default.dirname(poolFile), { recursive: true });
-    import_fs4.default.writeFileSync(poolFile, JSON.stringify(payload, null, 2));
-  } catch (e2) {
-    log.warn("ProxyDiscovery", `could not store pool: ${String(e2?.message || e2).slice(0, 80)}`);
-  }
-  const srcOf = (url) => candidates.find((c) => c.url === url)?.source || "sweep";
-  const storedInDb = await storeValidatedProxies(kept, srcOf);
-  const report = {
-    startedAt: startedAt.toISOString(),
-    finishedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    budgetMs: budget,
-    found: candidates.length,
-    probed: candidates.length,
-    passed: kept.length,
-    persistedToDb: storedInDb,
-    kept: kept.slice(0, 40),
-    dropped,
-    storedIn: poolFile,
-    durationMs: Date.now() - startedAt.getTime()
-  };
-  log.info("ProxyDiscovery", `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
-  return report;
-}
-async function ensureProxyTable() {
-  try {
-    const store4 = getStore();
-    await store4.execute(
-      `CREATE TABLE IF NOT EXISTS proxy_pool (
-         id INT AUTO_INCREMENT PRIMARY KEY,
-         url VARCHAR(255) NOT NULL,
-         source VARCHAR(64) NULL,
-         latency_ms INT NOT NULL DEFAULT 0,
-         ok_count INT NOT NULL DEFAULT 0,
-         fail_count INT NOT NULL DEFAULT 0,
-         enabled TINYINT NOT NULL DEFAULT 1,
-         last_error VARCHAR(180) NULL,
-         last_checked_at DATETIME NULL,
-         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-         UNIQUE KEY uniq_proxy_url (url)
-       )`
-    );
-    return true;
-  } catch (e2) {
-    log.warn("ProxyDiscovery", `proxy_pool table unavailable: ${String(e2?.message || e2).slice(0, 100)}`);
-    return false;
-  }
-}
-async function storeValidatedProxies(rows, sourceOf) {
-  if (!rows.length) return false;
-  if (!await ensureProxyTable()) return false;
-  try {
-    const store4 = getStore();
-    for (const r of rows) {
-      await store4.execute(
-        `INSERT INTO proxy_pool (url, source, latency_ms, ok_count, last_checked_at)
-         VALUES (?, ?, ?, 1, NOW())
-         ON DUPLICATE KEY UPDATE latency_ms = VALUES(latency_ms), ok_count = ok_count + 1,
-           enabled = 1, last_error = NULL, last_checked_at = NOW()`,
-        [r.url, sourceOf(r.url).slice(0, 64), r.ms]
-      );
-    }
-    return true;
-  } catch (e2) {
-    log.warn("ProxyDiscovery", `proxy store failed: ${String(e2?.message || e2).slice(0, 100)}`);
-    return false;
-  }
-}
-async function listStoredProxies() {
-  const budget = proxyLatencyBudget();
-  if (await ensureProxyTable()) {
-    try {
-      const store4 = getStore();
-      const rows = await store4.query(
-        `SELECT url, source, latency_ms, ok_count, fail_count, enabled, last_error, last_checked_at
-         FROM proxy_pool ORDER BY enabled DESC, latency_ms ASC LIMIT 200`
-      );
-      if (Array.isArray(rows) && rows.length) {
-        return {
-          budgetMs: budget,
-          source: "mysql",
-          rows: rows.map((r) => ({
-            url: String(r.url),
-            source: String(r.source || ""),
-            latencyMs: Number(r.latency_ms) || 0,
-            okCount: Number(r.ok_count) || 0,
-            failCount: Number(r.fail_count) || 0,
-            enabled: !!Number(r.enabled),
-            lastError: String(r.last_error || ""),
-            lastCheckedAt: r.last_checked_at ? new Date(r.last_checked_at).toISOString() : null
-          }))
-        };
-      }
-    } catch (e2) {
-      log.debug("ProxyDiscovery", "listStoredProxies fell back to file", { error: String(e2).slice(0, 80) });
-    }
-  }
-  const file = readDiscoveredPool();
-  return {
-    budgetMs: budget,
-    source: "file",
-    rows: file.map((f) => ({
-      url: f.url,
-      source: "sweep",
-      latencyMs: f.ms,
-      okCount: 1,
-      failCount: 0,
-      enabled: true,
-      lastError: "",
-      lastCheckedAt: null
-    }))
-  };
-}
-function readDiscoveredPool() {
-  try {
-    const raw = JSON.parse(import_fs4.default.readFileSync(POOL_FILE, "utf8"));
-    const budget = proxyLatencyBudget();
-    const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
-    return rows.map((r) => ({ url: String(r?.url || ""), ms: Number(r?.ms || 0) })).filter((r) => r.url && Number.isFinite(r.ms) && r.ms > 0 && r.ms <= budget);
-  } catch {
-    return [];
-  }
-}
-var import_fs4, import_path4, POOL_FILE, GATED_POOL_FILE, SOURCES, PROBE_TARGET;
-var init_proxyDiscovery = __esm({
-  "server/common/proxyDiscovery.ts"() {
-    import_fs4 = __toESM(require("fs"), 1);
-    import_path4 = __toESM(require("path"), 1);
-    init_curlCffiFetch();
-    init_db();
-    init_logger();
-    POOL_FILE = import_path4.default.join(process.cwd(), "data", "proxy-pool.json");
-    GATED_POOL_FILE = import_path4.default.join(process.cwd(), "data", "proxy-pool-gated.json");
-    SOURCES = [
-      { name: "proxyscrape-http", url: "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=protocolipport&format=text" },
-      { name: "proxyscrape-https", url: "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=https&proxy_format=protocolipport&format=text" },
-      { name: "proxy-list-download", url: "https://www.proxy-list.download/api/v1/get?type=http" }
-    ];
-    PROBE_TARGET = process.env.T1S_PROXY_PROBE_URL || "https://api.ipify.org?format=json";
-  }
-});
-
-// server/common/gateHeal.ts
-var gateHeal_exports = {};
-__export(gateHeal_exports, {
-  GATE_TARGETS: () => GATE_TARGETS,
-  autoHealGatedSources: () => autoHealGatedSources,
-  gateKeyFor: () => gateKeyFor,
-  gatedPoolSize: () => gatedPoolSize,
-  healGatedSource: () => healGatedSource
-});
-function gateKeyFor(sourceId, message = "") {
-  const s = `${sourceId} ${message}`.toLowerCase();
-  if (s.includes("indigo")) return "indigo";
-  return null;
-}
-function readState(file = STATE_FILE) {
-  try {
-    return JSON.parse(import_node_fs3.default.readFileSync(file, "utf8")) || {};
-  } catch {
-    return {};
-  }
-}
-function writeState(state, file = STATE_FILE) {
-  try {
-    import_node_fs3.default.mkdirSync(import_node_path3.default.dirname(file), { recursive: true });
-    import_node_fs3.default.writeFileSync(file, JSON.stringify(state, null, 2));
-  } catch (e2) {
-    log.warn("GateHeal", `state not written: ${String(e2?.message || e2).slice(0, 80)}`);
-  }
-}
-function gatedPoolSize(file = GATED_POOL_FILE) {
-  try {
-    const raw = JSON.parse(import_node_fs3.default.readFileSync(file, "utf8"));
-    return Array.isArray(raw?.proxies) ? raw.proxies.length : 0;
-  } catch {
-    return 0;
-  }
-}
-async function healGatedSource(key, opts = {}) {
-  const target = GATE_TARGETS[key];
-  if (!target) return { source: key, ran: false, reason: "no heal target for this source", tried: 0, kept: 0 };
-  const now = (opts.now || Date.now)();
-  const stateFile = opts.stateFile || STATE_FILE;
-  const poolFile = opts.poolFile || GATED_POOL_FILE;
-  const state = readState(stateFile);
-  const last = state[key];
-  if (!opts.force && last && now - last.at < HEAL_COOLDOWN_MS) {
-    return {
-      source: key,
-      ran: false,
-      tried: 0,
-      kept: gatedPoolSize(opts.poolFile),
-      reason: `cooling down (${Math.round((HEAL_COOLDOWN_MS - (now - last.at)) / 6e4)}m left)`
-    };
-  }
-  const discover = opts.discover || runProxyDiscovery;
-  try {
-    const report = await discover({ target, poolFile, limit: opts.limit ?? 60, concurrency: 8 });
-    state[key] = { at: now, kept: report.kept.length, tried: report.probed ?? 0 };
-    writeState(state, stateFile);
-    const result = {
-      source: key,
-      ran: true,
-      reason: report.kept.length ? `${report.kept.length} proxy hop(s) pass ${target.label || key}` : "no candidate passed the gated request",
-      tried: report.probed ?? 0,
-      kept: report.kept.length,
-      storedAt: report.finishedAt ? String(report.finishedAt) : void 0
-    };
-    log.info("GateHeal", `${key}: ${result.reason} (tried ${result.tried})`);
-    return result;
-  } catch (e2) {
-    const msg = String(e2?.message || e2).slice(0, 120);
-    log.warn("GateHeal", `${key} sweep failed: ${msg}`);
-    return { source: key, ran: true, reason: `sweep failed: ${msg}`, tried: 0, kept: gatedPoolSize() };
-  }
-}
-function autoHealGatedSources(failures, deps = {}) {
-  const keys = /* @__PURE__ */ new Set();
-  for (const f of failures || []) {
-    const key = gateKeyFor(String(f?.source || ""), String(f?.message || ""));
-    if (key) keys.add(key);
-  }
-  if (!keys.size) return Promise.resolve([]);
-  const heal = deps.heal || healGatedSource;
-  return Promise.all(Array.from(keys).map((k) => heal(k).catch(() => ({ source: k, ran: false, reason: "failed", tried: 0, kept: 0 }))));
-}
-var import_node_fs3, import_node_path3, STATE_FILE, HEAL_COOLDOWN_MS, GATE_TARGETS;
-var init_gateHeal = __esm({
-  "server/common/gateHeal.ts"() {
-    import_node_fs3 = __toESM(require("node:fs"), 1);
-    import_node_path3 = __toESM(require("node:path"), 1);
-    init_logger();
-    init_proxyDiscovery();
-    STATE_FILE = import_node_path3.default.join(process.cwd(), "data", "gate-heal.json");
-    HEAL_COOLDOWN_MS = Number(process.env.T1S_GATE_HEAL_COOLDOWN_MS || 30 * 6e4);
-    GATE_TARGETS = {
-      indigo: {
-        label: "indigo-mobile-search",
-        url: "https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search",
-        method: "POST",
-        headers: {
-          user_key: "43b557c03fc85cc213e91df0f526cc7a",
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
-        // A real IDR->DEL search a week out: cheap, deterministic, and answered by the same edge.
-        body: JSON.stringify({
-          criteria: [{
-            dates: {
-              beginDate: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10).replace(/-/g, ""),
-              endDate: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10).replace(/-/g, "")
-            },
-            flightFilters: { type: "All" },
-            stations: { originStationCodes: ["IDR"], destinationStationCodes: ["DEL"] }
-          }],
-          tripType: "ONE_WAY",
-          currencyCode: "INR",
-          paxInfo: { travelPurpose: "", adultCount: 1, childrenCount: 0, infantCount: 0, seniorCitizenCount: 0, extraSeat: 0 },
-          specialFare: "",
-          promoCode: "",
-          bookingPurpose: "",
-          marketType: "",
-          doubleSeatSelected: false,
-          tripleSeatSelected: false,
-          selectedTripIndex: 0
-        }),
-        // Any real answer carries flight data; a challenge/empty page does not.
-        expectSubstring: "flight",
-        maxMs: 8e3
-      }
-    };
-  }
-});
-
 // server/workers/verticals/flights.ts
 function routeFromQuery(raw) {
   const KNOWN_CODES = /* @__PURE__ */ new Set(["DEL", "BOM", "BLR", "HYD", "MAA", "CCU", "PNQ", "AMD", "JAI", "GOI", "LKO", "NAG", "IDR", "STV", "PAT", "BHO", "CJB", "COK", "GAU", "IXC", "DED", "ATQ", "VNS", "SXR", "TRV", "VTZ", "IXM", "UDR", "JDH", "IXR", "RPR", "BBI", "IMF", "IXL", "IXB", "IXU", "IXE", "BDQ", "RAJ", "IXJ", "IXD", "GOP", "JRG", "DIB", "TEZ", "KNU", "MYQ", "HBX", "IXG", "KLH", "ISK", "SAG", "TIR", "DXB", "SIN", "LHR", "JFK", "BKK", "KUL", "DOH", "AUH", "SHJ"]);
@@ -17071,8 +17190,8 @@ var init_flights = __esm({
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
             const fromLabel = `${rt.from} (${fromA.code})`;
             const toLabel = `${rt.to} (${toA.code})`;
-            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
-            const H = { "User-Agent": UA6, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
+            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const H = { "User-Agent": UA7, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
             const home = await cffiFetch(SL_HOME, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
             const homeBody = home.body || "";
             if (slIsImpervaStub(homeBody)) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan homepage Imperva-gated from this IP (probe self-activates on a clean production IP)", 403);
@@ -17175,8 +17294,8 @@ var init_flights = __esm({
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
             const dateHuman = (/* @__PURE__ */ new Date(dep + "T00:00:00Z")).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
-            const H = { "User-Agent": UA6, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
+            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const H = { "User-Agent": UA7, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
             const boot2 = await cffiFetch(SIA_CHAT_PAGE, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
             if (siaIsGated(boot2.status, boot2.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", "Singapore Airlines Akamai-gated from this IP (probe self-activates on a clean production IP)", boot2.status);
             const cookies = boot2.cookies || {};
@@ -17228,10 +17347,10 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
             const sid = String(globalThis.crypto.randomUUID());
             const referer = `https://www.qatarairways.com/app/booking/flight-selection?fromStation=${fromA.code}&toStation=${toA.code}&departing=${dep}`;
-            const H = { "User-Agent": UA6, ...qrHeaders(sid, referer) };
+            const H = { "User-Agent": UA7, ...qrHeaders(sid, referer) };
             const rungs = [
               { imp: "chrome", label: "chrome" },
               { imp: "safari", label: "safari" },
@@ -17300,7 +17419,7 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
             const url = ekSearchRequestUrl(fromA.code, toA.code, dep);
             const rungs = [
               { imp: "chrome", label: "chrome" },
@@ -17315,7 +17434,7 @@ var init_flights = __esm({
                   timeoutMs: 35e3,
                   method: "GET",
                   headers: {
-                    "User-Agent": UA6,
+                    "User-Agent": UA7,
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                     "Accept-Language": "en-US,en;q=0.9",
                     Referer: "https://www.emirates.com/in/english/"
@@ -17369,9 +17488,9 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
+            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
             const apiHeaders = {
-              "User-Agent": UA6,
+              "User-Agent": UA7,
               "Accept": "application/json, text/plain, */*",
               "Accept-Language": "en-US,en;q=0.9",
               "Origin": "https://book.cathaypacific.com",
@@ -17448,9 +17567,9 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
             try {
-              const ch = await cffiFetch(BA_CABIN_HELPER(fromA.code, toA.code), { impersonate: "chrome", timeoutMs: 15e3, headers: { "User-Agent": UA6, Accept: "*/*", Referer: "https://www.britishairways.com/travel/book/public/en_gb/" } });
+              const ch = await cffiFetch(BA_CABIN_HELPER(fromA.code, toA.code), { impersonate: "chrome", timeoutMs: 15e3, headers: { "User-Agent": UA7, Accept: "*/*", Referer: "https://www.britishairways.com/travel/book/public/en_gb/" } });
               const cabins = parseBaCabinHelper(ch.body || "");
               if (ch.status === 200 && Object.keys(cabins).length === 0) return [];
             } catch {
@@ -17467,7 +17586,7 @@ var init_flights = __esm({
                   timeoutMs: 2e4,
                   method: "POST",
                   headers: {
-                    "User-Agent": UA6,
+                    "User-Agent": UA7,
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
                     Authorization: 'Client client_id="bacomngprod"',
                     Origin: "https://www.britishairways.com",
@@ -17487,7 +17606,7 @@ var init_flights = __esm({
                   method: "POST",
                   cookies,
                   headers: {
-                    "User-Agent": UA6,
+                    "User-Agent": UA7,
                     "Content-Type": "application/json",
                     Accept: "application/json",
                     "Accept-Language": "en-GB,en;q=0.9",
@@ -19269,7 +19388,7 @@ async function throttledNominatim(path18) {
   lastCallAt = Date.now();
   try {
     const r = await fetch(`${NOMINATIM}${path18}`, {
-      headers: { "User-Agent": UA, Accept: "application/json" },
+      headers: { "User-Agent": UA2, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
@@ -19320,7 +19439,7 @@ async function throttledPhoton(path18) {
   lastPhotonAt = Date.now();
   try {
     const r = await fetch(`${PHOTON}${path18}`, {
-      headers: { "User-Agent": UA, Accept: "application/json" },
+      headers: { "User-Agent": UA2, Accept: "application/json" },
       signal: AbortSignal.timeout(6e3)
     });
     if (!r.ok) {
@@ -19391,11 +19510,11 @@ async function geoSuggest(q3, opts = {}) {
   const near = Number.isFinite(opts.lat) && Number.isFinite(opts.lng) ? { lat: opts.lat, lng: opts.lng } : void 0;
   return feats.map((f) => photonFeatureToPlace(f, near)).filter((p) => p !== null).slice(0, limit);
 }
-var UA, NOMINATIM, cache4, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS, PHOTON, lastPhotonAt, PHOTON_MIN_INTERVAL_MS;
+var UA2, NOMINATIM, cache4, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS, PHOTON, lastPhotonAt, PHOTON_MIN_INTERVAL_MS;
 var init_geoProxy = __esm({
   "server/common/geoProxy.ts"() {
     init_logger();
-    UA = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
+    UA2 = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
     NOMINATIM = "https://nominatim.openstreetmap.org";
     cache4 = /* @__PURE__ */ new Map();
     CACHE_MS = 24 * 60 * 6e4;
@@ -23582,7 +23701,7 @@ ${v}\r
     const cached3 = tokenCache.get(host);
     if (cached3 && Date.now() - cached3.mintedAt < CACHE_TTL_MS) return cached3.token;
     const t0 = Date.now();
-    const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA2, "Accept-Language": "en-IN,en;q=0.9" } });
+    const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA3, "Accept-Language": "en-IN,en;q=0.9" } });
     const html = r.body || "";
     if (r.status === 200 && !html.includes("gokuProps")) {
       tokenCache.set(host, { token: "", mintedAt: Date.now() });
@@ -23591,7 +23710,7 @@ ${v}\r
     if (!html.includes("gokuProps")) throw new Error(`AWS WAF shell missing (HTTP ${r.status}, len ${html.length})`);
     const m = html.match(/<script src="(https:\/\/[^"]*awswaf\.com[^"]*challenge\.js)"><\/script>/);
     if (!m) throw new Error("challenge.js URL not found in shell");
-    const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA2 } });
+    const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA3 } });
     if (!cj.body) throw new Error(`challenge.js fetch failed (HTTP ${cj.status})`);
     const { JSDOM } = await import("jsdom");
     const vc = await makeQuietVirtualConsole();
@@ -23606,7 +23725,7 @@ ${v}\r
     w.TextDecoder = w.TextDecoder || TextDecoder;
     Object.defineProperty(w.Location.prototype, "reload", { value: () => {
     }, configurable: true });
-    Object.defineProperty(w.navigator, "userAgent", { get: () => UA2, configurable: true });
+    Object.defineProperty(w.navigator, "userAgent", { get: () => UA3, configurable: true });
     w.fetch = async (u, init = {}) => {
       let bodyStr;
       let ct = "";
@@ -23619,7 +23738,7 @@ ${v}\r
         else if (init.body instanceof Uint8Array) bodyStr = Buffer.from(init.body).toString();
         else bodyStr = String(init.body);
       }
-      const hdrs = { "User-Agent": UA2, ...init.headers || {} };
+      const hdrs = { "User-Agent": UA3, ...init.headers || {} };
       if (ct && !hdrs["Content-Type"] && !hdrs["content-type"]) hdrs["Content-Type"] = ct;
       const res = await cffiFetch2(String(u), { impersonate: "chrome", method: init.method || "GET", body: bodyStr, timeoutMs: 25e3, headers: hdrs });
       const body = res.body || "";
@@ -23644,7 +23763,7 @@ ${v}\r
   }
   async function wafGet(url, extraHeaders = {}, opts = {}) {
     const token = await mintAwsWafToken(url, opts);
-    const headers = { "User-Agent": UA2, "Accept-Language": "en-IN,en;q=0.9", ...token ? { Cookie: "aws-waf-token=" + token } : {}, ...extraHeaders };
+    const headers = { "User-Agent": UA3, "Accept-Language": "en-IN,en;q=0.9", ...token ? { Cookie: "aws-waf-token=" + token } : {}, ...extraHeaders };
     let r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 25e3, headers });
     if (r.status === 202) {
       tokenCache.delete(new URL(url).hostname);
@@ -23655,12 +23774,12 @@ ${v}\r
   }
   return { mintAwsWafToken, wafGet, isChallenged: (status, body) => status === 202 || status === 200 && body.includes("gokuProps") };
 }
-var import_node_crypto3, UA2, CACHE_TTL_MS, tokenCache;
+var import_node_crypto3, UA3, CACHE_TTL_MS, tokenCache;
 var init_awsWafChallenge = __esm({
   "server/common/awsWafChallenge.ts"() {
     import_node_crypto3 = require("node:crypto");
     init_logger();
-    UA2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+    UA3 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
     CACHE_TTL_MS = 15e4;
     tokenCache = /* @__PURE__ */ new Map();
   }
@@ -29214,7 +29333,7 @@ async function getJson(url) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA3, Accept: "application/json" }, signal: ctl.signal });
+    const r = await fetch(url, { headers: { "User-Agent": UA4, Accept: "application/json" }, signal: ctl.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
@@ -29286,12 +29405,12 @@ function resolveLenderLogo(rawName) {
   inflight2.set(key, p);
   return p;
 }
-var import_node_fs5, import_node_path5, UA3, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
+var import_node_fs5, import_node_path5, UA4, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
 var init_lenderLogo = __esm({
   "server/pipeline/lenderLogo.ts"() {
     import_node_fs5 = __toESM(require("node:fs"), 1);
     import_node_path5 = __toESM(require("node:path"), 1);
-    UA3 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+    UA4 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
     CACHE_FILE = import_node_path5.default.join(process.cwd(), "data", "lender-logos-v2.json");
     MISS_TTL_MS = 7 * 864e5;
     FETCH_TIMEOUT_MS = 4e3;
@@ -38078,7 +38197,7 @@ async function getJson2(url) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS3);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA4, Accept: "application/json" }, signal: ctl.signal });
+    const r = await fetch(url, { headers: { "User-Agent": UA5, Accept: "application/json" }, signal: ctl.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
@@ -38125,12 +38244,12 @@ function resolveMerchantCrispLogo(rawName) {
   inflight3.set(key, p);
   return p;
 }
-var import_node_fs7, import_node_path7, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
+var import_node_fs7, import_node_path7, UA5, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
 var init_merchantCrispLogo = __esm({
   "server/pipeline/merchantCrispLogo.ts"() {
     import_node_fs7 = __toESM(require("node:fs"), 1);
     import_node_path7 = __toESM(require("node:path"), 1);
-    UA4 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+    UA5 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
     CACHE_FILE2 = import_node_path7.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
     MISS_TTL_MS2 = 7 * 864e5;
     FETCH_TIMEOUT_MS3 = 4e3;
@@ -46799,7 +46918,7 @@ async function httpGet(url, timeoutMs = 12e3, init = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA5, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
+    const r = await fetch(url, { headers: { "User-Agent": UA6, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
     const body = await r.text();
     return { status: r.status, body, bytes: body.length };
   } catch (e2) {
@@ -47039,7 +47158,7 @@ function acceptanceTotals(rows) {
   const verticalsOk = new Set(rows.filter((r) => r.status === "LIVE_VERIFIED").map((r) => r.vertical));
   return { rows: rows.length, byStatus, verticalsWithLiveVerified: [...verticalsOk].sort(), sourcesTested: new Set(rows.filter((r) => r.status !== "SOURCE_RETIRED").map((r) => r.source_id)).size, sourcesRegistered: new Set(rows.map((r) => r.source_id)).size };
 }
-var UA5, SRC, JS_SHELL_RE;
+var UA6, SRC, JS_SHELL_RE;
 var init_acceptanceRunner = __esm({
   "server/registry/acceptanceRunner.ts"() {
     init_acceptanceRegistry();
@@ -47056,7 +47175,7 @@ var init_acceptanceRunner = __esm({
     init_osmTravel();
     init_openflights();
     init_wikidataMovies();
-    UA5 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    UA6 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     SRC = {
       id: "acceptance_test",
       name: "acceptance-test",
