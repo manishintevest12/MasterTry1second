@@ -19,6 +19,7 @@
 import fs from 'fs';
 import path from 'path';
 import { cffiFetch } from './curlCffiFetch';
+import { getStore } from './db';
 import { log } from './logger';
 
 export interface ProxyCandidate {
@@ -41,6 +42,8 @@ export interface DiscoveryReport {
   found: number;
   probed: number;
   passed: number;
+  /** True when the passing exits were also written to MySQL (source of truth). */
+  persistedToDb: boolean;
   kept: ProxyProbeResult[];
   dropped: number;
   storedIn: string;
@@ -73,15 +76,19 @@ function normalizeProxy(raw: string): string {
 
 async function fetchList(source: { name: string; url: string }): Promise<ProxyCandidate[]> {
   try {
-    const r = await fetch(source.url, {
-      headers: { 'User-Agent': 'Try1Second/1.9 proxy-discovery' },
-      signal: AbortSignal.timeout(10_000),
+    // Owner 1 Nov: "koi third party tool ka use kar ke nahi" — the list pages are read by
+    // OUR OWN scraper (curl_cffi via cffiFetch), the same path that reads partner sites,
+    // so no proxy-service SDK/API is involved anywhere in this module.
+    const r = await cffiFetch(source.url, {
+      impersonate: 'chrome',
+      timeoutMs: 12_000,
+      headers: { Accept: 'text/plain,text/html,*/*' },
     });
-    if (!r.ok) {
+    if (r.status !== 200) {
       log.warn('ProxyDiscovery', `${source.name} HTTP ${r.status}`);
       return [];
     }
-    const text = await r.text();
+    const text = r.body;
     const out: ProxyCandidate[] = [];
     // Accepts "ip:port", "http://ip:port" and JSON-ish payloads alike.
     for (const m of text.matchAll(/(?:(?:https?|socks[45]):\/\/)?(\d{1,3}(?:\.\d{1,3}){3}:\d{2,5})/g)) {
@@ -169,6 +176,9 @@ export async function runProxyDiscovery(opts: { limit?: number; concurrency?: nu
     log.warn('ProxyDiscovery', `could not store pool: ${String(e?.message || e).slice(0, 80)}`);
   }
 
+  const srcOf = (url: string) => candidates.find((c) => c.url === url)?.source || 'sweep';
+  const storedInDb = await storeValidatedProxies(kept, srcOf);
+
   const report: DiscoveryReport = {
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
@@ -176,6 +186,7 @@ export async function runProxyDiscovery(opts: { limit?: number; concurrency?: nu
     found: candidates.length,
     probed: candidates.length,
     passed: kept.length,
+    persistedToDb: storedInDb,
     kept: kept.slice(0, 40),
     dropped,
     storedIn: POOL_FILE,
@@ -183,6 +194,111 @@ export async function runProxyDiscovery(opts: { limit?: number; concurrency?: nu
   };
   log.info('ProxyDiscovery', `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
   return report;
+}
+
+/**
+ * Backend storage (owner 1 Nov: "proxy backend par rakho aur admin mai dikhao").
+ * MySQL is the source of truth; the JSON file stays as a fast, synchronous cache for
+ * the rotator (which must not await a query inside a request path).
+ */
+async function ensureProxyTable(): Promise<boolean> {
+  try {
+    const store = getStore();
+    await store.execute(
+      `CREATE TABLE IF NOT EXISTS proxy_pool (
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         url VARCHAR(255) NOT NULL,
+         source VARCHAR(64) NULL,
+         latency_ms INT NOT NULL DEFAULT 0,
+         ok_count INT NOT NULL DEFAULT 0,
+         fail_count INT NOT NULL DEFAULT 0,
+         enabled TINYINT NOT NULL DEFAULT 1,
+         last_error VARCHAR(180) NULL,
+         last_checked_at DATETIME NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         UNIQUE KEY uniq_proxy_url (url)
+       )`,
+    );
+    return true;
+  } catch (e: any) {
+    log.warn('ProxyDiscovery', `proxy_pool table unavailable: ${String(e?.message || e).slice(0, 100)}`);
+    return false;
+  }
+}
+
+export interface StoredProxy {
+  url: string;
+  source: string;
+  latencyMs: number;
+  okCount: number;
+  failCount: number;
+  enabled: boolean;
+  lastError: string;
+  lastCheckedAt: string | null;
+}
+
+/** Persist a validated batch (only sub-budget exits ever reach here). */
+export async function storeValidatedProxies(rows: ProxyProbeResult[], sourceOf: (url: string) => string): Promise<boolean> {
+  if (!rows.length) return false;
+  if (!(await ensureProxyTable())) return false;
+  try {
+    const store = getStore();
+    for (const r of rows) {
+      await store.execute(
+        `INSERT INTO proxy_pool (url, source, latency_ms, ok_count, last_checked_at)
+         VALUES (?, ?, ?, 1, NOW())
+         ON DUPLICATE KEY UPDATE latency_ms = VALUES(latency_ms), ok_count = ok_count + 1,
+           enabled = 1, last_error = NULL, last_checked_at = NOW()`,
+        [r.url, sourceOf(r.url).slice(0, 64), r.ms],
+      );
+    }
+    return true;
+  } catch (e: any) {
+    log.warn('ProxyDiscovery', `proxy store failed: ${String(e?.message || e).slice(0, 100)}`);
+    return false;
+  }
+}
+
+/** Admin view: every proxy the backend holds, with its measured latency. */
+export async function listStoredProxies(): Promise<{ rows: StoredProxy[]; budgetMs: number; source: 'mysql' | 'file' }> {
+  const budget = proxyLatencyBudget();
+  if (await ensureProxyTable()) {
+    try {
+      const store = getStore();
+      const rows = await store.query<any>(
+        `SELECT url, source, latency_ms, ok_count, fail_count, enabled, last_error, last_checked_at
+         FROM proxy_pool ORDER BY enabled DESC, latency_ms ASC LIMIT 200`,
+      );
+      if (Array.isArray(rows) && rows.length) {
+        return {
+          budgetMs: budget,
+          source: 'mysql',
+          rows: rows.map((r) => ({
+            url: String(r.url),
+            source: String(r.source || ''),
+            latencyMs: Number(r.latency_ms) || 0,
+            okCount: Number(r.ok_count) || 0,
+            failCount: Number(r.fail_count) || 0,
+            enabled: !!Number(r.enabled),
+            lastError: String(r.last_error || ''),
+            lastCheckedAt: r.last_checked_at ? new Date(r.last_checked_at).toISOString() : null,
+          })),
+        };
+      }
+    } catch (e: any) {
+      log.debug('ProxyDiscovery', 'listStoredProxies fell back to file', { error: String(e).slice(0, 80) });
+    }
+  }
+  const file = readDiscoveredPool();
+  return {
+    budgetMs: budget,
+    source: 'file',
+    rows: file.map((f) => ({
+      url: f.url, source: 'sweep', latencyMs: f.ms, okCount: 1, failCount: 0,
+      enabled: true, lastError: '', lastCheckedAt: null,
+    })),
+  };
 }
 
 /** The validated pool file, read by the rotator when T1S_PROXY_LIST is empty. */

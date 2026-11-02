@@ -6,6 +6,7 @@ import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../widgets/kit.dart';
 import 'home_banner_strip.dart';
+import 'currently_showing_rail.dart';
 
 /// Home Showcase (owner spec 21 Oct, reference restyle 22 Oct): the eight curated
 /// sections directly under the "Instant Launch Verticals" grid, now styled with
@@ -190,6 +191,16 @@ class _HomeShowcaseState extends State<HomeShowcase> {
             onOpenVertical: (v) => widget.state.openVertical(v),
           ),
           const SizedBox(height: 20),
+          // OWNER 31 Oct: "Currently Showing" sits directly below the first showcase
+          // section ('Picked Just for You') — same card as Upcoming Movies with a red
+          // Book button that opens the app's own movies vertical.
+          if (sec.$1 == 0) ...[
+            CurrentlyShowingRail(
+              api: widget.state.api,
+              onBook: () => widget.state.openVertical('movies'),
+            ),
+            const SizedBox(height: 20),
+          ],
         ],
       ],
     );

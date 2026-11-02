@@ -94,7 +94,7 @@ export interface CatalogueRow {
 /** L3 catalogue lookup: eligible fresh offers for a vertical/location. */
 export async function findCatalogueOffers(
   vertical: string,
-  opts: { pincode?: string; city?: string; limit?: number; strictCity?: boolean; queryTerms?: string[] } = {},
+  opts: { pincode?: string; city?: string; limit?: number; strictCity?: boolean; queryTerms?: string[]; date?: string } = {},
 ): Promise<CatalogueRow[]> {
   const store = getStore();
   try {
@@ -123,7 +123,7 @@ export async function findCatalogueOffers(
     return await store.query<CatalogueRow>(
       `SELECT id, vertical, title, vendor, seller, location_pincode, location_city, mandatory_total, effective_price,
               currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id,
-              seller_url, brand
+              seller_url, brand, attributes
        FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT ?`,
       params,
     );

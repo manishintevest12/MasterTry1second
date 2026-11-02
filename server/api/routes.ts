@@ -12,7 +12,7 @@ import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
-import { runProxyDiscovery } from '../common/proxyDiscovery';
+import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, recallGoodForVertical, rememberGood } from '../search/lastKnownGood';
 import { allowPending, forgetPending, pollKey } from './pollBudget';
@@ -1257,6 +1257,18 @@ apiRouter.get('/admin/proxy-pool', authMiddleware, requireAdmin, (_req, res) => 
 // OWNER 1 Nov ("proxy dhoondo jo 500ms se kam de, phir rotation banao"): runs the
 // discovery + sub-500ms validation sweep and stores the passing exits where the
 // rotator reads them. Admin-only: it opens outbound connections to public proxies.
+// OWNER 1 Nov ("admin mai proxy dikhao"): every exit the backend holds, with the
+// latency it was validated at. Admin-only; no proxy credential is ever public.
+apiRouter.get('/admin/proxy-list', authMiddleware, requireAdmin, async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const list = await listStoredProxies();
+    res.json({ ok: true, ...list, rotation: proxyPoolStatus() });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: String(e?.message || e).slice(0, 200) });
+  }
+});
+
 apiRouter.post('/admin/proxy-discover', authMiddleware, requireAdmin, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {

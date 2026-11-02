@@ -934,12 +934,39 @@ async function buildLiveCtx(parsedIn: ParsedQuery, input: SearchInput): Promise<
   };
 
   // 3. L3 CATALOGUE — eligible fresh, verified results returned first (Section 6)
-  const catalogueRows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  const reqDate = String(parsed.travelDates?.depart || '').slice(0, 10);
+  const catalogueRows = await findCatalogueOffers(vertical, {
+    pincode: input.pincode,
+    city: input.city,
+    limit: 40,
+    date: reqDate || undefined,
+  });
   const now = Date.now();
-  const eligible = catalogueRows.filter((r) => {
+  const ageOk = catalogueRows.filter((r) => {
     const ageSec = (now - new Date(r.fetched_at).getTime()) / 1000;
     return ageSec < 3600 && r.validation_status !== 'INVALID';
   });
+  // OWNER 1 Nov ("flight mai 5 Nov choose kiya, data 2 Nov ka milta hai — sab vertical
+  // mai"): the catalogue lookup is vertical+city, so rows mined for ANOTHER travel date
+  // were replayed as if they answered this one, and rows carried no attributes at all so
+  // even their own date was invisible. Rows are now date-checked: a dated row for a
+  // different date is dropped, and an undated row is only kept for non-date verticals.
+  // A thinner first paint is the honest answer; live sources then fill the chosen date.
+  const dateSensitive = ['flights', 'hotels', 'bus', 'cab'].includes(String(vertical));
+  const dateOf = (r: any): string => {
+    const a = parseCatalogueAttributes(r?.attributes);
+    const raw = String(a.travel_date || a.date || a.checkin || a.check_in || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
+  };
+  const eligible = !dateSensitive || !reqDate
+    ? ageOk
+    : ageOk.filter((r) => dateOf(r) === reqDate);
+  const droppedForDate = ageOk.length - eligible.length;
+  if (droppedForDate > 0) {
+    log.info('Search', 'catalogue rows dropped for a different travel date', {
+      vertical, reqDate, dropped: droppedForDate, kept: eligible.length,
+    });
+  }
   const catalogueOffers = (String(vertical) === 'flights'
     // Cold-start paint (owner 28 Oct): enrich the catalogue floor as well, so the
     // very first cards already show timings we learned earlier for that flight.
