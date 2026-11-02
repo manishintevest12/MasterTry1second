@@ -43,6 +43,7 @@ import { cityFromRouteText } from '../workers/parsers/osmTravel';
 import { canonCity } from '../workers/parsers/rapidoCabs';
 import { filterByNamedProviders } from '../verticals/verticalEngine';
 import { attachAffiliateDeepLinks } from '../affiliate/affiliateNetwork';
+import { pollKey, forgetPending } from '../api/pollBudget';
 
 export interface SearchInput {
   query: string;
@@ -716,6 +717,32 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     v.state.reusedCache = true;
     v.latencyMs = Date.now() - totalStart;
     v.totalSearchLatencyMs = v.latencyMs;
+    // OWNER 2 Nov ("app me ek search se results nahi aate, 4-5 baar press karna
+    // padta hai"): a cached answer that still says pendingRefresh was replayed
+    // verbatim even while the SAME key's pipeline was busy finishing a much richer
+    // set, so every poll in the app handed back the thin first snapshot (measured:
+    // 9 rows for ~15s while the pipeline had 129 ready). A poll now waits briefly
+    // for the running pipeline and returns its finished answer the moment it lands;
+    // if it is still working, the cached snapshot is served as before.
+    if (v.state?.pendingRefresh) {
+      const busy = inflightPipelines.get(cacheKey);
+      if (busy) {
+        const settled = await Promise.race([
+          busy.then((r) => r, () => null),
+          new Promise<SearchResponse | null>((res) => setTimeout(() => res(null), 2500)),
+        ]);
+        if (settled) {
+          for (const o of settled.results as any[]) {
+            if (o.provenance) o.provenance.replayedAfterPipeline = true;
+          }
+          settled.latencyMs = Date.now() - totalStart;
+          settled.totalSearchLatencyMs = settled.latencyMs;
+          cachePut(cacheKey, settled, ttlSec, staleSec);
+          if (!settled.state.pendingRefresh) forgetPending(pollKey([vertical, input.query, input.city, input.pincode, parsed.travelDates?.depart]));
+          return settled;
+        }
+      }
+    }
     // Stale-while-revalidate: serve instantly, refresh prices in the background (once per key).
     if (!cachedSearch.fresh) {
       revalidateInBackground(cacheKey, ttlSec, () => runLivePipeline(input, parsed));
