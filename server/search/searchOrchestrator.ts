@@ -37,6 +37,7 @@ import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerP
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { enrichFlightSchedules } from '../common/flightSchedule';
+import { enforceRequestedTravelDate, normalizeTravelDate, offerTravelDate } from './travelDateGate';
 import { backfillFlightTimes, hideFlightRowsWithoutTimes, noteFlightTimeDrop } from './flightTimeBackfill';
 import { gateRapidoRows } from './rapidoPriceGate';
 import { cityFromRouteText } from '../workers/parsers/osmTravel';
@@ -1048,6 +1049,31 @@ async function finalizeLive(
   // query. Only rows sharing stemmed title tokens with the typed query replay.
   const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
+
+  // 7.05 TRAVEL-DATE CORRECTNESS (owner 2 Nov: "19-11-2026 search kiya, result 2-11-2026 ka").
+  // Fare-calendar sources publish a whole month and, when the requested day is missing from that
+  // month's grid, several parsers fall back to "the cheapest upcoming day" - which on 2 Nov is
+  // often 2 Nov itself. The catalogue floor already date-checked its rows; this applies the same
+  // rule to EVERY row in the feed whatever produced it (live source, catalogue replay, presence
+  // card), for every date-answering vertical, so no parser can reintroduce a wrong-date card.
+  {
+    const gate = enforceRequestedTravelDate(combined as any[], String(vertical), {
+      depart: parsed.travelDates?.depart,
+      return: parsed.travelDates?.return,
+      checkin: (parsed.travelDates as any)?.checkin,
+      checkout: (parsed.travelDates as any)?.checkout,
+    });
+    if (gate.dropped > 0) {
+      combined = gate.kept as any;
+      log.info('Search', 'rows dropped for answering a different travel date', {
+        vertical: String(vertical),
+        asked: normalizeTravelDate(parsed.travelDates?.depart) || '',
+        dropped: gate.dropped,
+        kept: gate.kept.length,
+        droppedOn: gate.droppedOn,
+      });
+    }
+  }
 
   // 7.1 FLIGHT SCHEDULE COMPLETION (owner 28 Oct: "flight mai bahut aisa section
   // hai jo 1st card show kar raha hai, pr hume second card chahiye"): a live row

@@ -693,10 +693,10 @@ function extractMonthNameDate(q3) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const [ty, tm] = today2.split("-").map(Number);
   if (!year) year = mon < tm || mon === tm && day < Number(today2.slice(8, 10)) ? ty + 1 : ty;
-  const iso2 = `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  const check = /* @__PURE__ */ new Date(`${iso2}T00:00:00Z`);
+  const iso3 = `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const check = /* @__PURE__ */ new Date(`${iso3}T00:00:00Z`);
   if (Number.isNaN(check.getTime()) || check.getUTCMonth() !== mon - 1 || check.getUTCDate() !== day) return null;
-  return iso2;
+  return iso3;
 }
 function extractDates(q3) {
   const dateMatch = q3.match(/\b(20\d{2}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b/);
@@ -2416,15 +2416,15 @@ __export(seatLink_exports, {
   seatTargetFingerprint: () => seatTargetFingerprint,
   seatTemplateTrusted: () => seatTemplateTrusted
 });
-function redbusDate(iso2) {
-  const d = /* @__PURE__ */ new Date(`${iso2}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return iso2;
+function redbusDate(iso3) {
+  const d = /* @__PURE__ */ new Date(`${iso3}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso3;
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${String(d.getUTCDate()).padStart(2, "0")}-${months[d.getUTCMonth()]}-${d.getUTCFullYear()}`;
 }
-function ddmmyyyy(iso2) {
-  const d = /* @__PURE__ */ new Date(`${iso2}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return iso2;
+function ddmmyyyy(iso3) {
+  const d = /* @__PURE__ */ new Date(`${iso3}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso3;
   return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`;
 }
 function buildBusSeatUrl(t) {
@@ -5937,8 +5937,8 @@ function parseOyoOffers(hotels, source, city, meta) {
   }
   return out;
 }
-function fmtDdMmYyyy(iso2) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
+function fmtDdMmYyyy(iso3) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso3 || "");
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
 var OYO_WEB;
@@ -6033,8 +6033,8 @@ function parseYatraOffers(hotels, source, city, meta) {
   }
   return out;
 }
-function ddmmyyyy2(iso2) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
+function ddmmyyyy2(iso3) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso3 || "");
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
 var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num5;
@@ -6151,8 +6151,8 @@ function parseEmtOffers(hotels, source, city, meta) {
   }
   return out;
 }
-function ddmmyyyyDash(iso2) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
+function ddmmyyyyDash(iso3) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso3 || "");
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
 var EMT_HOTELS_WEB, num6;
@@ -6709,8 +6709,8 @@ var init_hotels = __esm({
     init_agodaHotels();
     cleartripArtDeadUntil = 0;
     OYO_WEB_URL = "https://www.oyorooms.com";
-    ddmmyyyy3 = (iso2) => {
-      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
+    ddmmyyyy3 = (iso3) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso3 || "");
       return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
     };
     agodaCityIdCache = /* @__PURE__ */ new Map();
@@ -9387,8 +9387,8 @@ function airlineName(code, map) {
   if (e2?.name) return e2.name;
   return code;
 }
-function hhmm2(iso2, hm) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(iso2) ? `${iso2} ${hm}` : `${iso2} ${hm}`.trim();
+function hhmm2(iso3, hm) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso3) ? `${iso3} ${hm}` : `${iso3} ${hm}`.trim();
 }
 function parseYatraBatch(body, source, srpUrl, routeKey, fromCity, toCity) {
   let root;
@@ -9721,10 +9721,10 @@ function keyToIso(key) {
   const yy = Number(key.slice(4, 6));
   if (dd < 1 || dd > 31 || mm < 1 || mm > 12) return null;
   const year = 2e3 + yy;
-  const iso2 = `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-  const check = /* @__PURE__ */ new Date(`${iso2}T00:00:00Z`);
+  const iso3 = `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  const check = /* @__PURE__ */ new Date(`${iso3}T00:00:00Z`);
   if (Number.isNaN(check.getTime()) || check.getUTCDate() !== dd || check.getUTCMonth() !== mm - 1) return null;
-  return iso2;
+  return iso3;
 }
 function parseMmtFareCalendar(body) {
   let d;
@@ -9924,8 +9924,8 @@ function aixTripStatusBody(origin, destination, beginDate) {
     destinationStations: [destination]
   });
 }
-function localHm(iso2) {
-  const s = String(iso2 || "");
+function localHm(iso3) {
+  const s = String(iso3 || "");
   const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(s);
   return m ? `${m[2]}:${m[3]}` : "";
 }
@@ -10295,8 +10295,8 @@ function airIndiaSchedSignature(jwt, qs) {
   const iv = String(payload?.iv || "");
   return (0, import_crypto8.createHash)("sha256").update(qs + token + iv, "utf8").digest("hex");
 }
-function localHm2(iso2) {
-  const m = /T(\d{2}:\d{2})/.exec(String(iso2 || ""));
+function localHm2(iso3) {
+  const m = /T(\d{2}:\d{2})/.exec(String(iso3 || ""));
   return m ? m[1] : "";
 }
 function parseAirIndiaSchedules(body, wantDateIso) {
@@ -11431,7 +11431,7 @@ var init_cathayTsp = __esm({
     init_contract();
     CX_TSP_API = "https://api.cathaypacific.com/tsp-svc/v1.0/";
     CX_DEEPLINK = "https://book.cathaypacific.com/tsp/en_IN/flight-selection";
-    isoTime = (iso2) => (iso2 || "").slice(11, 16);
+    isoTime = (iso3) => (iso3 || "").slice(11, 16);
   }
 });
 
@@ -11548,7 +11548,7 @@ var init_britishAirwaysPaa = __esm({
     BA_GRANT_API = "https://www.britishairways.com/api/grant";
     BA_CABIN_HELPER = (from, to) => `https://www.britishairways.com/lookup/jsonp/cabinHelper/getCabinsForRoute/${to}/${from}/en`;
     BA_FLIGHTLIST = "https://www.britishairways.com/travel/book/public/en_gb/flightList";
-    isoTime2 = (iso2) => (iso2 || "").slice(11, 16);
+    isoTime2 = (iso3) => (iso3 || "").slice(11, 16);
   }
 });
 
@@ -25845,8 +25845,8 @@ var init_ixigoBuses = __esm({
 });
 
 // server/workers/parsers/makemytripBus.ts
-function mmtDate(iso2) {
-  const d = String(iso2 || "").slice(0, 10);
+function mmtDate(iso3) {
+  const d = String(iso3 || "").slice(0, 10);
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
@@ -29492,9 +29492,9 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
     const to = IATA[legs2[1].trim()];
     if (!from || !to) return "";
     const d = String(travel?.date || "");
-    const iso2 = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : "";
-    if (!iso2) return "";
-    const [y, m, day] = iso2.split("-");
+    const iso3 = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : "";
+    if (!iso3) return "";
+    const [y, m, day] = iso3.split("-");
     const it = `${from}-${to}-${day}/${m}/${y}`;
     return `https://www.makemytrip.com/flight/search?itinerary=${encodeURIComponent(it)}&tripType=O&paxType=1-A-C&intl=false&cabinClass=E&cc=INR`;
   };
@@ -32894,8 +32894,8 @@ function normalizeFlightNo(value) {
 function normalizeClockTime(value) {
   const s = String(value ?? "").trim();
   if (!s) return null;
-  const iso2 = /T(\d{2}):(\d{2})/.exec(s);
-  if (iso2) return `${iso2[1]}:${iso2[2]}`;
+  const iso3 = /T(\d{2}):(\d{2})/.exec(s);
+  if (iso3) return `${iso3[1]}:${iso3[2]}`;
   const h12 = /^(\d{1,2}):(\d{2})\s*([AP])\.?M\.?/i.exec(s);
   if (h12) {
     let h = Number(h12[1]) % 12;
@@ -33114,6 +33114,86 @@ var init_flightSchedule = __esm({
       const title = String(offer?.title || "");
       const m = title.match(/\b([0-9]?[A-Z]{1,2})\s?(\d{3,4})\b/);
       return m ? normalizeFlightNo(`${m[1]}${m[2]}`) : null;
+    };
+  }
+});
+
+// server/search/travelDateGate.ts
+function normalizeTravelDate(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  const head3 = s.replace(/[T ]\s*\d{1,2}:\d{2}.*$/, "").trim();
+  let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(head3);
+  if (m) return iso2(Number(m[1]), Number(m[2]), Number(m[3]));
+  m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(head3);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a > 12 && b <= 12) return iso2(Number(m[3]), b, a);
+    if (b > 12 && a <= 12) return iso2(Number(m[3]), a, b);
+    return iso2(Number(m[3]), b, a);
+  }
+  const MONTHS2 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  m = /^(\d{1,2})\s*[- ]?\s*([a-zA-Z]{3,})\.?\s*[- ,]*\s*(\d{4})$/.exec(head3);
+  if (m) {
+    const mi = MONTHS2.indexOf(m[2].slice(0, 3).toLowerCase());
+    if (mi >= 0) return iso2(Number(m[3]), mi + 1, Number(m[1]));
+  }
+  m = /^([a-zA-Z]{3,})\.?\s*(\d{1,2}),?\s*(\d{4})$/.exec(head3);
+  if (m) {
+    const mi = MONTHS2.indexOf(m[1].slice(0, 3).toLowerCase());
+    if (mi >= 0) return iso2(Number(m[3]), mi + 1, Number(m[2]));
+  }
+  return "";
+}
+function offerTravelDate(offer) {
+  const candidates = [
+    offer?.travel?.date,
+    offer?.travel?.travel_date,
+    offer?.attributes?.travel_date,
+    offer?.attributes?.departure_date,
+    offer?.attributes?.depart_date,
+    offer?.attributes?.date,
+    offer?.attributes?.checkin,
+    offer?.attributes?.check_in,
+    offer?.attributes?.show_date
+  ];
+  for (const c of candidates) {
+    const n = normalizeTravelDate(c);
+    if (n) return n;
+  }
+  return "";
+}
+function enforceRequestedTravelDate(offers, vertical, requested) {
+  if (!DATE_ANSWERING_VERTICALS.includes(String(vertical))) {
+    return { kept: offers, dropped: 0, droppedOn: {} };
+  }
+  const allowed = new Set(
+    [requested?.checkin, requested?.depart, requested?.return].map((d) => normalizeTravelDate(d)).filter(Boolean)
+  );
+  if (!allowed.size) return { kept: offers, dropped: 0, droppedOn: {} };
+  const kept = [];
+  const droppedOn = {};
+  for (const o of offers) {
+    const d = offerTravelDate(o);
+    if (!d || allowed.has(d)) {
+      kept.push(o);
+      continue;
+    }
+    droppedOn[d] = (droppedOn[d] || 0) + 1;
+  }
+  return { kept, dropped: offers.length - kept.length, droppedOn };
+}
+var DATE_ANSWERING_VERTICALS, iso2;
+var init_travelDateGate = __esm({
+  "server/search/travelDateGate.ts"() {
+    DATE_ANSWERING_VERTICALS = ["flights", "hotels", "bus", "cab", "movies"];
+    iso2 = (y, m, d) => {
+      if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return "";
+      if (m < 1 || m > 12 || d < 1 || d > 31) return "";
+      const mm = String(m).padStart(2, "0");
+      const dd = String(d).padStart(2, "0");
+      return `${y}-${mm}-${dd}`;
     };
   }
 });
@@ -34250,6 +34330,24 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
   const liveKeys = new Set(liveOffers.map(liveIdentity));
   const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
+  {
+    const gate = enforceRequestedTravelDate(combined, String(vertical), {
+      depart: parsed.travelDates?.depart,
+      return: parsed.travelDates?.return,
+      checkin: parsed.travelDates?.checkin,
+      checkout: parsed.travelDates?.checkout
+    });
+    if (gate.dropped > 0) {
+      combined = gate.kept;
+      log.info("Search", "rows dropped for answering a different travel date", {
+        vertical: String(vertical),
+        asked: normalizeTravelDate(parsed.travelDates?.depart) || "",
+        dropped: gate.dropped,
+        kept: gate.kept.length,
+        droppedOn: gate.droppedOn
+      });
+    }
+  }
   if (String(vertical) === "flights") {
     combined = enrichFlightSchedules(combined);
   }
@@ -34492,6 +34590,7 @@ var init_searchOrchestrator = __esm({
     init_verticalEngine();
     init_catalogueService();
     init_flightSchedule();
+    init_travelDateGate();
     init_flightTimeBackfill();
     init_rapidoPriceGate();
     init_verticalEngine();
@@ -35131,8 +35230,8 @@ function movieShowDate(now = /* @__PURE__ */ new Date()) {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
   const late = ist.getUTCHours() >= 22;
   if (late) ist.setUTCDate(ist.getUTCDate() + 1);
-  const iso2 = ist.toISOString().slice(0, 10);
-  return { iso: iso2, compact: iso2.replace(/-/g, "") };
+  const iso3 = ist.toISOString().slice(0, 10);
+  return { iso: iso3, compact: iso3.replace(/-/g, "") };
 }
 function isMovieDestination(url) {
   try {
@@ -35146,7 +35245,7 @@ function isMovieDestination(url) {
 }
 function refreshMovieDestination(destination, now = /* @__PURE__ */ new Date()) {
   if (!destination || !isMovieDestination(destination)) return destination;
-  const { iso: iso2, compact } = movieShowDate(now);
+  const { iso: iso3, compact } = movieShowDate(now);
   let url;
   try {
     url = new URL(destination);
@@ -35176,13 +35275,13 @@ function refreshMovieDestination(destination, now = /* @__PURE__ */ new Date()) 
   }
   if (host.endsWith("district.in")) {
     const from = url.searchParams.get("fromdate");
-    if (from && from !== iso2) {
-      url.searchParams.set("fromdate", iso2);
+    if (from && from !== iso3) {
+      url.searchParams.set("fromdate", iso3);
       url.searchParams.delete("encsessionid");
       url.searchParams.delete("fromsessions");
       changed = true;
     } else if (!from) {
-      url.searchParams.set("fromdate", iso2);
+      url.searchParams.set("fromdate", iso3);
       changed = true;
     }
   }
@@ -35195,7 +35294,7 @@ function refreshMovieDestination(destination, now = /* @__PURE__ */ new Date()) 
     for (const key of ["date", "showdate", "fromdate"]) {
       const v = url.searchParams.get(key);
       if (!v) continue;
-      const normalized = /^\d{8}$/.test(v) ? compact : iso2;
+      const normalized = /^\d{8}$/.test(v) ? compact : iso3;
       if (v !== normalized) {
         url.searchParams.set(key, normalized);
         changed = true;
@@ -35206,7 +35305,7 @@ function refreshMovieDestination(destination, now = /* @__PURE__ */ new Date()) 
     for (const key of ["date", "showdate", "fromdate", "bookingdate"]) {
       const v = url.searchParams.get(key);
       if (!v) continue;
-      const normalized = /^\d{8}$/.test(v) ? compact : iso2;
+      const normalized = /^\d{8}$/.test(v) ? compact : iso3;
       if (v !== normalized) {
         url.searchParams.set(key, normalized);
         changed = true;
@@ -35274,8 +35373,8 @@ function parseSeatDestination(url) {
   };
 }
 function timeToMinutes(t) {
-  const iso2 = /^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/.exec(String(t || "").trim());
-  if (iso2) return Number(iso2[1]) * 60 + Number(iso2[2]);
+  const iso3 = /^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/.exec(String(t || "").trim());
+  if (iso3) return Number(iso3[1]) * 60 + Number(iso3[2]);
   const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i.exec(String(t || "").trim());
   if (!m) return null;
   let h = Number(m[1]);
@@ -35694,8 +35793,8 @@ var init_feedOrder = __esm({
     clock2 = (value) => {
       const s = String(value ?? "").trim();
       if (!s) return null;
-      const iso2 = /T(\d{2}):(\d{2})/.exec(s);
-      if (iso2) return `${iso2[1]}:${iso2[2]}`;
+      const iso3 = /T(\d{2}):(\d{2})/.exec(s);
+      if (iso3) return `${iso3[1]}:${iso3[2]}`;
       const h24 = /^(\d{1,2}):(\d{2})/.exec(s);
       if (h24) return Number(h24[1]) > 23 ? null : `${h24[1].padStart(2, "0")}:${h24[2]}`;
       return null;
