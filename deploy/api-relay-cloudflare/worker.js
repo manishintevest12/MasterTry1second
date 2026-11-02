@@ -25,6 +25,11 @@
  */
 
 const DEFAULT_ORIGIN = 'https://www.try1second.com';
+const UPSTREAM_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+// Statuses where retrying (and then serving the last good copy) is right: the edge is
+// throttling, not answering for the data.
+const RETRIABLE = new Set([403, 429, 500, 502, 503, 504]);
 // Paths this relay will forward. Anything else is refused, so it can never be used as an open
 // proxy by someone who guesses the hostname.
 const ALLOWED_PREFIXES = ['/api/', '/uploads/'];
@@ -97,6 +102,19 @@ async function fetchUpstream(request, url, origin, bodyBuffer) {
   }
   // Identify the relay to the origin so server logs can tell relayed traffic apart.
   headers.set('x-t1s-via', 'cf-relay');
+  // Owner 2 Nov ("iss build mai kya break ho gaya ... Currently Showing bhi nahi aa raha"):
+  // Cloudflare egress IPs started getting an EMPTY 429 from the Hostinger edge, so every app call
+  // died while the same call from a browser was fine. Presenting a browser identity upstream drops
+  // the bot score that triggers that throttle.
+  headers.set('user-agent', UPSTREAM_UA);
+  headers.set('accept-language', 'en-IN,en;q=0.9');
+  if (request.method === 'GET' && !headers.get('accept')) {
+    headers.set('accept', 'application/json, text/plain, */*');
+  }
+  try {
+    headers.set('referer', 'https://www.try1second.com/');
+    headers.set('origin', 'https://www.try1second.com');
+  } catch (_) { /* Origin is a forbidden header name in some runtimes; ignore */ }
 
   const init = {
     method: request.method,
@@ -169,13 +187,43 @@ export default {
     // response (a thrown fetch), never after a real status, so a search is not duplicated.
     const delays = [0, 250, 700, 1500, 2500, 4000];
     let lastError = null;
+    let lastStatus = 0;
+    const isRead = request.method === 'GET' || request.method === 'HEAD';
+    const cacheKey = isRead ? new Request(target, { method: 'GET' }) : null;
     for (let i = 0; i < delays.length; i++) {
       if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
       try {
         const res = await fetchUpstream(request, target, origin, bodyBuffer);
-        const retriable =
-          res.status === 502 || res.status === 503 || res.status === 504;
-        if (retriable && i < delays.length - 1 && request.method !== 'POST') continue;
+        if (RETRIABLE.has(res.status)) {
+          lastStatus = res.status;
+          // 403/429 from the Hostinger edge means this EGRESS is blocked, not that the call was
+          // bad: retrying from the same Cloudflare IP for 9 more seconds only delays the phone.
+          // One retry, then hand the client a direct route.
+          const egressBlocked = res.status === 403 || res.status === 429;
+          if (i < (egressBlocked ? 1 : delays.length - 1)) continue;
+          // Last good copy beats a blank screen: the app has no way to render "throttled".
+          if (isRead) {
+            try {
+              const hit = await caches.default.match(cacheKey);
+              if (hit) {
+                const out = new Headers(hit.headers);
+                for (const [k, v] of cors.entries()) out.set(k, v);
+                out.set('x-t1s-cache', 'relay-stale');
+                out.set('x-t1s-relay-attempts', String(i + 1));
+                out.set('x-t1s-upstream-status', String(res.status));
+                return new Response(hit.body, { status: 200, headers: out });
+              }
+            } catch (_) { /* cache unavailable: fall through to the retry envelope */ }
+          }
+          break;
+        }
+        if (res.status < 400 && isRead) {
+          // keep a copy so a later throttle cannot blank the app
+          try {
+            const store = new Response(res.clone().body, { status: 200, headers: res.headers });
+            await caches.default.put(cacheKey, store);
+          } catch (_) { /* caching is best-effort */ }
+        }
         const out = new Headers(res.headers);
         for (const [k, v] of cors.entries()) out.set(k, v);
         // Never let an intermediary cache an API answer; the origin already sets its own rules.
@@ -184,6 +232,51 @@ export default {
       } catch (e) {
         lastError = e;
       }
+    }
+    if (lastStatus) {
+      // BEST route when the edge blocks Cloudflare's egress: send the phone straight to the
+      // origin for the same path. 307 keeps the method AND the body, so a POST search still
+      // arrives intact, and the app's own client follows redirects by default. This is what
+      // restores results (and Currently Showing) for builds already installed.
+      if (isRead) {
+        try {
+          const hit = await caches.default.match(cacheKey);
+          if (hit) {
+            const out = new Headers(hit.headers);
+            for (const [k, v] of cors.entries()) out.set(k, v);
+            out.set('x-t1s-cache', 'relay-stale');
+            out.set('x-t1s-upstream-status', String(lastStatus));
+            return new Response(hit.body, { status: 200, headers: out });
+          }
+        } catch (_) { /* ignore */ }
+      }
+      // Only GET/HEAD can ride a redirect: dart:io follows 3xx for GET but returns a 307
+      // straight to the caller for POST (measured: POST status=307 redirects=0), so a search
+      // must instead get a 5xx, which the app's own dual-hop reroutes to the origin itself.
+      const canRedirect = request.method === 'GET' || request.method === 'HEAD';
+      if ((lastStatus === 429 || lastStatus === 403) && canRedirect) {
+        const out = new Headers(cors);
+        out.set('location', target);
+        out.set('cache-control', 'no-store');
+        out.set('x-t1s-relay-redirect', 'edge-throttled');
+        out.set('x-t1s-upstream-status', String(lastStatus));
+        return new Response(null, { status: 307, headers: out });
+      }
+      // Answer in the shape the app already understands (a "still scanning, retry" envelope)
+      // instead of a bare status it treats as fatal, and use 503 so the client's own dual-hop
+      // failover to www.try1second.com can take over.
+      const body = isRead
+        ? JSON.stringify({
+            success: false, results: [], retrying: true, pendingRefresh: true,
+            retryAfterSec: 4, notice: 'origin edge throttled; retrying',
+            relayUpstreamStatus: lastStatus,
+          })
+        : JSON.stringify({ error: 'upstream throttled', status: lastStatus, target });
+      const out = new Headers(cors);
+      out.set('content-type', 'application/json; charset=utf-8');
+      out.set('cache-control', 'no-store');
+      out.set('x-t1s-upstream-status', String(lastStatus));
+      return new Response(body, { status: 503, headers: out });
     }
 
     return json(
