@@ -113,6 +113,17 @@ export async function runTask(worker: VerticalWorker, task: WorkerTask, source: 
   } catch (e: any) {
     const fc = e instanceof AcquisitionError ? e.failureClass : 'UNKNOWN';
     log.debug('VerticalWorker', `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e?.message || e).slice(0, 140) });
+    // Owner 2 Nov: the same self-healing rotation must cover EVERY vertical, not just flights
+    // ("baki sites jo hotel and flights mai result ni de rahe yaa bus mai yaa cab mai ... waha v
+    // iss system ka use kro"). This is the single choke point every vertical worker failure
+    // passes through, so one fire-and-forget heal here covers hotels / flights / bus / cab at
+    // once. It never blocks or rewrites the answer: gated sources stay honest-empty this run,
+    // and the next run rotates through a hop that got validated against that source's own edge.
+    if (fc === 'ACCESS_CHALLENGE' || fc === 'RATE_LIMITED' || fc === 'SERVER_ERROR') {
+      void import('../common/gateHeal')
+        .then((m) => m.autoHealGatedSources([{ source: task.sourceId, message: String(e?.message || fc) }]))
+        .catch(() => undefined);
+    }
     // Development-only fixture fallback: if the dev IP got WAF-blocked and
     // T1S_DEV_FIXTURES=1, return clearly-labelled fixtures so testing continues.
     const fixtures = buildDevFixtures(source, worker.vertical, String(query.rawQuery || query.entityName || ''));

@@ -83,7 +83,7 @@ test('a sweep that finds nothing says so honestly', async () => {
 });
 
 test('an unknown source is never healed', async () => {
-  const res = await healGatedSource('makemytrip', { force: true });
+  const res = await healGatedSource('nosuchsource', { force: true });
   assert.equal(res.ran, false);
   assert.match(res.reason, /no heal target/);
 });
@@ -112,8 +112,8 @@ test('autoHealGatedSources heals each gated key once and swallows errors', async
   );
   assert.deepEqual(healed, ['indigo'], 'one heal per distinct gated source');
   assert.equal(out.length, 1);
-  // No gated source -> nothing happens at all.
-  assert.deepEqual(await autoHealGatedSources([{ source: 'w_hotels_yatra', message: 'HTTP 500' }]), []);
+  // No healable source -> nothing happens at all (no sweep is started).
+  assert.deepEqual(await autoHealGatedSources([{ source: 'w_food_zomato', message: 'HTTP 500' }]), []);
 });
 
 test('the rotator reads the gated pool with a wider ceiling', () => {
@@ -158,4 +158,34 @@ test('a sweep that finds a hop resets the empty streak', async () => {
   assert.equal(res.kept, 1);
   const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
   assert.equal(saved.indigo.zeroStreak, 0);
+});
+
+test('every vertical has a heal target and its worker id maps to it', () => {
+  // Owner 2 Nov: hotels / flights / bus / cab must use the same rotation, not just IndiGo.
+  const expected: Array<[string, string]> = [
+    ['w_flights_indigo', 'indigo'],
+    ['w_flights_makemytrip', 'makemytrip'],
+    ['w_hotels_makemytrip', 'makemytrip'],
+    ['w_hotels_goibibo', 'goibibo'],
+    ['w_hotels_booking', 'booking'],
+    ['w_hotels_expedia', 'expedia'],
+    ['w_hotels_yatra', 'yatra'],
+    ['w_flights_starair', 'starair'],
+    ['w_flights_spicejet', 'spicejet'],
+    ['w_bus_redbus', 'redbus'],
+  ];
+  for (const [workerId, key] of expected) {
+    assert.equal(gateKeyFor(workerId), key, `${workerId} -> ${key}`);
+    assert.ok(GATE_TARGETS[key], `${key} must have a probe target`);
+  }
+  // Each target must probe the source's own host, so a hop is only stored when it beats THAT edge.
+  for (const [key, target] of Object.entries(GATE_TARGETS)) {
+    assert.match(target.url, /^https:\/\//, `${key} needs an https probe`);
+    assert.ok(target.expectSubstring, `${key} needs a pass marker`);
+    assert.ok((target.maxMs || 0) >= 2000, `${key} needs a partner-sized budget`);
+  }
+  // Uber / Rapido / Ola are deliberately absent: their gap is auth/WASM, not egress.
+  assert.equal(gateKeyFor('w_cab_uber'), null);
+  assert.equal(gateKeyFor('w_cab_rapido'), null);
+  assert.equal(gateKeyFor('w_cab_ola'), null);
 });

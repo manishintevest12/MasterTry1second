@@ -51,17 +51,15 @@ export interface GateHealResult {
 }
 
 /** The exact gated request each source needs to pass before a proxy counts as healed. */
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+const HTML = { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-IN,en;q=0.9' };
+
 export const GATE_TARGETS: Record<string, ProbeTarget> = {
   indigo: {
     label: 'indigo-mobile-search',
     url: 'https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search',
     method: 'POST',
-    headers: {
-      user_key: '43b557c03fc85cc213e91df0f526cc7a',
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    // A real IDR->DEL search a week out: cheap, deterministic, and answered by the same edge.
+    headers: { user_key: '43b557c03fc85cc213e91df0f526cc7a', 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({
       criteria: [{
         dates: {
@@ -71,27 +69,76 @@ export const GATE_TARGETS: Record<string, ProbeTarget> = {
         flightFilters: { type: 'All' },
         stations: { originStationCodes: ['IDR'], destinationStationCodes: ['DEL'] },
       }],
-      tripType: 'ONE_WAY',
-      currencyCode: 'INR',
+      tripType: 'ONE_WAY', currencyCode: 'INR',
       paxInfo: { travelPurpose: '', adultCount: 1, childrenCount: 0, infantCount: 0, seniorCitizenCount: 0, extraSeat: 0 },
-      specialFare: '',
-      promoCode: '',
-      bookingPurpose: '',
-      marketType: '',
-      doubleSeatSelected: false,
-      tripleSeatSelected: false,
-      selectedTripIndex: 0,
+      specialFare: '', promoCode: '', bookingPurpose: '', marketType: '',
+      doubleSeatSelected: false, tripleSeatSelected: false, selectedTripIndex: 0,
     }),
-    // Any real answer carries flight data; a challenge/empty page does not.
     expectSubstring: 'flight',
     maxMs: 8000,
+  },
+  // FLIGHTS + HOTELS: MakeMyTrip (Akamai sensor) and Goibibo (same edge family)
+  makemytrip: {
+    label: 'mmt-flights-srp',
+    url: 'https://www.makemytrip.com/flights/',
+    headers: HTML, expectSubstring: 'makemytrip', maxMs: 9000,
+  },
+  goibibo: {
+    label: 'goibibo-hotels',
+    url: 'https://www.goibibo.com/hotels/',
+    headers: HTML, expectSubstring: 'goibibo', maxMs: 9000,
+  },
+  // HOTELS: Booking.com challenge page + Expedia 429 + Yatra http2 reset
+  booking: {
+    label: 'booking-hotels-search',
+    url: 'https://www.booking.com/searchresults.html?ss=Shimla&checkin=2026-11-19&checkout=2026-11-21&group_adults=2&no_rooms=1',
+    headers: HTML, expectSubstring: 'shimla', maxMs: 9000,
+  },
+  expedia: {
+    label: 'expedia-hotels-search',
+    url: 'https://www.expedia.co.in/Hotel-Search?destination=Shimla&startDate=2026-11-19&endDate=2026-11-21&adults=2',
+    headers: HTML, expectSubstring: 'expedia', maxMs: 9000,
+  },
+  yatra: {
+    label: 'yatra-hotels',
+    url: 'https://hotel.yatra.com/',
+    headers: HTML, expectSubstring: 'yatra', maxMs: 9000,
+  },
+  // FLIGHTS: StarAir 403 / SpiceJet fare-calendar 500
+  starair: {
+    label: 'starair-site',
+    url: 'https://www.starair.in/',
+    headers: HTML, expectSubstring: 'star air', maxMs: 9000,
+  },
+  spicejet: {
+    label: 'spicejet-site',
+    url: 'https://www.spicejet.com/',
+    headers: HTML, expectSubstring: 'spicejet', maxMs: 9000,
+  },
+  // BUS: redBus edge-blocks datacenter IPs
+  redbus: {
+    label: 'redbus-route',
+    url: 'https://www.redbus.in/bus-tickets/delhi-to-jaipur',
+    headers: HTML, expectSubstring: 'redbus', maxMs: 9000,
   },
 };
 
 /** Map a worker/source id or failure message to a healable key. */
+const KEY_HINTS: Array<[RegExp, string]> = [
+  [/indigo/, 'indigo'],
+  [/makemytrip|\bmmt\b/, 'makemytrip'],
+  [/goibibo/, 'goibibo'],
+  [/booking/, 'booking'],
+  [/expedia|hotels\.com/, 'expedia'],
+  [/yatra/, 'yatra'],
+  [/starair|star.?air/, 'starair'],
+  [/spicejet/, 'spicejet'],
+  [/redbus/, 'redbus'],
+];
+
 export function gateKeyFor(sourceId: string, message = ''): string | null {
   const s = `${sourceId} ${message}`.toLowerCase();
-  if (s.includes('indigo')) return 'indigo';
+  for (const [re, key] of KEY_HINTS) if (re.test(s)) return key;
   return null;
 }
 
@@ -115,6 +162,27 @@ function writeState(state: Record<string, HealState>, file = STATE_FILE): void {
 }
 
 /** Stored winners, so a caller (or the admin UI) can see whether a heal actually helped. */
+
+function readPoolUrls(file: string): string[] {
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return (Array.isArray(raw?.proxies) ? raw.proxies : []).map((x: any) => String(x?.url || '')).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Keep hops that an earlier sweep already validated against another edge. */
+function mergePool(file: string, previous: string[]): void {
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const rows: any[] = Array.isArray(raw?.proxies) ? raw.proxies : [];
+    const have = new Set(rows.map((r) => String(r?.url || '')));
+    for (const url of previous) if (!have.has(url)) rows.push({ url, ms: 0, carriedOver: true });
+    fs.writeFileSync(file, JSON.stringify({ ...raw, proxies: rows }, null, 2));
+  } catch { /* merge is best-effort; a failed merge never breaks a sweep */ }
+}
+
 export function gatedPoolSize(file = GATED_POOL_FILE): number {
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -153,7 +221,11 @@ export async function healGatedSource(
 
   const discover = opts.discover || runProxyDiscovery;
   try {
+    const before = readPoolUrls(poolFile);
     const report = await discover({ target, poolFile, limit: opts.limit ?? 60, concurrency: 8 });
+    // one sweep validates against ONE edge, but the winners are useful to every gated source,
+    // so merge rather than overwrite the shared gated pool
+    if (before.length) mergePool(poolFile, before);
     const zeroStreak = report.kept.length ? 0 : Number(last?.zeroStreak || 0) + 1;
     state[key] = { at: now, kept: report.kept.length, tried: report.probed ?? 0, zeroStreak };
     writeState(state, stateFile);
