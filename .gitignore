@@ -20,3 +20,8 @@ __pycache__/
 fcm-service-account.json
 flutter_app/dist/
 fcm-env-value.txt
+
+# Build output is generated on the deploy host (npm run build). Tracking it made a
+# locally rebuilt dist block git pull on the server, so deploys silently kept the
+# OLD source. dist stays out of git from now on.
+dist

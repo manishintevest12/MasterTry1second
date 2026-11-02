@@ -1,1 +1,0 @@
-var e=e=>e===`loans`||e===`insurance`;function t(t,n){if(n==null||!Number.isFinite(Number(n)))return`—`;let r=Number(n);return e(t)?`${Math.round(r*100)/100}%`:`₹${r.toLocaleString(`en-IN`)}`}export{e as n,t};
