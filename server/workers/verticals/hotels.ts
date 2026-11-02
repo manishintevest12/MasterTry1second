@@ -45,7 +45,7 @@ const ddmmyyyy = (iso: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(is
 /** city (lowercase) → Agoda CityId, learned from SEO city pages (stable ids). */
 const agodaCityIdCache = new Map<string, number>();
 
-function cityFromQuery(ctx: { query: any }): string | null {
+export function cityFromQuery(ctx: { query: any }): string | null {
   const q = ctx.query;
   const raw = String(q.rawQuery || '').trim();
   // The destination the USER TYPED always wins over their device/profile city
@@ -58,9 +58,12 @@ function cityFromQuery(ctx: { query: any }): string | null {
     .replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ')
     .replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, ' ')
     .replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{0,4}\b/gi, ' ')
+    .replace(/\b(under|below|above|upto|up to|max|min|budget)\s*\d+/gi, ' ')
     .replace(/\b\d{1,2}(st|nd|rd|th)?\b/g, ' ')
+    // standalone 3+ digit numbers are prices/pincode-ish, never part of a city name
+    .replace(/\b\d{3,6}\b/g, ' ')
     .replace(/\b(19|20)\d{2}\b/g, ' ')
-    .replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|check-?out:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, ' ')
+    .replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|check-?out:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price|from|to|till|until|onwards|and|with|a|an|the|some|any|show|find|get|see|need|want|looking|search|compare)\b/gi, ' ')
     .replace(/,.*$/, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim()
     .split(' ').slice(0, 3).join(' ');
   const cleaned = strip(raw);

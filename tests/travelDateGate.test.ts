@@ -84,3 +84,22 @@ test('vertical with no date semantics is never filtered, and no date asked means
   assert.equal(enforceRequestedTravelDate(rows, 'flights', {}).dropped, 0);
   assert.equal(enforceRequestedTravelDate(rows, 'flights', { depart: 'not-a-date' }).dropped, 0);
 });
+
+test('a date range inside the hotel query never leaks into the city slug', async () => {
+  // Owner 2 Nov: before chasing more edges, stop poisoning the slug. Measured: the query
+  // 'hotels in Shimla 19 November 2026 to 21 November 2026' produced the city "Shimla to", so
+  // every city-page hotel source 404'd and the seller silently disappeared from the answer.
+  const { cityFromQuery } = await import('../server/workers/verticals/hotels');
+  const cases: Array<[string, string]> = [
+    ['hotels in Shimla 19 November 2026 to 21 November 2026', 'Shimla'],
+    ['hotels in Shimla from 19 Nov 2026 till 21 Nov 2026', 'Shimla'],
+    ['book a hotel in Goa 2026-11-19 to 2026-11-21', 'Goa'],
+    ['cheap stays in Manali under 3000', 'Manali'],
+  ];
+  for (const [raw, want] of cases) {
+    const got = cityFromQuery({ query: { rawQuery: raw, location: {} } } as any);
+    assert.equal(got, want, `${raw} -> ${got}`);
+  }
+  // a two-word city still survives
+  assert.equal(cityFromQuery({ query: { rawQuery: 'hotels in Mount Abu 19 Nov 2026 to 21 Nov 2026' } } as any), 'Mount Abu');
+});
