@@ -74,7 +74,7 @@ const POOL_FILE = path.join(process.cwd(), 'data', 'proxy-pool.json');
  * They are slower than the 500ms generic budget, so they live in their own file and the
  * rotator reads them with a wider ceiling instead of silently filtering them out.
  */
-export const GATED_POOL_FILE = path.join(process.cwd(), 'data', 'proxy-pool-gated.json');
+export const GATED_POOL_FILE = process.env.T1S_GATED_POOL_FILE || path.join(process.cwd(), 'data', 'proxy-pool-gated.json');
 
 /** Public, no-key lists. Each entry is parsed for ip:port pairs. */
 /**

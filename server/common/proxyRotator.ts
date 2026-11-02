@@ -126,14 +126,29 @@ function discoveredLegs(): Array<{ url: string; ms: number }> {
  * still worth having when the alternative is zero IndiGo rows.
  */
 function gatedLegs(): Array<{ url: string; ms: number }> {
+  const files = [
+    process.env.T1S_GATED_POOL_FILE || path.join(process.cwd(), 'data', 'proxy-pool-gated.json'),
+    // committed seed: hops measured against a real gated edge, so rotation is live on the very
+    // first deploy instead of waiting for the first sweep to finish
+    process.env.T1S_PROXY_SEED_FILE || path.join(process.cwd(), 'data', 'proxy-seed-hops.json'),
+  ];
+  return files.flatMap((f) => legsFrom(files[0] === f ? f : f));
+}
+
+function legsFrom(file: string): Array<{ url: string; ms: number }> {
   try {
-    const file = path.join(process.cwd(), 'data', 'proxy-pool-gated.json');
     if (!fs.existsSync(file)) return [];
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
     const ceiling = Number(process.env.T1S_PROXY_GATED_MAX_LATENCY_MS || 8000);
     const rows = Array.isArray(raw?.proxies) ? raw.proxies : [];
     return rows
-      .map((x: any) => ({ url: normalize(String(x?.url || '')), ms: Number(x?.ms || 0) }))
+      .map((x: any) => ({
+        url: normalize(String(x?.url || '')),
+        // a hop validated by a sweep but never timed gets the ceiling's midpoint as a RANKING
+        // hint only; the first real request refines it through the normal EWMA. Never a
+        // correctness input - it cannot make a fare or a row appear.
+        ms: Number.isFinite(Number(x?.ms)) && Number(x?.ms) > 0 ? Number(x.ms) : Math.round(ceiling / 3),
+      }))
       .filter((x: { url: string; ms: number }) => !!x.url && Number.isFinite(x.ms) && x.ms > 0 && x.ms <= ceiling);
   } catch {
     return [];
