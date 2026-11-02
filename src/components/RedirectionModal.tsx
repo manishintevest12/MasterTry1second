@@ -65,8 +65,27 @@ export const RedirectionModal: React.FC = () => {
     // never wrap it in a client-side tracking template.
     // Owner 24 Oct: every quote URL is a server pointer (/api/out) or an honest
     // absolute merchant fallback — attribution is applied SERVER-SIDE only.
-    window.open(quote.url, '_blank', 'noopener,noreferrer');
+    // OWNER 2 Nov ("Book dabane par partner khulta hi nahi, wapas flight results hi
+    // dikhte hain"): the hop was ALWAYS a new tab, and mobile browsers (plus most
+    // in-app browsers) block window.open silently - window.open('...', '_blank',
+    // 'noopener') returns null by spec, so nothing could even detect the block and the
+    // tap looked like a no-op on the results screen. Mobile now navigates the CURRENT tab
+    // (the /redirect interstitial still shows AdSense, back returns to results), and
+    // desktop keeps the new tab but falls back to same-tab when the browser blocks it.
+    const target = String(quote.url || '');
     closeRedirection();
+    const smallScreen = typeof window.matchMedia === 'function'
+      && window.matchMedia('(max-width: 768px)').matches;
+    if (smallScreen) {
+      window.location.assign(target);
+      return;
+    }
+    const tab = window.open(target, '_blank');
+    if (tab) {
+      try { tab.opener = null; } catch { /* cross-origin: already detached */ }
+      return;
+    }
+    window.location.assign(target);
   };
 
   return (
