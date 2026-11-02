@@ -53,6 +53,12 @@ export interface GateHealResult {
 /** The exact gated request each source needs to pass before a proxy counts as healed. */
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 const HTML = { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-IN,en;q=0.9' };
+/** Cleartrip's own bundle headers for /flight/search/v2 (x-client-id + desktop identity). */
+const JSONH = {
+  'User-Agent': UA, Accept: 'application/json', 'Content-Type': 'application/json',
+  'x-client-id': 'cleartrip', 'x-source-type': 'Desktop', channel: 'desktop',
+  'app-agent': 'DESKTOP', caller: 'UI', Referer: 'https://www.cleartrip.com/flights',
+};
 
 export const GATE_TARGETS: Record<string, ProbeTarget> = {
   indigo: {
@@ -87,6 +93,18 @@ export const GATE_TARGETS: Record<string, ProbeTarget> = {
     label: 'goibibo-hotels',
     url: 'https://www.goibibo.com/hotels/',
     headers: HTML, expectSubstring: 'goibibo', maxMs: 9000,
+  },
+  // FLIGHTS: Cleartrip. Its /flight/search/v2 fare API used to answer our egress and now
+  // returns an Akamai "Access Denied" 403 (measured 2 Nov: 403 on chrome + safari17_0, the
+  // same 403 with the storefront's _abck/bm_sz cookies primed, and 0 of 40 seed hops passed
+  // it) - so this is sensor/cookie gated, not merely IP gated. Registering it keeps the
+  // self-healing sweep honest: it will pick up a hop the day one answers the fare API.
+  cleartrip: {
+    label: 'cleartrip-fare-api',
+    url: 'https://www.cleartrip.com/flight/search/v2?from=IDR&to=DEL&depart_date=19/11/2026&adults=1',
+    headers: JSONH,
+    expectSubstring: 'travelOptionId',
+    maxMs: 9000,
   },
   // HOTELS: Booking.com challenge page + Expedia 429 + Yatra http2 reset
   booking: {
@@ -134,6 +152,7 @@ const KEY_HINTS: Array<[RegExp, string]> = [
   [/starair|star.?air/, 'starair'],
   [/spicejet/, 'spicejet'],
   [/redbus/, 'redbus'],
+  [/cleartrip/, 'cleartrip'],
 ];
 
 export function gateKeyFor(sourceId: string, message = ''): string | null {

@@ -684,7 +684,12 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     // otherwise keep serving phone covers out of the cache until each TTL expired).
     // rev 3 (29 Oct): bus schedule repair — a cached answer built before it still holds
     // rows with an empty timing gap, and a cached SearchResponse is replayed verbatim.
-    rev: 3,
+    // rev 4 (2 Nov): the travel-date gate. MEASURED on production after this was written:
+    // a 2026-12-03 flights search answered 26 rows dated 2026-11-02 and 7 dated 2026-11-03,
+    // and a 2026-11-19 search answered 30 rows dated 2026-12-03 — a cached SearchResponse is
+    // replayed VERBATIM, so snapshots minted before the gate existed kept handing back
+    // another day's fares even though the live pipeline would have dropped them.
+    rev: 4,
     vertical,
     q: input.query,
     pin: input.pincode,
@@ -709,6 +714,28 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     log.info('Search', 'Evicted empty/still-acquiring cache entry, going live', { key: cacheKey, rows: (cachedValue.results || []).length });
   } else if (cachedValue) {
     const v = cachedValue as SearchResponse;
+    // OWNER 2 Nov ("3 dec ka search hua to details 3 dec ka, 19 nov ka to sab 19 nov ka"):
+    // the gate in finalizeLive cannot protect a replayed snapshot, and the measurements above
+    // show stale snapshots really do carry another day's rows. Re-run the same check on the way
+    // OUT of the cache; a row readable as a different date is removed, and if that empties the
+    // snapshot we treat it as a miss and go live instead of serving wrong-day fares.
+    const cacheGate = enforceRequestedTravelDate(v.results as any[], String(vertical), {
+      depart: parsed.travelDates?.depart,
+      return: parsed.travelDates?.return,
+      checkin: (parsed.travelDates as any)?.checkin,
+      checkout: (parsed.travelDates as any)?.checkout,
+    });
+    if (cacheGate.dropped > 0) {
+      log.info('Search', 'cached rows dropped for answering a different travel date', {
+        vertical: String(vertical), asked: normalizeTravelDate(parsed.travelDates?.depart) || '',
+        dropped: cacheGate.dropped, kept: cacheGate.kept.length, droppedOn: cacheGate.droppedOn,
+      });
+      v.results = cacheGate.kept as any;
+      if (!v.results.length) {
+        cacheDel(cacheKey);
+        log.info('Search', 'Cache snapshot held only other-day rows - going live instead', { key: cacheKey });
+      }
+    }
     // Honesty rule (Section 9): a replayed live result is CACHED_VERIFIED, never LIVE_VERIFIED.
     for (const o of v.results as any[]) {
       if (o.freshnessStatus === 'LIVE_VERIFIED') o.freshnessStatus = 'CACHED_VERIFIED';
@@ -748,7 +775,10 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     if (!cachedSearch.fresh) {
       revalidateInBackground(cacheKey, ttlSec, () => runLivePipeline(input, parsed));
     }
-    return v;
+    // An empty-but-present snapshot means the gate removed every other-day row above: fall
+    // through to the live paths so the user gets the requested date or an honest scan state,
+    // never a blank page built from a dropped cache entry.
+    if (v.results.length) return v;
   }
 
   // PROGRESSIVE COLD-START: same query already acquiring? Serve catalogue rows

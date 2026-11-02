@@ -1574,7 +1574,7 @@ export const flightsWorker: VerticalWorker = {
       name: 'Flights worker: Cleartrip live fares (search v2 API)',
       priority: 8,
       maxPerMinute: 4,
-      timeoutMs: 35_000,
+      timeoutMs: 20_000,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
         const rt = routeFromQuery(raw);
@@ -1589,7 +1589,11 @@ export const flightsWorker: VerticalWorker = {
         const url = cleartripSearchUrl(fromA.code, toA.code, dmy);
         let r;
         try {
-          r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000, headers: {
+          // 12s, not 30s: the fare API either answers in ~1-3s or the Akamai edge refuses
+          // outright (403). The old 30s ceiling turned every refusal into a worker TIMEOUT
+          // and stole the acquisition budget from sources that do deliver (owner 2 Nov:
+          // "cleartrip phle aata tha" - it is the same API, the edge now refuses our egress).
+          r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 12_000, headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
             'x-client-id': 'cleartrip',
