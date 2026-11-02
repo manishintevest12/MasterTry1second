@@ -209,6 +209,22 @@ export async function buildFlightSellerPresence(
       return hay.includes(needle);
     });
   };
+  // OWNER 2 Nov (screenshot of a Gotogate card: brand pill, route pill, then a large empty
+  // middle and 'Fare on seller site' where departure/arrival belong, plus 'flight time nahi aa
+  // raha' reported twice): a presence card carries no flight and no fare, so it can never show a
+  // time. Next to real, timed fares it reads as a broken row. Presence cards are therefore a
+  // THIN-FEED fallback: once the answer already holds real timed flights, the sellers keep their
+  // brand visibility through the rows those carriers actually priced, and no timeless card is
+  // appended. A feed with nothing timed still shows them, so a gated route is never blank.
+  const timedPricedRows = combined.filter((o) => {
+    const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+    if (!(price > 0)) return false;
+    const attrs = ((o as any).attributes || {}) as Record<string, unknown>;
+    const dep = String(attrs.departure ?? attrs.dep_time ?? attrs.depTime ?? '').trim();
+    const arr = String(attrs.arrival ?? attrs.arr_time ?? attrs.arrTime ?? '').trim();
+    return dep.length > 0 && arr.length > 0;
+  }).length;
+  const presenceAllowed = timedPricedRows < 3;
   const out: NormalizedOffer[] = [];
   // HONEST NO-SERVICE (owner 24 Oct): when a seller's own live source SUCCEEDED
   // this search (its API answered us) yet returned no priced row, that is a
@@ -220,6 +236,7 @@ export async function buildFlightSellerPresence(
   // brand-visibility rule (22 Oct) was written for.
   const succeeded = new Set((succeededSourceIds || []).map((x) => String(x)));
   for (const cfg of PRESENCE_SELLERS) {
+    if (!presenceAllowed) break; // real timed fares are on screen: no timeless cards
     if (presentSellers.has(cfg.seller.toLowerCase())) continue;
     if (carrierPresent(cfg.seller)) continue; // airline already answering with priced fares
     if (succeeded.has(cfg.sourceId)) continue; // honest empty from the seller's own API

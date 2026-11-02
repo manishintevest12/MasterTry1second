@@ -129,3 +129,22 @@ test('presence: a gated class (ACCESS_CHALLENGE) brings the card back — self-h
   assert.equal(rows.length, 10, 'a gated carrier keeps brand visibility');
   assert.ok(rows.every((r) => (r.attributes?.price_basis ?? '') === 'live_fares_unavailable'), 'honest price basis');
 });
+
+// OWNER 2 Nov: a presence card has no flight and no fare, so with real timed fares already in
+// the answer it rendered as a broken row (screenshot: Gotogate card, empty middle, "Fare on
+// seller site"). Presence is now a thin-feed fallback only.
+const timed = (seller: string): NormalizedOffer => {
+  const o: any = priced(seller);
+  o.attributes = { airline: 'IndiGo', departure: '10:10', arrival: '11:40', travel_date: '2026-10-29' };
+  return o;
+};
+
+test('presence: a feed with real timed fares appends no timeless card', async () => {
+  const rows = await buildFlightSellerPresence(parsed(), [timed('ixigo'), timed('Goibibo'), timed('Cleartrip')]);
+  assert.equal(rows.length, 0);
+});
+
+test('presence: a thin feed (no timed priced rows) still shows the seller cards', async () => {
+  const rows = await buildFlightSellerPresence(parsed(), [priced('ixigo')]);
+  assert.ok(rows.length > 0, 'gated route must never be blank');
+});

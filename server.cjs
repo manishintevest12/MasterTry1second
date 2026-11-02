@@ -32100,9 +32100,19 @@ async function buildFlightSellerPresence(parsed, combined, succeededSourceIds) {
       return hay.includes(needle);
     });
   };
+  const timedPricedRows = combined.filter((o) => {
+    const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+    if (!(price > 0)) return false;
+    const attrs = o.attributes || {};
+    const dep = String(attrs.departure ?? attrs.dep_time ?? attrs.depTime ?? "").trim();
+    const arr = String(attrs.arrival ?? attrs.arr_time ?? attrs.arrTime ?? "").trim();
+    return dep.length > 0 && arr.length > 0;
+  }).length;
+  const presenceAllowed = timedPricedRows < 3;
   const out = [];
   const succeeded = new Set((succeededSourceIds || []).map((x) => String(x)));
   for (const cfg of PRESENCE_SELLERS) {
+    if (!presenceAllowed) break;
     if (presentSellers.has(cfg.seller.toLowerCase())) continue;
     if (carrierPresent(cfg.seller)) continue;
     if (succeeded.has(cfg.sourceId)) continue;
