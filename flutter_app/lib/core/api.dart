@@ -1550,6 +1550,10 @@ class Try1SecondApi {
 
   // -- public content --------------------------------------------------------
 
+  /// Small public config reads (app ad tag, feature switches). Same transport, auth and cache
+  /// rules as every other call, exposed so callers outside this file never touch _get directly.
+  Future<Map<String, dynamic>> getJsonPublic(String path) => _get(path);
+
   Future<AppLinks> appLinks() async =>
       AppLinks.fromJson(await _get('/api/app-links'));
 

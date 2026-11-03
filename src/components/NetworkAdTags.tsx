@@ -29,8 +29,25 @@ export const SMARTLINK_URL = 'https://araplhn.org/4/d507e5d07b8864a761b95b057aae
 const POPUNDER_FLAG = 't1s_popunder_1';
 let nativeSlotTaken = false;
 
+/**
+ * APP-WEBVIEW GUARD (owner 3 Nov, in his own words: "App ke andar kabhi bhi direct auto-popup ya
+ * background JavaScript inject mat karna, nahi toh Google Play Store kuch hi dino mein app ban kar
+ * dega"). The site is often opened INSIDE the app's in-app browser, so a popunder that fired there
+ * would be a Play-policy violation in an app we ship. Any Try1Second app webview or a WebView UA is
+ * therefore ad-free: the website tags run in real browsers only.
+ */
+export function isAppWebView(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (/Try1SecondApp/i.test(ua)) return true;
+  // Android WebView exposes "; wv" in its UA string.
+  if (/;\s*wv\b/i.test(ua)) return true;
+  return false;
+}
+
 function adSafePath(): boolean {
   if (typeof window === 'undefined') return false;
+  if (isAppWebView()) return false;
   const p = window.location.pathname || '/';
   if (/^\/(api|functions|admin)\b/.test(p) || p.startsWith('/api/')) return false;
   // Operator surfaces stay ad-free.
