@@ -25,7 +25,13 @@
  */
 
 /** Verticals whose result rows answer a specific date. */
-export const DATE_ANSWERING_VERTICALS = ['flights', 'hotels', 'bus', 'cab', 'movies'];
+// OWNER 3 Nov: "movies result ni de raha app mai usko fix kro". Root cause measured on production:
+// the Flutter app sends travelDates.depart for movies (api.dart lists movies as dateSensitive), and
+// with depart=2026-11-03 GET /api/scrape/live answered 0 items while the SAME call without dates
+// answered 23. A movie listing is not a dated fare - its date is a showtime - so a requested date
+// dropped every row the workers had. Movies are therefore no longer date-answering: showtime rows
+// keep their own show_date in attributes for the UI to display, and the city/price rules still apply.
+export const DATE_ANSWERING_VERTICALS = ['flights', 'hotels', 'bus', 'cab'];
 
 const iso = (y: number, m: number, d: number): string => {
   if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return '';

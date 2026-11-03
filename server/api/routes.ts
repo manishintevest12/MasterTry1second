@@ -3118,8 +3118,21 @@ apiRouter.get('/ads', async (req, res) => {
 // URL the network issued, never rewritten. Nothing is returned when the operator turns it off.
 apiRouter.get('/app-ads', async (_req, res) => {
   const enabled = String(process.env.T1S_APP_SMARTLINK_ENABLED || '1') !== '0';
-  const url = String(process.env.T1S_APP_SMARTLINK_URL || 'https://araplhn.org/4/d507e5d07b8864a761b95b057aaea9a8');
-  res.json({ success: true, smartlink: enabled ? url : null });
+  const raw = String(process.env.T1S_APP_SMARTLINK_URL || 'https://araplhn.org/4/d507e5d07b8864a761b95b057aaea9a8').trim();
+  // PLAY-SAFE GATE (owner 3 Nov: "smartlink flow disturb tho ni kr raha ... play store pr block tho ni
+  // krwa dega, hume sb safety measures chaiye"). The server refuses to publish anything that is not an
+  // https URL on the ad-network's own domains, so a mistyped env var can never turn the app's ad tap
+  // into an arbitrary http hop or an intent:// hand-off.
+  const { smartlinkSafe } = await import('../marketing/adSafety');
+  const safe = smartlinkSafe(raw);
+  res.json({
+    success: true,
+    smartlink: enabled && safe.ok ? raw : null,
+    // Published so the app can re-check the same rule on its side (belt and braces).
+    allowedHosts: safe.allowedHosts,
+    // Documented policy flags the app/tests assert on.
+    policy: { requiresUserTap: true, externalBrowserOnly: true, httpsOnly: true, inAppInjection: false, autoPopup: false },
+  });
 });
 
 // ============ Deals (public) ============

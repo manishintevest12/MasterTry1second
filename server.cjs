@@ -30189,10 +30189,12 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
       return city ? `https://www.cleartrip.com/hotels/india/${slug2(city)}-hotels${ci ? `?checkin=${d.dmy.replace(/\//g, "-")}&checkout=${co.split("-").reverse().join("-")}&rooms=1&adults=2` : ""}` : "https://www.cleartrip.com/hotels";
     }
     if (has("easemytrip", "ease my trip")) {
-      return city ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}` : "https://www.easemytrip.com/hotels/";
+      const emtCi = d ? d.dmy.replace(/\//g, "-") : "";
+      const emtCo = co ? co.split("-").reverse().join("-") : "";
+      return city ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}${emtCi ? `&cin=${emtCi}&cout=${emtCo}&rooms=1&guests=2` : ""}` : "https://www.easemytrip.com/hotels/";
     }
     if (has("oyo")) {
-      return city ? `https://www.oyorooms.com/search?location=${cq}${ci ? `&checkin=${ci}&checkout=${co}&rooms=1&guests=2` : ""}` : "https://www.oyorooms.com/";
+      return city ? `https://www.oyorooms.com/hotels-in-${slug2(city)}/${ci ? `?checkin=${ci}&checkout=${co}&rooms=1&guests=2` : ""}` : "https://www.oyorooms.com/";
     }
     if (has("saffron")) {
       return city ? `https://www.saffronstays.com/search?q=${cq}` : "https://www.saffronstays.com/";
@@ -34283,7 +34285,7 @@ function reconcileVerifiedSources(rows, sourcesSucceeded) {
 var DATE_ANSWERING_VERTICALS, iso2, NO_PRICE_VERTICALS, SOURCE_ALIASES;
 var init_travelDateGate = __esm({
   "server/search/travelDateGate.ts"() {
-    DATE_ANSWERING_VERTICALS = ["flights", "hotels", "bus", "cab", "movies"];
+    DATE_ANSWERING_VERTICALS = ["flights", "hotels", "bus", "cab"];
     iso2 = (y, m, d) => {
       if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return "";
       if (m < 1 || m > 12 || d < 1 || d > 31) return "";
@@ -42815,6 +42817,32 @@ var init_productCatalogue = __esm({
   }
 });
 
+// server/marketing/adSafety.ts
+var adSafety_exports = {};
+__export(adSafety_exports, {
+  AD_NETWORK_HOSTS: () => AD_NETWORK_HOSTS,
+  smartlinkSafe: () => smartlinkSafe
+});
+function smartlinkSafe(raw) {
+  const allowedHosts = [...AD_NETWORK_HOSTS];
+  let parsed;
+  try {
+    parsed = new URL(String(raw || "").trim());
+  } catch {
+    return { ok: false, allowedHosts, reason: "unparseable" };
+  }
+  if (parsed.protocol !== "https:") return { ok: false, allowedHosts, reason: "https_required" };
+  const host = parsed.hostname.toLowerCase();
+  const allowed = allowedHosts.some((h) => host === h || host.endsWith(`.${h}`));
+  return allowed ? { ok: true, allowedHosts } : { ok: false, allowedHosts, reason: "host_not_allowed" };
+}
+var AD_NETWORK_HOSTS;
+var init_adSafety = __esm({
+  "server/marketing/adSafety.ts"() {
+    AD_NETWORK_HOSTS = ["araplhn.org", "bauval.org", "abscloud.org"];
+  }
+});
+
 // server/marketing/partners.ts
 var partners_exports = {};
 __export(partners_exports, {
@@ -46028,8 +46056,17 @@ var init_routes = __esm({
     });
     apiRouter.get("/app-ads", async (_req, res) => {
       const enabled = String(process.env.T1S_APP_SMARTLINK_ENABLED || "1") !== "0";
-      const url = String(process.env.T1S_APP_SMARTLINK_URL || "https://araplhn.org/4/d507e5d07b8864a761b95b057aaea9a8");
-      res.json({ success: true, smartlink: enabled ? url : null });
+      const raw = String(process.env.T1S_APP_SMARTLINK_URL || "https://araplhn.org/4/d507e5d07b8864a761b95b057aaea9a8").trim();
+      const { smartlinkSafe: smartlinkSafe2 } = await Promise.resolve().then(() => (init_adSafety(), adSafety_exports));
+      const safe = smartlinkSafe2(raw);
+      res.json({
+        success: true,
+        smartlink: enabled && safe.ok ? raw : null,
+        // Published so the app can re-check the same rule on its side (belt and braces).
+        allowedHosts: safe.allowedHosts,
+        // Documented policy flags the app/tests assert on.
+        policy: { requiresUserTap: true, externalBrowserOnly: true, httpsOnly: true, inAppInjection: false, autoPopup: false }
+      });
     });
     apiRouter.get("/deals", async (req, res) => {
       try {

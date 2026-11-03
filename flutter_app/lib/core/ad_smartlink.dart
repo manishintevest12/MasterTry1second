@@ -35,19 +35,41 @@ class AdSmartlink {
     }
   }
 
+  /// Ad-network domains the server is allowed to publish (kept as a client-side second check).
+  /// Mirrors server/marketing/adSafety.ts; anything else is refused instead of launched.
+  static const _allowedHosts = <String>['araplhn.org', 'bauval.org', 'abscloud.org'];
+
+  /// At most one ad hop per app session (owner: "flow disturb tho ni kr raha"). A second tap in the
+  /// same session does nothing, so a stray double-tap can never fire two browser hops.
+  static bool _openedThisSession = false;
+
+  static bool _hostAllowed(String host) {
+    final h = host.toLowerCase();
+    return _allowedHosts.any((a) => h == a || h.endsWith('.$a'));
+  }
+
   /// Must be called ONLY from a user tap handler. Returns true when the browser took the hop.
+  /// Play-safe by construction: https only, known ad-network host only, external browser only,
+  /// once per session, and no launch at all when the operator disabled the link.
   static Future<bool> openFromUserTap() async {
+    if (_openedThisSession) return false;
     final link = await url();
     if (link == null) return false;
     final uri = Uri.tryParse(link);
-    if (uri == null || !(uri.isScheme('https') || uri.isScheme('http'))) return false;
+    if (uri == null || !uri.isScheme('https')) return false;
+    if (!_hostAllowed(uri.host)) return false;
     try {
-      return await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (opened) _openedThisSession = true;
+      return opened;
     } catch (_) {
       return false;
     }
   }
 
   /// Test seam: forget the cached link.
-  static void resetCacheForTest() => _cached = null;
+  static void resetCacheForTest() {
+    _cached = null;
+    _openedThisSession = false;
+  }
 }

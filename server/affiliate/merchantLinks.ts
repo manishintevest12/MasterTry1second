@@ -269,11 +269,24 @@ export function merchantDeepLink(merchant: string, title: string, vertical?: str
         : 'https://www.cleartrip.com/hotels';
     }
     if (has('easemytrip', 'ease my trip')) {
-      return city ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}` : 'https://www.easemytrip.com/hotels/';
+      // OWNER 3 Nov ("redirection ke baad something went wrong / error"). MEASURED: the old
+      // ?city=Shimla-only listing URL answers a hard 404 Error page. The listing route needs the
+      // cin/cout date pair, which answers 200 with the real Shimla results:
+      //   /hotels/hotel-listing/?city=Shimla&cin=20-11-2026&cout=22-11-2026&rooms=1&guests=2 -> 200, 206KB
+      const emtCi = d ? d.dmy.replace(/\//g, '-') : '';
+      const emtCo = co ? co.split('-').reverse().join('-') : '';
+      return city
+        ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}${emtCi ? `&cin=${emtCi}&cout=${emtCo}&rooms=1&guests=2` : ''}`
+        : 'https://www.easemytrip.com/hotels/';
     }
     if (has('oyo')) {
+      // OWNER 3 Nov: "redirection ke baad site jaise ki oyo wagera something went wrong de raha hai".
+      // MEASURED: oyorooms.com/search?location=Shimla 301s to /search/ and serves the US locale page
+      // (title "OYO Hotels USA"), whose app shell renders its "something went wrong" state - the
+      // search route is locale/geo broken for India. The city landing route works: /hotels-in-shimla/
+      // with the same checkin/checkout answered 200, 242KB, "Hotels in Shimla Starting @ Rs 1003".
       return city
-        ? `https://www.oyorooms.com/search?location=${cq}${ci ? `&checkin=${ci}&checkout=${co}&rooms=1&guests=2` : ''}`
+        ? `https://www.oyorooms.com/hotels-in-${slug(city)}/${ci ? `?checkin=${ci}&checkout=${co}&rooms=1&guests=2` : ''}`
         : 'https://www.oyorooms.com/';
     }
     if (has('saffron')) {
