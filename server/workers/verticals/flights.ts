@@ -1469,7 +1469,9 @@ export const flightsWorker: VerticalWorker = {
       name: 'Flights worker: Yatra live per-flight search (air-service API)',
       priority: 8,
       maxPerMinute: 3,
-      timeoutMs: 45_000,
+      // Worker ceiling must stay UNDER the sweep ceiling (flights 28s), otherwise every task is cut and
+      // the seller silently disappears from the answer. MEASURED 3 Nov: unbounded it needs 135s.
+      timeoutMs: 20_000,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
         const rt = routeFromQuery(raw);
@@ -1498,16 +1500,21 @@ export const flightsWorker: VerticalWorker = {
         // chrome/HTTP1.1 (40s for tarpits) -> safari/h2, so a transient reset
         // never drops Yatra fares from a search. A definitive HTTP answer on
         // any rung stops the ladder; only transport failures escalate.
+        // INTERNAL DEADLINE (3 Nov): the acquisition ladder and the supplier polls used to be bounded only
+        // by per-call timeouts, so a tarpit burned 135s and the sweep cut Yatra before it could answer.
+        const yatraDeadline = Date.now() + Number(process.env.T1S_YATRA_BUDGET_MS || 15_000);
+        const yatraLeft = () => yatraDeadline - Date.now();
         const yatraAttempts: Array<{ label: string; opts: any }> = [
-          { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 30_000, headers: hdrs } },
-          { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 40_000, headers: hdrs, httpVersion: '1.1' as const } },
-          { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 30_000, headers: hdrs } },
+          { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 8_000, headers: hdrs } },
+          { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 6_000, headers: hdrs, httpVersion: '1.1' as const } },
+          { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 5_000, headers: hdrs } },
         ];
         let t0: any;
         const yatraErrs: string[] = [];
         for (const a of yatraAttempts) {
+          if (yatraLeft() < 1_500) { yatraErrs.push(`${a.label}: skipped (budget spent)`); continue; }
           try {
-            t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), a.opts);
+            t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), { ...a.opts, timeoutMs: Math.min(a.opts.timeoutMs, Math.max(1_500, yatraLeft())) });
             yatraErrs.push('');
             break; // any definitive HTTP answer (200/403/429/5xx) is classified below
           } catch (e: any) {
@@ -1525,16 +1532,26 @@ export const flightsWorker: VerticalWorker = {
         if (t0.status >= 500) throw new AcquisitionError('SERVER_ERROR', `Yatra air-service HTTP ${t0.status}`, t0.status);
         if (t0.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Yatra air-service HTTP ${t0.status}: ${(t0.body || '').slice(0, 120)}`, t0.status);
 
+        // MEASURED 3 Nov 16:4x: Yatra's trigger now answers HTTP 200 with a 174KB HTML page (consent /
+        // challenge shell) and no date token at all, so parseYatraBatch returned 0 rows and the worker
+        // "succeeded" with nothing - a silent miss. Classify it as a challenge so sourcesFailed names it
+        // and the gateHeal registry can adopt a working hop for the next sweep.
+        const yatraLooksHtml = /^\s*</.test(String(t0.body || '').slice(0, 8));
+        if (yatraLooksHtml) {
+          throw new AcquisitionError('ACCESS_CHALLENGE',
+            `Yatra air-service answered HTML instead of JSON (${String(t0.body || '').length}B) - edge challenge`, t0.status);
+        }
         let items = parseYatraBatch(t0.body, ctx.source, srp, routeKey, rt.from, rt.to);
         // 2) per-airline polls (each returns one more batch)
         const sidMatch = t0.body.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
         const sid = sidMatch ? sidMatch[0] : '';
         if (sid) {
           for (const sup of YATRA_SUPPLIERS) {
+            if (yatraLeft() < 1_500) break; // keep the batches already acquired, never overrun the sweep
             try {
               const r = await cffiFetch(
                 `https://flight.yatra.com/air-service/dom2/poll?polling_id=${sid}_${sup}&_i=${Date.now()}`,
-                { impersonate: 'chrome', timeoutMs: 20_000, headers: hdrs },
+                { impersonate: 'chrome', timeoutMs: Math.min(4_000, Math.max(1_500, yatraLeft())), headers: hdrs },
               );
               if (r.status === 200) {
                 items = items.concat(parseYatraBatch(r.body, ctx.source, srp, routeKey, rt.from, rt.to));
@@ -1550,8 +1567,9 @@ export const flightsWorker: VerticalWorker = {
 
         // 3) calendar fallback (route with no live batch right now)
         try {
+          if (yatraLeft() < 1_500) return [];
           const to2 = new Date(Date.now() + 60 * 86400_000).toISOString().slice(0, 10);
-          const c = await cffiFetch(yatraCalendarUrl(from, to, dep.slice(0, 10), to2), { impersonate: 'chrome', timeoutMs: 20_000, headers: hdrs });
+          const c = await cffiFetch(yatraCalendarUrl(from, to, dep.slice(0, 10), to2), { impersonate: 'chrome', timeoutMs: Math.min(5_000, Math.max(1_500, yatraLeft())), headers: hdrs });
           if (c.status === 200) {
             const cal = yatraCalendarItems(c.body, ctx.source, rt.from, rt.to, from, to, dep);
             if (cal.length) return cal.slice(0, 10);

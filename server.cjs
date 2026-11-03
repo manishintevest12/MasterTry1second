@@ -17737,7 +17737,9 @@ var init_flights = __esm({
           name: "Flights worker: Yatra live per-flight search (air-service API)",
           priority: 8,
           maxPerMinute: 3,
-          timeoutMs: 45e3,
+          // Worker ceiling must stay UNDER the sweep ceiling (flights 28s), otherwise every task is cut and
+          // the seller silently disappears from the answer. MEASURED 3 Nov: unbounded it needs 135s.
+          timeoutMs: 2e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
             const rt = routeFromQuery(raw);
@@ -17756,16 +17758,22 @@ var init_flights = __esm({
               Referer: "https://flight.yatra.com/air-search-ui/dom2/trigger",
               "X-Requested-With": "XMLHttpRequest"
             };
+            const yatraDeadline = Date.now() + Number(process.env.T1S_YATRA_BUDGET_MS || 15e3);
+            const yatraLeft = () => yatraDeadline - Date.now();
             const yatraAttempts = [
-              { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 3e4, headers: hdrs } },
-              { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 4e4, headers: hdrs, httpVersion: "1.1" } },
-              { label: "safari-h2", opts: { impersonate: "safari17_0", timeoutMs: 3e4, headers: hdrs } }
+              { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 8e3, headers: hdrs } },
+              { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 6e3, headers: hdrs, httpVersion: "1.1" } },
+              { label: "safari-h2", opts: { impersonate: "safari17_0", timeoutMs: 5e3, headers: hdrs } }
             ];
             let t0;
             const yatraErrs = [];
             for (const a of yatraAttempts) {
+              if (yatraLeft() < 1500) {
+                yatraErrs.push(`${a.label}: skipped (budget spent)`);
+                continue;
+              }
               try {
-                t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), a.opts);
+                t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), { ...a.opts, timeoutMs: Math.min(a.opts.timeoutMs, Math.max(1500, yatraLeft())) });
                 yatraErrs.push("");
                 break;
               } catch (e2) {
@@ -17785,15 +17793,24 @@ var init_flights = __esm({
             }
             if (t0.status >= 500) throw new AcquisitionError("SERVER_ERROR", `Yatra air-service HTTP ${t0.status}`, t0.status);
             if (t0.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Yatra air-service HTTP ${t0.status}: ${(t0.body || "").slice(0, 120)}`, t0.status);
+            const yatraLooksHtml = /^\s*</.test(String(t0.body || "").slice(0, 8));
+            if (yatraLooksHtml) {
+              throw new AcquisitionError(
+                "ACCESS_CHALLENGE",
+                `Yatra air-service answered HTML instead of JSON (${String(t0.body || "").length}B) - edge challenge`,
+                t0.status
+              );
+            }
             let items = parseYatraBatch(t0.body, ctx.source, srp, routeKey, rt.from, rt.to);
             const sidMatch = t0.body.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
             const sid = sidMatch ? sidMatch[0] : "";
             if (sid) {
               for (const sup of YATRA_SUPPLIERS) {
+                if (yatraLeft() < 1500) break;
                 try {
                   const r = await cffiFetch(
                     `https://flight.yatra.com/air-service/dom2/poll?polling_id=${sid}_${sup}&_i=${Date.now()}`,
-                    { impersonate: "chrome", timeoutMs: 2e4, headers: hdrs }
+                    { impersonate: "chrome", timeoutMs: Math.min(4e3, Math.max(1500, yatraLeft())), headers: hdrs }
                   );
                   if (r.status === 200) {
                     items = items.concat(parseYatraBatch(r.body, ctx.source, srp, routeKey, rt.from, rt.to));
@@ -17807,8 +17824,9 @@ var init_flights = __esm({
             const deduped = [...bySku.values()].sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
             if (deduped.length) return deduped.slice(0, 40);
             try {
+              if (yatraLeft() < 1500) return [];
               const to2 = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
-              const c = await cffiFetch(yatraCalendarUrl(from, to, dep.slice(0, 10), to2), { impersonate: "chrome", timeoutMs: 2e4, headers: hdrs });
+              const c = await cffiFetch(yatraCalendarUrl(from, to, dep.slice(0, 10), to2), { impersonate: "chrome", timeoutMs: Math.min(5e3, Math.max(1500, yatraLeft())), headers: hdrs });
               if (c.status === 200) {
                 const cal = yatraCalendarItems(c.body, ctx.source, rt.from, rt.to, from, to, dep);
                 if (cal.length) return cal.slice(0, 10);
