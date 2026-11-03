@@ -161,7 +161,7 @@ export const PriceLensAndAssistant: React.FC = () => {
   const [answer, setAnswer] = useState<{
     vertical: string | null; engineVertical?: string; query: string; date?: string;
     count: number; reply: string; pending?: boolean;
-    results: Array<{ title: string; provider: string; price: number; priceAvailable: boolean; imageUrl?: string; specs?: Record<string, string> }>;
+    results: Array<{ title: string; provider: string; price: number; priceAvailable: boolean; imageUrl?: string; url?: string; specs?: Record<string, string> }>;
   } | null>(null);
 
   const runAsk = async (text?: string, viaVoice = false) => {
@@ -260,6 +260,31 @@ export const PriceLensAndAssistant: React.FC = () => {
                     </span>
                     <span className="text-[10px] text-slate-500 truncate max-w-[60%] text-right">{r.provider}</span>
                   </div>
+                  {/* Owner 3 Nov: a button next to the seller so the user goes straight to that
+                      partner's site from the answer itself. The href is the server-minted masked
+                      /api/out pointer, so the affiliate id is attached at click time and the same
+                      interstitial/in-app-browser rules apply as everywhere else in the app. */}
+                  {r.url && (
+                    <a
+                      href={r.url}
+                      onClick={(e) => {
+                        // Same rule as the feed's Book button (commit ad627fe): on a phone a
+                        // popup is blocked by default and nothing opens, so navigate the current
+                        // tab there; desktop still gets a new tab, with a same-tab fallback when
+                        // the popup is blocked.
+                        if (typeof window === 'undefined') return;
+                        if (window.innerWidth <= 768) return; // let the default navigation happen
+                        e.preventDefault();
+                        const win = window.open(r.url, '_blank');
+                        if (win) { try { win.opener = null; } catch { /* ignore */ } } else window.location.href = r.url!;
+                      }}
+                      className="mt-1.5 flex items-center justify-center gap-1 w-full rounded-lg bg-red-600 hover:bg-red-700 text-white text-[10.5px] font-bold py-1.5 transition-colors"
+                      aria-label={`Go to ${r.provider || 'partner'} for ${r.title}`}
+                    >
+                      Go to {r.provider || 'site'}
+                      <span aria-hidden="true">→</span>
+                    </a>
+                  )}
                 </div>
               ))}
             </div>

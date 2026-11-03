@@ -1055,6 +1055,36 @@ function hostOfPublic(u: string): string {
   try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; }
 }
 
+/**
+ * Exit link for an "Ask Try1Second" row (owner 3 Nov: "ask try1second ai ke andar seller ke
+ * saamne button v do jiss se yahi se mera user redirect ho jaye partner website pr with
+ * affiliate id").
+ *
+ * Same rules as every other exit in the engine, so money and policy stay consistent:
+ *  - the affiliate token is never sent to the client; a masked /api/out pointer is minted here and
+ *    /api/out builds the paid URL at click time,
+ *  - date-sensitive verticals re-mint the partner search page from the REQUEST's dates, so the
+ *    button opens 27 Nov fares for a 27 Nov question, never the day the row was mined with,
+ *  - a row with no usable URL still gets the merchant's own search page for that exact item.
+ */
+function assistantExitUrl(o: any, travel: { date?: string; return?: string; city?: string; route?: string }): string {
+  const vertical = String(o?.vertical || '');
+  const seller = String(o?.vendor || o?.seller || o?.provider || '');
+  const title = String(o?.title || o?.query || '');
+  const ctx = {
+    route: o?.travel?.route,
+    date: travel.date || o?.travel?.date,
+    return: travel.return,
+    city: travel.city || o?.travel?.city,
+  };
+  const dateSensitive = vertical === 'hotels' || vertical === 'flights' || vertical === 'bus';
+  const rebuilt = dateSensitive && (travel.date || travel.route)
+    ? merchantSearchFallback(seller, title, vertical, ctx)
+    : '';
+  const rawDest = rebuilt || String(o?.sellerUrl || '') || merchantSearchFallback(seller, title, vertical, ctx);
+  return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || '') }) : '';
+}
+
 function offerToComparisonItem(o: any, reqTravel: { date?: string; return?: string; city?: string; route?: string } = {}) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
@@ -2746,8 +2776,20 @@ apiRouter.post('/assist/answer', async (req, res) => {
       const reliability = await sellerReliability(String(searchInput.vertical), 40);
       if (Object.keys(reliability).length) ordered = boostByReliability(ordered, reliability);
     } catch { /* ranking hint only */ }
+    // Every card carries its own masked exit pointer so the assistant can show a
+    // "Go to <seller>" button next to the seller name (owner 3 Nov).
+    const exitTravel = {
+      date: String(searchInput.travelDates?.depart || ''),
+      return: String(searchInput.travelDates?.return || ''),
+      city: String(searchInput.city || ''),
+      route: '',
+    };
+    const linked = ordered.map((o: any) => ({
+      ...o,
+      sellerUrl: o?.sellerUrl && String(o.sellerUrl).trim() ? o.sellerUrl : assistantExitUrl(o, exitTravel),
+    }));
     // 29 Oct: every company that answered gets a card, not whichever seller filled the first 6.
-    const shaped = toAssistantRows(ordered, 6, { diversify: true });
+    const shaped = toAssistantRows(linked, 6, { diversify: true });
     // Write the outcome back so the NEXT question of this kind starts warm. Background, never
     // blocks the answer, and an empty answer never overwrites a good memory.
     void ensureSearchMemoryTable()

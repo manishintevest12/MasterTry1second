@@ -43227,6 +43227,21 @@ function hostOfPublic(u) {
     return "";
   }
 }
+function assistantExitUrl(o, travel) {
+  const vertical = String(o?.vertical || "");
+  const seller = String(o?.vendor || o?.seller || o?.provider || "");
+  const title = String(o?.title || o?.query || "");
+  const ctx = {
+    route: o?.travel?.route,
+    date: travel.date || o?.travel?.date,
+    return: travel.return,
+    city: travel.city || o?.travel?.city
+  };
+  const dateSensitive = vertical === "hotels" || vertical === "flights" || vertical === "bus";
+  const rebuilt = dateSensitive && (travel.date || travel.route) ? merchantSearchFallback(seller, title, vertical, ctx) : "";
+  const rawDest = rebuilt || String(o?.sellerUrl || "") || merchantSearchFallback(seller, title, vertical, ctx);
+  return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || "") }) : "";
+}
 function offerToComparisonItem(o, reqTravel = {}) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
@@ -45352,7 +45367,17 @@ var init_routes = __esm({
           if (Object.keys(reliability).length) ordered = boostByReliability(ordered, reliability);
         } catch {
         }
-        const shaped = toAssistantRows(ordered, 6, { diversify: true });
+        const exitTravel = {
+          date: String(searchInput.travelDates?.depart || ""),
+          return: String(searchInput.travelDates?.return || ""),
+          city: String(searchInput.city || ""),
+          route: ""
+        };
+        const linked = ordered.map((o) => ({
+          ...o,
+          sellerUrl: o?.sellerUrl && String(o.sellerUrl).trim() ? o.sellerUrl : assistantExitUrl(o, exitTravel)
+        }));
+        const shaped = toAssistantRows(linked, 6, { diversify: true });
         void ensureSearchMemoryTable().then(() => rememberAnswer(memKey, { rows, sellers: sourcesSucceeded.map((id) => id.replace(/^w_[a-z]+_/, "")) })).catch(() => void 0);
         const answer = shapeAssistantAnswer(
           fallbackVertical ? fallbackVertical : meta.vertical,
