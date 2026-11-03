@@ -31,7 +31,17 @@
 // answered 23. A movie listing is not a dated fare - its date is a showtime - so a requested date
 // dropped every row the workers had. Movies are therefore no longer date-answering: showtime rows
 // keep their own show_date in attributes for the UI to display, and the city/price rules still apply.
-export const DATE_ANSWERING_VERTICALS = ['flights', 'hotels', 'bus', 'cab'];
+// OWNER 3 Nov 14:38: "cab mai results ni aa rahe ... website, app dono pr ni aa rahe" (screenshot:
+// cab feed empty on "Chappan Dukan / MG Road, Indore to River Side Road, Indore" with the date picker
+// on "Today (Ride Now)"). MEASURED on production, same query, cab:
+//   no travelDates      -> 7 rows in 2.6s, 6 priced (Bharat Taxi 6, Uber 1)
+//   travelDates.depart=2026-11-03 -> 0 rows on BOTH /api/scrape/live (0.75s) and /api/search (17.7s)
+// The app and web always send the picker's date, so every cab row was being dropped by the date gate.
+// A cab fare is not a dated fare: the flat one-way tables (Bharat Taxi, Savaari), the InDrive registry
+// and ride-now quotes are the same on any date, so they carry no date to match. Cab is therefore not
+// date-answering any more (same reasoning as movies in 28a72ac); the picker still shows Today/Ride Now
+// and scheduled rides keep working, it just can no longer blank the feed.
+export const DATE_ANSWERING_VERTICALS = ['flights', 'hotels', 'bus'];
 
 const iso = (y: number, m: number, d: number): string => {
   if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return '';

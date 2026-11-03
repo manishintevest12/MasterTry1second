@@ -15,7 +15,7 @@ test('movies are not date-answering: a requested depart can no longer empty the 
   // without dates = 23 items (7 priced). The app sends dates for movies, so the app saw nothing.
   assert.equal(DATE_ANSWERING_VERTICALS.includes('movies'), false);
   // The fare verticals still are gated - the chosen-date-or-nothing rule stays intact.
-  for (const v of ['flights', 'hotels', 'bus', 'cab']) assert.equal(DATE_ANSWERING_VERTICALS.includes(v), true, v);
+  for (const v of ['flights', 'hotels', 'bus']) assert.equal(DATE_ANSWERING_VERTICALS.includes(v), true, v);
 });
 
 test('OYO exit goes to the city route that actually loads, not the US-locale /search page', () => {
@@ -61,4 +61,10 @@ test('the cold ceiling is per vertical so movies can return their enriched set',
   assert.match(routes, /const coldCeilingMs = Number\(process\.env\.T1S_COLD_SEARCH_CEILING_MS \|\| 0\)/, 'operator override still wins');
   // The hard request cap must sit above the longest cold ceiling, or the wait is pointless.
   assert.match(routes, /T1S_HARD_REQUEST_MS \|\| 26_000/, 'hard cap above the 20s ceiling, still under the 55s proxy wall');
+});
+
+test('cab is not date-answering: the picker date can no longer blank the cab feed', () => {
+  // Measured with the owner's own screenshot query (Chappan Dukan -> River Side Road, Indore):
+  // no dates = 7 rows / 6 priced; travelDates.depart = today = 0 rows on both endpoints.
+  assert.equal(DATE_ANSWERING_VERTICALS.includes('cab'), false);
 });

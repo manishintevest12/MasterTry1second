@@ -34285,7 +34285,7 @@ function reconcileVerifiedSources(rows, sourcesSucceeded) {
 var DATE_ANSWERING_VERTICALS, iso2, NO_PRICE_VERTICALS, SOURCE_ALIASES;
 var init_travelDateGate = __esm({
   "server/search/travelDateGate.ts"() {
-    DATE_ANSWERING_VERTICALS = ["flights", "hotels", "bus", "cab"];
+    DATE_ANSWERING_VERTICALS = ["flights", "hotels", "bus"];
     iso2 = (y, m, d) => {
       if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return "";
       if (m < 1 || m > 12 || d < 1 || d > 31) return "";
