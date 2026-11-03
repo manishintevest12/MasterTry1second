@@ -297,6 +297,11 @@ export function parseAgodaOffers(
         ? `per night on Agoda (tax-exclusive ₹${Math.round(h.pricePerNight)}; inclusive ₹${Math.round(h.priceInclusive)})`
         : 'per night on Agoda (tax-exclusive)',
       data_note: 'Live per-night rates observed on Agoda search',
+      check_in: meta.checkin,
+      check_out: (() => {
+        const t = Date.parse(`${meta.checkin}T00:00:00Z`);
+        return Number.isFinite(t) ? new Date(t + Math.max(1, meta.los) * 86_400_000).toISOString().slice(0, 10) : null;
+      })(),
     };
     out.push(newRawItem(source, {
       title: h.name,
@@ -304,6 +309,11 @@ export function parseAgodaOffers(
       sellerUrl: srpUrl, // redirect only to the site that owns the price
       currency: h.currency,
       price: Math.round(h.pricePerNight),
+      // OWNER 3 Nov ("hotels mai sirf oyo aur easemytrip dikh rahe hain"): MEASURED, this parser returned
+      // 79 priced Agoda properties with NO travel date at all, and the strict hotel date gate drops
+      // undated rows - so the biggest hotel seller never reached the answer. The rate IS for the stay we
+      // asked for (citySearch is sent checkIn + checkout), so the date is carried, not guessed.
+      travel: { date: meta.checkin, route: `${city} stay` },
       attributes: attrs,
       evidence: {
         sourceUrl: srpUrl,

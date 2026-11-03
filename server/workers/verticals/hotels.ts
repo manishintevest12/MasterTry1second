@@ -638,8 +638,10 @@ export const hotelsWorker: VerticalWorker = {
       name: 'Hotels worker: Agoda GraphQL live rates',
       priority: 6,
       maxPerMinute: 4,
-      timeoutMs: 90_000,
+      // MEASURED 3 Nov: 14.5s cold for Indore; the old 90s ceiling could outlive the 34s hotel sweep.
+      timeoutMs: 24_000,
       run: async (ctx) => {
+        const workerStart = Date.now();
         const city = cityFromQuery(ctx);
         if (!city) return [];
         const { checkin, checkout } = stayDates(ctx.query);
@@ -649,7 +651,7 @@ export const hotelsWorker: VerticalWorker = {
         if (!cityId) {
           for (const slug of agodaCitySlugs(city)) {
             const r = await cffiFetch(`https://www.agoda.com/city/${slug}.html`, {
-              impersonate: 'chrome', timeoutMs: 20_000,
+              impersonate: 'chrome', timeoutMs: 6_000,
               headers: { Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' },
             });
             if (r.status !== 200) continue; // unknown slug → try next spelling
@@ -662,7 +664,7 @@ export const hotelsWorker: VerticalWorker = {
         // 2. SRP shell → pageConfig correlation/analytics ids (also primes cookies).
         const los0 = Math.max(1, Math.round((Date.parse(`${checkout}T00:00:00Z`) - Date.parse(`${checkin}T00:00:00Z`)) / 86_400_000));
         const shell = await cffiFetch(`https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`, {
-          impersonate: 'chrome', timeoutMs: 25_000,
+          impersonate: 'chrome', timeoutMs: 9_000,
           headers: { Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' },
         });
         if (shell.status === 403 || shell.status === 429) {
@@ -685,7 +687,7 @@ export const hotelsWorker: VerticalWorker = {
           const gqlRes = await cffiFetch('https://www.agoda.com/graphql/search', {
             method: 'POST',
             impersonate: 'chrome',
-            timeoutMs: 60_000,
+            timeoutMs: Math.max(3_000, Math.min(9_000, 24_000 - (Date.now() - workerStart))),
             headers: gqlHeaders(),
             body: JSON.stringify({
               query: AGODA_CITY_SEARCH_QUERY,

@@ -7102,7 +7102,12 @@ function parseAgodaOffers(hotels, source, city, meta) {
       longitude: h.lon,
       property_id: h.propertyId,
       price_basis: h.priceInclusive != null ? `per night on Agoda (tax-exclusive \u20B9${Math.round(h.pricePerNight)}; inclusive \u20B9${Math.round(h.priceInclusive)})` : "per night on Agoda (tax-exclusive)",
-      data_note: "Live per-night rates observed on Agoda search"
+      data_note: "Live per-night rates observed on Agoda search",
+      check_in: meta.checkin,
+      check_out: (() => {
+        const t = Date.parse(`${meta.checkin}T00:00:00Z`);
+        return Number.isFinite(t) ? new Date(t + Math.max(1, meta.los) * 864e5).toISOString().slice(0, 10) : null;
+      })()
     };
     out.push(newRawItem(source, {
       title: h.name,
@@ -7111,6 +7116,11 @@ function parseAgodaOffers(hotels, source, city, meta) {
       // redirect only to the site that owns the price
       currency: h.currency,
       price: Math.round(h.pricePerNight),
+      // OWNER 3 Nov ("hotels mai sirf oyo aur easemytrip dikh rahe hain"): MEASURED, this parser returned
+      // 79 priced Agoda properties with NO travel date at all, and the strict hotel date gate drops
+      // undated rows - so the biggest hotel seller never reached the answer. The rate IS for the stay we
+      // asked for (citySearch is sent checkIn + checkout), so the date is carried, not guessed.
+      travel: { date: meta.checkin, route: `${city} stay` },
       attributes: attrs,
       evidence: {
         sourceUrl: srpUrl,
@@ -7750,8 +7760,10 @@ var init_hotels = __esm({
           name: "Hotels worker: Agoda GraphQL live rates",
           priority: 6,
           maxPerMinute: 4,
-          timeoutMs: 9e4,
+          // MEASURED 3 Nov: 14.5s cold for Indore; the old 90s ceiling could outlive the 34s hotel sweep.
+          timeoutMs: 24e3,
           run: async (ctx) => {
+            const workerStart = Date.now();
             const city = cityFromQuery(ctx);
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
@@ -7760,7 +7772,7 @@ var init_hotels = __esm({
               for (const slug5 of agodaCitySlugs(city)) {
                 const r = await cffiFetch(`https://www.agoda.com/city/${slug5}.html`, {
                   impersonate: "chrome",
-                  timeoutMs: 2e4,
+                  timeoutMs: 6e3,
                   headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
                 });
                 if (r.status !== 200) continue;
@@ -7776,7 +7788,7 @@ var init_hotels = __esm({
             const los0 = Math.max(1, Math.round((Date.parse(`${checkout}T00:00:00Z`) - Date.parse(`${checkin}T00:00:00Z`)) / 864e5));
             const shell2 = await cffiFetch(`https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`, {
               impersonate: "chrome",
-              timeoutMs: 25e3,
+              timeoutMs: 9e3,
               headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
             });
             if (shell2.status === 403 || shell2.status === 429) {
@@ -7796,7 +7808,7 @@ var init_hotels = __esm({
               const gqlRes = await cffiFetch("https://www.agoda.com/graphql/search", {
                 method: "POST",
                 impersonate: "chrome",
-                timeoutMs: 6e4,
+                timeoutMs: Math.max(3e3, Math.min(9e3, 24e3 - (Date.now() - workerStart))),
                 headers: gqlHeaders(),
                 body: JSON.stringify({
                   query: AGODA_CITY_SEARCH_QUERY,
