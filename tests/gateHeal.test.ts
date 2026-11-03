@@ -32,7 +32,8 @@ test('the IndiGo heal target is the real gated request, not a neutral probe', ()
 test('a gated source is recognised from its worker id or its error message', () => {
   assert.equal(gateKeyFor('w_flights_indigo'), 'indigo');
   assert.equal(gateKeyFor('w_flights_ixigo', 'IndiGo 6E blocked'), 'indigo');
-  assert.equal(gateKeyFor('w_flights_cleartrip', 'ACCESS_CHALLENGE'), null);
+  // 2 Nov: cleartrip IS healable now (its /flight/search/v2 fare API is Akamai-gated).
+  assert.equal(gateKeyFor('w_flights_cleartrip', 'ACCESS_CHALLENGE'), 'cleartrip');
 });
 
 test('a sweep stores only the hops that passed the gated request', async () => {
@@ -110,8 +111,10 @@ test('autoHealGatedSources heals each gated key once and swallows errors', async
     ],
     { heal: (async (k: string) => { healed.push(k); return { source: k, ran: true, reason: 'ok', tried: 1, kept: 1 }; }) as any },
   );
-  assert.deepEqual(healed, ['indigo'], 'one heal per distinct gated source');
-  assert.equal(out.length, 1);
+  // 2 Nov: cleartrip became a healable key too (its fare API is Akamai-gated), so the two
+  // indigo failures still collapse to ONE heal while cleartrip heals on its own.
+  assert.deepEqual(healed, ['indigo', 'cleartrip'], 'one heal per distinct gated source');
+  assert.equal(out.length, 2);
   // No healable source -> nothing happens at all (no sweep is started).
   assert.deepEqual(await autoHealGatedSources([{ source: 'w_food_zomato', message: 'HTTP 500' }]), []);
 });
@@ -173,6 +176,7 @@ test('every vertical has a heal target and its worker id maps to it', () => {
     ['w_flights_starair', 'starair'],
     ['w_flights_spicejet', 'spicejet'],
     ['w_bus_redbus', 'redbus'],
+    ['w_flights_cleartrip', 'cleartrip'],
   ];
   for (const [workerId, key] of expected) {
     assert.equal(gateKeyFor(workerId), key, `${workerId} -> ${key}`);

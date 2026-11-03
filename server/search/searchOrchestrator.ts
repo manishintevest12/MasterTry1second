@@ -235,6 +235,30 @@ async function progressiveCatalogueResponse(
     // logos are resolved here for the injected rows (cheap favicon chain).
     if (presence.length) anyOffers.push(...withBrandImages(presence));
   }
+  // OWNER 3 Nov ("27 Nov search answers 3 Nov rows, on desktop web, mobile web and the app"):
+  // this floor IS the first paint the client shows (servedFrom 'catalogue', pendingRefresh true),
+  // and it was built straight from the catalogue with only buildLiveCtx's date check - which the
+  // measured production answer bypassed (31 rows dated 2026-11-03 for a 2026-11-27 search, twice).
+  // The same strict rule now runs here, so the very first card set is date-correct too.
+  {
+    const floorGate = enforceRequestedTravelDate(anyOffers as any[], String(vertical), {
+      depart: inputQuery.travelDates?.depart,
+      return: inputQuery.travelDates?.return,
+      checkin: (inputQuery.travelDates as any)?.checkin,
+      checkout: (inputQuery.travelDates as any)?.checkout,
+    }, { strictUndated: true });
+    if (floorGate.dropped) {
+      log.info('Search', 'catalogue floor rows dropped for answering a different travel date', {
+        vertical: String(vertical),
+        asked: normalizeTravelDate(inputQuery.travelDates?.depart) || '',
+        dropped: floorGate.dropped,
+        kept: floorGate.kept.length,
+        droppedOn: floorGate.droppedOn,
+      });
+      anyOffers.length = 0;
+      anyOffers.push(...(floorGate.kept as any[]));
+    }
+  }
   for (const o of anyOffers) {
     if (o.freshnessStatus === 'LIVE_VERIFIED') o.freshnessStatus = 'CACHED_VERIFIED';
     if (o.provenance) o.provenance.replayedFromCache = true;
@@ -527,7 +551,55 @@ async function freshCatalogueOffers(
  */
 export async function runSearchFast(input: SearchInput, coldBudgetMs = 1_500): Promise<SearchResponse> {
   const fast = await runSearchFastInner(input, coldBudgetMs);
-  return gateEcommerceResponse(input, fast);
+  return gateTravelDateResponse(input, gateEcommerceResponse(input, fast));
+}
+
+/**
+ * FINAL travel-date gate for an ANSWER (owner 3 Nov: "search results ... intermittently returns
+ * cached or misaligned results from entirely different dates ... reproducible on desktop web,
+ * mobile web and the app").
+ *
+ * Why this had to become a wrapper and not only a pipeline step: runSearch has several return
+ * paths - the warm cache replay, the progressive CATALOGUE floor, the still-acquiring marker -
+ * and the floor path (servedFrom 'catalogue', pendingRefresh true) is what the client actually
+ * paints first. Measured on production 3 Nov before this change: flights IDR-DEL asked for
+ * 2026-11-27 answered 31 rows ALL dated 2026-11-03, and the same 31 for 2026-11-10 - the gate
+ * ran in finalizeLive, which those paths never reach. Applying the identical rule here means no
+ * answer can carry another day's fare whichever path produced it.
+ *
+ * A row whose date cannot be read is only dropped for date-answering travel verticals when the
+ * request HAS a date... no: it is kept, because presence/schedule rows are honest and the gate's
+ * contract is "provably wrong", never "unproven". What this wrapper adds is the purge: if the
+ * gate empties an answer, the response says so (results [], pendingRefresh true) instead of
+ * handing back the other day's rows.
+ */
+export function gateTravelDateResponse(input: SearchInput, response: SearchResponse): SearchResponse {
+  if (!response || !Array.isArray(response.results) || response.results.length === 0) return response;
+  const vertical = String(input.vertical || response.query?.vertical || '');
+  const gate = enforceRequestedTravelDate(response.results as any[], vertical, {
+    depart: input.travelDates?.depart,
+    return: input.travelDates?.return,
+    checkin: (input.travelDates as any)?.checkin,
+    checkout: (input.travelDates as any)?.checkout,
+  }, { strictUndated: true });
+  if (!gate.dropped) return response;
+  log.info('Search', 'rows dropped for answering a different travel date (final answer gate)', {
+    vertical,
+    asked: normalizeTravelDate(input.travelDates?.depart) || '',
+    dropped: gate.dropped,
+    kept: gate.kept.length,
+    droppedOn: gate.droppedOn,
+  });
+  response.results = gate.kept as any;
+  if (!response.results.length) {
+    // Nothing honest to show for THIS date: say "still scanning" rather than replay another day.
+    response.state = {
+      ...(response.state || {}),
+      pendingRefresh: true,
+      triggeredRefresh: true,
+    } as any;
+  }
+  return response;
 }
 
 async function runSearchFastInner(input: SearchInput, coldBudgetMs = 1_500): Promise<SearchResponse> {
@@ -689,12 +761,16 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     // and a 2026-11-19 search answered 30 rows dated 2026-12-03 — a cached SearchResponse is
     // replayed VERBATIM, so snapshots minted before the gate existed kept handing back
     // another day's fares even though the live pipeline would have dropped them.
-    rev: 4,
+    // rev 5 (3 Nov): owner's cache-isolation rule - the key now also binds the RETURN date
+    // (a 27-29 Nov hotel search and a 27-30 Nov one are different questions) and retires every
+    // snapshot minted before the final answer gate existed.
+    rev: 5,
     vertical,
     q: input.query,
     pin: input.pincode,
     city: input.city,
     dates: parsed.travelDates?.depart,
+    ret: parsed.travelDates?.return,
     pax: parsed.parties?.passengers || parsed.parties?.guests,
     cfg: parsed.configuration ? JSON.stringify(parsed.configuration) : '',
   });
@@ -724,7 +800,7 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
       return: parsed.travelDates?.return,
       checkin: (parsed.travelDates as any)?.checkin,
       checkout: (parsed.travelDates as any)?.checkout,
-    });
+    }, { strictUndated: true });
     if (cacheGate.dropped > 0) {
       log.info('Search', 'cached rows dropped for answering a different travel date', {
         vertical: String(vertical), asked: normalizeTravelDate(parsed.travelDates?.depart) || '',
@@ -1092,7 +1168,7 @@ async function finalizeLive(
       return: parsed.travelDates?.return,
       checkin: (parsed.travelDates as any)?.checkin,
       checkout: (parsed.travelDates as any)?.checkout,
-    });
+    }, { strictUndated: true });
     if (gate.dropped > 0) {
       combined = gate.kept as any;
       log.info('Search', 'rows dropped for answering a different travel date', {

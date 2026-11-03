@@ -15,6 +15,7 @@ import { proxyPoolStatus } from '../common/proxyRotator';
 import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, recallGoodForVertical, rememberGood } from '../search/lastKnownGood';
+import { enforceRequestedTravelDate } from '../search/travelDateGate';
 import { allowPending, forgetPending, pollKey } from './pollBudget';
 import { refreshMovieDestination } from '../movies/freshMovieLink';
 import { refreshSeatDestination } from '../movies/liveSeatSession';
@@ -832,6 +833,26 @@ apiRouter.get('/history', async (req, res) => {
  * answer with rows. Costs at most `ms` (default 500ms), keeping the whole response inside
  * the owner's 3s ceiling.
  */
+/**
+ * LAST line of date defence for every answer that does not come from the pipeline
+ * (owner 3 Nov: "returns cached or misaligned results from entirely different dates ...
+ * desktop web, mobile web and app"). `lastChanceRows`, `recallGood` and
+ * `recallGoodForVertical` all replay rows that were verified for SOME search; none of them
+ * used to check that the day still matches THIS one. Measured on production 3 Nov: flights
+ * IDR-DEL asked for 2026-11-27 returned 31 rows all dated 2026-11-03, twice in a row, because
+ * the answer came from these paths. Rows provably dated another day are removed here; the
+ * caller skips the fallback when nothing honest is left, so the client gets the "still
+ * scanning" state for its own date instead of another date's prices.
+ */
+function gateRowsForDate<T extends Record<string, any>>(
+  rows: T[],
+  vertical: string,
+  dates: { depart?: string; return?: string; checkin?: string; checkout?: string } | undefined,
+): { rows: T[]; dropped: number; droppedOn: Record<string, number> } {
+  const g = enforceRequestedTravelDate(rows, vertical, dates || {}, { strictUndated: true });
+  return { rows: g.kept as T[], dropped: g.dropped, droppedOn: g.droppedOn };
+}
+
 async function lastChanceRows(input: SearchInput, ms = 500): Promise<any | null> {
   try {
     const attempt = runSearchFast({ ...input, coldDeadlineMs: Math.max(250, ms - 120) }, Math.max(250, ms - 120));
@@ -901,20 +922,29 @@ apiRouter.post('/search', async (req, res) => {
   ])) as Awaited<ReturnType<typeof runSearch>> | null;
   if (!response) {
     const fallback = await lastChanceRows(input, 600);
-    if (fallback) {
+    const fallbackGate = fallback
+      ? gateRowsForDate((fallback as any).results || [], String(input.vertical), input.travelDates)
+      : { rows: [], dropped: 0, droppedOn: {} };
+    if (fallback && fallbackGate.dropped) {
+      log.info('Search', 'last-chance rows dropped for answering a different travel date', {
+        vertical: String(input.vertical), dropped: fallbackGate.dropped, kept: fallbackGate.rows.length, droppedOn: fallbackGate.droppedOn,
+      });
+    }
+    if (fallback && fallbackGate.rows.length) {
       return res.json({
         ...fallback,
         // Owner 28 Oct (server-level, no app rebuild): bare flight rows trail.
-        results: orderFlightRowsLast((fallback as any).results || [], String(input.vertical)),
+        results: orderFlightRowsLast(fallbackGate.rows, String(input.vertical)),
         pendingRefresh: true,
         honestNotice: 'Showing our last verified prices while live sources keep scanning. They update here automatically.',
         latencyMs: Date.now() - searchStart,
       });
     }
     const lkgTimeout = recallGood(input);
-    if (lkgTimeout) {
+    const lkgGateB = lkgTimeout ? gateRowsForDate(lkgTimeout.rows as any[], String(input.vertical), input.travelDates) : null;
+    if (lkgTimeout && lkgGateB && lkgGateB.rows.length) {
       return res.json({
-        results: lkgTimeout.rows,
+        results: lkgGateB.rows,
         ...lkgTimeout,
         pendingRefresh: true,
         honestNotice: 'Showing our last verified prices for this search while live sources keep scanning. They update here automatically.',
@@ -1427,9 +1457,13 @@ apiRouter.post('/scrape/live', async (req, res) => {
   if (!response) {
     // Never answer a live search with nothing while we hold verified rows for it.
     const fallback = await lastChanceRows(input, 600);
-    if (fallback) {
+    const fallbackGateC = fallback
+      ? gateRowsForDate((fallback as any).results || [], String(input.vertical), input.travelDates)
+      : { rows: [], dropped: 0, droppedOn: {} };
+    if (fallback && fallbackGateC.rows.length) {
       return res.json({
         ...fallback,
+        results: fallbackGateC.rows,
         pendingRefresh: allowPending(chainKey, true),
         honestNotice: 'Showing our last verified prices while live sources keep scanning. They update here automatically.',
         latencyMs: Date.now() - searchStart,
@@ -1567,9 +1601,10 @@ apiRouter.post('/scrape/live', async (req, res) => {
     if (!kept.length) kept = scored.filter((x) => x.hit > 0);
     if (!kept.length) {
       const lkg = recallGood(input);
-      if (lkg) {
+      const lkgGateD = lkg ? gateRowsForDate(lkg.rows as any[], String(input.vertical), input.travelDates) : null;
+      if (lkg && lkgGateD && lkgGateD.rows.length) {
         res.json({
-          results: lkg.rows,
+          results: lkgGateD.rows,
           honestNotice: 'Live sources are not answering for this search right now, so we are showing the last prices we verified for it. They refresh automatically.',
           sourcesAttempted: response.state.sourcesAttempted,
           sourcesSucceeded: response.state.sourcesSucceeded,
@@ -1585,9 +1620,12 @@ apiRouter.post('/scrape/live', async (req, res) => {
       // empty set, use the newest verified answer for this VERTICAL. A gated source must never turn
       // a whole vertical into an empty page - these are real rows we already verified, not invented.
       const verticalGood = recallGoodForVertical(String(input.vertical || ''));
-      if (verticalGood) {
+      const verticalGateE = verticalGood
+        ? gateRowsForDate(verticalGood.rows as any[], String(input.vertical || ''), input.travelDates)
+        : null;
+      if (verticalGood && verticalGateE && verticalGateE.rows.length) {
         res.json({
-          results: verticalGood.rows,
+          results: verticalGateE.rows,
           honestNotice: `Live sources returned only loosely related items for '${input.query}', so we are showing the last prices we verified in this vertical. They refresh automatically.`,
           sourcesAttempted: response.state.sourcesAttempted,
           sourcesSucceeded: response.state.sourcesSucceeded,
@@ -1690,9 +1728,10 @@ apiRouter.post('/scrape/live', async (req, res) => {
   if (grouped.length) rememberGood(input, grouped, response.state.servedFrom);
   if (!grouped.length) {
     const lkg = recallGood(input);
-    if (lkg) {
+    const lkgGateF = lkg ? gateRowsForDate(lkg.rows as any[], String(input.vertical), input.travelDates) : null;
+    if (lkg && lkgGateF && lkgGateF.rows.length) {
       return res.json({
-        results: lkg.rows,
+        results: lkgGateF.rows,
         honestNotice: 'Live sources are not answering for this search right now, so we are showing the last prices we verified for it. They refresh automatically.',
         sourcesAttempted: response.state.sourcesAttempted,
         sourcesSucceeded: response.state.sourcesSucceeded,

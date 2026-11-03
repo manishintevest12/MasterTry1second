@@ -93,6 +93,13 @@ export function offerTravelDate(offer: any): string {
   return '';
 }
 
+/** A seller/presence card never claims a fare or a specific day, so it may stay undated. */
+export function isUndatedPresenceRow(o: any): boolean {
+  const id = String(o?.id ?? '');
+  const basis = String(o?.attributes?.price_basis ?? '');
+  return id.startsWith('presence_') || basis === 'live_fares_unavailable';
+}
+
 export interface DateGateResult<T> {
   kept: T[];
   dropped: number;
@@ -108,6 +115,7 @@ export function enforceRequestedTravelDate<T>(
   offers: T[],
   vertical: string,
   requested: { depart?: string; return?: string; checkin?: string; checkout?: string } | undefined,
+  opts: { strictUndated?: boolean } = {},
 ): DateGateResult<T> {
   if (!DATE_ANSWERING_VERTICALS.includes(String(vertical))) {
     return { kept: offers, dropped: 0, droppedOn: {} };
@@ -122,7 +130,20 @@ export function enforceRequestedTravelDate<T>(
   const droppedOn: Record<string, number> = {};
   for (const o of offers) {
     const d = offerTravelDate(o);
-    if (!d || allowed.has(d)) {
+    if (!d) {
+      // STRICT mode (owner 3 Nov: "any row that does not match the exact requested date must
+      // be instantly dropped"): a row we cannot date at all cannot be proven to answer this
+      // search, and those are exactly the rows that produced "27 Nov search, 3 Nov card".
+      // The one exception stays: a seller presence card never claims a fare or a day, so it is
+      // honest reference (owner-requested 22 Oct) and is kept.
+      if (opts.strictUndated && !isUndatedPresenceRow(o)) {
+        droppedOn['undated'] = (droppedOn['undated'] || 0) + 1;
+        continue;
+      }
+      kept.push(o);
+      continue;
+    }
+    if (allowed.has(d)) {
       kept.push(o);
       continue;
     }

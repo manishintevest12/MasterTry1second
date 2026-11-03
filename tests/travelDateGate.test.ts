@@ -103,3 +103,23 @@ test('a date range inside the hotel query never leaks into the city slug', async
   // a two-word city still survives
   assert.equal(cityFromQuery({ query: { rawQuery: 'hotels in Mount Abu 19 Nov 2026 to 21 Nov 2026' } } as any), 'Mount Abu');
 });
+
+// OWNER 3 Nov: "any row that does not match the exact requested date must be instantly dropped",
+// and the measured leak was 31 flights rows dated 2026-11-03 answering a 2026-11-27 search.
+test('strict mode drops undated rows but keeps seller presence cards', () => {
+  const rows: any[] = [
+    { id: 'off_1', travel: { date: '2026-11-27' }, title: '6E-6627 IDR to DEL' },
+    { id: 'off_2', travel: { date: '2026-11-03' }, title: '6E-9999 IDR to DEL' },
+    { id: 'off_3', title: 'Air India IDR to DEL' },                       // undated, not presence
+    { id: 'presence_makemytrip', title: 'MakeMyTrip', attributes: {} },     // presence card
+    { id: 'off_4', title: 'Yatra', attributes: { price_basis: 'live_fares_unavailable' } },
+  ];
+  const strict = enforceRequestedTravelDate(rows, 'flights', { depart: '2026-11-27' }, { strictUndated: true });
+  assert.deepEqual(strict.kept.map((r: any) => r.id), ['off_1', 'presence_makemytrip', 'off_4']);
+  assert.equal(strict.dropped, 2);
+  assert.equal(strict.droppedOn['2026-11-03'], 1);
+  assert.equal(strict.droppedOn['undated'], 1);
+  // default mode still keeps undated rows (catalogue/schedule rows rely on it)
+  const lenient = enforceRequestedTravelDate(rows, 'flights', { depart: '2026-11-27' });
+  assert.equal(lenient.kept.length, 4);
+});

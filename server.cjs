@@ -3010,7 +3010,7 @@ function autoHealGatedSources(failures, deps = {}) {
   const heal = deps.heal || healGatedSource;
   return Promise.all(Array.from(keys).map((k) => heal(k).catch(() => ({ source: k, ran: false, reason: "failed", tried: 0, kept: 0 }))));
 }
-var import_node_fs3, import_node_path3, STATE_FILE, HEAL_COOLDOWN_MS, UA, HTML, GATE_TARGETS, KEY_HINTS;
+var import_node_fs3, import_node_path3, STATE_FILE, HEAL_COOLDOWN_MS, UA, HTML, JSONH, GATE_TARGETS, KEY_HINTS;
 var init_gateHeal = __esm({
   "server/common/gateHeal.ts"() {
     import_node_fs3 = __toESM(require("node:fs"), 1);
@@ -3021,6 +3021,17 @@ var init_gateHeal = __esm({
     HEAL_COOLDOWN_MS = Number(process.env.T1S_GATE_HEAL_COOLDOWN_MS || 30 * 6e4);
     UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
     HTML = { "User-Agent": UA, Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-IN,en;q=0.9" };
+    JSONH = {
+      "User-Agent": UA,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "x-client-id": "cleartrip",
+      "x-source-type": "Desktop",
+      channel: "desktop",
+      "app-agent": "DESKTOP",
+      caller: "UI",
+      Referer: "https://www.cleartrip.com/flights"
+    };
     GATE_TARGETS = {
       indigo: {
         label: "indigo-mobile-search",
@@ -3063,6 +3074,18 @@ var init_gateHeal = __esm({
         url: "https://www.goibibo.com/hotels/",
         headers: HTML,
         expectSubstring: "goibibo",
+        maxMs: 9e3
+      },
+      // FLIGHTS: Cleartrip. Its /flight/search/v2 fare API used to answer our egress and now
+      // returns an Akamai "Access Denied" 403 (measured 2 Nov: 403 on chrome + safari17_0, the
+      // same 403 with the storefront's _abck/bm_sz cookies primed, and 0 of 40 seed hops passed
+      // it) - so this is sensor/cookie gated, not merely IP gated. Registering it keeps the
+      // self-healing sweep honest: it will pick up a hop the day one answers the fare API.
+      cleartrip: {
+        label: "cleartrip-fare-api",
+        url: "https://www.cleartrip.com/flight/search/v2?from=IDR&to=DEL&depart_date=19/11/2026&adults=1",
+        headers: JSONH,
+        expectSubstring: "travelOptionId",
         maxMs: 9e3
       },
       // HOTELS: Booking.com challenge page + Expedia 429 + Yatra http2 reset
@@ -3120,7 +3143,8 @@ var init_gateHeal = __esm({
       [/yatra/, "yatra"],
       [/starair|star.?air/, "starair"],
       [/spicejet/, "spicejet"],
-      [/redbus/, "redbus"]
+      [/redbus/, "redbus"],
+      [/cleartrip/, "cleartrip"]
     ];
   }
 });
@@ -17791,7 +17815,7 @@ var init_flights = __esm({
           name: "Flights worker: Cleartrip live fares (search v2 API)",
           priority: 8,
           maxPerMinute: 4,
-          timeoutMs: 35e3,
+          timeoutMs: 2e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
             const rt = routeFromQuery(raw);
@@ -17804,7 +17828,7 @@ var init_flights = __esm({
             const url = cleartripSearchUrl(fromA.code, toA.code, dmy);
             let r;
             try {
-              r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4, headers: {
+              r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 12e3, headers: {
                 Accept: "application/json",
                 "Content-Type": "application/json",
                 "x-client-id": "cleartrip",
@@ -33930,7 +33954,12 @@ function offerTravelDate(offer) {
   }
   return "";
 }
-function enforceRequestedTravelDate(offers, vertical, requested) {
+function isUndatedPresenceRow(o) {
+  const id = String(o?.id ?? "");
+  const basis = String(o?.attributes?.price_basis ?? "");
+  return id.startsWith("presence_") || basis === "live_fares_unavailable";
+}
+function enforceRequestedTravelDate(offers, vertical, requested, opts = {}) {
   if (!DATE_ANSWERING_VERTICALS.includes(String(vertical))) {
     return { kept: offers, dropped: 0, droppedOn: {} };
   }
@@ -33942,7 +33971,15 @@ function enforceRequestedTravelDate(offers, vertical, requested) {
   const droppedOn = {};
   for (const o of offers) {
     const d = offerTravelDate(o);
-    if (!d || allowed.has(d)) {
+    if (!d) {
+      if (opts.strictUndated && !isUndatedPresenceRow(o)) {
+        droppedOn["undated"] = (droppedOn["undated"] || 0) + 1;
+        continue;
+      }
+      kept.push(o);
+      continue;
+    }
+    if (allowed.has(d)) {
       kept.push(o);
       continue;
     }
@@ -34505,6 +34542,7 @@ __export(searchOrchestrator_exports, {
   busSelfHealTtl: () => busSelfHealTtl,
   filterRowsByAge: () => filterRowsByAge,
   floorWindows: () => floorWindows,
+  gateTravelDateResponse: () => gateTravelDateResponse,
   namesOtherCity: () => namesOtherCity,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
@@ -34597,6 +34635,25 @@ async function progressiveCatalogueResponse(vertical, inputQuery, offers, start,
   if (String(vertical) === "flights") {
     const presence = await buildFlightSellerPresence(inputQuery, anyOffers);
     if (presence.length) anyOffers.push(...withBrandImages(presence));
+  }
+  {
+    const floorGate = enforceRequestedTravelDate(anyOffers, String(vertical), {
+      depart: inputQuery.travelDates?.depart,
+      return: inputQuery.travelDates?.return,
+      checkin: inputQuery.travelDates?.checkin,
+      checkout: inputQuery.travelDates?.checkout
+    }, { strictUndated: true });
+    if (floorGate.dropped) {
+      log.info("Search", "catalogue floor rows dropped for answering a different travel date", {
+        vertical: String(vertical),
+        asked: normalizeTravelDate(inputQuery.travelDates?.depart) || "",
+        dropped: floorGate.dropped,
+        kept: floorGate.kept.length,
+        droppedOn: floorGate.droppedOn
+      });
+      anyOffers.length = 0;
+      anyOffers.push(...floorGate.kept);
+    }
   }
   for (const o of anyOffers) {
     if (o.freshnessStatus === "LIVE_VERIFIED") o.freshnessStatus = "CACHED_VERIFIED";
@@ -34726,7 +34783,34 @@ async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, f
 }
 async function runSearchFast(input, coldBudgetMs = 1500) {
   const fast = await runSearchFastInner(input, coldBudgetMs);
-  return gateEcommerceResponse(input, fast);
+  return gateTravelDateResponse(input, gateEcommerceResponse(input, fast));
+}
+function gateTravelDateResponse(input, response) {
+  if (!response || !Array.isArray(response.results) || response.results.length === 0) return response;
+  const vertical = String(input.vertical || response.query?.vertical || "");
+  const gate = enforceRequestedTravelDate(response.results, vertical, {
+    depart: input.travelDates?.depart,
+    return: input.travelDates?.return,
+    checkin: input.travelDates?.checkin,
+    checkout: input.travelDates?.checkout
+  }, { strictUndated: true });
+  if (!gate.dropped) return response;
+  log.info("Search", "rows dropped for answering a different travel date (final answer gate)", {
+    vertical,
+    asked: normalizeTravelDate(input.travelDates?.depart) || "",
+    dropped: gate.dropped,
+    kept: gate.kept.length,
+    droppedOn: gate.droppedOn
+  });
+  response.results = gate.kept;
+  if (!response.results.length) {
+    response.state = {
+      ...response.state || {},
+      pendingRefresh: true,
+      triggeredRefresh: true
+    };
+  }
+  return response;
 }
 async function runSearchFastInner(input, coldBudgetMs = 1500) {
   const started3 = Date.now();
@@ -34855,12 +34939,21 @@ async function runSearchPipeline(input) {
     // otherwise keep serving phone covers out of the cache until each TTL expired).
     // rev 3 (29 Oct): bus schedule repair — a cached answer built before it still holds
     // rows with an empty timing gap, and a cached SearchResponse is replayed verbatim.
-    rev: 3,
+    // rev 4 (2 Nov): the travel-date gate. MEASURED on production after this was written:
+    // a 2026-12-03 flights search answered 26 rows dated 2026-11-02 and 7 dated 2026-11-03,
+    // and a 2026-11-19 search answered 30 rows dated 2026-12-03 — a cached SearchResponse is
+    // replayed VERBATIM, so snapshots minted before the gate existed kept handing back
+    // another day's fares even though the live pipeline would have dropped them.
+    // rev 5 (3 Nov): owner's cache-isolation rule - the key now also binds the RETURN date
+    // (a 27-29 Nov hotel search and a 27-30 Nov one are different questions) and retires every
+    // snapshot minted before the final answer gate existed.
+    rev: 5,
     vertical,
     q: input.query,
     pin: input.pincode,
     city: input.city,
     dates: parsed.travelDates?.depart,
+    ret: parsed.travelDates?.return,
     pax: parsed.parties?.passengers || parsed.parties?.guests,
     cfg: parsed.configuration ? JSON.stringify(parsed.configuration) : ""
   });
@@ -34872,6 +34965,26 @@ async function runSearchPipeline(input) {
     log.info("Search", "Evicted empty/still-acquiring cache entry, going live", { key: cacheKey, rows: (cachedValue.results || []).length });
   } else if (cachedValue) {
     const v = cachedValue;
+    const cacheGate = enforceRequestedTravelDate(v.results, String(vertical), {
+      depart: parsed.travelDates?.depart,
+      return: parsed.travelDates?.return,
+      checkin: parsed.travelDates?.checkin,
+      checkout: parsed.travelDates?.checkout
+    }, { strictUndated: true });
+    if (cacheGate.dropped > 0) {
+      log.info("Search", "cached rows dropped for answering a different travel date", {
+        vertical: String(vertical),
+        asked: normalizeTravelDate(parsed.travelDates?.depart) || "",
+        dropped: cacheGate.dropped,
+        kept: cacheGate.kept.length,
+        droppedOn: cacheGate.droppedOn
+      });
+      v.results = cacheGate.kept;
+      if (!v.results.length) {
+        cacheDel(cacheKey);
+        log.info("Search", "Cache snapshot held only other-day rows - going live instead", { key: cacheKey });
+      }
+    }
     for (const o of v.results) {
       if (o.freshnessStatus === "LIVE_VERIFIED") o.freshnessStatus = "CACHED_VERIFIED";
       if (o.provenance) o.provenance.replayedFromCache = true;
@@ -34902,7 +35015,7 @@ async function runSearchPipeline(input) {
     if (!cachedSearch.fresh) {
       revalidateInBackground(cacheKey, ttlSec, () => runLivePipeline(input, parsed));
     }
-    return v;
+    if (v.results.length) return v;
   }
   const running2 = inflightPipelines.get(cacheKey);
   if (running2) {
@@ -35102,7 +35215,7 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
       return: parsed.travelDates?.return,
       checkin: parsed.travelDates?.checkin,
       checkout: parsed.travelDates?.checkout
-    });
+    }, { strictUndated: true });
     if (gate.dropped > 0) {
       combined = gate.kept;
       log.info("Search", "rows dropped for answering a different travel date", {
@@ -42937,6 +43050,10 @@ async function buildQuickAppsList() {
     throw new Error("quick_apps_build_failed");
   }
 }
+function gateRowsForDate(rows, vertical, dates2) {
+  const g = enforceRequestedTravelDate(rows, vertical, dates2 || {}, { strictUndated: true });
+  return { rows: g.kept, dropped: g.dropped, droppedOn: g.droppedOn };
+}
 async function lastChanceRows(input, ms = 500) {
   try {
     const attempt = runSearchFast({ ...input, coldDeadlineMs: Math.max(250, ms - 120) }, Math.max(250, ms - 120));
@@ -43346,6 +43463,7 @@ var init_routes = __esm({
     init_proxyDiscovery();
     init_ecomDepartments();
     init_lastKnownGood();
+    init_travelDateGate();
     init_pollBudget();
     init_freshMovieLink();
     init_liveSeatSession();
@@ -43649,7 +43767,7 @@ var init_routes = __esm({
     });
     nowShowingCache = /* @__PURE__ */ new Map();
     apiRouter.get("/movies/currently-showing", async (req, res) => {
-      const city = String(req.query.city || "").slice(0, 60).trim();
+      const city = String(req.query.city || "").slice(0, 60).trim() || "Indore";
       const cacheKey = (city || "default").toLowerCase();
       const hit = nowShowingCache.get(cacheKey);
       if (hit && Date.now() - hit.at < 30 * 6e4) return res.json({ movies: hit.movies, city });
@@ -43662,9 +43780,15 @@ var init_routes = __esm({
         const region = await resolveBmsRegion(city || void 0, fetchJson);
         let r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: "safari", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
         if (r.status !== 200) r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: "chrome", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
-        if (r.status !== 200) return res.json({ movies: [], city: region.regionName || city, error: `BookMyShow now-showing HTTP ${r.status}` });
+        if (r.status !== 200) {
+          const last = nowShowingCache.get(cacheKey) || nowShowingCache.get("indore");
+          if (last?.movies?.length) return res.json({ movies: last.movies, city: region.regionName || city, stale: true });
+          return res.json({ movies: [], city: region.regionName || city, error: `BookMyShow now-showing HTTP ${r.status}` });
+        }
         const parsed = parseNowShowingCards(JSON.parse(r.body || "{}"), region).slice(0, 12);
+        const genreDeadline = Date.now() + 5e3;
         const genreOf = async (url) => {
+          if (Date.now() > genreDeadline) return null;
           for (const fp of ["safari", "chrome"]) {
             try {
               const p = await cffiFetch(url, { impersonate: fp, timeoutMs: 8e3, headers: { Accept: "text/html" } });
@@ -43699,8 +43823,11 @@ var init_routes = __esm({
           goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) })
         }));
         if (movies.length) nowShowingCache.set(cacheKey, { at: Date.now(), movies });
+        if (cacheKey === "indore") nowShowingCache.set("indore", { at: Date.now(), movies });
         return res.json({ movies, city: region.regionName || city });
       } catch (e2) {
+        const last = nowShowingCache.get(cacheKey) || nowShowingCache.get("indore");
+        if (last?.movies?.length) return res.json({ movies: last.movies, city, stale: true });
         return res.json({ movies: [], city, error: String(e2?.message || e2).slice(0, 120) });
       }
     });
@@ -43883,20 +44010,30 @@ var init_routes = __esm({
       ]);
       if (!response) {
         const fallback = await lastChanceRows(input, 600);
-        if (fallback) {
+        const fallbackGate = fallback ? gateRowsForDate(fallback.results || [], String(input.vertical), input.travelDates) : { rows: [], dropped: 0, droppedOn: {} };
+        if (fallback && fallbackGate.dropped) {
+          log.info("Search", "last-chance rows dropped for answering a different travel date", {
+            vertical: String(input.vertical),
+            dropped: fallbackGate.dropped,
+            kept: fallbackGate.rows.length,
+            droppedOn: fallbackGate.droppedOn
+          });
+        }
+        if (fallback && fallbackGate.rows.length) {
           return res.json({
             ...fallback,
             // Owner 28 Oct (server-level, no app rebuild): bare flight rows trail.
-            results: orderFlightRowsLast(fallback.results || [], String(input.vertical)),
+            results: orderFlightRowsLast(fallbackGate.rows, String(input.vertical)),
             pendingRefresh: true,
             honestNotice: "Showing our last verified prices while live sources keep scanning. They update here automatically.",
             latencyMs: Date.now() - searchStart
           });
         }
         const lkgTimeout = recallGood(input);
-        if (lkgTimeout) {
+        const lkgGateB = lkgTimeout ? gateRowsForDate(lkgTimeout.rows, String(input.vertical), input.travelDates) : null;
+        if (lkgTimeout && lkgGateB && lkgGateB.rows.length) {
           return res.json({
-            results: lkgTimeout.rows,
+            results: lkgGateB.rows,
             ...lkgTimeout,
             pendingRefresh: true,
             honestNotice: "Showing our last verified prices for this search while live sources keep scanning. They update here automatically.",
@@ -44103,9 +44240,11 @@ var init_routes = __esm({
       ]);
       if (!response) {
         const fallback = await lastChanceRows(input, 600);
-        if (fallback) {
+        const fallbackGateC = fallback ? gateRowsForDate(fallback.results || [], String(input.vertical), input.travelDates) : { rows: [], dropped: 0, droppedOn: {} };
+        if (fallback && fallbackGateC.rows.length) {
           return res.json({
             ...fallback,
+            results: fallbackGateC.rows,
             pendingRefresh: allowPending(chainKey, true),
             honestNotice: "Showing our last verified prices while live sources keep scanning. They update here automatically.",
             latencyMs: Date.now() - searchStart
@@ -44198,9 +44337,10 @@ var init_routes = __esm({
         if (!kept.length) kept = scored.filter((x) => x.hit > 0);
         if (!kept.length) {
           const lkg = recallGood(input);
-          if (lkg) {
+          const lkgGateD = lkg ? gateRowsForDate(lkg.rows, String(input.vertical), input.travelDates) : null;
+          if (lkg && lkgGateD && lkgGateD.rows.length) {
             res.json({
-              results: lkg.rows,
+              results: lkgGateD.rows,
               honestNotice: "Live sources are not answering for this search right now, so we are showing the last prices we verified for it. They refresh automatically.",
               sourcesAttempted: response.state.sourcesAttempted,
               sourcesSucceeded: response.state.sourcesSucceeded,
@@ -44213,9 +44353,10 @@ var init_routes = __esm({
             return;
           }
           const verticalGood = recallGoodForVertical(String(input.vertical || ""));
-          if (verticalGood) {
+          const verticalGateE = verticalGood ? gateRowsForDate(verticalGood.rows, String(input.vertical || ""), input.travelDates) : null;
+          if (verticalGood && verticalGateE && verticalGateE.rows.length) {
             res.json({
-              results: verticalGood.rows,
+              results: verticalGateE.rows,
               honestNotice: `Live sources returned only loosely related items for '${input.query}', so we are showing the last prices we verified in this vertical. They refresh automatically.`,
               sourcesAttempted: response.state.sourcesAttempted,
               sourcesSucceeded: response.state.sourcesSucceeded,
@@ -44292,9 +44433,10 @@ var init_routes = __esm({
       if (grouped.length) rememberGood(input, grouped, response.state.servedFrom);
       if (!grouped.length) {
         const lkg = recallGood(input);
-        if (lkg) {
+        const lkgGateF = lkg ? gateRowsForDate(lkg.rows, String(input.vertical), input.travelDates) : null;
+        if (lkg && lkgGateF && lkgGateF.rows.length) {
           return res.json({
-            results: lkg.rows,
+            results: lkgGateF.rows,
             honestNotice: "Live sources are not answering for this search right now, so we are showing the last prices we verified for it. They refresh automatically.",
             sourcesAttempted: response.state.sourcesAttempted,
             sourcesSucceeded: response.state.sourcesSucceeded,
