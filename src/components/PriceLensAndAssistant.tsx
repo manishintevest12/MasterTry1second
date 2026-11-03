@@ -173,7 +173,22 @@ export const PriceLensAndAssistant: React.FC = () => {
     try {
       // ONE call answers in every vertical: the server routes the question, runs the
       // SAME acquisition pipeline as the feed and returns the priced rows.
-      const res = await fetch('/api/assist/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: q }) });
+      // The chat must remember what it just answered, so a follow-up ("aur v website batao",
+      // "sasta kahan milega") stays on the same product instead of being searched as a new one.
+      // The app already sends x-t1s-session on every call; the website keeps its own id here.
+      let sessionId = '';
+      try {
+        sessionId = sessionStorage.getItem('t1s_ask_session') || '';
+        if (!sessionId) {
+          sessionId = `web-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+          sessionStorage.setItem('t1s_ask_session', sessionId);
+        }
+      } catch { /* private mode: the server simply answers without thread memory */ }
+      const res = await fetch('/api/assist/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(sessionId ? { 'x-t1s-session': sessionId } : {}) },
+        body: JSON.stringify({ text: q, ...(sessionId ? { sessionId } : {}) }),
+      });
       const data = await res.json();
       const replyText = data.reply || 'Sorry, I could not understand that.';
       setChat((c) => [...c.slice(-3), { from: 'ai', text: replyText }]);

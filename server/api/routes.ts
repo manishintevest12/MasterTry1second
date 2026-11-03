@@ -58,6 +58,10 @@ import { loadSourcesFromDb } from '../sources/registry';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, normalizeTypedProductQuery } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows } from '../lens/assistantAnswer';
+
+import {
+  classifyFollowUp, readSubject, shapeFollowUpAnswer, subjectFromAnswer, writeSubject,
+} from '../lens/assistantThread';
 import { boostByReliability, ensureSearchMemoryTable, memoryNotice, recallAnswer, rememberAnswer, sellerReliability } from '../lens/searchMemory';
 import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
 import { dropImplausiblePrices } from '../lens/pricePlausibility';
@@ -2756,9 +2760,160 @@ apiRouter.post('/assist/intent', (req, res) => {
 // question belongs to and answers with the cheapest real row plus comparable rows.
 // Not a second pricing path: it calls runSearch/lastChanceRows exactly like
 // /api/search, so a price can never disagree between the assistant and the feed.
+/**
+ * OWNER 3 Nov: the second question in a thread ("aur v website batao sirf blinkit hi kyun bata rahe ho")
+ * is answered about the SAME product. This re-reads that product's live rows (no new subject is
+ * parsed), waits a little longer than the first answer so more sellers can land, and for a grocery or
+ * food product ALSO asks the shopping sites for the same item, because "aur website" means exactly
+ * that. Prices come from the same pipeline; nothing is invented, and a site that did not answer is
+ * named as still scanning rather than as having no price.
+ */
+async function answerFollowUp(
+  res: any,
+  args: {
+    subject: import('../lens/assistantThread').AssistantSubject;
+    verdict: import('../lens/assistantThread').FollowUpVerdict;
+    sessionId: string;
+    text: string;
+    started: number;
+  },
+): Promise<void> {
+  const { subject, verdict, sessionId, started } = args;
+  const vertical = normalizeVerticalId(subject.vertical) as SearchInput['vertical'];
+  const base: SearchInput = {
+    query: subject.query,
+    vertical,
+    ...(subject.city ? { city: subject.city } : {}),
+    ...(subject.date ? { travelDates: { depart: subject.date, ...(subject.return ? { return: subject.return } : {}) } } : {}),
+  };
+  const rows: any[] = [];
+  const sources = new Set<string>();
+  let pending = false;
+
+  const collect = async (inp: SearchInput, budgetMs: number) => {
+    try {
+      const run = runSearch(inp);
+      run.catch(() => undefined);
+      const raced = (await Promise.race([
+        run,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
+      ])) as Awaited<ReturnType<typeof runSearch>> | null;
+      if (raced) {
+        rows.push(...((raced.results || []) as any[]));
+        for (const id of raced.state?.sourcesSucceeded || []) sources.add(id);
+        pending = pending || Boolean(raced.state?.pendingRefresh);
+        return;
+      }
+      const fallback = await lastChanceRows(inp, 600);
+      if (fallback) {
+        rows.push(...(((fallback as any).results || []) as any[]));
+        for (const id of (fallback as any).sourcesSucceeded || []) sources.add(id);
+      }
+      pending = pending || rows.length === 0;
+    } catch { /* an honest partial answer beats an error */ }
+  };
+
+  // A follow-up asks for the sellers that were MISSING from the first answer, so this one waits for
+  // the sweep to SETTLE (every worker answered/failed/hit its ceiling) instead of racing 2s again -
+  // that is the difference between "sirf blinkit" and the full seller set for the same product.
+  // awaitSettledAnswer joins the SAME in-flight pipeline promise (it does not poll the orchestrator,
+  // which is what starved /api/search on 3 Nov), so the follow-up waits for the full seller set safely.
+  const settled = await awaitSettledAnswer(base, Number(process.env.T1S_FOLLOWUP_SETTLE_MS || 7000)).catch(() => null);
+  if (settled) {
+    rows.push(...((settled.results || []) as any[]));
+    for (const id of settled.state?.sourcesSucceeded || []) sources.add(id);
+    pending = Boolean(settled.state?.pendingRefresh);
+  } else {
+    await collect(base, 3500);
+  }
+
+  // MEASURED: the first answer of a product is often the catalogue/partial snapshot with ONE seller
+  // while the other apps are still fetching, and the cached snapshot is rewritten when that same
+  // background sweep finishes. So when the thread still has fewer than three sellers, give the
+  // in-flight refresh a short bounded moment and re-read the SAME search ONCE (two acquisition calls
+  // in total, never a poll loop - a tight loop is what starved /api/search on 3 Nov).
+  const sellersSoFar = () => new Set(rows.map((r) => String(r.vendor || r.seller || r.provider || '').toLowerCase()).filter(Boolean)).size;
+  if (sellersSoFar() < 3) {
+    await new Promise((resolve) => setTimeout(resolve, Number(process.env.T1S_FOLLOWUP_WAIT_MS || 2500)));
+    try {
+      const warmer = await runSearch(base);
+      rows.push(...((warmer.results || []) as any[]));
+      for (const id of warmer.state?.sourcesSucceeded || []) sources.add(id);
+      pending = Boolean(warmer.state?.pendingRefresh);
+    } catch { /* the earlier answer stands */ }
+  }
+
+  // The core of the owner's complaint: "sirf blinkit hi kyun". A grocery product is also sold on the
+  // shopping sites, so when fewer than three grocery apps answered, price the SAME item there too.
+  let alsoShopping = false;
+  if (verdict.kind === 'more_sellers' && ['grocery', 'food'].includes(String(vertical))) {
+    const sellersNow = new Set(rows.map((r) => String(r.vendor || r.seller || '').toLowerCase()).filter(Boolean));
+    if (sellersNow.size < 3) {
+      alsoShopping = true;
+      await collect({ ...base, vertical: 'ecommerce' as SearchInput['vertical'] }, 2500);
+    }
+  }
+
+  const seen = new Set<string>();
+  const unique = rows.filter((o) => {
+    const key = `${String(o?.vendor || o?.seller || '').toLowerCase()}|${String(o?.title || '').toLowerCase().replace(/[^a-z0-9]/g, '')}|${Number(o?.prices?.effectivePrice ?? o?.primaryPrice ?? 0)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const exitTravel = {
+    date: String(subject.date || ''),
+    return: String(subject.return || ''),
+    city: String(subject.city || ''),
+    route: '',
+  };
+  const linked = unique.map((o: any) => ({
+    ...o,
+    sellerUrl: o?.sellerUrl && String(o.sellerUrl).trim() ? o.sellerUrl : assistantExitUrl(o, exitTravel),
+  }));
+  const shaped = toAssistantRows(linked, 12, { diversify: true });
+  const reply = shapeFollowUpAnswer(verdict.kind, subject.query, shaped, {
+    pending,
+    alsoShopping,
+    sellersLastTime: subject.sellers,
+  });
+  writeSubject(sessionId, subjectFromAnswer(subject.vertical, subject.query, shaped, {
+    city: subject.city, date: subject.date, return: subject.return,
+  }));
+  res.json({
+    success: true,
+    understood: true,
+    assumedVertical: false,
+    vertical: subject.vertical,
+    engineVertical: String(vertical),
+    query: subject.query,
+    reply,
+    results: shaped,
+    count: shaped.length,
+    pendingRefresh: pending,
+    sourcesSucceeded: [...sources],
+    followUp: { kind: verdict.kind, about: subject.query },
+    latencyMs: Date.now() - started,
+  });
+}
+
 apiRouter.post('/assist/answer', async (req, res) => {
   const started = Date.now();
   const text = String(req.body?.text || '').slice(0, 300);
+  // OWNER 3 Nov: the assistant must stay on the SAME product across turns. "aur v website batao
+  // sirf blinkit hi kyun bata rahe ho" after a Tata Tea answer used to be searched as a new product.
+  // The session subject (product + vertical + city + the sellers we just showed) comes from the
+  // x-t1s-session header the app already sends on every call, or a body.sessionId from the web.
+  const sessionId = String(
+    req.headers['x-t1s-session'] || (req.body as any)?.sessionId || '',
+  ).slice(0, 80);
+  const subject = readSubject(sessionId);
+  const verdict = classifyFollowUp(text, subject);
+
+  if (verdict.follow && subject) {
+    return answerFollowUp(res, { subject, verdict, sessionId, text, started });
+  }
+
   const { meta, input } = buildAssistantSearch(text, {
     city: req.body?.city ? String(req.body.city).slice(0, 60) : undefined,
     pincode: req.body?.pincode ? String(req.body.pincode).slice(0, 10) : undefined,
@@ -2923,6 +3078,12 @@ apiRouter.post('/assist/answer', async (req, res) => {
           : {}),
       },
     );
+    writeSubject(sessionId, subjectFromAnswer(
+      fallbackVertical || meta.vertical || '',
+      meta.query,
+      rows,
+      { city: String(searchInput.city || ''), date: String(searchInput.travelDates?.depart || ''), return: String(searchInput.travelDates?.return || '') },
+    ));
     res.json({
       success: true,
       ...meta,

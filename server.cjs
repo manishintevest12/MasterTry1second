@@ -340,7 +340,7 @@ function persistSoon() {
   }, 250);
 }
 function recordSourcePrices(vertical, query, offers) {
-  const store4 = load();
+  const store5 = load();
   const perSource = /* @__PURE__ */ new Map();
   for (const o of offers || []) {
     const sid = String(o.sourceId || "");
@@ -351,14 +351,14 @@ function recordSourcePrices(vertical, query, offers) {
   }
   const now = Date.now();
   for (const [sid, price] of perSource) {
-    store4[`${vertical}|${sid}`] = { price: Math.round(price * 100) / 100, query: String(query || "").slice(0, 80), at: now };
+    store5[`${vertical}|${sid}`] = { price: Math.round(price * 100) / 100, query: String(query || "").slice(0, 80), at: now };
   }
   if (perSource.size) persistSoon();
 }
 function enrichFailedWithLastPrice(vertical, failed) {
-  const store4 = load();
+  const store5 = load();
   return (failed || []).map((f) => {
-    const e2 = store4[`${vertical}|${f.sourceId}`];
+    const e2 = store5[`${vertical}|${f.sourceId}`];
     return e2 ? { ...f, lastPrice: { ...e2 } } : f;
   });
 }
@@ -662,8 +662,8 @@ function detectVertical(q3) {
 }
 function extractEntity(q3) {
   const cleaned = q3.replace(/\b(under|below|less than)\s*₹?\s*\d+(\s*k)?\b/gi, "").replace(/₹\s*\d+(\.\d+)?/g, "").replace(/\bfrom\s+(amazon|flipkart|blinkit|zepto|swiggy|zomato|amazon)\b/gi, "").trim();
-  const tokens2 = cleaned.split(/\s+/).filter((t) => t && !STOPWORDS.has(t.toLowerCase()));
-  return tokens2.length > 0 ? tokens2.join(" ").slice(0, 160) : null;
+  const tokens3 = cleaned.split(/\s+/).filter((t) => t && !STOPWORDS.has(t.toLowerCase()));
+  return tokens3.length > 0 ? tokens3.join(" ").slice(0, 160) : null;
 }
 function extractLocation(q3) {
   const loc = {};
@@ -1346,11 +1346,11 @@ var init_db = __esm({
       /** VALUES parser: maps each column to a param or a literal (number, NULL, NOW(), bool). */
       valuesOf(s, cols, params) {
         const vals = s.match(/values\s*\(([^)]+)\)/i)?.[1] || "";
-        const tokens2 = vals.split(",").map((t) => t.trim());
+        const tokens3 = vals.split(",").map((t) => t.trim());
         const row = {};
         let p = 0;
         cols.forEach((col, i) => {
-          const tok = tokens2[i];
+          const tok = tokens3[i];
           if (tok === "?") row[col] = params[p++];
           else if (/^-?\d+(\.\d+)?$/.test(tok)) row[col] = Number(tok);
           else if (/^null$/i.test(tok)) row[col] = null;
@@ -1539,8 +1539,8 @@ function markDisabled(sourceId) {
 async function persist(h) {
   try {
     const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const store4 = getStore3();
-    await store4.execute(
+    const store5 = getStore3();
+    await store5.execute(
       `INSERT INTO source_health (source_id, state, consecutive_failures, last_success_at, last_failure_at, last_failure_class, circuit_open_until, total_attempts, total_successes, avg_latency_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE state=VALUES(state), consecutive_failures=VALUES(consecutive_failures), last_success_at=VALUES(last_success_at), last_failure_at=VALUES(last_failure_at), last_failure_class=VALUES(last_failure_class), circuit_open_until=VALUES(circuit_open_until), total_attempts=VALUES(total_attempts), total_successes=VALUES(total_successes), avg_latency_ms=VALUES(avg_latency_ms)`,
@@ -2776,8 +2776,8 @@ async function runProxyDiscovery(opts = {}) {
 }
 async function ensureProxyTable() {
   try {
-    const store4 = getStore();
-    await store4.execute(
+    const store5 = getStore();
+    await store5.execute(
       `CREATE TABLE IF NOT EXISTS proxy_pool (
          id INT AUTO_INCREMENT PRIMARY KEY,
          url VARCHAR(255) NOT NULL,
@@ -2803,9 +2803,9 @@ async function storeValidatedProxies(rows, sourceOf) {
   if (!rows.length) return false;
   if (!await ensureProxyTable()) return false;
   try {
-    const store4 = getStore();
+    const store5 = getStore();
     for (const r of rows) {
-      await store4.execute(
+      await store5.execute(
         `INSERT INTO proxy_pool (url, source, latency_ms, ok_count, last_checked_at)
          VALUES (?, ?, ?, 1, NOW())
          ON DUPLICATE KEY UPDATE latency_ms = VALUES(latency_ms), ok_count = ok_count + 1,
@@ -2823,8 +2823,8 @@ async function listStoredProxies() {
   const budget = proxyLatencyBudget();
   if (await ensureProxyTable()) {
     try {
-      const store4 = getStore();
-      const rows = await store4.query(
+      const store5 = getStore();
+      const rows = await store5.query(
         `SELECT url, source, latency_ms, ok_count, fail_count, enabled, last_error, last_checked_at
          FROM proxy_pool ORDER BY enabled DESC, latency_ms ASC LIMIT 200`
       );
@@ -5503,8 +5503,8 @@ async function fetchRateFrom(source) {
     const r = await cffiFetch(source, { timeoutMs: 12e3, headers: { Accept: "application/json" } });
     if (r.status !== 200) return null;
     const d = JSON.parse(r.body);
-    const inr2 = Number(d?.rates?.INR);
-    return Number.isFinite(inr2) && inr2 > 20 && inr2 < 200 ? inr2 : null;
+    const inr3 = Number(d?.rates?.INR);
+    return Number.isFinite(inr3) && inr3 > 20 && inr3 < 200 ? inr3 : null;
   } catch {
     return null;
   }
@@ -6345,15 +6345,15 @@ function canonicalCity(raw) {
   const n = norm2(raw || "");
   if (!n) return "";
   if (KNOWN_CITIES.has(n)) return titleCity(n);
-  const tokens2 = n.split(" ").filter((t) => t && !NOISE_TOKENS.has(t));
-  if (tokens2.length === 0) return "";
-  for (let len = Math.min(3, tokens2.length); len >= 1; len--) {
-    for (let i = 0; i + len <= tokens2.length; i++) {
-      const phrase = tokens2.slice(i, i + len).join(" ");
+  const tokens3 = n.split(" ").filter((t) => t && !NOISE_TOKENS.has(t));
+  if (tokens3.length === 0) return "";
+  for (let len = Math.min(3, tokens3.length); len >= 1; len--) {
+    for (let i = 0; i + len <= tokens3.length; i++) {
+      const phrase = tokens3.slice(i, i + len).join(" ");
       if (KNOWN_CITIES.has(phrase)) return titleCity(phrase);
     }
   }
-  return titleCity(tokens2[tokens2.length - 1]);
+  return titleCity(tokens3[tokens3.length - 1]);
 }
 var ALIAS_GROUPS, norm2, slugOf, NOISE_TOKENS, KNOWN_CITIES;
 var init_cityAlias = __esm({
@@ -24170,10 +24170,10 @@ function brandName(m) {
   return m ? m[1] : "";
 }
 function zeptoSsrMatches(term, product) {
-  const tokens2 = term.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
-  if (!tokens2.length) return true;
+  const tokens3 = term.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+  if (!tokens3.length) return true;
   const hay = `${product.brand} ${product.name} ${product.pack || ""}`.toLowerCase();
-  return tokens2.every((t) => hay.includes(t) || hay.includes(t.replace(/s$/, "")));
+  return tokens3.every((t) => hay.includes(t) || hay.includes(t.replace(/s$/, "")));
 }
 var IMG_CDN, PACK_ANCHOR;
 var init_zeptoSsr = __esm({
@@ -24420,7 +24420,7 @@ function imTokenize(term) {
   return term.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length >= 2 && !["the", "and"].includes(t));
 }
 function buildImItems(products, term, cityLabel, sourceUrl, cap) {
-  const tokens2 = imTokenize(term);
+  const tokens3 = imTokenize(term);
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const scored = [];
   for (const p of products) {
@@ -24432,9 +24432,9 @@ function buildImItems(products, term, cityLabel, sourceUrl, cap) {
     if (!name) continue;
     const hay = `${name} ${p.brand || ""} ${p.category || ""}`.toLowerCase();
     let score = 0;
-    for (const t of tokens2) if (hay.includes(t) || t.endsWith("s") && hay.includes(t.slice(0, -1))) score++;
+    for (const t of tokens3) if (hay.includes(t) || t.endsWith("s") && hay.includes(t.slice(0, -1))) score++;
     if (score === 0) continue;
-    if (tokens2.length > 1 && score < tokens2.length) score -= 0.5;
+    if (tokens3.length > 1 && score < tokens3.length) score -= 0.5;
     const mediaId = (v.medias || []).find((m) => m?.id && String(m.type || "MEDIA_TYPE_IMAGE").includes("IMAGE"))?.id;
     const imageId = (v.imageIds || [])[0] || mediaId;
     const imageUrl = imageId ? `https://media-assets.swiggy.com/swiggy/image/upload/${imageId}` : void 0;
@@ -24972,22 +24972,22 @@ async function collectCandidates(spec) {
   return { bundles, candidates, notes };
 }
 async function saveEndpointOverride(sourceId, key, value, evidenceUrl, bundleUrl) {
-  const store4 = getStore();
+  const store5 = getStore();
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
-  const upd = await store4.execute(
+  const upd = await store5.execute(
     "UPDATE source_endpoint_overrides SET value = ?, evidence_url = ?, bundle_url = ?, healed_at = ? WHERE source_id = ? AND rule_key = ?",
     [value.slice(0, 500), evidenceUrl.slice(0, 500), bundleUrl.slice(0, 500), now, sourceId, key]
   );
   if (!upd.affectedRows) {
-    await store4.execute(
+    await store5.execute(
       "INSERT INTO source_endpoint_overrides (source_id, rule_key, value, evidence_url, bundle_url, healed_at) VALUES (?, ?, ?, ?, ?, ?)",
       [sourceId, key, value.slice(0, 500), evidenceUrl.slice(0, 500), bundleUrl.slice(0, 500), now]
     );
   }
 }
 async function getEndpointOverrides(sourceId) {
-  const store4 = getStore();
-  const rows = await store4.query(
+  const store5 = getStore();
+  const rows = await store5.query(
     "SELECT rule_key, value, healed_at, bundle_url FROM source_endpoint_overrides WHERE source_id = ?",
     [sourceId]
   );
@@ -25138,12 +25138,12 @@ async function resolveBmsRegion(city, fetchJson) {
 }
 async function cityFromMovieQuery(raw, fallback, fetchJson) {
   const cleaned = normCity(String(raw || "").replace(MOVIE_QUERY_NOISE, " ").replace(/[^a-z\s]/gi, " "));
-  const tokens2 = cleaned.split(" ").filter(Boolean);
-  if (tokens2.length !== 1) return fallback;
+  const tokens3 = cleaned.split(" ").filter(Boolean);
+  if (tokens3.length !== 1) return fallback;
   try {
-    await resolveBmsRegion(fallback || tokens2[0], fetchJson);
+    await resolveBmsRegion(fallback || tokens3[0], fetchJson);
     if (regionsCache) {
-      const r = regionsCache.aliases.get(tokens2[0]);
+      const r = regionsCache.aliases.get(tokens3[0]);
       if (r) return r.regionName;
     }
   } catch {
@@ -27936,8 +27936,8 @@ var init_bankCardLinks = __esm({
 function queryPlan(raw) {
   const q3 = raw || "";
   const banks = BANK_ALIASES.filter((b) => b.re.test(q3)).map((b) => b.slug);
-  const tokens2 = q3.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length > 2 && !STOP.has(t) && !BANK_ALIASES.some((b) => b.re.test(t)));
-  return { banks, tokens: tokens2, intents: INTENTS.filter((i) => i.re.test(q3)) };
+  const tokens3 = q3.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length > 2 && !STOP.has(t) && !BANK_ALIASES.some((b) => b.re.test(t)));
+  return { banks, tokens: tokens3, intents: INTENTS.filter((i) => i.re.test(q3)) };
 }
 function banksFor(plan, universe, map = (s) => s) {
   const wanted = plan.banks.map((b) => universe.find((u) => map(u) === b) || b).filter((b) => universe.includes(b));
@@ -28063,7 +28063,7 @@ var init_creditcards = __esm({
       { re: /rupay|upi/i, test: (t) => /rupay/i.test(t) }
     ];
     STOP = /* @__PURE__ */ new Set(["credit", "card", "cards", "best", "top", "compare", "comparison", "india", "bank", "for", "with", "the", "and", "in", "a", "of", "to", "me", "my", "cc", "free", "lifetime", "travel", "cashback", "cash", "back", "fuel", "shopping", "online", "dining", "rupay", "lounge"]);
-    nameMatches = (name, tokens2) => !tokens2.length || tokens2.every((t) => name.toLowerCase().includes(t));
+    nameMatches = (name, tokens3) => !tokens3.length || tokens3.every((t) => name.toLowerCase().includes(t));
     MAX_CARDS = 40;
     creditCardsWorker = {
       vertical: "creditcards",
@@ -28555,8 +28555,8 @@ function getSource(id) {
 async function loadSourcesFromDb() {
   try {
     const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const store4 = getStore3();
-    const rows = await store4.query("SELECT id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency FROM source_adapters");
+    const store5 = getStore3();
+    const rows = await store5.query("SELECT id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency FROM source_adapters");
     for (const row of rows) {
       const existing = sources.find((s) => s.id === row.id);
       if (!existing) continue;
@@ -28572,7 +28572,7 @@ async function loadSourcesFromDb() {
       if (row.rate_limit_pm) existing.rateLimit.maxRequestsPerMinute = Number(row.rate_limit_pm);
       if (row.max_concurrency) existing.rateLimit.maxConcurrency = Number(row.max_concurrency);
     }
-    return { loaded: rows.length, dbKind: store4.kind };
+    return { loaded: rows.length, dbKind: store5.kind };
   } catch {
     return { loaded: 0, dbKind: "none" };
   }
@@ -28584,8 +28584,8 @@ function updateSource(id, patch) {
   void (async () => {
     try {
       const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const store4 = getStore3();
-      await store4.execute(
+      const store5 = getStore3();
+      await store5.execute(
         `INSERT INTO source_adapters (id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE enabled=VALUES(enabled), priority=VALUES(priority), config=VALUES(config), rate_limit_pm=VALUES(rate_limit_pm), max_concurrency=VALUES(max_concurrency)`,
@@ -29500,8 +29500,8 @@ function sellerKeyOf(offer) {
 }
 async function ensureSellerMemorySchema() {
   if (schemaReady) return;
-  const store4 = getStore();
-  await store4.execute(`
+  const store5 = getStore();
+  await store5.execute(`
     CREATE TABLE IF NOT EXISTS seller_memory (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       vertical VARCHAR(32) NOT NULL,
@@ -29531,11 +29531,11 @@ async function saveSellerMemory(key, offers) {
       bySeller.set(seller, list);
     }
     if (!bySeller.size) return 0;
-    const store4 = getStore();
+    const store5 = getStore();
     for (const [seller, rows] of bySeller) {
       const json = JSON.stringify(rows);
       if (json.length > 4e6) continue;
-      await store4.execute(
+      await store5.execute(
         `INSERT INTO seller_memory (vertical, route_key, date_key, seller, source_id, rows_json, row_count, fetched_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE source_id = VALUES(source_id), rows_json = VALUES(rows_json),
@@ -29551,14 +29551,14 @@ async function saveSellerMemory(key, offers) {
 async function loadSellerMemory(key, staleAfterMs) {
   try {
     await ensureSellerMemorySchema();
-    const store4 = getStore();
+    const store5 = getStore();
     const params = [key.vertical, key.routeKey, key.dateKey];
     let sql = `SELECT seller, source_id, rows_json, fetched_at FROM seller_memory WHERE vertical = ? AND route_key = ? AND date_key = ?`;
     if (staleAfterMs && staleAfterMs > 0) {
       sql += ` AND fetched_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)`;
       params.push(Math.floor(staleAfterMs / 1e3));
     }
-    const rows = await store4.query(sql, params);
+    const rows = await store5.query(sql, params);
     return (rows || []).map((r) => {
       let parsed = [];
       try {
@@ -30855,13 +30855,13 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
     return { trackingUrl: targetUrl, network: "already_tracked", matchedProfile: "already_tracked" };
   }
   const domain = safeDomain(targetUrl);
-  const store4 = getStore();
+  const store5 = getStore();
   try {
     const slug5 = (opts.companySlug || "").toLowerCase().slice(0, 64);
     const labels = domain.split(".").filter(Boolean);
     const parent2 = labels.length >= 2 ? labels.slice(-2).join(".") : domain;
     const parent3 = labels.length >= 3 ? labels.slice(-3).join(".") : domain;
-    const rows = await store4.query(
+    const rows = await store5.query(
       `SELECT network, campaign_key, template, subid_param, extra_params, monetization, affiliate_id FROM affiliate_configs
        WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
        ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`,
@@ -30881,7 +30881,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const amz = amazonAssociatesUrl(targetUrl);
   if (amz) return { trackingUrl: amz, network: "amazon-associates", matchedProfile: "amazon_associates" };
   try {
-    const rows = await store4.query(
+    const rows = await store5.query(
       `SELECT network_id, deep_link_template, campaign_id, sub_id FROM affiliate_links
        WHERE vendor_domain = ? LIMIT 1`,
       [domain]
@@ -30920,8 +30920,8 @@ function parseJsonObj(v) {
 async function recordPointerClick(dest, offerId, network) {
   const clickId = import_crypto23.default.randomUUID();
   try {
-    const store4 = getStore();
-    await store4.execute(
+    const store5 = getStore();
+    await store5.execute(
       `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
        VALUES (?, ?, ?, ?, ?, NULL)`,
       [offerId ? Number(String(offerId).match(/\d+/)?.[0]) || null : null, network || "direct", safeDomain(dest), dest.slice(0, 2e3), clickId]
@@ -31014,15 +31014,15 @@ function iso(d) {
   return d ? new Date(d).toISOString().slice(0, 19).replace("T", " ") : null;
 }
 async function upsertOffers(offers) {
-  const store4 = getStore();
+  const store5 = getStore();
   let n = 0;
   for (const o of offers) {
-    const existing = await store4.query(
+    const existing = await store5.query(
       "SELECT id FROM affiliate_offers WHERE network_source = ? AND network_offer_id = ?",
       [o.network_source, o.network_offer_id]
     );
     if (existing.length > 0) {
-      await store4.execute(
+      await store5.execute(
         `UPDATE affiliate_offers SET title = ?, description = ?, coupon_code = ?, discount_value = ?, discount_type = ?,
          affiliate_url = ?, original_url = ?, categories = ?, starts_at = ?, expires_at = ?, status = ?, merchant_logo = ?, commission_note = ?, last_seen_at = NOW()
          WHERE network_source = ? AND network_offer_id = ?`,
@@ -31045,7 +31045,7 @@ async function upsertOffers(offers) {
         ])
       );
     } else {
-      await store4.execute(
+      await store5.execute(
         `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         sanitizeBindParams([
           o.network_source,
@@ -31072,8 +31072,8 @@ async function upsertOffers(offers) {
   return n;
 }
 async function expirePastOffers() {
-  const store4 = getStore();
-  const r = await store4.execute(
+  const store5 = getStore();
+  const r = await store5.execute(
     `UPDATE affiliate_offers SET status = 'expired' WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < NOW()`,
     []
   );
@@ -31117,7 +31117,7 @@ function dedupBestOffers(rows) {
   return Array.from(best.values());
 }
 async function listOffers(q3) {
-  const store4 = getStore();
+  const store5 = getStore();
   const where = ["status = 'active'"];
   const params = [];
   if (q3.source) {
@@ -31147,7 +31147,7 @@ async function listOffers(q3) {
   const sql = `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
                discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, created_at, updated_at
                FROM affiliate_offers WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ${pool2} OFFSET ${offset}`;
-  const rows = await store4.query(sql, params);
+  const rows = await store5.query(sql, params);
   return dedupBestOffers(rows).slice(0, limit);
 }
 var COLS, NETWORK_BASE;
@@ -31268,20 +31268,20 @@ function toPublicDeal(r) {
 async function ensureDealsSchema() {
   if (schemaChecked) return;
   schemaChecked = true;
-  const store4 = getStore();
+  const store5 = getStore();
   try {
-    if (store4.kind === "mysql") {
+    if (store5.kind === "mysql") {
       try {
-        await store4.execute("ALTER TABLE deals ADD COLUMN vertical VARCHAR(40) DEFAULT NULL AFTER kind");
+        await store5.execute("ALTER TABLE deals ADD COLUMN vertical VARCHAR(40) DEFAULT NULL AFTER kind");
       } catch {
       }
     }
-    const rows = await store4.query("SELECT id, merchant_key, vertical FROM deals");
+    const rows = await store5.query("SELECT id, merchant_key, vertical FROM deals");
     for (const r of rows) {
       if (!r.vertical || r.vertical === "") {
         const v = MERCHANT_VERTICAL[r.merchant_key];
         if (v) {
-          await store4.execute("UPDATE deals SET vertical = ? WHERE id = ?", [v, Number(r.id)]);
+          await store5.execute("UPDATE deals SET vertical = ? WHERE id = ?", [v, Number(r.id)]);
         }
       }
     }
@@ -31419,22 +31419,22 @@ async function saveDeal(i) {
   const v = validateDeal(i);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
-  const store4 = getStore();
+  const store5 = getStore();
   const vals = [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, "admin"];
   if (i.id) {
-    const ex = await store4.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
+    const ex = await store5.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
     if (!ex.length) return { ok: false, error: "Deal not found" };
-    await store4.execute(
+    await store5.execute(
       "UPDATE deals SET merchant_key=?, merchant_name=?, kind=?, vertical=?, title=?, description=?, code=?, discount_text=?, min_order=?, terms=?, dest_url=?, valid_till=?, sort_weight=?, is_active=?, source=? WHERE id=?",
       [...vals, Number(i.id)]
     );
     return { ok: true, id: Number(i.id) };
   }
-  await store4.execute(
+  await store5.execute(
     "INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     vals
   );
-  const row = await store4.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
+  const row = await store5.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
   return { ok: true, id: row[0] ? Number(row[0].id) : void 0 };
 }
 async function deleteDeal(id) {
@@ -32080,14 +32080,14 @@ function parseBingItems(html) {
   }
   return out;
 }
-function scoreItem(it, tokens2, brandTok) {
+function scoreItem(it, tokens3, brandTok) {
   const url = String(it.murl || "");
   const hay = `${url} ${it.t || ""}`.toLowerCase();
   if (!/^https:\/\//.test(url)) return -1;
   if (!/\.(jpg|jpeg|webp)(\?|$)/i.test(url) && !/(zmtcdn|swiggy|media-assets|instacdn)/i.test(url)) return -1;
   if (STOP_RE.test(hay)) return -1;
   let sc = 0;
-  for (const tk of tokens2) if (hay.includes(tk)) sc += 3;
+  for (const tk of tokens3) if (hay.includes(tk)) sc += 3;
   if (hay.includes(brandTok)) sc += 4;
   if (GOOD_PATH_RE.test(url)) sc += 2;
   return sc;
@@ -32123,8 +32123,8 @@ async function lookupProductImage(seller, dish) {
     return null;
   }
   const brandTok = slug3(brand).split("-")[0] || "pizza";
-  const tokens2 = Array.from(/* @__PURE__ */ new Set([brandTok, ...slug3(dish).split("-").filter((t) => t.length > 2 && !["pizza", "the", "and"].includes(t))]));
-  const ranked = items.map((it) => ({ it, sc: scoreItem(it, tokens2, brandTok) })).filter((x) => x.sc > 2).sort((a, b) => b.sc - a.sc).slice(0, 3);
+  const tokens3 = Array.from(/* @__PURE__ */ new Set([brandTok, ...slug3(dish).split("-").filter((t) => t.length > 2 && !["pizza", "the", "and"].includes(t))]));
+  const ranked = items.map((it) => ({ it, sc: scoreItem(it, tokens3, brandTok) })).filter((x) => x.sc > 2).sort((a, b) => b.sc - a.sc).slice(0, 3);
   for (const cand of ranked) {
     if (await verifyImage(cand.it.murl)) return String(cand.it.murl);
   }
@@ -32361,10 +32361,10 @@ __export(prune_exports, {
   startCatalogueRetention: () => startCatalogueRetention
 });
 async function batchedDelete(sql, params) {
-  const store4 = getStore();
+  const store5 = getStore();
   let total = 0;
   for (let i = 0; i < MAX_BATCHES; i++) {
-    const res = await store4.execute(`${sql} LIMIT ${BATCH}`, params);
+    const res = await store5.execute(`${sql} LIMIT ${BATCH}`, params);
     const n = res.affectedRows || 0;
     total += n;
     if (n < BATCH) break;
@@ -32373,8 +32373,8 @@ async function batchedDelete(sql, params) {
   return total;
 }
 async function pruneCatalogue(scale = 1) {
-  const store4 = getStore();
-  if (store4.kind !== "mysql") return 0;
+  const store5 = getStore();
+  if (store5.kind !== "mysql") return 0;
   let removed = 0;
   const steps = [
     ["offers", "DELETE FROM offers WHERE fetched_at < ?", [daysAgo(RETENTION.offersDays, scale)]],
@@ -32415,11 +32415,11 @@ async function pruneCatalogue(scale = 1) {
   return removed;
 }
 async function compactCatalogue() {
-  const store4 = getStore();
-  if (store4.kind !== "mysql") return;
+  const store5 = getStore();
+  if (store5.kind !== "mysql") return;
   for (const table of ["offers", "source_evidence", "price_history", "source_health", "affiliate_offers", "deals"]) {
     try {
-      await store4.query(`OPTIMIZE TABLE ${table}`);
+      await store5.query(`OPTIMIZE TABLE ${table}`);
       log.info("Prune", `Compacted ${table}`);
     } catch (e2) {
       log.warn("Prune", `${table} compaction skipped`, { error: String(e2?.message || e2).slice(0, 140) });
@@ -32427,10 +32427,10 @@ async function compactCatalogue() {
   }
 }
 async function databaseSizeMb() {
-  const store4 = getStore();
-  if (store4.kind !== "mysql") return 0;
+  const store5 = getStore();
+  if (store5.kind !== "mysql") return 0;
   try {
-    const rows = await store4.query(
+    const rows = await store5.query(
       `SELECT COALESCE(SUM(data_length + index_length) / 1048576, 0) AS mb
          FROM information_schema.tables WHERE table_schema = DATABASE()`
     );
@@ -32441,10 +32441,10 @@ async function databaseSizeMb() {
   }
 }
 async function compactLargestTable() {
-  const store4 = getStore();
-  if (store4.kind !== "mysql") return null;
+  const store5 = getStore();
+  if (store5.kind !== "mysql") return null;
   try {
-    const rows = await store4.query(
+    const rows = await store5.query(
       `SELECT table_name AS tbl, (data_length + index_length) / 1048576 AS mb
          FROM information_schema.tables
         WHERE table_schema = DATABASE()
@@ -32455,7 +32455,7 @@ async function compactLargestTable() {
     );
     const first = Array.isArray(rows) ? rows[0] : rows?.[0];
     if (!first?.tbl) return null;
-    await store4.query(`OPTIMIZE TABLE \`${first.tbl}\``);
+    await store5.query(`OPTIMIZE TABLE \`${first.tbl}\``);
     log.info("Prune", `Compacted ${first.tbl} (${Number(first.mb ?? 0).toFixed(0)} MB)`);
     return String(first.tbl);
   } catch (e2) {
@@ -32474,13 +32474,13 @@ function notifyWriteDenied(err) {
     "Hostinger DB size cap engaged: INSERT/UPDATE denied (read-only). Auto-shrink started \u2014 writes resume automatically once the host re-checks size. Optional accelerant: OPTIMIZE TABLE on offers/source_evidence/price_history in phpMyAdmin."
   );
   void (async () => {
-    const store4 = getStore();
+    const store5 = getStore();
     try {
-      if (store4.kind === "mysql") {
+      if (store5.kind === "mysql") {
         await pruneCatalogue(0.5);
         for (const table of COMPACTABLE) {
           try {
-            await store4.query(`OPTIMIZE TABLE \`${table}\``);
+            await store5.query(`OPTIMIZE TABLE \`${table}\``);
             log.info("Prune", `Emergency compaction done: ${table}`);
           } catch {
           }
@@ -32593,9 +32593,9 @@ function tokenOverlap(a, b) {
   return ta.size === 0 ? 0 : inter / ta.size;
 }
 async function resolveCanonicalEntity(offer) {
-  const store4 = getStore();
+  const store5 = getStore();
   try {
-    const rows = await store4.query(
+    const rows = await store5.query(
       "SELECT id, name, brand FROM canonical_entities WHERE vertical = ? ORDER BY id DESC LIMIT 500",
       [offer.vertical]
     );
@@ -32612,7 +32612,7 @@ async function resolveCanonicalEntity(offer) {
         matchEvidence: `deterministic score ${best.score.toFixed(2)}`
       };
     }
-    const res = await store4.execute(
+    const res = await store5.execute(
       "INSERT INTO canonical_entities (vertical, name, brand) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
       [offer.vertical, offer.title.slice(0, 500), offer.brand || null]
     );
@@ -33784,16 +33784,16 @@ function filterByQueryEntity(offers, query) {
   if (!query.entityName) return offers;
   const providerFiltered = filterByNamedProviders(offers, query.entityName);
   if (providerFiltered.length !== offers.length) return providerFiltered;
-  const tokens2 = query.entityName.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
-  if (tokens2.length === 0) return offers;
-  if ((query.intent === "browse" || tokens2.length > 2) && offers.length > 0 && offers.every((o) => NON_COMPARISON_VERTICALS.includes(o.vertical))) {
+  const tokens3 = query.entityName.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
+  if (tokens3.length === 0) return offers;
+  if ((query.intent === "browse" || tokens3.length > 2) && offers.length > 0 && offers.every((o) => NON_COMPARISON_VERTICALS.includes(o.vertical))) {
     return offers;
   }
   return offers.filter((o) => {
     const attrText = CATEGORICAL_ATTR_KEYS.map((k) => String(o.attributes?.[k] ?? "")).join(" ");
     const text = `${o.title} ${o.vendor || ""} ${attrText}`.toLowerCase();
-    const hits = tokens2.filter((t) => text.includes(t)).length;
-    return hits >= Math.ceil(tokens2.length / 2);
+    const hits = tokens3.filter((t) => text.includes(t)).length;
+    return hits >= Math.ceil(tokens3.length / 2);
   });
 }
 function normPlace2(x) {
@@ -34157,9 +34157,9 @@ __export(catalogueService_exports, {
   updateVolatileFields: () => updateVolatileFields
 });
 async function persistOffer(offer, raw, source) {
-  const store4 = getStore();
+  const store5 = getStore();
   try {
-    const res = await store4.execute(
+    const res = await store5.execute(
       `INSERT INTO offers (
          canonical_entity_id, vertical, title, brand, identifiers, attributes, vendor, seller, seller_url,
          location_pincode, location_city, list_price, mandatory_total, effective_price, verified_savings,
@@ -34199,7 +34199,7 @@ async function persistOffer(offer, raw, source) {
     );
     const evidence = buildEvidence(offer, raw);
     try {
-      await store4.execute(
+      await store5.execute(
         `INSERT INTO source_evidence (offer_id, source_id, source_method, source_url, source_reference, fetched_at, extracted_fields, evidence_hash)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -34223,9 +34223,9 @@ async function persistOffer(offer, raw, source) {
   }
 }
 async function recordPriceSnapshot(offer, rowId) {
-  const store4 = getStore();
+  const store5 = getStore();
   try {
-    await store4.execute(
+    await store5.execute(
       `INSERT INTO price_history (offer_id, canonical_entity_id, mandatory_total, effective_price, currency, source_id, freshness_status)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -34242,7 +34242,7 @@ async function recordPriceSnapshot(offer, rowId) {
   }
 }
 async function findCatalogueOffers(vertical, opts = {}) {
-  const store4 = getStore();
+  const store5 = getStore();
   try {
     const params = [vertical];
     let where = "vertical = ? AND validation_status != ?";
@@ -34260,7 +34260,7 @@ async function findCatalogueOffers(vertical, opts = {}) {
       params.push(`%${t}%`);
     }
     params.push(opts.limit ?? 50);
-    return await store4.query(
+    return await store5.query(
       `SELECT id, vertical, title, vendor, seller, location_pincode, location_city, mandatory_total, effective_price,
               currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id,
               seller_url, brand, attributes
@@ -34273,10 +34273,10 @@ async function findCatalogueOffers(vertical, opts = {}) {
   }
 }
 async function refreshCandidates(opts) {
-  const store4 = getStore();
-  if (store4.kind !== "mysql") return [];
+  const store5 = getStore();
+  if (store5.kind !== "mysql") return [];
   try {
-    return await store4.query(
+    return await store5.query(
       `SELECT o.id, o.vertical, o.title, o.vendor, o.seller, o.mandatory_total, o.effective_price, o.currency,
               o.availability, o.freshness_status, o.validation_status, o.fetched_at, o.source_id, o.canonical_entity_id
        FROM offers o
@@ -34297,9 +34297,9 @@ async function refreshCandidates(opts) {
   }
 }
 async function updateVolatileFields(rowId, patch) {
-  const store4 = getStore();
+  const store5 = getStore();
   try {
-    await store4.execute(
+    await store5.execute(
       `UPDATE offers SET mandatory_total = ?, effective_price = ?, availability = ?, freshness_status = ?, validated_at = ?, expires_at = ?, fetched_at = NOW() WHERE id = ?`,
       [
         patch.mandatoryTotal ?? null,
@@ -34316,9 +34316,9 @@ async function updateVolatileFields(rowId, patch) {
   }
 }
 async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
-  const store4 = getStore();
+  const store5 = getStore();
   try {
-    return await store4.query(
+    return await store5.query(
       `SELECT effective_price, captured_at FROM price_history WHERE canonical_entity_id = ? ORDER BY captured_at DESC LIMIT ?`,
       [canonicalEntityId, limit]
     );
@@ -34327,17 +34327,17 @@ async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
   }
 }
 async function purgePhotolessHotelOffers() {
-  const store4 = getStore();
+  const store5 = getStore();
   try {
-    await store4.execute(PURGE_BAD_HOTEL_ART_SQL);
+    await store5.execute(PURGE_BAD_HOTEL_ART_SQL);
   } catch (e2) {
     log.debug("Catalogue", "Hotel art hygiene skipped", { error: String(e2).slice(0, 100) });
   }
 }
 async function purgeStaleBankingOffers() {
-  const store4 = getStore();
+  const store5 = getStore();
   try {
-    await store4.execute(
+    await store5.execute(
       `DELETE FROM offers WHERE vertical = 'banking' AND (attributes IS NULL OR attributes NOT LIKE '%"account_type"%')`
     );
   } catch (e2) {
@@ -35080,8 +35080,8 @@ async function resolveRedirect(dest, opts = {}) {
     }
   }
   try {
-    const store4 = getStore();
-    await store4.execute(
+    const store5 = getStore();
+    await store5.execute(
       `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [opts.offerId ? extractNumericId(opts.offerId) : null, network || "direct", safeDomain2(dest), dest, clickId, opts.userId || null]
@@ -35275,7 +35275,7 @@ async function saveManualFinanceOffer(input) {
   const v = validateFinanceOffer(input);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
-  const store4 = getStore();
+  const store5 = getStore();
   const attributes = JSON.stringify({
     manual: 1,
     rate_label: c.rate_label,
@@ -35292,9 +35292,9 @@ async function saveManualFinanceOffer(input) {
     ...c.rate_label ? { unit: c.rate_label } : {}
   });
   if (c.id) {
-    const ex = await store4.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [c.id, SOURCE_ID]).catch(() => []);
+    const ex = await store5.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [c.id, SOURCE_ID]).catch(() => []);
     if (!ex.length) return { ok: false, error: "That entry does not exist (or is not a manual finance entry)" };
-    await store4.execute(
+    await store5.execute(
       `UPDATE offers SET vertical=?, title=?, seller=?, seller_url=?, effective_price=?, attributes=?,
          location_city=?, freshness_status=?, validation_status='VALID', fetched_at=NOW()
        WHERE id=? AND source_id=?`,
@@ -35303,7 +35303,7 @@ async function saveManualFinanceOffer(input) {
     await log2(c.id, c.vertical, "update", c.actor, c);
     return { ok: true, id: c.id };
   }
-  const res = await store4.execute(
+  const res = await store5.execute(
     `INSERT INTO offers (vertical, title, vendor, seller, seller_url, effective_price, attributes,
         location_city, currency, availability, match_state, freshness_status, validation_status, confidence,
         source_id, source_method, source_url, fetched_at, validated_at)
@@ -35315,10 +35315,10 @@ async function saveManualFinanceOffer(input) {
   return { ok: true, id };
 }
 async function deleteManualFinanceOffer(id, actor) {
-  const store4 = getStore();
-  const rows = await store4.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [Number(id), SOURCE_ID]).catch(() => []);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [Number(id), SOURCE_ID]).catch(() => []);
   if (!rows.length) return { ok: false, error: "Entry not found" };
-  await store4.execute(`UPDATE offers SET freshness_status='INVALID', updated_at=NOW() WHERE id = ? AND source_id = ?`, [Number(id), SOURCE_ID]);
+  await store5.execute(`UPDATE offers SET freshness_status='INVALID', updated_at=NOW() WHERE id = ? AND source_id = ?`, [Number(id), SOURCE_ID]);
   await log2(Number(id), rows[0].vertical, "delete", actor || null, rows[0]);
   return { ok: true };
 }
@@ -35550,9 +35550,9 @@ function routeFloorMatches(rawQuery, offer) {
   const sides = q3.split(/\s+to\s+/);
   if (sides.length < 2) return true;
   const parens = /\([^)]*\)/g;
-  const tokens2 = (side) => side.replace(parens, " ").replace(/[^a-z\s]/g, " ").split(/\s+/).filter((t) => t.length >= 3 && !["the", "and"].includes(t));
-  const dest = tokens2(sides[sides.length - 1]);
-  const origin = sides.length > 2 ? tokens2(sides[1]) : tokens2(sides[0]);
+  const tokens3 = (side) => side.replace(parens, " ").replace(/[^a-z\s]/g, " ").split(/\s+/).filter((t) => t.length >= 3 && !["the", "and"].includes(t));
+  const dest = tokens3(sides[sides.length - 1]);
+  const origin = sides.length > 2 ? tokens3(sides[1]) : tokens3(sides[0]);
   if (!dest.length) return true;
   const attrs = offer.attributes || {};
   const sideText = (t) => t.toLowerCase().replace(parens, " ");
@@ -37770,24 +37770,24 @@ function verifyPassword(password, stored) {
 }
 async function registerUser(email, password, displayName) {
   if (!email || !password || password.length < 8) return { ok: false, error: "Email and a password of at least 8 characters are required" };
-  const store4 = getStore();
-  const existing = await store4.query("SELECT id FROM users WHERE email = ?", [email.toLowerCase()]);
+  const store5 = getStore();
+  const existing = await store5.query("SELECT id FROM users WHERE email = ?", [email.toLowerCase()]);
   if (existing.length > 0) return { ok: false, error: "An account with this email already exists" };
   const role = settings.adminEmails.includes(email.toLowerCase()) ? "admin" : "user";
-  const res = await store4.execute(
+  const res = await store5.execute(
     "INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
     [email.toLowerCase(), hashPassword(password), displayName || null, role]
   );
   return { ok: true, userId: res.insertId || void 0 };
 }
 async function loginUser(email, password) {
-  const store4 = getStore();
-  const rows = await store4.query("SELECT id, email, password_hash, display_name, role FROM users WHERE email = ?", [email.toLowerCase()]);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT id, email, password_hash, display_name, role FROM users WHERE email = ?", [email.toLowerCase()]);
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
   const token = import_crypto25.default.randomBytes(32).toString("hex");
-  await store4.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+  await store5.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
     new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
@@ -37800,13 +37800,13 @@ async function loginUser(email, password) {
 }
 async function userForToken(token) {
   if (!token) return null;
-  const store4 = getStore();
-  const sess = await store4.query(`SELECT user_id, expires_at FROM sessions WHERE id = ?`, [token]);
+  const store5 = getStore();
+  const sess = await store5.query(`SELECT user_id, expires_at FROM sessions WHERE id = ?`, [token]);
   if (sess.length === 0) return null;
   const exp = String(sess[0].expires_at || "").replace("T", " ").slice(0, 19);
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
   if (!exp || exp <= now) return null;
-  const rows = await store4.query(`SELECT id, email, display_name, role FROM users WHERE id = ?`, [Number(sess[0].user_id)]);
+  const rows = await store5.query(`SELECT id, email, display_name, role FROM users WHERE id = ?`, [Number(sess[0].user_id)]);
   if (rows.length === 0) return null;
   const r = rows[0];
   return { id: Number(r.id), email: r.email, role: r.role, displayName: r.display_name || void 0 };
@@ -37855,17 +37855,17 @@ function firstHttps(doc) {
   return null;
 }
 async function resolveCatalogueImage(query, vertical, opts = {}) {
-  const tokens2 = imageTokens(query);
-  if (!tokens2.length) return null;
-  const store4 = getStore();
+  const tokens3 = imageTokens(query);
+  if (!tokens3.length) return null;
+  const store5 = getStore();
   const params = [vertical];
   let where = `vertical = ? AND attributes IS NOT NULL AND attributes LIKE '%image%'`;
-  for (const t of tokens2) {
+  for (const t of tokens3) {
     where += " AND LOWER(title) LIKE ?";
     params.push(`%${t.replace(/[%_]/g, "")}%`);
   }
   try {
-    const rows = await store4.query(
+    const rows = await store5.query(
       `SELECT title, attributes FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT 40`,
       params
     );
@@ -37974,26 +37974,26 @@ function nowIso2() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
 }
 async function isEligibleAdmin(email) {
-  const store4 = getStore();
+  const store5 = getStore();
   if (settings.adminEmails.includes(email)) return true;
-  const rows = await store4.query("SELECT role FROM users WHERE email = ?", [email]);
+  const rows = await store5.query("SELECT role FROM users WHERE email = ?", [email]);
   return rows.length > 0 && rows[0].role === "admin";
 }
 async function requestAdminOtp(email) {
   const clean4 = String(email || "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean4)) return { ok: false, sent: false, error: "A valid email address is required" };
-  const store4 = getStore();
-  const recent = await store4.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean4]);
+  const store5 = getStore();
+  const recent = await store5.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean4]);
   const now = Date.now();
   const hourAgo = now - 60 * 60 * 1e3;
   const lastHour = recent.filter((r) => parseDbUtc(r.created_at) > hourAgo);
   if (lastHour.length >= HOURLY_CAP) return { ok: false, sent: false, error: "Too many codes requested. Try again later." };
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
-  await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+  await store5.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
   const code = String(import_crypto26.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
-  await store4.execute(
+  await store5.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
     [clean4, hashOtp(code), expiresAt, 0, nowIso2()]
   );
@@ -38014,7 +38014,7 @@ async function requestAdminOtp(email) {
     `Your Try1Second admin login code: ${code} (expires in 10 minutes)`
   );
   if (!mail.ok) {
-    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+    await store5.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     log.warn("Otp", `OTP email delivery failed for admin: ${mail.error}`);
     return { ok: false, sent: false, error: "Could not send the login code right now. Please try again later.", deliveryError: mail.error };
   }
@@ -38025,24 +38025,24 @@ async function verifyAdminOtp(email, code) {
   const clean4 = String(email || "").trim().toLowerCase();
   const otp = String(code || "").replace(/\D/g, "");
   if (!clean4 || otp.length !== 6) return { ok: false, error: "Enter the 6-digit code sent to your email" };
-  const store4 = getStore();
-  const rows = await store4.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean4]);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean4]);
   if (rows.length === 0) return { ok: false, error: "No active code. Request a new one." };
   const row = rows[rows.length - 1];
   if (Number(row.attempts || 0) >= MAX_VERIFY_ATTEMPTS) {
-    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+    await store5.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     return { ok: false, error: "Too many incorrect attempts. Request a new code." };
   }
   const exp = parseDbUtc(row.expires_at);
   if (!Number.isFinite(exp) || exp < Date.now()) {
-    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+    await store5.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     return { ok: false, error: "Code expired. Request a new one." };
   }
   if (!verifyOtpHash(otp, row.code_hash)) {
-    await store4.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?", [row.id]);
+    await store5.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?", [row.id]);
     return { ok: false, error: "Incorrect code" };
   }
-  await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+  await store5.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
   const eligible = await isEligibleAdmin(clean4);
   if (!eligible) return { ok: false, error: "Invalid code" };
   log.info("Otp", `Admin OTP verified for ${clean4}`);
@@ -38212,8 +38212,8 @@ async function withUserLock(userId, fn) {
 }
 async function registerReferral(referrerId, refereeId) {
   if (referrerId === refereeId) return { ok: false, error: "Cannot refer yourself" };
-  const store4 = getStore();
-  return store4.transaction(async (tx) => {
+  const store5 = getStore();
+  return store5.transaction(async (tx) => {
     const existing = await tx.query("SELECT id FROM referrals WHERE referee_id = ?", [refereeId]);
     if (existing.length > 0) return { ok: false, error: "This user was already referred" };
     const res = await tx.execute("INSERT INTO referrals (referrer_id, referee_id, status) VALUES (?, ?, ?)", [referrerId, refereeId, "pending"]);
@@ -38231,13 +38231,13 @@ async function registerReferral(referrerId, refereeId) {
   });
 }
 async function validPointBalance(userId) {
-  const store4 = getStore();
-  const rows = await store4.query("SELECT points FROM referral_point_events WHERE user_id = ?", [userId]);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT points FROM referral_point_events WHERE user_id = ?", [userId]);
   return rows.reduce((sum, r) => sum + Number(r.points || 0), 0);
 }
 async function claimSpinEligibility(userId) {
-  const store4 = getStore();
-  return withUserLock(userId, () => store4.transaction(async (tx) => {
+  const store5 = getStore();
+  return withUserLock(userId, () => store5.transaction(async (tx) => {
     const rows = await tx.query("SELECT points FROM referral_point_events WHERE user_id = ?", [userId]);
     const points = rows.reduce((sum, r) => sum + Number(r.points || 0), 0);
     const consumed = await consumedPoints(userId, tx);
@@ -38254,22 +38254,22 @@ async function consumedPoints(userId, tx) {
   return rows.length * POINTS_PER_SPIN_ELIGIBILITY;
 }
 async function eligibleSpinCount(userId) {
-  const store4 = getStore();
-  const rows = await store4.query(
+  const store5 = getStore();
+  const rows = await store5.query(
     "SELECT id FROM spin_eligibilities WHERE user_id = ? AND consumed_at IS NULL",
     [userId]
   );
   return rows.length;
 }
 async function executeSpin(userId, idempotencyKey) {
-  const store4 = getStore();
+  const store5 = getStore();
   const key = idempotencyKey || import_crypto28.default.randomUUID();
-  const prior = await store4.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
+  const prior = await store5.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
     return { status: "DUPLICATE", spinId: Number(prior[0].id), prize };
   }
-  return withUserLock(userId, () => store4.transaction(async (tx) => {
+  return withUserLock(userId, () => store5.transaction(async (tx) => {
     const elig = await tx.query(
       "SELECT id FROM spin_eligibilities WHERE user_id = ? AND consumed_at IS NULL ORDER BY id LIMIT 1",
       [userId]
@@ -38348,12 +38348,12 @@ async function submitFulfilmentDetails(userId, spinId, contact) {
   if (!contact.name?.trim() || !/^\+?\d[\d\s-]{7,14}$/.test(contact.phone || "")) {
     return { ok: false, error: "Valid name and phone are required for prize fulfilment" };
   }
-  const store4 = getStore();
-  const rows = await store4.query("SELECT id, user_id FROM spins WHERE id = ?", [spinId]);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT id, user_id FROM spins WHERE id = ?", [spinId]);
   if (rows.length === 0) return { ok: false, error: "Spin not found" };
   if (Number(rows[0].user_id) !== userId) return { ok: false, error: "This spin belongs to another user" };
   try {
-    const res = await store4.execute(
+    const res = await store5.execute(
       `UPDATE fulfilment_records SET contact_name = ?, contact_phone = ?, contact_location = ?, status = ?
        WHERE spin_id = ? AND user_id = ?`,
       [contact.name.trim().slice(0, 160), contact.phone.trim().slice(0, 30), (contact.location || "").trim().slice(0, 500), "CONTACT_REQUIRED", spinId, userId]
@@ -38379,8 +38379,8 @@ async function updateFulfilmentStatus(recordId, status) {
   return res.affectedRows > 0;
 }
 async function ensureReferralCode(userId) {
-  const store4 = getStore();
-  const rows = await store4.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
   const existing = rows[0]?.referral_code ? String(rows[0].referral_code) : "";
   if (existing) return existing;
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -38388,9 +38388,9 @@ async function ensureReferralCode(userId) {
     const bytes = import_crypto28.default.randomBytes(6);
     for (let i = 0; i < 6; i++) code += REF_CODE_ALPHABET[bytes[i] % REF_CODE_ALPHABET.length];
     try {
-      const res = await store4.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
+      const res = await store5.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
       if (res.affectedRows > 0) return code;
-      const again = await store4.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
+      const again = await store5.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
       if (again[0]?.referral_code) return String(again[0].referral_code);
     } catch (e2) {
       if (!/uq_referral_code|Duplicate/i.test(String(e2?.message || ""))) throw e2;
@@ -38401,8 +38401,8 @@ async function ensureReferralCode(userId) {
 async function applyReferralCode(refereeId, rawCode) {
   const code = String(rawCode || "").trim().toUpperCase();
   if (!code) return { ok: false, error: "Enter a referral code" };
-  const store4 = getStore();
-  const rows = await store4.query("SELECT id FROM users WHERE referral_code = ?", [code]);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT id FROM users WHERE referral_code = ?", [code]);
   if (!rows.length) return { ok: false, error: "That referral code is not valid" };
   const referrerId = Number(rows[0].id);
   const r = await registerReferral(referrerId, refereeId);
@@ -38410,13 +38410,13 @@ async function applyReferralCode(refereeId, rawCode) {
   return { ok: true, awarded: r.awarded, referrerCode: code };
 }
 async function referralStats(userId) {
-  const store4 = getStore();
-  const referred = await store4.query("SELECT COUNT(*) c FROM referrals WHERE referrer_id = ? AND status = 'valid'", [userId]);
-  const by = await store4.query("SELECT referrer_id FROM referrals WHERE referee_id = ? LIMIT 1", [userId]);
+  const store5 = getStore();
+  const referred = await store5.query("SELECT COUNT(*) c FROM referrals WHERE referrer_id = ? AND status = 'valid'", [userId]);
+  const by = await store5.query("SELECT referrer_id FROM referrals WHERE referee_id = ? LIMIT 1", [userId]);
   let referredByCode = null;
   const referrerId = by[0]?.referrer_id ? Number(by[0].referrer_id) : 0;
   if (referrerId) {
-    const u = await store4.query("SELECT referral_code FROM users WHERE id = ?", [referrerId]);
+    const u = await store5.query("SELECT referral_code FROM users WHERE id = ?", [referrerId]);
     referredByCode = u[0]?.referral_code ? String(u[0].referral_code) : null;
   }
   return { referredCount: Number(referred[0]?.c || 0), referredByCode };
@@ -38449,8 +38449,8 @@ function validateEntry(i) {
 async function addSpendEntry(i) {
   const v = validateEntry(i);
   if (!v.ok) return v;
-  const store4 = getStore();
-  const res = await store4.execute(
+  const store5 = getStore();
+  const res = await store5.execute(
     `INSERT INTO spend_entries (user_id, merchant, amount, item_title, vertical, entry_date, source, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -38464,12 +38464,12 @@ async function addSpendEntry(i) {
       1
     ]
   );
-  const rows = await store4.query("SELECT id FROM spend_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1", [i.userId]);
+  const rows = await store5.query("SELECT id FROM spend_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1", [i.userId]);
   return { ok: true, id: Number(res?.insertId ?? rows[0]?.id) };
 }
 async function listSpendEntries(userId) {
-  const store4 = getStore();
-  const rows = (await store4.query(
+  const store5 = getStore();
+  const rows = (await store5.query(
     "SELECT id, merchant, amount, item_title, vertical, entry_date, source, is_active, created_at FROM spend_entries WHERE user_id = ?",
     [userId]
   )).filter(isActive);
@@ -38486,10 +38486,10 @@ async function listSpendEntries(userId) {
   }));
 }
 async function deleteSpendEntry(userId, id) {
-  const store4 = getStore();
-  const mine = await store4.query("SELECT id FROM spend_entries WHERE user_id = ?", [userId]);
+  const store5 = getStore();
+  const mine = await store5.query("SELECT id FROM spend_entries WHERE user_id = ?", [userId]);
   if (!mine.some((r) => Number(r.id) === Number(id))) return false;
-  await store4.execute("UPDATE spend_entries SET is_active = ? WHERE id = ?", [0, Number(id)]);
+  await store5.execute("UPDATE spend_entries SET is_active = ? WHERE id = ?", [0, Number(id)]);
   return true;
 }
 function summarizeSpend(entries2) {
@@ -38556,7 +38556,7 @@ __export(placements_exports, {
   upsertTopPick: () => upsertTopPick
 });
 async function listTopPicks(vertical, includeInactive = false) {
-  const store4 = getStore();
+  const store5 = getStore();
   const params = [];
   let where = "";
   if (!includeInactive) {
@@ -38566,7 +38566,7 @@ async function listTopPicks(vertical, includeInactive = false) {
     where += where ? " AND vertical = ?" : " WHERE vertical = ?";
     params.push(vert(vertical));
   }
-  const rows = await store4.query(
+  const rows = await store5.query(
     `SELECT * FROM top_picks${where} ORDER BY position ASC, id ASC LIMIT 50`,
     params
   );
@@ -38591,7 +38591,7 @@ async function upsertTopPick(input) {
   const check = validateDestination(destination, { allowEmbeddedRedirect: true });
   if (!check.valid) return { ok: false, error: `Destination rejected: ${check.reason}` };
   const rating = Math.max(0, Math.min(5, Number(input.rating ?? 0)));
-  const store4 = getStore();
+  const store5 = getStore();
   const perks = JSON.stringify((input.perks || []).map((p) => String(p).slice(0, 120)).slice(0, 6));
   const values = [
     vertical,
@@ -38612,7 +38612,7 @@ async function upsertTopPick(input) {
     input.is_active === false ? 0 : 1
   ];
   if (input.id) {
-    await store4.execute(
+    await store5.execute(
       `UPDATE top_picks SET vertical=?, partner_name=?, partner_code=?, badge_text=?, headline=?, offer_text=?,
        price_badge=?, perks=?, cta_text=?, destination_url=?, image_url=?, logo_bg=?, logo_text=?,
        rating=?, position=?, is_active=? WHERE id=?`,
@@ -38621,7 +38621,7 @@ async function upsertTopPick(input) {
     purgeSectionCache("rewards:");
     return { ok: true, id: input.id };
   }
-  const result = await store4.execute(
+  const result = await store5.execute(
     `INSERT INTO top_picks (vertical, partner_name, partner_code, badge_text, headline, offer_text,
      price_badge, perks, cta_text, destination_url, image_url, logo_bg, logo_text, rating, position, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -38654,15 +38654,15 @@ async function upsertAdSlot(input) {
     const slot2 = str(input.adsense_slot, 60);
     if (!/^ca-pub-[0-9]{10,}$/.test(client || "")) return { ok: false, error: "AdSense client must look like ca-pub-XXXXXXXXXXXXXXXX" };
     if (!/^[0-9]{6,20}$/.test(slot2 || "")) return { ok: false, error: "AdSense slot id must be numeric" };
-    const store5 = getStore();
-    const existing2 = await store5.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+    const store6 = getStore();
+    const existing2 = await store6.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
     if (existing2.length) {
-      await store5.execute(
+      await store6.execute(
         "UPDATE ad_slots SET provider=?, adsense_client=?, adsense_slot=?, custom_html=NULL, is_active=? WHERE slot_key=?",
         ["adsense", client, slot2, input.is_active === false ? 0 : 1, slot_key]
       );
     } else {
-      await store5.execute(
+      await store6.execute(
         "INSERT INTO ad_slots (slot_key, provider, adsense_client, adsense_slot, is_active) VALUES (?, ?, ?, ?, ?)",
         [slot_key, "adsense", client, slot2, input.is_active === false ? 0 : 1]
       );
@@ -38671,15 +38671,15 @@ async function upsertAdSlot(input) {
   }
   const html = String(input.custom_html || "").slice(0, 8e3);
   if (!html.trim()) return { ok: false, error: "Custom HTML is required for the custom_html provider" };
-  const store4 = getStore();
-  const existing = await store4.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+  const store5 = getStore();
+  const existing = await store5.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
   if (existing.length) {
-    await store4.execute(
+    await store5.execute(
       "UPDATE ad_slots SET provider=?, custom_html=?, adsense_client=NULL, adsense_slot=NULL, is_active=? WHERE slot_key=?",
       ["custom_html", html, input.is_active === false ? 0 : 1, slot_key]
     );
   } else {
-    await store4.execute(
+    await store5.execute(
       "INSERT INTO ad_slots (slot_key, provider, custom_html, is_active) VALUES (?, ?, ?, ?)",
       [slot_key, "custom_html", html, input.is_active === false ? 0 : 1]
     );
@@ -39570,10 +39570,10 @@ async function fetchVerticalOffers(vertical, limit) {
   const key = `${vertical}|${limit}`;
   const hit = poolCache.get(key);
   if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.rows;
-  const store4 = getStore();
+  const store5 = getStore();
   let rows = [];
   try {
-    rows = await store4.query(
+    rows = await store5.query(
       `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
               list_price, mandatory_total, effective_price, validation_status, fetched_at
        FROM offers WHERE vertical = ? ORDER BY fetched_at DESC LIMIT ${Math.max(limit, 500)}`,
@@ -39600,7 +39600,7 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
   const cacheKey = `${vertical}|byCity|${cities.length}|${perCityLimit}`;
   const hit = cityPoolCache.get(cacheKey);
   if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.map;
-  const store4 = getStore();
+  const store5 = getStore();
   const perCitySql = (like) => `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
               list_price, mandatory_total, effective_price, validation_status, fetched_at
        FROM offers WHERE vertical = ? AND (${like}) ORDER BY fetched_at DESC LIMIT ${perCityLimit}`;
@@ -39611,7 +39611,7 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
       const params = [vertical];
       for (const k of c.keys) params.push(`%${k}%`, `%${k}%`);
       try {
-        return [c.name, (await store4.query(perCitySql(like), params)).slice(0, perCityLimit)];
+        return [c.name, (await store5.query(perCitySql(like), params)).slice(0, perCityLimit)];
       } catch (e2) {
         log.debug("Showcase", "per-city pool query failed", { vertical, city: c.name, error: String(e2).slice(0, 100) });
         return [c.name, []];
@@ -39633,9 +39633,9 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
   return map;
 }
 async function fetchAffiliateRows(limit) {
-  const store4 = getStore();
+  const store5 = getStore();
   try {
-    const rows = await store4.query(
+    const rows = await store5.query(
       `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
               discount_value, discount_type, affiliate_url, original_url, categories, commission_note, last_seen_at
        FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
@@ -40671,7 +40671,7 @@ var init_verticalLexicon = __esm({
       "behrouz",
       "third wave coffee"
     ];
-    QUESTION_NOISE = /\b(kaha|kahan|kahaan|kidhar|kaunse|kaunsi|konsa|konsi|kaunsa|which|where|milega|milegi|milta|milte|mile|milege|milegaa|available|aas\s*paas|near\s*me|nearby|sbse|sabse|sabsay|sasta|sasti|sastta|saste|cheapest|cheap|best|accha|behtar|bhav|bhaav|daam|dam|price|prices|rate|rates|kitne|kitna|kitni|kya|kaun|please|pls|plz|karna|karu|kare|karo|kar\s*do|kar|batao|bata\s*do|bata|bataye|dikhao|dikha\s*do|chahiye|chahie|hai|hain|hoga|hogi|ka|ki|ke|ko|me|mein|mai|se|tak|par|pe|is|are|the|of|for|a|an|i|want|need|looking|find|search|compare|check|what|how|much|does|cost|kaunse|par\s+mil|online|order|buy|kharidna|kharido|khareed|dukan|dukaan|store|stores|shop|shops)\b/gi;
+    QUESTION_NOISE = /\b(kaha|kahan|kahaan|kidhar|kaunse|kaunsi|konsa|konsi|kaunsa|which|where|milega|milegi|milta|milte|mile|milege|milegaa|available|aas\s*paas|near\s*me|nearby|sbse|sabse|sabsay|sasta|sasti|sastta|saste|cheapest|cheap|best|accha|behtar|bhav|bhaav|daam|dam|price|prices|rate|rates|kitne|kitna|kitni|kya|kaun|please|pls|plz|karna|karu|kare|karo|kar\s*do|kar|batao|bata\s*do|bata|bataye|dikhao|dikha\s*do|chahiye|chahie|hai|hain|hoga|hogi|ka|ki|ke|ko|me|mein|mai|se|tak|par|pe|is|are|the|of|for|a|an|i|want|need|looking|find|search|compare|check|what|how|much|does|cost|kaunse|par\s+mil|online|order|buy|kharidna|kharido|khareed|dukan|dukaan|store|stores|shop|shops|muje|mujhe|mujhko|mujko|mera|meri|mere|mai|main|hum|humko|hamko|apna|apni|apne|yaar|bhai|bro)\b/gi;
     PLATFORM = /\b(zomato|swiggy|blinkit|zepto|instamart|bigbasket|bb\s*now|flipkart\s*minutes|dunzo|jiomart|amazon|flipkart|meesho|myntra|ajio|tatacliq|tata\s*cliq)\b/gi;
     SPELLING = {
       aata: "atta",
@@ -40978,13 +40978,361 @@ var init_assistantAnswer = __esm({
   }
 });
 
+// server/lens/assistantThread.ts
+function readSubject(sessionId) {
+  if (!sessionId) return null;
+  const slot2 = store4.get(sessionId);
+  if (!slot2) return null;
+  if (Date.now() - slot2.touchedAt > TTL_MS3) {
+    store4.delete(sessionId);
+    return null;
+  }
+  return slot2.subject;
+}
+function writeSubject(sessionId, subject) {
+  if (!sessionId) return;
+  store4.set(sessionId, { subject: { ...subject, at: Date.now() }, touchedAt: Date.now() });
+  if (store4.size <= MAX_SESSIONS) return;
+  const oldest = [...store4.entries()].sort((a, b) => a[1].touchedAt - b[1].touchedAt).slice(0, store4.size - MAX_SESSIONS);
+  for (const [key] of oldest) store4.delete(key);
+}
+function tokens2(text) {
+  return String(text || "").toLowerCase().replace(SITE_NAMES, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+}
+function followUpResidue(text) {
+  return tokens2(text).filter((t) => t.length >= 2 && !FOLLOW_VOCAB.has(t));
+}
+function classifyFollowUp(text, subject) {
+  const none = { follow: false, kind: "repeat", query: "", vertical: "", reason: "new-question" };
+  if (!subject || !subject.query) return none;
+  const raw = String(text || "").trim();
+  if (!raw) return none;
+  const residue = followUpResidue(raw);
+  const looksLikeFollowUp = ASK_MORE.test(raw) || ASK_WHY_ONLY.test(raw) || ASK_CHEAPER.test(raw) || ASK_DETAIL.test(raw) || ASK_REPEAT.test(raw);
+  if (!looksLikeFollowUp) return none;
+  if (residue.length > 0) return none;
+  const kind = ASK_MORE.test(raw) || ASK_WHY_ONLY.test(raw) ? "more_sellers" : ASK_CHEAPER.test(raw) ? "cheaper" : ASK_DETAIL.test(raw) ? "detail" : "repeat";
+  return { follow: true, kind, query: subject.query, vertical: subject.vertical, reason: "residue-empty" };
+}
+function sellerBreakdown(rows) {
+  const best = /* @__PURE__ */ new Map();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const provider = String(r?.provider || r?.vendor || r?.seller || "").trim();
+    const price = Number(r?.price ?? r?.primaryPrice ?? 0);
+    if (!provider || !Number.isFinite(price) || price <= 0) continue;
+    const key = provider.toLowerCase();
+    const prev = best.get(key);
+    if (!prev || price < prev.price) {
+      best.set(key, { provider, title: String(r?.title || ""), price, currency: String(r?.currency || "INR") });
+    }
+  }
+  return [...best.values()].sort((a, b) => a.price - b.price);
+}
+function shapeFollowUpAnswer(kind, query, rows, opts = {}) {
+  const quoted = `"${query}"`;
+  const breakdown = sellerBreakdown(rows);
+  if (!breakdown.length) {
+    const tail = opts.pending ? "No site had answered yet in this pass - the prices drop in here as soon as they do." : "No other site answered for it this time.";
+    return `Still about ${quoted}: ${opts.sellersLastTime?.length ? `only ${opts.sellersLastTime.join(", ")} had it. ` : ""}${tail}`;
+  }
+  const list = breakdown.slice(0, 8).map((b) => `${b.provider} ${inr(b.price)}`).join(", ");
+  const cheapest = breakdown[0];
+  if (breakdown.length === 1) {
+    const pendingOne = opts.pending ? " The other sites are still scanning; their prices appear here as they answer." : " No other site answered for it this time.";
+    return `So far only ${cheapest.provider} has ${quoted} at ${inr(cheapest.price)}.${pendingOne}`.replace(/\s+/g, " ").trim();
+  }
+  const where = opts.alsoShopping ? " (grocery apps + shopping sites)" : "";
+  const more = breakdown.length > 8 ? ` and ${breakdown.length - 8} more` : "";
+  const kindLine = kind === "cheaper" ? `Cheapest for ${quoted}: ${cheapest.provider} at ${inr(cheapest.price)}.` : kind === "detail" ? `About ${quoted}: ${breakdown[0].title || query} - ${cheapest.provider} has it at ${inr(cheapest.price)}.` : `${breakdown.length} site${breakdown.length === 1 ? "" : "s"}${where} have ${quoted}: ${list}${more}.`;
+  const cheapestLine = kind === "cheaper" ? "" : ` Cheapest is ${cheapest.provider} at ${inr(cheapest.price)}.`;
+  const pendingLine = opts.pending ? " The remaining sites are still scanning; their prices appear here as they answer." : "";
+  return `${kindLine}${cheapestLine}${pendingLine}`.replace(/\s+/g, " ").trim();
+}
+function subjectFromAnswer(vertical, query, rows, ctx = {}) {
+  const breakdown = sellerBreakdown(rows);
+  return {
+    vertical: String(vertical || ""),
+    query: String(query || ""),
+    ...ctx.city ? { city: ctx.city } : {},
+    ...ctx.date ? { date: ctx.date } : {},
+    ...ctx.return ? { return: ctx.return } : {},
+    sellers: breakdown.map((b) => b.provider).slice(0, 8),
+    ...breakdown[0] ? { best: { title: breakdown[0].title, provider: breakdown[0].provider, price: breakdown[0].price } } : {},
+    at: Date.now()
+  };
+}
+var TTL_MS3, MAX_SESSIONS, store4, SITE_NAMES, FOLLOW_VOCAB, ASK_MORE, ASK_WHY_ONLY, ASK_CHEAPER, ASK_DETAIL, ASK_REPEAT, inr;
+var init_assistantThread = __esm({
+  "server/lens/assistantThread.ts"() {
+    TTL_MS3 = 60 * 6e4;
+    MAX_SESSIONS = 2e3;
+    store4 = /* @__PURE__ */ new Map();
+    SITE_NAMES = /\b(blinkit|zepto|instamart|swiggy\s*instamart|bigbasket|big\s*basket|jiomart|jio\s*mart|dmart|d\s*mart|dunzo|flipkart\s*minutes|flipkart|amazon|ajio|myntra|meesho|nykaa|tatacliq|tata\s*cliq|croma|reliance\s*digital|snapdeal|paytm\s*mall|swiggy|zomato|dominos|domino'?s|eatsure|faasos|behrouz|ola\s*dash|uber\s*eats|makemytrip|goibibo|yatra|cleartrip|ixigo|easemytrip|ease\s*my\s*trip|agoda|booking|oyo|expedia|hotels\.com|redbus|abhibus|ola|uber|rapido)\b/gi;
+    FOLLOW_VOCAB = /* @__PURE__ */ new Set([
+      "aur",
+      "or",
+      "and",
+      "more",
+      "other",
+      "others",
+      "dusre",
+      "dusri",
+      "doosre",
+      "doosri",
+      "baaki",
+      "baki",
+      "website",
+      "websites",
+      "site",
+      "sites",
+      "app",
+      "apps",
+      "seller",
+      "sellers",
+      "shop",
+      "shops",
+      "store",
+      "stores",
+      "platform",
+      "platforms",
+      "option",
+      "options",
+      "choice",
+      "choices",
+      "v",
+      "bhi",
+      "sab",
+      "sabhi",
+      "all",
+      "list",
+      "full",
+      "every",
+      "har",
+      "kuch",
+      "koi",
+      "any",
+      "sirf",
+      "only",
+      "hi",
+      "just",
+      "ek",
+      "kyun",
+      "kyu",
+      "why",
+      "kaise",
+      "how",
+      "kaun",
+      "kaunsa",
+      "which",
+      "kahan",
+      "kaha",
+      "where",
+      "batao",
+      "bata",
+      "bataiye",
+      "batado",
+      "dikhao",
+      "dikha",
+      "dikhaiye",
+      "show",
+      "tell",
+      "give",
+      "do",
+      "chahiye",
+      "chahie",
+      "need",
+      "want",
+      "please",
+      "pls",
+      "plz",
+      "bro",
+      "bhai",
+      "yaar",
+      "rahe",
+      "raha",
+      "rahi",
+      "ho",
+      "hun",
+      "hai",
+      "hain",
+      "he",
+      "be",
+      "being",
+      "to",
+      "is",
+      "it",
+      "this",
+      "that",
+      "these",
+      "those",
+      "ye",
+      "yeh",
+      "wo",
+      "woh",
+      "iska",
+      "uska",
+      "iske",
+      "uske",
+      "isme",
+      "usme",
+      "same",
+      "wahi",
+      "wohi",
+      "phir",
+      "fir",
+      "again",
+      "dobara",
+      "repeat",
+      "compare",
+      "comparison",
+      "price",
+      "prices",
+      "rate",
+      "rates",
+      "fare",
+      "fares",
+      "daam",
+      "dam",
+      "kimat",
+      "keemat",
+      "cost",
+      "sasta",
+      "saste",
+      "sabse",
+      "cheapest",
+      "cheap",
+      "cheaper",
+      "lowest",
+      "low",
+      "kam",
+      "best",
+      "better",
+      "detail",
+      "details",
+      "detail",
+      "kya",
+      "what",
+      "of",
+      "for",
+      "in",
+      "at",
+      "near",
+      "on",
+      "me",
+      "mein",
+      "mai",
+      "ka",
+      "ki",
+      "ke",
+      "ko",
+      "se",
+      "tak",
+      "a",
+      "an",
+      "the",
+      "my",
+      "our",
+      "your",
+      "i",
+      "we",
+      "you",
+      "so",
+      "then",
+      "now",
+      "ab",
+      "abhi",
+      "bhi",
+      "thoda",
+      "zyada",
+      "jada",
+      "bahut",
+      "much",
+      "many",
+      "down",
+      "below",
+      "upar",
+      "niche",
+      "side",
+      "side",
+      "please",
+      "kro",
+      "karo",
+      "kar",
+      "kr",
+      "de",
+      "dena",
+      // Hinglish verb / question tails that carry no product: "zepto par kitna hai", "kaun bech raha hai",
+      // "sasta kahan milega" must all stay on the product the thread is already about.
+      "par",
+      "pe",
+      "upar",
+      "kitna",
+      "kitne",
+      "kitni",
+      "bech",
+      "bechta",
+      "bechte",
+      "bechti",
+      "bechna",
+      "bechraha",
+      "milta",
+      "milte",
+      "milti",
+      "milega",
+      "milegi",
+      "mile",
+      "mil",
+      "mila",
+      "dega",
+      "degi",
+      "deta",
+      "deti",
+      "dikhega",
+      "dikhegi",
+      "hoga",
+      "hogi",
+      "hota",
+      "hoti",
+      "hote",
+      "karega",
+      "karti",
+      "karta",
+      "karte",
+      "sakta",
+      "sakte",
+      "sakti",
+      "chalo",
+      "dekho",
+      "dekh",
+      "between",
+      "across",
+      "shops",
+      "selling",
+      "available",
+      "getting",
+      "where",
+      "which",
+      "all",
+      "kis",
+      "kisne",
+      "kaunsa"
+    ]);
+    ASK_MORE = /\b(aur|or|more|dusre|dusri|doosre|doosri|other|baaki|baki|sabhi|all|har|every)\b|(website|site|app|seller|shop|store|platform|option)|\b(kaun|kaunsa|kisne|which\s+sites?)\b/i;
+    ASK_WHY_ONLY = /\b(sirf|only|just)\b[\s\S]{0,24}\b(kyun|kyu|why|bata|rahe|raha|dikha)\b|\b(kyun|kyu|why)\b[\s\S]{0,16}\b(sirf|only)\b/i;
+    ASK_CHEAPER = /\b(sasta|saste|sabse\s*sasta|cheap|cheaper|cheapest|lowest|kam\s*daam|best\s*price)\b/i;
+    ASK_DETAIL = /\b(detail|details|specs?|feature|features|kaisa|kaisi|review|reviews|accha|good|quality)\b/i;
+    ASK_REPEAT = /^\s*(phir\s*se|fir\s*se|again|dobara|repeat|wahi|same)\b/i;
+    inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  }
+});
+
 // server/lens/searchMemory.ts
 function memoryKey(k) {
   return [norm7(k.vertical), norm7(k.query), norm7(k.city), norm7(k.depart || "")].join("|");
 }
 async function ensureSearchMemoryTable() {
-  const store4 = getStore();
-  await store4.execute(
+  const store5 = getStore();
+  await store5.execute(
     `CREATE TABLE IF NOT EXISTS ${TABLE} (
        mem_key VARCHAR(191) PRIMARY KEY,
        vertical VARCHAR(32) NOT NULL,
@@ -41614,18 +41962,18 @@ async function pushPublicKey() {
   return ensureVapid();
 }
 async function upsertSubscription(input) {
-  const store4 = getStore();
-  const existing = await store4.query("SELECT id FROM push_subscriptions WHERE endpoint_hash = ?", [input.hash]);
+  const store5 = getStore();
+  const existing = await store5.query("SELECT id FROM push_subscriptions WHERE endpoint_hash = ?", [input.hash]);
   if (existing.length) {
     const id = Number(existing[0].id);
-    await store4.execute(
+    await store5.execute(
       `UPDATE push_subscriptions SET user_id = COALESCE(?, user_id), p256dh = COALESCE(?, p256dh),
          auth = COALESCE(?, auth), ua = COALESCE(?, ua), is_active = 1, fail_count = 0 WHERE id = ?`,
       [input.userId ?? null, input.p256dh ?? null, input.auth ?? null, input.ua ?? null, id]
     );
     return id;
   }
-  const r = await store4.execute(
+  const r = await store5.execute(
     `INSERT INTO push_subscriptions (user_id, kind, endpoint, endpoint_hash, p256dh, auth, ua, is_active, fail_count)
      VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)`,
     [input.userId ?? null, input.kind, input.endpoint, input.hash, input.p256dh ?? null, input.auth ?? null, input.ua ?? null]
@@ -41667,8 +42015,8 @@ async function removeSubscription(rawEndpoint) {
   const endpoint = clip3(rawEndpoint, 2e3);
   if (!endpoint) return 0;
   const hashes = [sha256(endpoint), sha256(`fcm:${endpoint}`)];
-  const store4 = getStore();
-  const r = await store4.execute(
+  const store5 = getStore();
+  const r = await store5.execute(
     `UPDATE push_subscriptions SET is_active = 0 WHERE endpoint_hash IN (?, ?) AND is_active = 1`,
     hashes
   );
@@ -41690,17 +42038,17 @@ function buildPushBody(payload) {
   return JSON.stringify({ ...JSON.parse(body), image: null });
 }
 async function sendOne(row, payload) {
-  const store4 = getStore();
+  const store5 = getStore();
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
   if (row.kind === "fcm") {
     const r = await sendFcm(row, payload);
     if (r === "ok") {
-      await store4.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
+      await store5.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
     } else if (r === "gone") {
-      await store4.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
+      await store5.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
     } else if (r === "failed") {
       const fails = Number(row.fail_count || 0) + 1;
-      await store4.execute(
+      await store5.execute(
         "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
         [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
       );
@@ -41713,16 +42061,16 @@ async function sendOne(row, payload) {
       { endpoint: row.endpoint, keys: { p256dh: String(row.p256dh || ""), auth: String(row.auth || "") } },
       body
     );
-    await store4.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
+    await store5.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
     return "ok";
   } catch (e2) {
     const code = Number(e2?.statusCode || 0);
     if (code === 404 || code === 410) {
-      await store4.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
+      await store5.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
       return "gone";
     }
     const fails = Number(row.fail_count || 0) + 1;
-    await store4.execute(
+    await store5.execute(
       "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
       [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
     );
@@ -41788,9 +42136,9 @@ function pushNotificationRow(n) {
   }).catch(() => null);
 }
 async function pushStats() {
-  const store4 = getStore();
+  const store5 = getStore();
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1e3).toISOString().slice(0, 19).replace("T", " ");
-  const rows = await store4.query("SELECT kind, is_active, last_ok_at FROM push_subscriptions").catch(() => []);
+  const rows = await store5.query("SELECT kind, is_active, last_ok_at FROM push_subscriptions").catch(() => []);
   let web = 0;
   let android = 0;
   let inactive = 0;
@@ -41852,8 +42200,8 @@ function validateNotification(i) {
 async function createNotification(i) {
   const v = validateNotification(i);
   if (!v.ok) return v;
-  const store4 = getStore();
-  const res = await store4.execute(
+  const store5 = getStore();
+  const res = await store5.execute(
     `INSERT INTO notifications (user_id, kind, title, body, image, cta_url, search_query, product_title, price_now, price_prev, target_price, seller, is_active, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -41873,7 +42221,7 @@ async function createNotification(i) {
       (i.createdBy || "system").slice(0, 190)
     ]
   );
-  const rows = await store4.query("SELECT id FROM notifications");
+  const rows = await store5.query("SELECT id FROM notifications");
   const id = Number(res?.insertId ?? rows[rows.length - 1]?.id ?? 0);
   log.info("Notifications", `Created ${i.kind} notification ${id}${i.userId ? ` for user ${i.userId}` : " (broadcast)"}`);
   pushNotificationRow({
@@ -41887,10 +42235,10 @@ async function createNotification(i) {
   return { ok: true, id };
 }
 function priceDropCopy(a, price, seller) {
-  const inr2 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
   const pct = Math.round((1 - price / Number(a.target_price)) * 100);
-  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr2(price)}`;
-  const body = pct > 0 ? `Your tracked product just hit ${inr2(price)} on ${seller} \u2014 ${pct}% below your ${inr2(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr2(price)} on ${seller}, matching your ${inr2(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
+  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr3(price)}`;
+  const body = pct > 0 ? `Your tracked product just hit ${inr3(price)} on ${seller} \u2014 ${pct}% below your ${inr3(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr3(price)} on ${seller}, matching your ${inr3(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
   return { title, body };
 }
 async function recordPriceDropNotification(alert, live) {
@@ -41918,17 +42266,17 @@ async function listAllNotifications(limit = 100) {
   return getStore().query("SELECT * FROM notifications ORDER BY id DESC LIMIT ?", [limit]).catch(() => []);
 }
 async function deactivateNotification(id) {
-  const store4 = getStore();
-  const rows = await store4.query("SELECT id FROM notifications WHERE id = ?", [Number(id)]);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT id FROM notifications WHERE id = ?", [Number(id)]);
   if (!rows.length) return false;
-  await store4.execute("UPDATE notifications SET is_active = ? WHERE id = ?", [0, Number(id)]);
+  await store5.execute("UPDATE notifications SET is_active = ? WHERE id = ?", [0, Number(id)]);
   return true;
 }
 async function userNotifications(userId, limit = 50) {
-  const store4 = getStore();
-  const rows = await store4.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
   const reads = new Set(
-    (await store4.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
+    (await store5.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
   );
   const visible = rows.filter((r) => r.user_id == null || Number(r.user_id) === Number(userId)).sort((a, b) => Number(b.id) - Number(a.id)).slice(0, limit).map((r) => ({
     id: Number(r.id),
@@ -41966,22 +42314,22 @@ async function broadcastNotifications(limit = 50) {
   }));
 }
 async function markRead(userId, notificationId) {
-  const store4 = getStore();
-  const exists = await store4.query("SELECT notification_id FROM notification_reads WHERE notification_id = ? AND user_id = ?", [Number(notificationId), Number(userId)]);
+  const store5 = getStore();
+  const exists = await store5.query("SELECT notification_id FROM notification_reads WHERE notification_id = ? AND user_id = ?", [Number(notificationId), Number(userId)]);
   if (exists.length) return;
-  await store4.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(notificationId), Number(userId)]);
+  await store5.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(notificationId), Number(userId)]);
 }
 async function markAllRead(userId) {
-  const store4 = getStore();
-  const rows = await store4.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  const store5 = getStore();
+  const rows = await store5.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
   const visible = rows.filter((r) => r.user_id == null || Number(r.user_id) === Number(userId));
   const reads = new Set(
-    (await store4.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
+    (await store5.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
   );
   let n = 0;
   for (const r of visible) {
     if (!reads.has(Number(r.id))) {
-      await store4.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(r.id), Number(userId)]);
+      await store5.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(r.id), Number(userId)]);
       n++;
     }
   }
@@ -42026,18 +42374,18 @@ function validateAlert(i) {
 async function createAlert(i) {
   const v = validateAlert(i);
   if (!v.ok) return v;
-  const store4 = getStore();
-  const mine = (await store4.query("SELECT id, search_query, is_active FROM price_alerts WHERE user_id = ?", [i.userId])).filter(isActive2);
+  const store5 = getStore();
+  const mine = (await store5.query("SELECT id, search_query, is_active FROM price_alerts WHERE user_id = ?", [i.userId])).filter(isActive2);
   if (mine.length >= 50) return { ok: false, error: "You have reached the 50 active alert limit." };
   const dup = mine.find((r) => String(r.search_query).toLowerCase() === i.searchQuery.trim().toLowerCase());
   if (dup) {
-    await store4.execute(
+    await store5.execute(
       "UPDATE price_alerts SET target_price=?, price_at_set=?, notified_at=?, email=? WHERE id=?",
       [Math.round(i.targetPrice), i.priceAtSet ?? null, null, i.email, Number(dup.id)]
     );
     return { ok: true, id: Number(dup.id) };
   }
-  const res = await store4.execute(
+  const res = await store5.execute(
     `INSERT INTO price_alerts (user_id, email, product_title, search_query, source_url, image, target_price, price_at_set, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -42052,7 +42400,7 @@ async function createAlert(i) {
       1
     ]
   );
-  const rows = await store4.query("SELECT id FROM price_alerts WHERE user_id = ?", [i.userId]);
+  const rows = await store5.query("SELECT id FROM price_alerts WHERE user_id = ?", [i.userId]);
   return { ok: true, id: Number(res?.insertId ?? rows[rows.length - 1]?.id) };
 }
 async function listAlerts(userId) {
@@ -42070,13 +42418,13 @@ function shouldNotify(alert, livePrice) {
   return Number.isFinite(livePrice) && livePrice > 0 && livePrice <= Number(alert.target_price);
 }
 function alertEmail(a, price, seller, url) {
-  const inr2 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
-  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr2(price)}`;
+  const inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr3(price)}`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px">
   <h2 style="color:#E7000B;margin:0 0 8px">Your Try1Second price alert hit</h2>
   <p><strong>${escapeHtml(a.product_title)}</strong></p>
-  <p style="font-size:22px;margin:6px 0"><strong>${inr2(price)}</strong> on ${escapeHtml(seller)}</p>
-  <p style="color:#475569">Your target was ${inr2(a.target_price)}.</p>
+  <p style="font-size:22px;margin:6px 0"><strong>${inr3(price)}</strong> on ${escapeHtml(seller)}</p>
+  <p style="color:#475569">Your target was ${inr3(a.target_price)}.</p>
   <p><a href="${url}" style="background:#E7000B;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Open the deal</a></p>
   <p style="color:#94a3b8;font-size:12px">Price observed live by Try1Second. Prices can change quickly.</p></div>`;
   return { subject, html };
@@ -42085,13 +42433,13 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 async function checkAlertsOnce(findLivePrice, baseUrl) {
-  const store4 = getStore();
-  const all = (await store4.query("SELECT * FROM price_alerts WHERE id > ?", [0])).filter((a) => isActive2(a) && !a.notified_at);
+  const store5 = getStore();
+  const all = (await store5.query("SELECT * FROM price_alerts WHERE id > ?", [0])).filter((a) => isActive2(a) && !a.notified_at);
   let notified = 0;
   for (const a of all.slice(0, 40)) {
     try {
       const live = await findLivePrice(String(a.search_query), String(a.product_title));
-      await store4.execute(
+      await store5.execute(
         "UPDATE price_alerts SET last_price=?, last_checked_at=? WHERE id=?",
         [live?.price ?? null, (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]
       );
@@ -42100,7 +42448,7 @@ async function checkAlertsOnce(findLivePrice, baseUrl) {
         const m = alertEmail(a, live.price, live.seller, live.url.startsWith("http") ? live.url : baseUrl + live.url);
         const sent = await sendEmail(String(a.email), m.subject, m.html);
         if (!sent.ok) log.warn("PriceAlerts", `E-mail not sent for alert ${a.id}: ${sent.error} (in-app notification still created)`);
-        await store4.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
+        await store5.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
         notified++;
       }
     } catch (e2) {
@@ -42856,8 +43204,8 @@ async function catalogueCities(max = 10) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   try {
-    const store4 = getStore();
-    const rows = await store4.query(
+    const store5 = getStore();
+    const rows = await store5.query(
       `SELECT city, MAX(pincode) AS pincode, COUNT(*) AS n
        FROM searches
        WHERE created_at > (NOW() - INTERVAL 7 DAY) AND city IS NOT NULL AND city <> ''
@@ -42978,8 +43326,8 @@ async function bootWarm() {
     if (!await mayWarm("BootWarm")) return;
     await purgeStaleBankingOffers();
     await purgePhotolessHotelOffers();
-    const store4 = getStore();
-    const rows = await store4.query(
+    const store5 = getStore();
+    const rows = await store5.query(
       `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city
        FROM searches WHERE created_at > (NOW() - INTERVAL 7 DAY)
        GROUP BY raw_query, v, pincode, city
@@ -43014,8 +43362,8 @@ async function keepWarmDefaults() {
   await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS, ...catalogue], "KeepWarm");
 }
 async function warmPass(limit, verticalFilter, forceSeed) {
-  const store4 = getStore();
-  const rows = await store4.query(
+  const store5 = getStore();
+  const rows = await store5.query(
     `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
      FROM searches
      WHERE created_at > (NOW() - INTERVAL 7 DAY)
@@ -43375,19 +43723,19 @@ async function approvePartnerFromLead(lead) {
   if (!website) return { ok: false, error: "Inquiry has no website to link" };
   if (!/^https?:\/\//i.test(website)) website = `https://${website}`;
   const category = bucketCategory(String(lead.category || ""));
-  const store4 = getStore();
-  const existing = await store4.query("SELECT * FROM approved_partners WHERE website_url = ? LIMIT 1", [website]);
+  const store5 = getStore();
+  const existing = await store5.query("SELECT * FROM approved_partners WHERE website_url = ? LIMIT 1", [website]);
   if (existing?.length) {
-    await store4.execute("UPDATE approved_partners SET status = ? WHERE id = ?", ["active", existing[0].id]);
+    await store5.execute("UPDATE approved_partners SET status = ? WHERE id = ?", ["active", existing[0].id]);
     return { ok: true, partner: rowToPartner({ ...existing[0], status: "active" }) };
   }
-  const ins = await store4.execute(
+  const ins = await store5.execute(
     `INSERT INTO approved_partners (name, website_url, category, email, phone, badge, status, source_lead_id)
      VALUES (?, ?, ?, ?, ?, 'Verified Partner', 'active', ?)`,
     [name, website, category, lead.email || null, lead.phone || null, lead.leadId]
   );
   const id = Number(ins?.insertId ?? 0);
-  const rows = id ? await store4.query("SELECT * FROM approved_partners WHERE id = ?", [id]) : [];
+  const rows = id ? await store5.query("SELECT * FROM approved_partners WHERE id = ?", [id]) : [];
   return { ok: true, partner: rowToPartner(rows?.[0] || { id }) };
 }
 async function listPartners(activeOnly = true) {
@@ -43596,12 +43944,12 @@ async function upsertAppLink(input) {
   if (!v.ok) return { ok: false, error: v.error };
   const version = String(input.version ?? "").trim().slice(0, 30) || null;
   const active2 = input.is_active === false ? 0 : 1;
-  const store4 = getStore();
-  const existing = await store4.query("SELECT id FROM app_links WHERE link_key = ?", [key]);
+  const store5 = getStore();
+  const existing = await store5.query("SELECT id FROM app_links WHERE link_key = ?", [key]);
   if (existing.length) {
-    await store4.execute("UPDATE app_links SET url=?, version=?, is_active=? WHERE link_key=?", [v.url, version, active2, key]);
+    await store5.execute("UPDATE app_links SET url=?, version=?, is_active=? WHERE link_key=?", [v.url, version, active2, key]);
   } else {
-    await store4.execute("INSERT INTO app_links (link_key, url, version, is_active) VALUES (?, ?, ?, ?)", [key, v.url, version, active2]);
+    await store5.execute("INSERT INTO app_links (link_key, url, version, is_active) VALUES (?, ?, ?, ?)", [key, v.url, version, active2]);
   }
   return { ok: true };
 }
@@ -43916,16 +44264,16 @@ var fileImport_exports = {};
 __export(fileImport_exports, {
   importFileStoreIntoMysql: () => importFileStoreIntoMysql
 });
-async function tableColumns(store4, table) {
+async function tableColumns(store5, table) {
   try {
-    const rows = await store4.query(`DESCRIBE \`${table}\``);
+    const rows = await store5.query(`DESCRIBE \`${table}\``);
     if (!Array.isArray(rows) || rows.length === 0) return null;
     return rows.map((r) => String(r.Field));
   } catch {
     return null;
   }
 }
-async function importRows(store4, table, cols, rows) {
+async function importRows(store5, table, cols, rows) {
   let ok2 = 0;
   let skipped = 0;
   const chunk = 100;
@@ -43944,7 +44292,7 @@ async function importRows(store4, table, cols, rows) {
       params.push(typeof v === "object" && v !== null ? JSON.stringify(v) : v);
     }
     try {
-      const r = await store4.execute(
+      const r = await store5.execute(
         `INSERT IGNORE INTO \`${table}\` (${useCols.map((c) => `\`${c}\``).join(",")}) VALUES ${placeholders}`,
         params
       );
@@ -43957,7 +44305,7 @@ async function importRows(store4, table, cols, rows) {
             skipped++;
             continue;
           }
-          const rr = await store4.execute(
+          const rr = await store5.execute(
             `INSERT IGNORE INTO \`${table}\` (${rc.map((c) => `\`${c}\``).join(",")}) VALUES (${rc.map(() => "?").join(",")})`,
             rc.map((c) => typeof r[c] === "object" && r[c] !== null ? JSON.stringify(r[c]) : r[c])
           );
@@ -43971,8 +44319,8 @@ async function importRows(store4, table, cols, rows) {
   return { ok: ok2, skipped };
 }
 async function importFileStoreIntoMysql() {
-  const store4 = getStore();
-  if (store4.kind !== "mysql") return;
+  const store5 = getStore();
+  if (store5.kind !== "mysql") return;
   const src2 = import_path8.default.join(dataDir, "devstore.json");
   const lock = import_path8.default.join(dataDir, LOCK);
   if (!import_fs8.default.existsSync(src2) && !import_fs8.default.existsSync(lock)) return;
@@ -43987,12 +44335,12 @@ async function importFileStoreIntoMysql() {
     });
     log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs8.default.existsSync(lock) && claimed})`);
     for (const table of tables) {
-      const cols = await tableColumns(store4, table);
+      const cols = await tableColumns(store5, table);
       if (!cols) {
         log.warn("FileImport", `Skipping '${table}' (${data[table].length} rows) \u2014 no such MySQL table`);
         continue;
       }
-      const { ok: ok2, skipped } = await importRows(store4, table, cols, data[table]);
+      const { ok: ok2, skipped } = await importRows(store5, table, cols, data[table]);
       log.info("FileImport", `'${table}': imported ${ok2}, skipped ${skipped} of ${data[table].length}`);
     }
     const done = import_path8.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
@@ -44464,6 +44812,112 @@ function verticalForScanUrl(url, domain) {
   if (/(bankbazaar|paisabazaar|kreditbee|moneyview|navi)/.test(u)) return "loans";
   return "ecommerce";
 }
+async function answerFollowUp(res, args) {
+  const { subject, verdict, sessionId, started: started3 } = args;
+  const vertical = normalizeVerticalId(subject.vertical);
+  const base = {
+    query: subject.query,
+    vertical,
+    ...subject.city ? { city: subject.city } : {},
+    ...subject.date ? { travelDates: { depart: subject.date, ...subject.return ? { return: subject.return } : {} } } : {}
+  };
+  const rows = [];
+  const sources2 = /* @__PURE__ */ new Set();
+  let pending = false;
+  const collect = async (inp, budgetMs) => {
+    try {
+      const run = runSearch(inp);
+      run.catch(() => void 0);
+      const raced = await Promise.race([
+        run,
+        new Promise((resolve) => setTimeout(() => resolve(null), budgetMs))
+      ]);
+      if (raced) {
+        rows.push(...raced.results || []);
+        for (const id of raced.state?.sourcesSucceeded || []) sources2.add(id);
+        pending = pending || Boolean(raced.state?.pendingRefresh);
+        return;
+      }
+      const fallback = await lastChanceRows(inp, 600);
+      if (fallback) {
+        rows.push(...fallback.results || []);
+        for (const id of fallback.sourcesSucceeded || []) sources2.add(id);
+      }
+      pending = pending || rows.length === 0;
+    } catch {
+    }
+  };
+  const settled = await awaitSettledAnswer(base, Number(process.env.T1S_FOLLOWUP_SETTLE_MS || 7e3)).catch(() => null);
+  if (settled) {
+    rows.push(...settled.results || []);
+    for (const id of settled.state?.sourcesSucceeded || []) sources2.add(id);
+    pending = Boolean(settled.state?.pendingRefresh);
+  } else {
+    await collect(base, 3500);
+  }
+  const sellersSoFar = () => new Set(rows.map((r) => String(r.vendor || r.seller || r.provider || "").toLowerCase()).filter(Boolean)).size;
+  if (sellersSoFar() < 3) {
+    await new Promise((resolve) => setTimeout(resolve, Number(process.env.T1S_FOLLOWUP_WAIT_MS || 2500)));
+    try {
+      const warmer = await runSearch(base);
+      rows.push(...warmer.results || []);
+      for (const id of warmer.state?.sourcesSucceeded || []) sources2.add(id);
+      pending = Boolean(warmer.state?.pendingRefresh);
+    } catch {
+    }
+  }
+  let alsoShopping = false;
+  if (verdict.kind === "more_sellers" && ["grocery", "food"].includes(String(vertical))) {
+    const sellersNow = new Set(rows.map((r) => String(r.vendor || r.seller || "").toLowerCase()).filter(Boolean));
+    if (sellersNow.size < 3) {
+      alsoShopping = true;
+      await collect({ ...base, vertical: "ecommerce" }, 2500);
+    }
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const unique = rows.filter((o) => {
+    const key = `${String(o?.vendor || o?.seller || "").toLowerCase()}|${String(o?.title || "").toLowerCase().replace(/[^a-z0-9]/g, "")}|${Number(o?.prices?.effectivePrice ?? o?.primaryPrice ?? 0)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const exitTravel = {
+    date: String(subject.date || ""),
+    return: String(subject.return || ""),
+    city: String(subject.city || ""),
+    route: ""
+  };
+  const linked = unique.map((o) => ({
+    ...o,
+    sellerUrl: o?.sellerUrl && String(o.sellerUrl).trim() ? o.sellerUrl : assistantExitUrl(o, exitTravel)
+  }));
+  const shaped = toAssistantRows(linked, 12, { diversify: true });
+  const reply = shapeFollowUpAnswer(verdict.kind, subject.query, shaped, {
+    pending,
+    alsoShopping,
+    sellersLastTime: subject.sellers
+  });
+  writeSubject(sessionId, subjectFromAnswer(subject.vertical, subject.query, shaped, {
+    city: subject.city,
+    date: subject.date,
+    return: subject.return
+  }));
+  res.json({
+    success: true,
+    understood: true,
+    assumedVertical: false,
+    vertical: subject.vertical,
+    engineVertical: String(vertical),
+    query: subject.query,
+    reply,
+    results: shaped,
+    count: shaped.length,
+    pendingRefresh: pending,
+    sourcesSucceeded: [...sources2],
+    followUp: { kind: verdict.kind, about: subject.query },
+    latencyMs: Date.now() - started3
+  });
+}
 async function buildTopPicksList() {
   try {
     const { listTopPicks: listTopPicks2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
@@ -44564,20 +45018,20 @@ function leadRateOk(ip) {
   return true;
 }
 async function signInGoogleUser(claims) {
-  const store4 = getStore();
-  let rows = await store4.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+  const store5 = getStore();
+  let rows = await store5.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   if (rows.length === 0) {
-    await store4.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
+    await store5.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
       claims.email,
       claims.displayName || null,
       "user",
       claims.uid
     ]);
-    rows = await store4.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+    rows = await store5.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   }
   const row = rows[0];
   const token = import_crypto31.default.randomBytes(32).toString("hex");
-  await store4.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+  await store5.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
     new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
@@ -44703,6 +45157,7 @@ var init_routes = __esm({
     init_productLink();
     init_assistantIntent();
     init_assistantAnswer();
+    init_assistantThread();
     init_searchMemory();
     init_sameProduct();
     init_pricePlausibility();
@@ -44753,14 +45208,14 @@ var init_routes = __esm({
         res.setHeader("Cache-Control", "no-store");
         return res.json({ status: "online" });
       }
-      const store4 = getStore();
+      const store5 = getStore();
       const missing = assertProductionReadiness();
       res.json({
         status: "online",
         commit: deployedCommit(),
         nodeUptimeSec: Math.round(process.uptime()),
         engine: "Try1Second Independent Metasearch Engine v1.0",
-        dataSource: store4.kind === "mysql" ? "mysql" : "file-fallback (set MYSQL_URL for production)",
+        dataSource: store5.kind === "mysql" ? "mysql" : "file-fallback (set MYSQL_URL for production)",
         l2Cache: settings.redisUrl ? "redis" : settings.redisRestUrl ? "redis-rest (Upstash HTTPS)" : "disabled (set REDIS_URL or UPSTASH_REDIS_REST_URL/TOKEN)",
         searchApi: settings.searchApi.enabled ? "optional-adapter-enabled" : "optional-adapter-disabled",
         productionWarnings: missing,
@@ -46326,6 +46781,14 @@ var init_routes = __esm({
     apiRouter.post("/assist/answer", async (req, res) => {
       const started3 = Date.now();
       const text = String(req.body?.text || "").slice(0, 300);
+      const sessionId = String(
+        req.headers["x-t1s-session"] || req.body?.sessionId || ""
+      ).slice(0, 80);
+      const subject = readSubject(sessionId);
+      const verdict = classifyFollowUp(text, subject);
+      if (verdict.follow && subject) {
+        return answerFollowUp(res, { subject, verdict, sessionId, text, started: started3 });
+      }
       const { meta, input } = buildAssistantSearch(text, {
         city: req.body?.city ? String(req.body.city).slice(0, 60) : void 0,
         pincode: req.body?.pincode ? String(req.body.pincode).slice(0, 10) : void 0,
@@ -46453,6 +46916,12 @@ var init_routes = __esm({
             ...fallbackVertical ? { honestNotice: `The ${meta.vertical === "grocery" ? "10-minute grocery apps" : "restaurant apps"} did not answer this time, so these are live prices from the shopping sites.` } : {}
           }
         );
+        writeSubject(sessionId, subjectFromAnswer(
+          fallbackVertical || meta.vertical || "",
+          meta.query,
+          rows,
+          { city: String(searchInput.city || ""), date: String(searchInput.travelDates?.depart || ""), return: String(searchInput.travelDates?.return || "") }
+        ));
         res.json({
           success: true,
           ...meta,
@@ -46730,28 +47199,28 @@ var init_routes = __esm({
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1e3).toISOString().slice(0, 19).replace("T", " ");
         const sinceDay = new Date(Date.now() - days * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
         const vert2 = String(req.query.vertical || "").trim();
-        const store4 = getStore();
-        const searches = vert2 ? await store4.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ? AND (vertical = ? OR detected_vertical = ?)`, [since, vert2, vert2]) : await store4.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ?`, [since]);
-        const leads = vert2 ? await store4.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ?`, [since, vert2]) : await store4.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?`, [since]);
-        const leadsApproved = vert2 ? await store4.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ? AND status IN ('contacted','approved')`, [since, vert2]) : await store4.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND status IN ('contacted','approved')`, [since]);
-        const clicks = await store4.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ?`, [since]);
-        const clicksToday = await store4.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE DATE(created_at) >= ?`, [sinceDay]);
-        const clicksByDay = await store4.query(
+        const store5 = getStore();
+        const searches = vert2 ? await store5.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ? AND (vertical = ? OR detected_vertical = ?)`, [since, vert2, vert2]) : await store5.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ?`, [since]);
+        const leads = vert2 ? await store5.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ?`, [since, vert2]) : await store5.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?`, [since]);
+        const leadsApproved = vert2 ? await store5.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ? AND status IN ('contacted','approved')`, [since, vert2]) : await store5.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND status IN ('contacted','approved')`, [since]);
+        const clicks = await store5.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ?`, [since]);
+        const clicksToday = await store5.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE DATE(created_at) >= ?`, [sinceDay]);
+        const clicksByDay = await store5.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
-        const topDomains = await store4.query(
+        const topDomains = await store5.query(
           `SELECT vendor_domain AS domain, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY n DESC LIMIT 15`,
           [since]
         );
-        const recentClicks = await store4.query(
+        const recentClicks = await store5.query(
           `SELECT c.vendor_domain AS domain, c.network_id AS network, c.created_at AS at,
               o.merchant_name AS merchant, o.title AS offer
        FROM affiliate_clicks c LEFT JOIN affiliate_offers o ON o.id = c.offer_id
        WHERE c.created_at >= ? ORDER BY c.id DESC LIMIT 200`,
           [since]
         );
-        const conversions = await store4.query(
+        const conversions = await store5.query(
           `SELECT v.network_id AS network, v.order_value AS value, v.commission AS commission, v.created_at AS at,
               c.vendor_domain AS domain
        FROM affiliate_conversions v LEFT JOIN affiliate_clicks c ON c.click_id = v.click_id
@@ -47050,21 +47519,21 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       const r = await verifyAdminOtp(String(req.body.email || ""), String(req.body.code || ""));
       if (!r.ok) return res.status(401).json({ success: false, error: r.error });
       const email = r.email;
-      const store4 = getStore();
-      let rows = await store4.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
+      const store5 = getStore();
+      let rows = await store5.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
-        await store4.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
+        await store5.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
           `otp-only$${import_crypto31.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
-        rows = await store4.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
+        rows = await store5.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
       const token = import_crypto31.default.randomBytes(32).toString("hex");
-      await store4.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+      await store5.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
         new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
@@ -47247,16 +47716,16 @@ async function saveProfile(i) {
   const v = validateProfile(i);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
-  const store4 = getStore();
-  const ex = await store4.query("SELECT id FROM affiliate_configs WHERE slug = ?", [c.slug]);
+  const store5 = getStore();
+  const ex = await store5.query("SELECT id FROM affiliate_configs WHERE slug = ?", [c.slug]);
   const cols = [c.company_domain, c.network, c.affiliate_id, c.monetization, c.campaign_key, c.template, c.subid_param, c.active];
   if (ex.length) {
-    await store4.execute(
+    await store5.execute(
       "UPDATE affiliate_configs SET company_domain=?, network=?, affiliate_id=?, monetization=?, campaign_key=?, template=?, subid_param=?, active=? WHERE slug=?",
       [...cols, c.slug]
     );
   } else {
-    await store4.execute(
+    await store5.execute(
       "INSERT INTO affiliate_configs (slug, company_domain, network, affiliate_id, monetization, campaign_key, template, subid_param, active) VALUES (?,?,?,?,?,?,?,?,?)",
       [c.slug, ...cols]
     );
@@ -47595,11 +48064,11 @@ async function syncAutoDeals() {
     { provider: "tatacliq", run: () => acquireTatacliqDeals() },
     { provider: "amazon", run: () => acquireAmazonDeals() }
   ];
-  const store4 = getStore();
+  const store5 = getStore();
   const now = /* @__PURE__ */ new Date();
   const outcomes = [];
   try {
-    await store4.execute(`DELETE FROM deals WHERE source='auto' AND (title LIKE '%<%' OR title LIKE '%class=%')`);
+    await store5.execute(`DELETE FROM deals WHERE source='auto' AND (title LIKE '%<%' OR title LIKE '%class=%')`);
   } catch {
   }
   for (const p of providers) {
@@ -47609,14 +48078,14 @@ async function syncAutoDeals() {
       for (const d of deals) {
         const c = cleanDeal(d);
         if (!c.title || /<|class=|&#/.test(c.title)) continue;
-        const ex = await store4.query("SELECT id FROM deals WHERE dedupe_key = ?", [c.dedupe_key]);
+        const ex = await store5.query("SELECT id FROM deals WHERE dedupe_key = ?", [c.dedupe_key]);
         if (ex.length) {
-          await store4.execute(
+          await store5.execute(
             "UPDATE deals SET merchant_name=?, kind=?, vertical=?, title=?, description=?, discount_text=?, terms=?, dest_url=?, sort_weight=?, is_active=?, last_seen_at=? WHERE id=?",
             [c.merchant_name, c.kind, c.vertical, c.title, c.description, c.discount_text, c.terms, c.dest_url, c.sort_weight, 1, now, ex[0].id]
           );
         } else {
-          await store4.execute(
+          await store5.execute(
             `INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source, dedupe_key, image_url, last_seen_at)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, c.source, c.dedupe_key, c.image_url, now]
@@ -47631,12 +48100,12 @@ async function syncAutoDeals() {
     }
   }
   try {
-    const rows = await store4.query(`SELECT id, last_seen_at FROM deals WHERE source = 'auto' AND is_active = 1`);
+    const rows = await store5.query(`SELECT id, last_seen_at FROM deals WHERE source = 'auto' AND is_active = 1`);
     const cutoff = Date.now() - 3 * 864e5;
     for (const r of rows) {
       const seen = Date.parse(String(r.last_seen_at || "").replace(" ", "T"));
       if (Number.isFinite(seen) && seen < cutoff) {
-        await store4.execute("UPDATE deals SET is_active = ? WHERE id = ?", [0, Number(r.id)]);
+        await store5.execute("UPDATE deals SET is_active = ? WHERE id = ?", [0, Number(r.id)]);
       }
     }
   } catch {
@@ -47699,8 +48168,8 @@ function parsePsiResponse(json, strategy) {
 }
 async function ensureTable3() {
   if (ensured6) return;
-  const store4 = await getStore();
-  await store4.execute(`CREATE TABLE IF NOT EXISTS speed_scores (
+  const store5 = await getStore();
+  await store5.execute(`CREATE TABLE IF NOT EXISTS speed_scores (
     id INT AUTO_INCREMENT PRIMARY KEY,
     strategy VARCHAR(10) NOT NULL,
     score INT DEFAULT NULL,
@@ -47716,8 +48185,8 @@ async function ensureTable3() {
 }
 async function ensureQuotaTable() {
   if (quotaEnsured) return;
-  const store4 = await getStore();
-  await store4.execute(`CREATE TABLE IF NOT EXISTS speed_quota_state (
+  const store5 = await getStore();
+  await store5.execute(`CREATE TABLE IF NOT EXISTS speed_quota_state (
     strategy VARCHAR(10) NOT NULL PRIMARY KEY,
     blocked_until TIMESTAMP NULL,
     last_error VARCHAR(500) NULL,
@@ -47756,14 +48225,14 @@ async function lastGood(strategy) {
 }
 async function latestScores() {
   await ensureTable3();
-  const store4 = await getStore();
+  const store5 = await getStore();
   const out = [];
   for (const strategy of STRATEGIES) {
     const good = await lastGood(strategy);
     const block = await quotaBlock(strategy);
     if (good) {
       const score = rowToScore(good);
-      const newest = await store4.query("SELECT scanned_at, error FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]).catch(() => []);
+      const newest = await store5.query("SELECT scanned_at, error FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]).catch(() => []);
       const laterFailure = newest?.[0] && (!good.scanned_at || new Date(newest[0].scanned_at).getTime() > new Date(good.scanned_at).getTime());
       out.push({
         ...score,
@@ -47804,15 +48273,15 @@ function rowToScore(r) {
 }
 async function scoreHistory(strategy, limit = 20) {
   await ensureTable3();
-  const store4 = await getStore();
+  const store5 = await getStore();
   const lim = Math.min(Math.max(Number(limit) || 20, 1), 50);
-  const rows = await store4.query(`SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT ${lim}`, [String(strategy).slice(0, 10)]);
+  const rows = await store5.query(`SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT ${lim}`, [String(strategy).slice(0, 10)]);
   return rows.map(rowToScore);
 }
 async function persistScore(s) {
   await ensureTable3();
-  const store4 = await getStore();
-  await store4.execute(
+  const store5 = await getStore();
+  await store5.execute(
     "INSERT INTO speed_scores (strategy, score, lcp_ms, tbt_ms, cls, url, error, scanned_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [s.strategy, s.score, s.lcp_ms, s.tbt_ms, s.cls, s.url.slice(0, 500), s.error ? String(s.error).slice(0, 500) : null, s.scanned_at]
   );
@@ -47820,10 +48289,10 @@ async function persistScore(s) {
 }
 async function pruneScoreHistory(strategy) {
   await ensureTable3();
-  const store4 = await getStore();
-  const rows = await store4.query("SELECT id FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 200", [String(strategy).slice(0, 10)]);
+  const store5 = await getStore();
+  const rows = await store5.query("SELECT id FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 200", [String(strategy).slice(0, 10)]);
   const drop = rows.slice(MAX_ROWS_PER_STRATEGY).map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
-  for (const id of drop) await store4.execute("DELETE FROM speed_scores WHERE id = ?", [id]);
+  for (const id of drop) await store5.execute("DELETE FROM speed_scores WHERE id = ?", [id]);
 }
 async function fetchWithTimeout2(url) {
   const ctrl = new AbortController();
@@ -47838,10 +48307,10 @@ async function fetchWithTimeout2(url) {
 async function runSpeedTest(siteUrl, opts = {}) {
   const url = String(siteUrl || "https://www.try1second.com").trim().slice(0, 300);
   await ensureTable3();
-  const store4 = await getStore();
+  const store5 = await getStore();
   const now = Date.now();
   const gaps = await Promise.all(STRATEGIES.map(async (strategy) => {
-    const last = await store4.query("SELECT scanned_at FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
+    const last = await store5.query("SELECT scanned_at FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
     if (!last.length || !last[0].scanned_at) return 0;
     const ts = new Date(last[0].scanned_at).getTime();
     return Number.isFinite(ts) ? now - ts : 0;
@@ -47856,7 +48325,7 @@ async function runSpeedTest(siteUrl, opts = {}) {
       return { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: block.last_error, quota_blocked: true, quota_reset_at: block.blocked_until, note: cachedNote };
     }
     if (gaps[i] !== 0 && gaps[i] < MIN_RUN_GAP_MS) {
-      const existing = await store4.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
+      const existing = await store5.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
       if (existing.length) return { ...rowToScore(existing[0]), cached: true };
     }
     try {
@@ -48573,10 +49042,10 @@ async function runAcceptanceTests() {
   return rows;
 }
 async function persistAcceptance(rows) {
-  const store4 = getStore();
-  await store4.execute("DELETE FROM source_acceptance_tests");
+  const store5 = getStore();
+  await store5.execute("DELETE FROM source_acceptance_tests");
   for (const r of rows) {
-    await store4.execute(
+    await store5.execute(
       `INSERT INTO source_acceptance_tests (source_id, source_name, vertical, capability, status, failure_category, http_status, bytes, latency_ms, items_extracted, fields_verified, evidence, next_action) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [r.source_id, r.source_name, r.vertical, r.capability, r.status, r.failure_category, r.http_status, r.bytes, r.latency_ms, r.items_extracted, r.fields_verified, r.evidence, r.next_action]
     );
@@ -48714,7 +49183,7 @@ function ratio(n, d) {
   return { numerator: n, denominator: d, percentage: d === 0 ? null : Math.round(n / d * 1e3) / 10 };
 }
 async function buildCoverageReport(windowHours = 24) {
-  const store4 = getStore();
+  const store5 = getStore();
   const since = new Date(Date.now() - windowHours * 3600 * 1e3).toISOString().slice(0, 19).replace("T", " ");
   let searches = [];
   let offerRows = [];
@@ -48722,7 +49191,7 @@ async function buildCoverageReport(windowHours = 24) {
   let affiliateClicks = 0;
   let affiliateConversions = 0;
   try {
-    searches = await store4.query(
+    searches = await store5.query(
       `SELECT id, served_from, results_count, latency_ms, created_at FROM searches WHERE created_at >= ? ORDER BY created_at DESC`,
       [since]
     );
@@ -48730,23 +49199,23 @@ async function buildCoverageReport(windowHours = 24) {
     searches = [];
   }
   try {
-    offerRows = await store4.query(
+    offerRows = await store5.query(
       `SELECT freshness_status, validation_status, availability, vertical FROM offers`
     );
   } catch {
     offerRows = [];
   }
   try {
-    healthRows = await store4.query(
+    healthRows = await store5.query(
       `SELECT source_id, state, total_attempts, total_successes, avg_latency_ms FROM source_health`
     );
   } catch {
     healthRows = [];
   }
   try {
-    const c = await store4.query(`SELECT id FROM affiliate_clicks`);
+    const c = await store5.query(`SELECT id FROM affiliate_clicks`);
     affiliateClicks = c.length;
-    const v = await store4.query(`SELECT id FROM affiliate_conversions`);
+    const v = await store5.query(`SELECT id FROM affiliate_conversions`);
     affiliateConversions = v.length;
   } catch {
   }
@@ -49429,10 +49898,10 @@ var init_adminRoutes = __esm({
       res.json({ success: true, verticals: verticalStatusReport() });
     });
     adminRouter.get("/coverage", async (_req, res) => {
-      const store4 = getStore();
+      const store5 = getStore();
       let searchStats = null;
       try {
-        const rows = await store4.query(
+        const rows = await store5.query(
           `SELECT served_from, COUNT(*) AS c FROM searches GROUP BY served_from`
         );
         searchStats = rows;
@@ -49462,13 +49931,13 @@ var init_adminRoutes = __esm({
       if (!name || typeof quantity !== "number" || quantity < 0) {
         return res.status(400).json({ success: false, error: "name and non-negative quantity are required" });
       }
-      const store4 = getStore();
+      const store5 = getStore();
       try {
-        const prize = await store4.execute(
+        const prize = await store5.execute(
           "INSERT INTO prizes (name, description, weight, active) VALUES (?, ?, ?, 1)",
           [String(name).slice(0, 255), description ? String(description).slice(0, 500) : null, Number(weight) || 1]
         );
-        await store4.execute("INSERT INTO prize_inventory (prize_id, quantity) VALUES (?, ?)", [prize.insertId, quantity]);
+        await store5.execute("INSERT INTO prize_inventory (prize_id, quantity) VALUES (?, ?)", [prize.insertId, quantity]);
         audit(req, "prize.create", String(name), { weight, quantity });
         res.json({ success: true, prizeId: prize.insertId });
       } catch (e2) {
@@ -49478,12 +49947,12 @@ var init_adminRoutes = __esm({
     adminRouter.post("/prizes/:id/inventory", async (req, res) => {
       const delta = Number(req.body.delta || 0);
       if (!Number.isFinite(delta)) return res.status(400).json({ success: false, error: "delta must be a number" });
-      const store4 = getStore();
-      const rows = await store4.query("SELECT quantity FROM prize_inventory WHERE prize_id = ?", [Number(req.params.id)]);
+      const store5 = getStore();
+      const rows = await store5.query("SELECT quantity FROM prize_inventory WHERE prize_id = ?", [Number(req.params.id)]);
       if (rows.length === 0) return res.status(404).json({ success: false, error: "Prize inventory not found" });
       const current = Number(rows[0].quantity);
       if (current + delta < 0) return res.status(400).json({ success: false, error: "Inventory cannot become negative" });
-      await store4.execute("UPDATE prize_inventory SET quantity = quantity + ? WHERE prize_id = ?", [delta, Number(req.params.id)]);
+      await store5.execute("UPDATE prize_inventory SET quantity = quantity + ? WHERE prize_id = ?", [delta, Number(req.params.id)]);
       audit(req, "prize.inventory", req.params.id, { delta });
       res.json({ success: true, quantity: current + delta });
     });
@@ -49726,10 +50195,10 @@ var init_adminRoutes = __esm({
         const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
         const { linkinrCampaignList: linkinrCampaignList2, linkinrStats: linkinrStats2 } = await Promise.resolve().then(() => (init_linkinr(), linkinr_exports));
         const { ekaroStats: ekaroStats2 } = await Promise.resolve().then(() => (init_ekaro(), ekaro_exports));
-        const store4 = getStore();
+        const store5 = getStore();
         let capturedLinks = [];
         try {
-          capturedLinks = await store4.query(
+          capturedLinks = await store5.query(
             `SELECT network_source AS network, vendor_domain AS domain, deep_link_template AS template, campaign_id AS campaign
          FROM affiliate_links ORDER BY vendor_domain ASC LIMIT 500`
           );
@@ -50441,7 +50910,7 @@ var init_adminRoutes = __esm({
     sqlDate = (daysAgo2) => new Date(Date.now() - daysAgo2 * 864e5).toISOString().slice(0, 19).replace("T", " ");
     adminRouter.get("/affiliate/clicks", async (req, res) => {
       try {
-        const store4 = getStore();
+        const store5 = getStore();
         const vendor = String(req.query.vendor || "").trim();
         const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
         const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 500));
@@ -50452,20 +50921,20 @@ var init_adminRoutes = __esm({
           where += " AND vendor_domain LIKE ?";
           params.push(`%${vendor}%`);
         }
-        const clicks = await store4.query(
+        const clicks = await store5.query(
           `SELECT id, offer_id, network_id, vendor_domain, destination_url, click_id, created_at
        FROM affiliate_clicks ${where} ORDER BY id DESC LIMIT ${limit}`,
           params
         );
-        const byNetwork = await store4.query(
+        const byNetwork = await store5.query(
           `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`,
           [since]
         );
-        const byVendor = await store4.query(
+        const byVendor = await store5.query(
           `SELECT vendor_domain, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY count DESC LIMIT 20`,
           [since]
         );
-        const daily = await store4.query(
+        const daily = await store5.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
@@ -50477,10 +50946,10 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/monetization/gaps", async (req, res) => {
       try {
-        const store4 = getStore();
+        const store5 = getStore();
         const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
         const since = sqlDate(days);
-        const rows = await store4.query(
+        const rows = await store5.query(
           `SELECT vendor_domain,
               COUNT(*) AS clicks,
               SUM(CASE WHEN network_id IS NULL OR network_id = 'direct' THEN 1 ELSE 0 END) AS direct_clicks,
@@ -50526,8 +50995,8 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/affiliate/conversions", async (_req, res) => {
       try {
-        const store4 = getStore();
-        const conversions = await store4.query(
+        const store5 = getStore();
+        const conversions = await store5.query(
           `SELECT v.id, v.click_id, v.network_id, v.order_value, v.commission, v.confirmed_at, v.source_report, v.created_at, k.vendor_domain
        FROM affiliate_conversions v LEFT JOIN affiliate_clicks k ON k.click_id = v.click_id
        ORDER BY v.id DESC LIMIT 200`
@@ -50539,31 +51008,31 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/traffic/real", async (req, res) => {
       try {
-        const store4 = getStore();
+        const store5 = getStore();
         const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
         const since = sqlDate(days);
-        const dailySearches = await store4.query(
+        const dailySearches = await store5.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS count, AVG(latency_ms) AS avg_latency_ms, SUM(results_count > 0) AS with_results
        FROM searches WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
-        const byVertical = await store4.query(
+        const byVertical = await store5.query(
           `SELECT COALESCE(NULLIF(vertical, ''), 'unknown') AS vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY vertical ORDER BY count DESC`,
           [since]
         );
-        const topQueries = await store4.query(
+        const topQueries = await store5.query(
           `SELECT raw_query, vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY raw_query, vertical ORDER BY count DESC LIMIT 20`,
           [since]
         );
-        const dailyClicks = await store4.query(
+        const dailyClicks = await store5.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
-        const clicksByNetwork = await store4.query(
+        const clicksByNetwork = await store5.query(
           `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`,
           [since]
         );
-        const totals = await store4.query(
+        const totals = await store5.query(
           `SELECT
          SUM(created_at >= ?) AS searches_window,
          SUM(created_at >= ? AND results_count > 0) AS searches_with_results
@@ -50591,11 +51060,11 @@ var init_adminRoutes = __esm({
       try {
         const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
         const { linkinrStats: linkinrStats2 } = await Promise.resolve().then(() => (init_linkinr(), linkinr_exports));
-        const store4 = getStore();
-        const dbMode = store4.kind === "mysql" ? "mysql" : "file-fallback";
+        const store5 = getStore();
+        const dbMode = store5.kind === "mysql" ? "mysql" : "file-fallback";
         let links = [];
         try {
-          links = await store4.query(`SELECT network_source, COUNT(*) AS count FROM affiliate_links GROUP BY network_source`);
+          links = await store5.query(`SELECT network_source, COUNT(*) AS count FROM affiliate_links GROUP BY network_source`);
         } catch {
           links = [];
         }
@@ -50971,12 +51440,12 @@ function startWorkers() {
   }, settings.worker.refreshIntervalSec * 1e3);
   const retryTimer = setInterval(async () => {
     try {
-      const store4 = getStore();
-      const dead = await store4.query(
+      const store5 = getStore();
+      const dead = await store5.query(
         `SELECT id FROM source_jobs WHERE status = 'failed' AND attempts < 3 ORDER BY created_at ASC LIMIT 10`
       );
       for (const job of dead) {
-        await store4.execute("UPDATE source_jobs SET status = ? WHERE id = ?", ["queued", job.id]);
+        await store5.execute("UPDATE source_jobs SET status = ? WHERE id = ?", ["queued", job.id]);
       }
       if (dead.length > 0) log.info("Worker", `Requeued ${dead.length} recoverable source jobs`);
     } catch {
@@ -51530,8 +51999,8 @@ function startAffiliateWatchdog(intervalMs = 30 * 60 * 1e3) {
   const t = setInterval(async () => {
     try {
       const { listOffers: listOffers2 } = await Promise.resolve().then(() => (init_store(), store_exports));
-      const store4 = (await Promise.resolve().then(() => (init_db(), db_exports))).getStore();
-      const rows = await store4.query("SELECT id FROM affiliate_offers WHERE status = 'active' LIMIT 1", []);
+      const store5 = (await Promise.resolve().then(() => (init_db(), db_exports))).getStore();
+      const rows = await store5.query("SELECT id FROM affiliate_offers WHERE status = 'active' LIMIT 1", []);
       const fresh = await listOffers2({ limit: 1 });
       if (rows.length === 0 && fresh.length === 0) {
         const { registeredProviders: rp } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
@@ -53743,12 +54212,12 @@ function selectSnapshotRows(candidates, path18, max = MAX_ROWS, bySlug = false) 
     }
     return out0;
   }
-  const tokens2 = placementTokens(path18);
-  const relevant = tokens2.length ? candidates.filter((r) => {
+  const tokens3 = placementTokens(path18);
+  const relevant = tokens3.length ? candidates.filter((r) => {
     const t = ` ${r.title.toLowerCase()} ${String(r.seller || "").toLowerCase()} `;
-    return tokens2.every((tok) => t.includes(tok));
+    return tokens3.every((tok) => t.includes(tok));
   }) : candidates;
-  const pool2 = tokens2.length ? relevant : candidates;
+  const pool2 = tokens3.length ? relevant : candidates;
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   for (const r of [...pool2].sort((a, b) => a.price - b.price)) {
@@ -53765,7 +54234,7 @@ function renderSnapshotHtml(snapshot, heading = "Latest verified prices") {
   const items = snapshot.rows.map((r) => `
     <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
       <span style="min-width:0;font-size:13.5px;color:#111827">${esc7(r.title)}</span>
-      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc7(inr(r.price))}</span>
+      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc7(inr2(r.price))}</span>
       <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc7(r.seller)}</span>
     </li>`).join("");
   return [
@@ -53832,7 +54301,7 @@ async function snapshotForPath(path18) {
 function clearSnapshotCache() {
   cache10.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc7, inr, slugOf2;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc7, inr2, slugOf2;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
@@ -53840,7 +54309,7 @@ var init_liveSnapshot = __esm({
     MAX_ROWS = 6;
     cache10 = /* @__PURE__ */ new Map();
     esc7 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-    inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+    inr2 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf2 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
   }
 });

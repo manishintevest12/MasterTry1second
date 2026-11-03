@@ -58,7 +58,11 @@ test('both search routes claim the budget and a hard race, not just the pipeline
   // never a poll loop), so the contract below is: two routes keep the 2s cap, /api/search races
   // sweepBudget.
   const capped = (routes.match(/setTimeout\(\(\) => resolve\(null\), (?:Math\.min\(resultDeadlineMs\(\), 2000\)|budgetMs)\)/g) || []).length;
-  assert.equal(capped, 2, `scrape/live and assist/answer keep the capped budget (found ${capped})`);
+  // 3 Nov: the Ask-AI FOLLOW-UP answer ("aur v website batao") is the third answering path - it waits
+  // for the same product's sweep to settle so the missing sellers arrive, and its own budget is bounded
+  // too (T1S_FOLLOWUP_SETTLE_MS, 7s) plus the one extra shopping pass. Nothing here is unbounded.
+  assert.equal(capped, 3, `scrape/live, assist/answer and the assist follow-up keep a capped budget (found ${capped})`);
+  assert.match(routes, /awaitSettledAnswer\(base, Number\(process\.env\.T1S_FOLLOWUP_SETTLE_MS \|\| 7000\)\)/, 'the follow-up must join the in-flight pipeline with a bounded wait, never poll');
   // /api/search now awaits the REAL live pipeline for this question (awaitSettledAnswer), which
   // races its own bounded ceiling; the fast promise is only a fallback, still time-capped.
   assert.ok(routes.includes('awaitSettledAnswer(input, sweepBudget)'), '/api/search must await the settled sweep for this question');
