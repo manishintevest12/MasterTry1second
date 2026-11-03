@@ -12,6 +12,8 @@
  * so a flight row links to that exact route/date on every seller, not to "/".
  */
 
+import { canonicalCity } from '../common/cityAlias';
+
 export interface TravelCtx {
   route?: string;
   date?: string;
@@ -57,18 +59,26 @@ function route(t?: string): { from: string; to: string } | null {
   return from && to ? { from, to } : null;
 }
 
-/** City for hotel SRPs: explicit city, a single-leg "route", or the first city word in the title. */
+/**
+ * City for hotel SRPs: explicit city, a single-leg "route", or the first city word in the title.
+ *
+ * OWNER 3 Nov ("redirection ke baad jo 404 aa raha hai usko permanently fix karo"): a reverse-geocoded
+ * REVENUE-VILLAGE name ("Juni Indore Tahsil", what the app's location chip shows) used to be pasted
+ * straight into the seller path. MEASURED: oyorooms /hotels-in-juni-indore-tahsil/ = 404 ("we don't
+ * have the page"), /hotels-in-indore-tahsil/ = 404, /hotels-in-indore/ = 200 with real hotels.
+ * canonicalCity() keeps the city inside the string, so exits land on a live page.
+ */
 function hotelCity(title: string, ctx: TravelCtx): string {
-  if (ctx.city) return String(ctx.city).trim();
+  if (ctx.city) return canonicalCity(String(ctx.city)) || String(ctx.city).trim();
   const r = route(ctx.route);
   if (!r) {
     const single = String(ctx.route || '').trim();
     if (single && !/\s/.test(single)) return single;
   } else if (r.to) {
-    return r.to;
+    return canonicalCity(r.to) || r.to;
   }
   const m = String(title || '').match(/\b(?:hotels?|stays?)\s+in\s+([a-z\s]{3,24})/i);
-  return m ? m[1].trim() : '';
+  return m ? (canonicalCity(m[1]) || m[1].trim()) : '';
 }
 
 const e = encodeURIComponent;

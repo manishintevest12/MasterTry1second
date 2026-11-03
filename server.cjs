@@ -6338,7 +6338,24 @@ function cityVariants(city) {
   }
   return out;
 }
-var ALIAS_GROUPS, norm2, slugOf;
+function titleCity(v) {
+  return v.split(" ").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+function canonicalCity(raw) {
+  const n = norm2(raw || "");
+  if (!n) return "";
+  if (KNOWN_CITIES.has(n)) return titleCity(n);
+  const tokens2 = n.split(" ").filter((t) => t && !NOISE_TOKENS.has(t));
+  if (tokens2.length === 0) return "";
+  for (let len = Math.min(3, tokens2.length); len >= 1; len--) {
+    for (let i = 0; i + len <= tokens2.length; i++) {
+      const phrase = tokens2.slice(i, i + len).join(" ");
+      if (KNOWN_CITIES.has(phrase)) return titleCity(phrase);
+    }
+  }
+  return titleCity(tokens2[tokens2.length - 1]);
+}
+var ALIAS_GROUPS, norm2, slugOf, NOISE_TOKENS, KNOWN_CITIES;
 var init_cityAlias = __esm({
   "server/common/cityAlias.ts"() {
     ALIAS_GROUPS = [
@@ -6365,6 +6382,293 @@ var init_cityAlias = __esm({
     ];
     norm2 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
     slugOf = (s) => norm2(s).replace(/\s+/g, "-");
+    NOISE_TOKENS = /* @__PURE__ */ new Set([
+      "tahsil",
+      "tehsil",
+      "taluka",
+      "taluk",
+      "district",
+      "dist",
+      "distt",
+      "subdistrict",
+      "sub",
+      "division",
+      "block",
+      "city",
+      "urban",
+      "rural",
+      "village",
+      "vill",
+      "gram",
+      "gaon",
+      "town",
+      "municipality",
+      "nagar",
+      "palika",
+      "nigam",
+      "panchayat",
+      "near",
+      "india",
+      "state",
+      "zone",
+      "area",
+      "region",
+      "hobli",
+      "firka",
+      "mandal",
+      "circle",
+      "ward",
+      "post",
+      "po",
+      "ps",
+      "thana",
+      "road"
+    ]);
+    KNOWN_CITIES = /* @__PURE__ */ new Set([
+      "agra",
+      "ahmedabad",
+      "aizawl",
+      "ajmer",
+      "akola",
+      "aligarh",
+      "allahabad",
+      "alwar",
+      "ambala",
+      "amravati",
+      "amritsar",
+      "anand",
+      "asansol",
+      "aurangabad",
+      "ayodhya",
+      "bareilly",
+      "belagavi",
+      "bengaluru",
+      "bhagalpur",
+      "bharuch",
+      "bhatinda",
+      "bhavnagar",
+      "bhilai",
+      "bhiwandi",
+      "bhopal",
+      "bhubaneswar",
+      "bhuj",
+      "bikaner",
+      "bilaspur",
+      "bokaro",
+      "chandigarh",
+      "chandrapur",
+      "chennai",
+      "chhatarpur",
+      "coimbatore",
+      "cuttack",
+      "daman",
+      "davangere",
+      "dehradun",
+      "delhi",
+      "dhanbad",
+      "dharamshala",
+      "durgapur",
+      "erode",
+      "faridabad",
+      "gandhinagar",
+      "gangtok",
+      "gaya",
+      "ghaziabad",
+      "goa",
+      "gondia",
+      "gorakhpur",
+      "guntur",
+      "gurugram",
+      "guwahati",
+      "gwalior",
+      "haldia",
+      "hamirpur",
+      "hisar",
+      "hubli",
+      "hyderabad",
+      "imphal",
+      "indore",
+      "itanagar",
+      "jabalpur",
+      "jaipur",
+      "jaisalmer",
+      "jalandhar",
+      "jalgaon",
+      "jammu",
+      "jamnagar",
+      "jamshedpur",
+      "jhansi",
+      "jodhpur",
+      "junagadh",
+      "kanpur",
+      "kanyakumari",
+      "kargil",
+      "karimnagar",
+      "karnal",
+      "kasaragod",
+      "kavaratti",
+      "kohima",
+      "kolhapur",
+      "kolkata",
+      "kollam",
+      "kochi",
+      "kottayam",
+      "kozhikode",
+      "kurnool",
+      "leh",
+      "lucknow",
+      "ludhiana",
+      "madurai",
+      "mangaluru",
+      "manali",
+      "mandi",
+      "mathura",
+      "meerut",
+      "mohali",
+      "moradabad",
+      "mumbai",
+      "mussoorie",
+      "mysuru",
+      "nagpur",
+      "nainital",
+      "nanded",
+      "nashik",
+      "navi mumbai",
+      "nellore",
+      "new delhi",
+      "noida",
+      "palanpur",
+      "palakkad",
+      "panaji",
+      "panipat",
+      "pathankot",
+      "patiala",
+      "patna",
+      "pimpri",
+      "pondicherry",
+      "port blair",
+      "prayagraj",
+      "puducherry",
+      "pune",
+      "raipur",
+      "rajahmundry",
+      "rajkot",
+      "ranchi",
+      "ratlam",
+      "rourkela",
+      "rourkee",
+      "roorkee",
+      "salem",
+      "satna",
+      "secunderabad",
+      "shillong",
+      "shimla",
+      "sikar",
+      "silchar",
+      "siliguri",
+      "solapur",
+      "srinagar",
+      "surat",
+      "thane",
+      "thanjavur",
+      "thiruvananthapuram",
+      "thrissur",
+      "tiruchirappalli",
+      "tirunelveli",
+      "tirupati",
+      "tirupur",
+      "udaipur",
+      "udupi",
+      "ujjain",
+      "vadodara",
+      "varanasi",
+      "vellore",
+      "vijayawada",
+      "visakhapatnam",
+      "warangal",
+      "wayanad",
+      "gandhidham",
+      "hospet",
+      "hampi",
+      "gokarna",
+      "varkala",
+      "alleppey",
+      "alappuzha",
+      "munnar",
+      "thekkady",
+      "coorg",
+      "madikeri",
+      "chikmagalur",
+      "lonavala",
+      "mahabaleshwar",
+      "panchgani",
+      "pushkar",
+      "mount abu",
+      "ranikhet",
+      "kasauli",
+      "dalhousie",
+      "khajjiar",
+      "palampur",
+      "kufri",
+      "chail",
+      "kanatal",
+      "auli",
+      "rudraprayag",
+      "haridwar",
+      "rishikesh",
+      "deoghar",
+      "puri",
+      "konark",
+      "gopalpur",
+      "digha",
+      "mandarmani",
+      "shirdi",
+      "nashik road",
+      "tirumala",
+      "gurgaon",
+      "bangalore",
+      "mysore",
+      "trivandrum",
+      "cochin",
+      "calicut",
+      "mangalore",
+      "belgaum",
+      "vizag",
+      "simla",
+      "bombay",
+      "calcutta",
+      "madras",
+      "baroda",
+      "poona",
+      "benares",
+      "banaras",
+      "pondy",
+      "ooty",
+      "udhagamandalam",
+      "kodaikanal",
+      "yercaud",
+      "tirupathi",
+      "bhubaneshwar",
+      "jajpur",
+      "sambalpur",
+      "berhampur",
+      "balasore",
+      "dhanbad",
+      "giridih",
+      "hazaribagh",
+      "deogarh",
+      "kota",
+      "bundi",
+      "chittorgarh",
+      "banswara",
+      "dungarpur",
+      "bhilwara",
+      "pali",
+      "bharatpur",
+      "alwar",
+      "sikar",
+      "jhunjhunu"
+    ]);
   }
 });
 
@@ -7148,8 +7452,11 @@ function cityFromQuery(ctx) {
   const raw = String(q3.rawQuery || "").trim();
   const strip2 = (x) => x.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, " ").replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{0,4}\b/gi, " ").replace(/\b(under|below|above|upto|up to|max|min|budget)\s*\d+/gi, " ").replace(/\b\d{1,2}(st|nd|rd|th)?\b/g, " ").replace(/\b\d{3,6}\b/g, " ").replace(/\b(19|20)\d{2}\b/g, " ").replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|check-?out:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price|from|to|till|until|onwards|and|with|a|an|the|some|any|show|find|get|see|need|want|looking|search|compare)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join(" ");
   const cleaned = strip2(raw);
-  if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
-  if (q3.location?.city) return String(q3.location.city);
+  if (cleaned.length >= 3 && cleaned.length <= 40) return canonicalCity(cleaned) || cleaned;
+  if (q3.location?.city) {
+    const loc = String(q3.location.city);
+    return canonicalCity(loc) || loc;
+  }
   return null;
 }
 function stayDates(q3) {
@@ -30196,16 +30503,16 @@ function route(t) {
   return from && to ? { from, to } : null;
 }
 function hotelCity(title, ctx) {
-  if (ctx.city) return String(ctx.city).trim();
+  if (ctx.city) return canonicalCity(String(ctx.city)) || String(ctx.city).trim();
   const r = route(ctx.route);
   if (!r) {
     const single = String(ctx.route || "").trim();
     if (single && !/\s/.test(single)) return single;
   } else if (r.to) {
-    return r.to;
+    return canonicalCity(r.to) || r.to;
   }
   const m = String(title || "").match(/\b(?:hotels?|stays?)\s+in\s+([a-z\s]{3,24})/i);
-  return m ? m[1].trim() : "";
+  return m ? canonicalCity(m[1]) || m[1].trim() : "";
 }
 function merchantDeepLink(merchant, title, vertical, ctx = {}) {
   const v = String(merchant || "").toLowerCase();
@@ -30405,6 +30712,7 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
 var IATA2, cityCode, slug2, e;
 var init_merchantLinks = __esm({
   "server/affiliate/merchantLinks.ts"() {
+    init_cityAlias();
     IATA2 = {
       // shared subset used by the airline/OTA SRPs
       delhi: "DEL",

@@ -25,7 +25,7 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
 import type { RawSourceItem } from '../../types';
 import { AcquisitionError } from '../../common/httpClient';
-import { cityVariants, slugOf } from '../../common/cityAlias';
+import { cityVariants, slugOf, canonicalCity } from '../../common/cityAlias';
 
 import {
   oyoCityPaths, parseOyoPreloadedState, parseOyoHotels, parseOyoOffers,
@@ -67,8 +67,14 @@ export function cityFromQuery(ctx: { query: any }): string | null {
     .replace(/,.*$/, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim()
     .split(' ').slice(0, 3).join(' ');
   const cleaned = strip(raw);
-  if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
-  if (q.location?.city) return String(q.location.city);
+  // OWNER 3 Nov: a reverse-geocoded locality ("Juni Indore Tahsil") is not a city, and every
+  // city-slug source (OYO, Yatra, Goibibo, Cleartrip, EaseMyTrip, Agoda) 404s on it. Reduce the
+  // destination to the city it contains; genuinely unknown towns keep their own name.
+  if (cleaned.length >= 3 && cleaned.length <= 40) return canonicalCity(cleaned) || cleaned;
+  if (q.location?.city) {
+    const loc = String(q.location.city);
+    return canonicalCity(loc) || loc;
+  }
   return null;
 }
 
