@@ -22789,7 +22789,7 @@ async function uberPudoPlace(bias, query, type) {
 }
 function parseUberSessionCookie(raw) {
   const out = {};
-  const text = String(raw ?? "").trim();
+  const text = String(raw ?? "").replace(/^\s*cookie\s*:/i, "").replace(/[\u201c\u201d\u2018\u2019"'`]/g, "").replace(/\r/g, "").trim();
   if (!text) return out;
   for (const chunk of text.split(/[\n,;]+/)) {
     const part = chunk.trim();
@@ -22866,7 +22866,7 @@ async function uberGoFlowSafe(ctx, rt) {
     let liveSession = hasSession;
     let products = graphql ? parseUberProductsResponse(graphql.body).filter((p) => p.isAvailable).slice(0, 10) : [];
     const trySelection = async (jar, fp) => {
-      if (!Object.keys(jar).length) return [];
+      if (!Object.keys(jar).length) return { products: [], reason: "no cookie" };
       try {
         const r = await cffiFetch("https://m.uber.com/go/product-selection", {
           method: "POST",
@@ -22883,15 +22883,20 @@ async function uberGoFlowSafe(ctx, rt) {
           },
           body: buildUberProductSelectionBody(pickup, drop)
         });
-        if (r.status !== 200) return [];
-        return parseUberProductSelectionResponse(r.body).filter((p) => p.isAvailable).slice(0, 10);
-      } catch {
-        return [];
+        const snippet = String(r.body || "").replace(/\s+/g, " ").slice(0, 80);
+        if (r.status !== 200) return { products: [], reason: `HTTP ${r.status}${snippet ? `: ${snippet}` : ""}` };
+        const parsed = parseUberProductSelectionResponse(r.body).filter((p) => p.isAvailable).slice(0, 10);
+        return { products: parsed, reason: parsed.length ? "" : "HTTP 200 with no products" };
+      } catch (e2) {
+        return { products: [], reason: `network error: ${String(e2?.message || e2).slice(0, 60)}` };
       }
     };
+    let sessionReason = graphql ? "" : "Apollo Products returned no products";
     if (!products.length && hasSession) {
-      products = await trySelection(session, "chrome");
+      const attempt = await trySelection(session, "chrome");
+      products = attempt.products;
       if (products.length) liveSession = true;
+      else sessionReason = `Product Selection ${attempt.reason || "no products"}`;
     }
     if (!products.length) {
       for (const fp of ["chrome", "safari17_0"]) {
@@ -22902,14 +22907,19 @@ async function uberGoFlowSafe(ctx, rt) {
           headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9", Referer: "https://www.uber.com/global/en/price-estimate/" }
         });
         if (prime.status !== 200) continue;
-        products = await trySelection(prime.cookies || {}, fp);
+        const attempt = await trySelection(prime.cookies || {}, fp);
+        products = attempt.products;
         if (products.length) {
           liveSession = false;
           break;
         }
+        if (!sessionReason) sessionReason = `Product Selection ${attempt.reason || "no products"}`;
       }
     }
-    if (!products.length) return [];
+    if (!products.length) {
+      if (hasSession) throw new AcquisitionError("UNAUTHORIZED", `Uber rider session did not return a fare (${sessionReason || "unknown reason"})`);
+      return [];
+    }
     const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
     const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const bookUrl = buildUberGoBookUrl(uberClientId, pickup, drop);

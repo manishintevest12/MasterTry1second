@@ -249,7 +249,13 @@ async function uberPudoPlace(bias: { lat: number; lon: number }, query: string, 
  */
 export function parseUberSessionCookie(raw: unknown): Record<string, string> {
   const out: Record<string, string> = {};
-  const text = String(raw ?? '').trim();
+  // OWNER 3 Nov: the value arrives as a copy-paste, so tolerate the shapes hPanel actually receives:
+  // a leading "Cookie:" header name, wrapping quotes/backticks, and a header split over several lines.
+  const text = String(raw ?? '')
+    .replace(/^\s*cookie\s*:/i, '')
+    .replace(/[\u201c\u201d\u2018\u2019"'`]/g, '')
+    .replace(/\r/g, '')
+    .trim();
   if (!text) return out;
   for (const chunk of text.split(/[\n,;]+/)) {
     const part = chunk.trim();
@@ -339,8 +345,8 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
     // OWNER 3 Nov: the rider-session Product Selection call (his captured payload). Tried when the
     // Apollo Products query did not return products - with the operator's own session first, then
     // with the primed guest jar so the csrf header comes from a real cookie, not a guess.
-    const trySelection = async (jar: Record<string, string>, fp: string): Promise<UberGoProduct[]> => {
-      if (!Object.keys(jar).length) return [];
+    const trySelection = async (jar: Record<string, string>, fp: string): Promise<{ products: UberGoProduct[]; reason: string }> => {
+      if (!Object.keys(jar).length) return { products: [], reason: 'no cookie' };
       try {
         const r = await cffiFetch('https://m.uber.com/go/product-selection', {
           method: 'POST', impersonate: fp, timeoutMs: 25_000, cookies: jar,
@@ -354,13 +360,22 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
           },
           body: buildUberProductSelectionBody(pickup, drop),
         });
-        if (r.status !== 200) return [];
-        return parseUberProductSelectionResponse(r.body).filter((p) => p.isAvailable).slice(0, 10);
-      } catch { return []; }
+        const snippet = String(r.body || '').replace(/\s+/g, ' ').slice(0, 80);
+        if (r.status !== 200) return { products: [], reason: `HTTP ${r.status}${snippet ? `: ${snippet}` : ''}` };
+        const parsed = parseUberProductSelectionResponse(r.body).filter((p) => p.isAvailable).slice(0, 10);
+        return { products: parsed, reason: parsed.length ? '' : 'HTTP 200 with no products' };
+      } catch (e: any) { return { products: [], reason: `network error: ${String(e?.message || e).slice(0, 60)}` }; }
     };
+    // Why the session produced nothing, kept for the failure message: the owner pasted a cookie and
+    // is entitled to see 401/403 body rather than "no price". MEASURED gap 3 Nov 15:49 on prod: the
+    // Uber source was ATTEMPTED with the cookie set, returned no fare, and its rows were then hidden by
+    // the price gate - with no reason anywhere in the answer.
+    let sessionReason = graphql ? '' : 'Apollo Products returned no products';
     if (!products.length && hasSession) {
-      products = await trySelection(session, 'chrome');
+      const attempt = await trySelection(session, 'chrome');
+      products = attempt.products;
       if (products.length) liveSession = true;
+      else sessionReason = `Product Selection ${attempt.reason || 'no products'}`;
     }
     if (!products.length) {
       for (const fp of ['chrome', 'safari17_0']) {
@@ -369,11 +384,18 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
           headers: { Accept: 'text/html', 'Accept-Language': 'en-IN,en;q=0.9', Referer: 'https://www.uber.com/global/en/price-estimate/' },
         });
         if (prime.status !== 200) continue;
-        products = await trySelection(prime.cookies || {}, fp);
+        const attempt = await trySelection(prime.cookies || {}, fp);
+        products = attempt.products;
         if (products.length) { liveSession = false; break; }
+        if (!sessionReason) sessionReason = `Product Selection ${attempt.reason || 'no products'}`;
       }
     }
-    if (!products.length) return [];
+    if (!products.length) {
+      // AN HONEST REASON BEATS A SILENT MISS: a configured session that yields no fare is a failure
+      // the owner must be able to read (401/403 body, csrf, expired sid), not an empty list.
+      if (hasSession) throw new AcquisitionError('UNAUTHORIZED', `Uber rider session did not return a fare (${sessionReason || 'unknown reason'})`);
+      return [];
+    }
     const uberClientId = String(process.env.UBER_CLIENT_ID || 'vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w').trim();
     const today = new Date().toISOString().slice(0, 10);
     const bookUrl = buildUberGoBookUrl(uberClientId, pickup, drop);

@@ -11,7 +11,9 @@ import {
   buildUberProductSelectionBody,
   parseUberProductSelectionResponse,
 } from '../server/workers/parsers/uberGoProducts';
-import { uberCsrfToken } from '../server/workers/verticals/cab';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { uberCsrfToken, parseUberSessionCookie } from '../server/workers/verticals/cab';
 
 test('Product Selection payload is exactly the owner-captured rider-session shape', () => {
   const body = JSON.parse(buildUberProductSelectionBody(
@@ -72,4 +74,19 @@ test('csrf token comes from the pasted session jar, else hPanel, else Uber\'s ow
   process.env.UBER_CSRF_TOKEN = 'envtok';
   assert.equal(uberCsrfToken({}), 'envtok');
   if (prev === undefined) delete process.env.UBER_CSRF_TOKEN; else process.env.UBER_CSRF_TOKEN = prev;
+});
+
+test('a pasted cookie header survives the shapes hPanel receives', () => {
+  // "Cookie:" prefix, wrapping quotes and CRLF all appeared in real pastes.
+  const jar = parseUberSessionCookie('Cookie: sid=abc123; XSRF-TOKEN=tok%3D; __cf_bm=zz\r\n');
+  assert.equal(jar.sid, 'abc123');
+  assert.equal(jar['XSRF-TOKEN'], 'tok%3D');
+  assert.equal(jar.__cf_bm, 'zz');
+  assert.deepEqual(parseUberSessionCookie('"sid=only"'), { sid: 'only' });
+});
+
+test('a configured session that yields no fare reports a reason instead of vanishing', () => {
+  const cab = readFileSync(join(process.cwd(), 'server/workers/verticals/cab.ts'), 'utf8');
+  assert.match(cab, /did not return a fare/);
+  assert.match(cab, /HTTP \$\{r\.status\}\$\{snippet/, 'the HTTP status and body snippet are carried');
 });
