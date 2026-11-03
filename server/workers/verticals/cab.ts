@@ -37,7 +37,12 @@ async function rapidoLiveFaresSafe(
       { lat: pa.lat, lng: pa.lon, label: rt.from },
       { lat: pb.lat, lng: pb.lon, label: rt.to },
     );
-    if (outcome.status !== 'ok' || !outcome.quotes.length) return [];
+    if (outcome.status !== 'ok' || !outcome.quotes.length) {
+      // OWNER 3 Nov: this used to `return []` - the row vanished and NOTHING in the answer said why,
+      // so "Rapido ka price ni aa raha" was undiagnosable from outside. A Rapido card still only
+      // appears WITH a real fare (owner rule 31 Oct), but the reason now reaches sourcesFailed.
+      throw new AcquisitionError('EMPTY_RESPONSE', `Rapido city fare unavailable (${outcome.status}): ${String((outcome as any).detail || 'no quotes')}`);
+    }
     const catalog = await rapidoServiceCatalog(pa.lat, pa.lon);
     return buildRapidoFareRows({
       source: ctx.source,
@@ -47,8 +52,9 @@ async function rapidoLiveFaresSafe(
       quotes: outcome.quotes,
       catalog,
     });
-  } catch {
-    return []; // geocode/fetch/decode failure — presence rows take over
+  } catch (e) {
+    if (e instanceof AcquisitionError) throw e; // already a precise, honest reason
+    return []; // geocode/fetch/decode failure — no Rapido row rather than a guessed fare
   }
 }
 
@@ -525,8 +531,24 @@ const OLA_CATEGORY_LABELS: { cat: string; label: string }[] = [
   { cat: 'erick', label: 'Ola e-Rick' },
 ];
 
+/**
+ * OWNER 3 Nov ("ola, rapido ka v price aata tha wo v check kro ab kyun ni aata"): MEASURED with the
+ * real workers in this sandbox - Ola answers a priced row (Rs 138 Rajwada->Airport) and Rapido 4 priced
+ * rows (Rs 54/101/127), so neither parser is broken. But on production NO live cab source succeeded in
+ * the recorded search: Ola had NO outcome at all (still fetching at snapshot time) while Rapido failed
+ * silently. Ola's chain costs two Ola round-trips (guest session + full rate-card DB) plus OSRM on EVERY
+ * search, which is why the answer was cut before it landed. The rate-card DB is city-level reference
+ * data (base/slabs), not a quote - caching it cannot change a price, it only removes latency.
+ */
+const _olaRcCache = new Map<number, { at: number; cards: OlaRateCard[] }>();
+const OLA_RC_TTL_MS = 12 * 3600 * 1000;
+const _osrmCache = new Map<string, { at: number; km: number; mins: number }>();
+const OSRM_TTL_MS = 6 * 3600 * 1000;
+
 /** Guest session (cookie jar) + full rate-card DB for one Ola city. */
 async function olaRateCards(cityId: number, timezone: string | undefined): Promise<OlaRateCard[]> {
+  const hit = _olaRcCache.get(cityId);
+  if (hit && Date.now() - hit.at < OLA_RC_TTL_MS) return hit.cards;
   const p: any = await cffiFetch(`${OLA_RC_BASE}/merchandising/rate-card?api_ver=v1`, { impersonate: 'chrome', timeoutMs: 20_000, returnCookies: true, headers: { Accept: 'text/html', 'Accept-Language': 'en-IN,en;q=0.9' } });
   const jar = Object.entries(p.cookies || {}).map(([k, v]: any) => `${k}=${encodeURIComponent(v)}`).join('; ');
   const xsrf = (p.cookies || {})['XSRF-TOKEN'] || '';
@@ -541,6 +563,7 @@ async function olaRateCards(cityId: number, timezone: string | undefined): Promi
     (!c.valid_to || isDate(c.valid_to) > now) && (!c.valid_from || isDate(c.valid_from) <= now) &&
     (c.threshold_type == null || c.threshold_type === 'distance_based') &&
     (Number(c.base_fare) || 0) >= 0 && (Number(c.rate_per_km) || Number(c.rate_per_unit_distance) || 0) > 0);
+  if (cards.length) _olaRcCache.set(cityId, { at: Date.now(), cards });
   return cards;
 }
 
@@ -572,12 +595,22 @@ async function olaRateCardFallback(ctx: any, rt: { from: string; to: string }, r
   }
   const [cards, a, b] = await Promise.all([olaRateCards(city.id, city.timezone), geocodePudo(rt.from, city.name), geocodePudo(rt.to, city.name)]);
   if (!a || !b) return [];
-  const osrm = await cffiFetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`, { timeoutMs: 15_000, headers: { Accept: 'application/json' } });
-  if (osrm.status !== 200) throw new AcquisitionError('SERVER_ERROR', `OSRM HTTP ${osrm.status}`, osrm.status);
-  const route = (JSON.parse(osrm.body || '{}').routes || [])[0];
-  if (!route) throw new AcquisitionError('NOT_FOUND', `OSRM found no road route between ${rt.from} and ${rt.to}`);
-  const km = Number(route.distance) / 1000;
-  const mins = Number(route.duration) / 60;
+  // Road distance is a property of the coordinates, not of the fare: the same pickup/drop always
+  // gives the same km, so a repeat search (or the web + app asking the same ride) reuses it.
+  const okey = `${a.lat.toFixed(4)},${a.lon.toFixed(4)}>${b.lat.toFixed(4)},${b.lon.toFixed(4)}`;
+  const ohit = _osrmCache.get(okey);
+  let km: number; let mins: number;
+  if (ohit && Date.now() - ohit.at < OSRM_TTL_MS) {
+    km = ohit.km; mins = ohit.mins;
+  } else {
+    const osrm = await cffiFetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`, { timeoutMs: 15_000, headers: { Accept: 'application/json' } });
+    if (osrm.status !== 200) throw new AcquisitionError('SERVER_ERROR', `OSRM HTTP ${osrm.status}`, osrm.status);
+    const route = (JSON.parse(osrm.body || '{}').routes || [])[0];
+    if (!route) throw new AcquisitionError('NOT_FOUND', `OSRM found no road route between ${rt.from} and ${rt.to}`);
+    km = Number(route.distance) / 1000;
+    mins = Number(route.duration) / 60;
+    _osrmCache.set(okey, { at: Date.now(), km, mins });
+  }
   // pick ONE live card per consumer category (prefer all-day "AL", newest wins)
   const best = olaPickCards(cards);
   const today = new Date().toISOString().slice(0, 10);

@@ -55,6 +55,9 @@ const DEFAULT_GATED_HOSTS = [
   'expedia.com',         // Expedia group edge
   'makemytrip.com',      // Akamai-sampled listings (hotels/flights SRP)
   'goibibo.com',         // Akamai-sampled listings
+  // OWNER 3 Nov ("ola, rapido ka v price aata tha ... ab kyun ni aata"): Ola's rate-card/pricing edge
+  // answers our datacenter egress with a gate, so its rows vanished while Bharat Taxi/Uber stayed.
+  'olacabs.com',
 ];
 
 function csv(v: string | undefined): string[] {

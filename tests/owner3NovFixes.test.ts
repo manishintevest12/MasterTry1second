@@ -55,7 +55,9 @@ test('the cold ceiling is per vertical so movies can return their enriched set',
   // Measured: /api/scrape/live movies Bhopal = 22 rows at 3.2s with provider null and 0 priced;
   // POST /api/search the settled 17s answer = 11 rows all priced (District 5 / BMS 3 / TicketNew 3).
   assert.match(routes, /\['movies', 'movie', 'hotels'\]\.includes\(String\(input\.vertical\)\) \? 20_000/, 'movies+hotels wait for their enriched set');
-  assert.match(routes, /String\(input\.vertical\) === 'flights' \? 16_000 : 9_000/, 'flights get a middle ceiling, the rest stay fast');
+  assert.match(routes, /String\(input\.vertical\) === 'flights' \? 16_000/, 'flights get a middle ceiling');
+  // Cab: Ola/Rapido quotes need 2-7s, so cab sits between flights and the instant verticals.
+  assert.match(routes, /String\(input\.vertical\) === 'cab' \? 14_000 : 9_000/, 'cab waits for its cab quotes, the rest stay fast');
   // The env override still wins when the operator sets it, but it no longer collapses every
   // vertical to one number by default.
   assert.match(routes, /const coldCeilingMs = Number\(process\.env\.T1S_COLD_SEARCH_CEILING_MS \|\| 0\)/, 'operator override still wins');
@@ -67,4 +69,19 @@ test('cab is not date-answering: the picker date can no longer blank the cab fee
   // Measured with the owner's own screenshot query (Chappan Dukan -> River Side Road, Indore):
   // no dates = 7 rows / 6 priced; travelDates.depart = today = 0 rows on both endpoints.
   assert.equal(DATE_ANSWERING_VERTICALS.includes('cab'), false);
+});
+
+test('cab price sources are honest and cached: no silent Rapido, Ola reference data cached', () => {
+  const cab = readFileSync(join(process.cwd(), 'server/workers/verticals/cab.ts'), 'utf8');
+  // A missing Rapido fare used to `return []`, which is why "Rapido ka price ni aa raha" could not be
+  // diagnosed from the answer at all. The row still needs a real fare (owner rule 31 Oct), but the
+  // reason now reaches sourcesFailed.
+  assert.ok(!cab.includes("if (outcome.status !== 'ok' || !outcome.quotes.length) return [];"), 'silent Rapido miss is gone');
+  assert.match(cab, /Rapido city fare unavailable/, 'the reason is surfaced');
+  // Ola's rate-card DB is city reference data (base/slabs) and OSRM distance is a property of the
+  // coordinates; caching them cannot change a price, it only stops the answer cutting Ola off.
+  assert.match(cab, /_olaRcCache/, 'Ola rate-card DB cached');
+  assert.match(cab, /_osrmCache/, 'road distance cached');
+  const relay = readFileSync(join(process.cwd(), 'server/sources/edgeRelay.ts'), 'utf8');
+  assert.match(relay, /'olacabs\.com'/, 'Ola joins the rotation policy so a gated response rotates');
 });

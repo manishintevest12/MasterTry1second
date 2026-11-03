@@ -1923,8 +1923,11 @@ var init_edgeRelay = __esm({
       // Expedia group edge
       "makemytrip.com",
       // Akamai-sampled listings (hotels/flights SRP)
-      "goibibo.com"
+      "goibibo.com",
       // Akamai-sampled listings
+      // OWNER 3 Nov ("ola, rapido ka v price aata tha ... ab kyun ni aata"): Ola's rate-card/pricing edge
+      // answers our datacenter egress with a gate, so its rows vanished while Bharat Taxi/Uber stayed.
+      "olacabs.com"
     ];
     breakers = /* @__PURE__ */ new Map();
     BREAKER_THRESHOLD = 3;
@@ -22626,7 +22629,9 @@ async function rapidoLiveFaresSafe(ctx, rt, city) {
       { lat: pa.lat, lng: pa.lon, label: rt.from },
       { lat: pb.lat, lng: pb.lon, label: rt.to }
     );
-    if (outcome.status !== "ok" || !outcome.quotes.length) return [];
+    if (outcome.status !== "ok" || !outcome.quotes.length) {
+      throw new AcquisitionError("EMPTY_RESPONSE", `Rapido city fare unavailable (${outcome.status}): ${String(outcome.detail || "no quotes")}`);
+    }
     const catalog = await rapidoServiceCatalog(pa.lat, pa.lon);
     return buildRapidoFareRows({
       source: ctx.source,
@@ -22636,7 +22641,8 @@ async function rapidoLiveFaresSafe(ctx, rt, city) {
       quotes: outcome.quotes,
       catalog
     });
-  } catch {
+  } catch (e2) {
+    if (e2 instanceof AcquisitionError) throw e2;
     return [];
   }
 }
@@ -22963,6 +22969,8 @@ function olaCardFare(c, km, mins) {
   return Math.max(Math.round(fare), Math.round(minF));
 }
 async function olaRateCards(cityId, timezone) {
+  const hit = _olaRcCache.get(cityId);
+  if (hit && Date.now() - hit.at < OLA_RC_TTL_MS) return hit.cards;
   const p = await cffiFetch(`${OLA_RC_BASE}/merchandising/rate-card?api_ver=v1`, { impersonate: "chrome", timeoutMs: 2e4, returnCookies: true, headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9" } });
   const jar = Object.entries(p.cookies || {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("; ");
   const xsrf = (p.cookies || {})["XSRF-TOKEN"] || "";
@@ -22973,6 +22981,7 @@ async function olaRateCards(cityId, timezone) {
   const now = Date.now();
   const isDate = (s) => s ? (/* @__PURE__ */ new Date(s.replace(" ", "T") + (s.includes("+") ? "" : "+05:30"))).getTime() : NaN;
   const cards = (j.p2p || []).filter((c) => !c.deleted_at && c.status === "approved" && c.rate_card_type === "base" && (!c.valid_to || isDate(c.valid_to) > now) && (!c.valid_from || isDate(c.valid_from) <= now) && (c.threshold_type == null || c.threshold_type === "distance_based") && (Number(c.base_fare) || 0) >= 0 && (Number(c.rate_per_km) || Number(c.rate_per_unit_distance) || 0) > 0);
+  if (cards.length) _olaRcCache.set(cityId, { at: Date.now(), cards });
   return cards;
 }
 function olaPickCards(cards) {
@@ -22998,12 +23007,22 @@ async function olaRateCardFallback(ctx, rt, reason) {
   }
   const [cards, a, b] = await Promise.all([olaRateCards(city.id, city.timezone), geocodePudo(rt.from, city.name), geocodePudo(rt.to, city.name)]);
   if (!a || !b) return [];
-  const osrm = await cffiFetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`, { timeoutMs: 15e3, headers: { Accept: "application/json" } });
-  if (osrm.status !== 200) throw new AcquisitionError("SERVER_ERROR", `OSRM HTTP ${osrm.status}`, osrm.status);
-  const route2 = (JSON.parse(osrm.body || "{}").routes || [])[0];
-  if (!route2) throw new AcquisitionError("NOT_FOUND", `OSRM found no road route between ${rt.from} and ${rt.to}`);
-  const km = Number(route2.distance) / 1e3;
-  const mins = Number(route2.duration) / 60;
+  const okey = `${a.lat.toFixed(4)},${a.lon.toFixed(4)}>${b.lat.toFixed(4)},${b.lon.toFixed(4)}`;
+  const ohit = _osrmCache.get(okey);
+  let km;
+  let mins;
+  if (ohit && Date.now() - ohit.at < OSRM_TTL_MS) {
+    km = ohit.km;
+    mins = ohit.mins;
+  } else {
+    const osrm = await cffiFetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`, { timeoutMs: 15e3, headers: { Accept: "application/json" } });
+    if (osrm.status !== 200) throw new AcquisitionError("SERVER_ERROR", `OSRM HTTP ${osrm.status}`, osrm.status);
+    const route2 = (JSON.parse(osrm.body || "{}").routes || [])[0];
+    if (!route2) throw new AcquisitionError("NOT_FOUND", `OSRM found no road route between ${rt.from} and ${rt.to}`);
+    km = Number(route2.distance) / 1e3;
+    mins = Number(route2.duration) / 60;
+    _osrmCache.set(okey, { at: Date.now(), km, mins });
+  }
   const best = olaPickCards(cards);
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const items = [];
@@ -23041,7 +23060,7 @@ async function olaRateCardFallback(ctx, rt, reason) {
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `Ola rate-card DB has no live consumer card for ${city.name}`);
   return items.sort((x, y) => x.price - y.price);
 }
-var _uberTokenCache, UBER_CITY_SLUGS, uberSessionCookies, OLA_RC_BASE, OLA_RC_KEY, _olaCityCache, OLA_CATEGORY_LABELS, cabWorker;
+var _uberTokenCache, UBER_CITY_SLUGS, uberSessionCookies, OLA_RC_BASE, OLA_RC_KEY, _olaCityCache, OLA_CATEGORY_LABELS, _olaRcCache, OLA_RC_TTL_MS, _osrmCache, OSRM_TTL_MS, cabWorker;
 var init_cab = __esm({
   "server/workers/verticals/cab.ts"() {
     init_cabLinks();
@@ -23096,6 +23115,10 @@ var init_cab = __esm({
       { cat: "luxury_sedan", label: "Ola Luxury Sedan" },
       { cat: "erick", label: "Ola e-Rick" }
     ];
+    _olaRcCache = /* @__PURE__ */ new Map();
+    OLA_RC_TTL_MS = 12 * 3600 * 1e3;
+    _osrmCache = /* @__PURE__ */ new Map();
+    OSRM_TTL_MS = 6 * 3600 * 1e3;
     cabWorker = {
       vertical: "cab",
       tasks: [
@@ -45004,7 +45027,7 @@ var init_routes = __esm({
             latencyMs: Date.now() - searchStart
           });
         }
-        const coldCeilingMs = Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 0) || (["movies", "movie", "hotels"].includes(String(input.vertical)) ? 2e4 : String(input.vertical) === "flights" ? 16e3 : 9e3);
+        const coldCeilingMs = Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 0) || (["movies", "movie", "hotels"].includes(String(input.vertical)) ? 2e4 : String(input.vertical) === "flights" ? 16e3 : String(input.vertical) === "cab" ? 14e3 : 9e3);
         const coldCeiling = Math.max(2e3, coldCeilingMs);
         const late = await Promise.race([
           searchedLive,

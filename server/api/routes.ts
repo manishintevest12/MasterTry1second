@@ -1624,8 +1624,13 @@ apiRouter.post('/scrape/live', async (req, res) => {
     // label and the seat-price band (the only honest price source for movies) land at ~12-17s.
     // The cold ceiling is therefore per vertical now - movies/hotels wait for their enriched set,
     // the fast verticals keep the 9s ceiling they already meet.
+    // OWNER 3 Nov (cab): Ola's rate-card chain and Rapido's signed fare call measured 2.1s warm / ~7s
+    // cold in this sandbox, so a cab answer cut at 9s dropped their real fares even though both
+    // produce priced rows. Cab gets a middle ceiling; the instant verticals keep 9s.
     const coldCeilingMs = Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 0)
-      || (['movies', 'movie', 'hotels'].includes(String(input.vertical)) ? 20_000 : String(input.vertical) === 'flights' ? 16_000 : 9_000);
+      || (['movies', 'movie', 'hotels'].includes(String(input.vertical)) ? 20_000
+        : String(input.vertical) === 'flights' ? 16_000
+        : String(input.vertical) === 'cab' ? 14_000 : 9_000);
     const coldCeiling = Math.max(2000, coldCeilingMs);
     const late = (await Promise.race([
       searchedLive,
