@@ -103,9 +103,21 @@ export const NativeBannerSlot: React.FC<{ className?: string }> = ({ className }
   );
 };
 
-/** Popunder_1 - website only, once per session, loaded idle so it never blocks the app. */
+/**
+ * Popunder_1 (abscloud.org) - DISABLED BY DEFAULT.
+ *
+ * Owner 3 Nov, after living with it: "jb kissi v vertical pr click krta hoon tho popunder phle khulta
+ * hai phir wapas uss vertical pr click krna prta hai". That is exactly what a network popunder does:
+ * its script binds the FIRST document click and takes the current tab to the ad, so the navigation
+ * the user asked for (the vertical) never happens and they have to click again.
+ *
+ * We keep the loader behind NEXT_PUBLIC_T1S_POPUNDER=1 for anyone who later accepts that behaviour,
+ * but the default is OFF and the new-tab ad below is the one that runs. Two ad mechanisms must never
+ * both fire, so enabling this disables the new-tab one.
+ */
 export const useSitePopunder = (): void => {
   useEffect(() => {
+    if (String(import.meta.env.VITE_T1S_POPUNDER ?? '0') !== '1') return;
     if (!adSafePath()) return;
     try {
       if (sessionStorage.getItem(POPUNDER_FLAG) === '1') return;
@@ -113,12 +125,82 @@ export const useSitePopunder = (): void => {
     } catch {
       // private mode: fall through and load once for this page view
     }
-    const arm = () => injectScriptOnce('t1s-popunder-1', POPUNDER_SCRIPT, false);
+    const arm = () => injectScriptOnce('t1s-popunder-1', POPUNDER_SCRIPT, true);
     const timer = setTimeout(() => {
       if ('requestIdleCallback' in window) (window as any).requestIdleCallback(arm, { timeout: 4000 });
       else arm();
     }, 2500);
     return () => clearTimeout(timer);
+  }, []);
+};
+
+/**
+ * Controlled "ad in the other tab" (owner's own words: "mera vertical khule aur mai rahu v ussi
+ * screen pr aur add dusre tab mai aaye jb mai uss app pr jau tb wo muje mile").
+ *
+ * How it differs from the network popunder: nothing is taken from the user.
+ *  - The FIRST real click of the session opens the ad in a BACKGROUND tab (window.open without a
+ *    named target keeps the current tab and its navigation untouched, and a user gesture means
+ *    browsers do not block it).
+ *  - We never preventDefault, never re-route the active tab, so the vertical the user clicked opens
+ *    exactly as before and they stay on it. The ad is waiting when they switch tabs.
+ *  - Merchant exits are left completely alone (see isExitClick): an ad must never race a paid click.
+ *  - Once per session, website only, never inside the app webview, never on /admin or /api.
+ */
+export const NEWTAB_AD_FLAG = 't1s_newtab_ad';
+
+/** Pure predicate so the skip rules are testable without a DOM. */
+export function isExitClick(info: { href?: string | null; hasExitMarker?: boolean; target?: string | null }): boolean {
+  if (info.hasExitMarker) return true;
+  const href = String(info.href || '');
+  if (!href) return false;
+  return /(^|\/)(api\/out|redirect)(\?|$|\/)/i.test(href);
+}
+
+export function qualifiesForNewTabAd(info: {
+  href?: string | null;
+  hasExitMarker?: boolean;
+  isAppWebView?: boolean;
+  pathname?: string;
+  alreadyShown?: boolean;
+  modifiedClick?: boolean;
+}): boolean {
+  if (info.alreadyShown) return false;
+  if (info.isAppWebView) return false;
+  if (info.modifiedClick) return false; // ctrl/cmd/shift clicks are the user's own new-tab intent
+  const p = String(info.pathname || '/');
+  if (/^\/(api|functions)\b/.test(p) || p.includes('/admin')) return false;
+  if (isExitClick(info)) return false;
+  return true;
+}
+
+export const useNewTabAd = (): void => {
+  useEffect(() => {
+    if (String(import.meta.env.VITE_T1S_POPUNDER ?? '0') === '1') return; // one ad mechanism only
+    let shown = false;
+    try { shown = sessionStorage.getItem(NEWTAB_AD_FLAG) === '1'; } catch { /* private mode */ }
+
+    const onClick = (ev: MouseEvent) => {
+      const target = ev.target as HTMLElement | null;
+      const anchor = target?.closest?.('a') as HTMLAnchorElement | null;
+      const exitMarker = Boolean(target?.closest?.('[data-t1s-exit="1"]'));
+      const ok = qualifiesForNewTabAd({
+        href: anchor?.getAttribute('href') || '',
+        hasExitMarker: exitMarker,
+        isAppWebView: isAppWebView(),
+        pathname: window.location.pathname,
+        alreadyShown: shown,
+        modifiedClick: ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey,
+      });
+      if (!ok) return;
+      shown = true;
+      try { sessionStorage.setItem(NEWTAB_AD_FLAG, '1'); } catch { /* private mode */ }
+      // Background tab: the current one keeps its navigation, so the vertical still opens.
+      try { window.open(SMARTLINK_URL, '_blank', 'noopener,noreferrer'); } catch { /* blocked */ }
+      document.removeEventListener('click', onClick, true);
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
   }, []);
 };
 
