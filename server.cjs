@@ -3081,6 +3081,16 @@ var init_gateHeal = __esm({
       // same 403 with the storefront's _abck/bm_sz cookies primed, and 0 of 40 seed hops passed
       // it) - so this is sensor/cookie gated, not merely IP gated. Registering it keeps the
       // self-healing sweep honest: it will pick up a hop the day one answers the fare API.
+      // FLIGHTS: Ixigo answers a headless/datacenter visit with "Oops...too many requests!" while
+      // 5 of our seed hops load the same SRP normally (measured 3 Nov), so this is exactly the case
+      // rotation exists for.
+      ixigo: {
+        label: "ixigo-flight-srp",
+        url: "https://www.ixigo.com/search/flight/IDR/DEL/2026-11-27/1/0",
+        headers: HTML,
+        expectSubstring: "ixigo",
+        maxMs: 9e3
+      },
       cleartrip: {
         label: "cleartrip-fare-api",
         url: "https://www.cleartrip.com/flight/search/v2?from=IDR&to=DEL&depart_date=19/11/2026&adults=1",
@@ -3144,7 +3154,8 @@ var init_gateHeal = __esm({
       [/starair|star.?air/, "starair"],
       [/spicejet/, "spicejet"],
       [/redbus/, "redbus"],
-      [/cleartrip/, "cleartrip"]
+      [/cleartrip/, "cleartrip"],
+      [/ixigo/, "ixigo"]
     ];
   }
 });
@@ -19263,26 +19274,26 @@ var init_bharatTaxi = __esm({
 function parseQuickRideCabs(html, source, pageUrl, from, to) {
   const items = [];
   const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
-  const norm7 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const norm8 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
   const fare = (s) => {
-    const m = /([\d,]{3,7})/.exec(norm7(s).replace(/[₹]/g, ""));
+    const m = /([\d,]{3,7})/.exec(norm8(s).replace(/[₹]/g, ""));
     return m ? Number(m[1].replace(/,/g, "")) : null;
   };
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const row of rows) {
     const cells = row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) || [];
     if (cells.length < 4) continue;
-    const rf = norm7(cells[0] || "").toLowerCase();
-    const rt = norm7(cells[1] || "").toLowerCase();
-    const f = norm7(from || "").toLowerCase();
-    const t = norm7(to || "").toLowerCase();
+    const rf = norm8(cells[0] || "").toLowerCase();
+    const rt = norm8(cells[1] || "").toLowerCase();
+    const f = norm8(from || "").toLowerCase();
+    const t = norm8(to || "").toLowerCase();
     const routeMatch = f && t && (rf.includes(f) || f.includes(rf)) && (rt.includes(t) || t.includes(rt));
     if (!routeMatch) continue;
     const oneWay = fare(cells[2] || "");
     const roundTrip = fare(cells[3] || "");
     if (oneWay && oneWay > 0) {
       items.push(newRawItem(source, {
-        title: `${norm7(cells[0] || "")} to ${norm7(cells[1] || "")} cab (one-way)`,
+        title: `${norm8(cells[0] || "")} to ${norm8(cells[1] || "")} cab (one-way)`,
         brand: "Quick Ride",
         price: Math.round(oneWay),
         currency: "INR",
@@ -19292,7 +19303,7 @@ function parseQuickRideCabs(html, source, pageUrl, from, to) {
         attributes: {
           pickup: from,
           drop: to,
-          route: `${norm7(cells[0] || "")} to ${norm7(cells[1] || "")}`,
+          route: `${norm8(cells[0] || "")} to ${norm8(cells[1] || "")}`,
           vehicle_type: "cab (outstation)",
           trip_type: "one-way",
           round_trip_fare: roundTrip ? String(roundTrip) : "",
@@ -19333,10 +19344,10 @@ async function indriveCityLookup(term) {
 function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
-  const norm7 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
+  const norm8 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
   const esc8 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rx = new RegExp(`^${esc8}\\b`);
-  return cities.find((c) => norm7(c.name) === t) || cities.find((c) => rx.test(norm7(c.name))) || cities.find((c) => norm7(c.name).includes(t)) || null;
+  return cities.find((c) => norm8(c.name) === t) || cities.find((c) => rx.test(norm8(c.name))) || cities.find((c) => norm8(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
   const url = `${HOST_API}/web/v1/prices?city_from_id=${fromId}&city_to_id=${toId}`;
@@ -25402,7 +25413,7 @@ async function gwCityCinemas(host, citySlug2, timeoutMs = 12e3) {
 }
 async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs = 12e3) {
   const byTitle = /* @__PURE__ */ new Map();
-  const norm7 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const norm8 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const cinemas = await gwCityCinemas(host, citySlug2, timeoutMs);
   const walkOne = async (cinema) => ({
     cinema,
@@ -25426,7 +25437,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
     for (const mv of moviesMeta) titleByMid.set(String(mv?.id || ""), String(mv?.name || "").trim());
     const contentByTitle = /* @__PURE__ */ new Map();
     for (const g of grouped) {
-      const lbl = norm7(String(g?.label || ""));
+      const lbl = norm8(String(g?.label || ""));
       if (lbl && Number(g?.contentId)) contentByTitle.set(lbl, Number(g.contentId));
     }
     const posterByMid = /* @__PURE__ */ new Map();
@@ -25436,7 +25447,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       const mid = String(ss?.mid || "");
       const title = titleByMid.get(mid) || "";
       if (!title) continue;
-      const key = norm7(title);
+      const key = norm8(title);
       if (!key) continue;
       const areas = [];
       for (const a of ss?.areas || []) {
@@ -40002,6 +40013,138 @@ var init_assistantAnswer = __esm({
   }
 });
 
+// server/lens/searchMemory.ts
+function memoryKey(k) {
+  return [norm7(k.vertical), norm7(k.query), norm7(k.city), norm7(k.depart || "")].join("|");
+}
+async function ensureSearchMemoryTable() {
+  const store4 = getStore();
+  await store4.execute(
+    `CREATE TABLE IF NOT EXISTS ${TABLE} (
+       mem_key VARCHAR(191) PRIMARY KEY,
+       vertical VARCHAR(32) NOT NULL,
+       query VARCHAR(255) NOT NULL,
+       city VARCHAR(80) NOT NULL DEFAULT '',
+       depart VARCHAR(10) NOT NULL DEFAULT '',
+       sellers TEXT NULL,
+       row_count INT NOT NULL DEFAULT 0,
+       cheapest_by_seller TEXT NULL,
+       times_seen INT NOT NULL DEFAULT 0,
+       last_verified_at BIGINT NOT NULL DEFAULT 0
+     )`
+  );
+}
+async function recallAnswer(k) {
+  try {
+    const rows = await getStore().query(`SELECT * FROM ${TABLE} WHERE mem_key = ? LIMIT 1`, [memoryKey(k)]);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      key: String(r.mem_key),
+      vertical: String(r.vertical || ""),
+      query: String(r.query || ""),
+      city: String(r.city || ""),
+      depart: String(r.depart || ""),
+      sellers: parseJson(r.sellers, []),
+      rowCount: Number(r.row_count) || 0,
+      cheapestBySeller: parseJson(r.cheapest_by_seller, {}),
+      timesSeen: Number(r.times_seen) || 0,
+      lastVerifiedAt: Number(r.last_verified_at) || 0
+    };
+  } catch (e2) {
+    log.info("Assistant", "search memory recall skipped", { error: String(e2?.message || e2).slice(0, 120) });
+    return null;
+  }
+}
+async function sellerReliability(vertical, limit = 40) {
+  try {
+    const rows = await getStore().query(
+      `SELECT sellers, times_seen FROM ${TABLE} WHERE vertical = ? ORDER BY last_verified_at DESC LIMIT ?`,
+      [String(vertical), Math.max(1, Math.min(200, limit))]
+    );
+    const score = {};
+    for (const r of rows) {
+      const seen = Math.max(1, Number(r.times_seen) || 1);
+      for (const s of parseJson(r.sellers, [])) {
+        score[s] = (score[s] || 0) + seen;
+      }
+    }
+    return score;
+  } catch {
+    return {};
+  }
+}
+async function rememberAnswer(k, answer) {
+  const rows = answer.rows || [];
+  if (!rows.length) return;
+  const sellers = new Set(answer.sellers || []);
+  const cheapest = {};
+  for (const r of rows) {
+    const seller = String(r?.seller || r?.vendor || r?.provider || "").trim();
+    if (!seller) continue;
+    sellers.add(seller);
+    const price = Number(
+      r?.prices?.effectivePrice ?? r?.prices?.mandatoryTotal ?? r?.price ?? r?.prices?.listPrice ?? 0
+    );
+    if (Number.isFinite(price) && price > 0) {
+      cheapest[seller] = Math.min(cheapest[seller] || Infinity, price);
+    }
+  }
+  const key = memoryKey(k);
+  const at = Number(answer.at) || Date.now();
+  try {
+    await getStore().execute(
+      `INSERT INTO ${TABLE} (mem_key, vertical, query, city, depart, sellers, row_count, cheapest_by_seller, times_seen, last_verified_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+       ON DUPLICATE KEY UPDATE
+         sellers = VALUES(sellers),
+         row_count = VALUES(row_count),
+         cheapest_by_seller = VALUES(cheapest_by_seller),
+         times_seen = times_seen + 1,
+         last_verified_at = VALUES(last_verified_at)`,
+      [
+        key,
+        String(k.vertical || "").slice(0, 32),
+        String(k.query || "").slice(0, 255),
+        String(k.city || "").slice(0, 80),
+        String(k.depart || "").slice(0, 10),
+        JSON.stringify([...sellers]),
+        rows.length,
+        JSON.stringify(cheapest),
+        at
+      ]
+    );
+  } catch (e2) {
+    log.info("Assistant", "search memory write skipped", { error: String(e2?.message || e2).slice(0, 120) });
+  }
+}
+function boostByReliability(rows, reliability) {
+  if (!rows.length || !Object.keys(reliability).length) return rows;
+  const score = (r) => reliability[String(r?.seller || r?.vendor || r?.provider || "")] || 0;
+  return rows.map((r, i) => ({ r, i, s: score(r) })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.r);
+}
+function memoryNotice(mem) {
+  if (!mem || !mem.rowCount) return void 0;
+  const when = new Date(mem.lastVerifiedAt).toISOString().slice(0, 16).replace("T", " ");
+  return `Last time you asked this, ${mem.rowCount} live rows came from ${mem.sellers.slice(0, 4).join(", ") || "our sources"} (verified ${when}Z). I start from those and re-check prices now.`;
+}
+var norm7, TABLE, parseJson;
+var init_searchMemory = __esm({
+  "server/lens/searchMemory.ts"() {
+    init_db();
+    init_logger();
+    norm7 = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+    TABLE = "assistant_search_memory";
+    parseJson = (raw, fallback) => {
+      try {
+        return raw ? JSON.parse(String(raw)) : fallback;
+      } catch {
+        return fallback;
+      }
+    };
+  }
+});
+
 // server/lens/spellFix.ts
 function editDistance(a, b, cap = 3) {
   if (a === b) return 0;
@@ -43502,6 +43645,7 @@ var init_routes = __esm({
     init_productLink();
     init_assistantIntent();
     init_assistantAnswer();
+    init_searchMemory();
     init_sameProduct();
     init_pricePlausibility();
     init_spellFix();
@@ -44008,6 +44152,15 @@ var init_routes = __esm({
         searched,
         new Promise((resolve) => setTimeout(() => resolve(null), budgetMs))
       ]);
+      if (response && response.results?.length) {
+        const r = response;
+        if (!r.state?.pendingRefresh) {
+          void ensureSearchMemoryTable().then(() => rememberAnswer(
+            { vertical: String(input.vertical || ""), query: String(input.query || ""), city: String(input.city || ""), depart: String(input.travelDates?.depart || "") },
+            { rows: r.results, sellers: (r.state?.sourcesSucceeded || []).map((id) => id.replace(/^w_[a-z]+_/, "")) }
+          )).catch(() => void 0);
+        }
+      }
       if (!response) {
         const fallback = await lastChanceRows(input, 600);
         const fallbackGate = fallback ? gateRowsForDate(fallback.results || [], String(input.vertical), input.travelDates) : { rows: [], dropped: 0, droppedOn: {} };
@@ -45119,6 +45272,13 @@ var init_routes = __esm({
         travelDates: input.travelDates
       };
       if (String(searchInput.vertical) === "cab" && searchInput.query) searchInput.query = resolveCabQuery(searchInput.query, searchInput.city);
+      const memKey = {
+        vertical: String(searchInput.vertical || ""),
+        query: String(searchInput.query || ""),
+        city: String(searchInput.city || ""),
+        depart: String(searchInput.travelDates?.depart || "")
+      };
+      const remembered = await recallAnswer(memKey).catch(() => null);
       try {
         const searched = runSearch(searchInput);
         searched.catch(() => void 0);
@@ -45186,8 +45346,14 @@ var init_routes = __esm({
           } catch {
           }
         }
-        const ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
+        let ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
+        try {
+          const reliability = await sellerReliability(String(searchInput.vertical), 40);
+          if (Object.keys(reliability).length) ordered = boostByReliability(ordered, reliability);
+        } catch {
+        }
         const shaped = toAssistantRows(ordered, 6, { diversify: true });
+        void ensureSearchMemoryTable().then(() => rememberAnswer(memKey, { rows, sellers: sourcesSucceeded.map((id) => id.replace(/^w_[a-z]+_/, "")) })).catch(() => void 0);
         const answer = shapeAssistantAnswer(
           fallbackVertical ? fallbackVertical : meta.vertical,
           meta.query,
@@ -45211,6 +45377,16 @@ var init_routes = __esm({
           count: answer.count,
           pendingRefresh: pending,
           sourcesSucceeded,
+          // What the assistant remembered (never a live claim, never a price it did not verify).
+          ...remembered ? {
+            memory: {
+              rows: remembered.rowCount,
+              sellers: remembered.sellers.slice(0, 6),
+              lastVerifiedAt: remembered.lastVerifiedAt,
+              timesSeen: remembered.timesSeen,
+              notice: memoryNotice(remembered)
+            }
+          } : {},
           latencyMs: Date.now() - started3
         });
       } catch (e2) {
@@ -47611,9 +47787,9 @@ function splitCsvLine(line) {
 }
 function headerIndex(headers, key) {
   const wanted = HEADER_ALIASES[key] || [];
-  const norm7 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
+  const norm8 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
   for (const w of wanted) {
-    const i = norm7.findIndex((h) => h === w || h.startsWith(`${w} `));
+    const i = norm8.findIndex((h) => h === w || h.startsWith(`${w} `));
     if (i >= 0) return i;
   }
   return -1;

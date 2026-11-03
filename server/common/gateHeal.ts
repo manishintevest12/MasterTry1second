@@ -99,6 +99,16 @@ export const GATE_TARGETS: Record<string, ProbeTarget> = {
   // same 403 with the storefront's _abck/bm_sz cookies primed, and 0 of 40 seed hops passed
   // it) - so this is sensor/cookie gated, not merely IP gated. Registering it keeps the
   // self-healing sweep honest: it will pick up a hop the day one answers the fare API.
+  // FLIGHTS: Ixigo answers a headless/datacenter visit with "Oops...too many requests!" while
+  // 5 of our seed hops load the same SRP normally (measured 3 Nov), so this is exactly the case
+  // rotation exists for.
+  ixigo: {
+    label: 'ixigo-flight-srp',
+    url: 'https://www.ixigo.com/search/flight/IDR/DEL/2026-11-27/1/0',
+    headers: HTML,
+    expectSubstring: 'ixigo',
+    maxMs: 9000,
+  },
   cleartrip: {
     label: 'cleartrip-fare-api',
     url: 'https://www.cleartrip.com/flight/search/v2?from=IDR&to=DEL&depart_date=19/11/2026&adults=1',
@@ -153,6 +163,7 @@ const KEY_HINTS: Array<[RegExp, string]> = [
   [/spicejet/, 'spicejet'],
   [/redbus/, 'redbus'],
   [/cleartrip/, 'cleartrip'],
+  [/ixigo/, 'ixigo'],
 ];
 
 export function gateKeyFor(sourceId: string, message = ''): string | null {

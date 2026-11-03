@@ -58,6 +58,7 @@ import { loadSourcesFromDb } from '../sources/registry';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, normalizeTypedProductQuery } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows } from '../lens/assistantAnswer';
+import { boostByReliability, ensureSearchMemoryTable, memoryNotice, recallAnswer, rememberAnswer, sellerReliability } from '../lens/searchMemory';
 import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
 import { dropImplausiblePrices } from '../lens/pricePlausibility';
 import { fixSpelling } from '../lens/spellFix';
@@ -920,6 +921,19 @@ apiRouter.post('/search', async (req, res) => {
     searched,
     new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
   ])) as Awaited<ReturnType<typeof runSearch>> | null;
+  if (response && (response as any).results?.length) {
+    // Everything the feed learns is remembered too, so "Ask Try1Second" starts from real history
+    // rather than only from questions asked inside the assistant.
+    const r = response as any;
+    if (!r.state?.pendingRefresh) {
+      void ensureSearchMemoryTable()
+        .then(() => rememberAnswer(
+          { vertical: String(input.vertical || ''), query: String(input.query || ''), city: String(input.city || ''), depart: String(input.travelDates?.depart || '') },
+          { rows: r.results, sellers: (r.state?.sourcesSucceeded || []).map((id: string) => id.replace(/^w_[a-z]+_/, '')) },
+        ))
+        .catch(() => undefined);
+    }
+  }
   if (!response) {
     const fallback = await lastChanceRows(input, 600);
     const fallbackGate = fallback
@@ -2627,6 +2641,17 @@ apiRouter.post('/assist/answer', async (req, res) => {
   };
   if (String(searchInput.vertical) === 'cab' && searchInput.query) searchInput.query = resolveCabQuery(searchInput.query, searchInput.city);
 
+  // OWNER 3 Nov: the assistant now REMEMBERS what it found before, so the next identical or
+  // similar question starts warm instead of blank and the sellers that actually answer get
+  // ranked first. Recall is read-only and never bypasses the date gate or a live re-check.
+  const memKey = {
+    vertical: String(searchInput.vertical || ''),
+    query: String(searchInput.query || ''),
+    city: String(searchInput.city || ''),
+    depart: String(searchInput.travelDates?.depart || ''),
+  };
+  const remembered = await recallAnswer(memKey).catch(() => null);
+
   try {
     const searched = runSearch(searchInput);
     searched.catch(() => undefined); // the abandoned race leg must never crash the process
@@ -2713,9 +2738,21 @@ apiRouter.post('/assist/answer', async (req, res) => {
     }
 
     // Same API-boundary rule as the feed: bare flight rows trail.
-    const ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
+    let ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
+    // MEMORY RANKING (owner 3 Nov, "self trained type"): sellers that have actually answered this
+    // vertical before lead, so a known-good partner is not buried under a first-time source.
+    // Prices are untouched and no row is added or removed.
+    try {
+      const reliability = await sellerReliability(String(searchInput.vertical), 40);
+      if (Object.keys(reliability).length) ordered = boostByReliability(ordered, reliability);
+    } catch { /* ranking hint only */ }
     // 29 Oct: every company that answered gets a card, not whichever seller filled the first 6.
     const shaped = toAssistantRows(ordered, 6, { diversify: true });
+    // Write the outcome back so the NEXT question of this kind starts warm. Background, never
+    // blocks the answer, and an empty answer never overwrites a good memory.
+    void ensureSearchMemoryTable()
+      .then(() => rememberAnswer(memKey, { rows, sellers: sourcesSucceeded.map((id) => id.replace(/^w_[a-z]+_/, '')) }))
+      .catch(() => undefined);
     const answer = shapeAssistantAnswer(
       fallbackVertical ? fallbackVertical : meta.vertical,
       meta.query,
@@ -2741,6 +2778,16 @@ apiRouter.post('/assist/answer', async (req, res) => {
       count: answer.count,
       pendingRefresh: pending,
       sourcesSucceeded,
+      // What the assistant remembered (never a live claim, never a price it did not verify).
+      ...(remembered ? {
+        memory: {
+          rows: remembered.rowCount,
+          sellers: remembered.sellers.slice(0, 6),
+          lastVerifiedAt: remembered.lastVerifiedAt,
+          timesSeen: remembered.timesSeen,
+          notice: memoryNotice(remembered),
+        },
+      } : {}),
       latencyMs: Date.now() - started,
     });
   } catch (e: any) {
