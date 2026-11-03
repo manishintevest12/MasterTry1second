@@ -44330,9 +44330,11 @@ var init_routes = __esm({
       });
       const searched = runLiveSearch(input, { signal: searchAbort.signal });
       searched.catch(() => void 0);
+      const sweepVertical = String(input.vertical || "");
+      const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (sweepVertical === "hotels" ? 2e4 : sweepVertical === "flights" ? 18e3 : sweepVertical === "bus" ? 15e3 : 1e4)));
       let response = await Promise.race([
         searched,
-        new Promise((resolve) => setTimeout(() => resolve(null), budgetMs))
+        new Promise((resolve) => setTimeout(() => resolve(null), sweepBudget))
       ]);
       if (response && response.results?.length) {
         const r = response;
@@ -44343,11 +44345,12 @@ var init_routes = __esm({
           )).catch(() => void 0);
         }
       }
-      if (response && response.state?.pendingRefresh) {
-        const v = String(input.vertical || "");
-        const sweepBudget = Number(process.env.T1S_FULL_SWEEP_MS || (v === "hotels" ? 2e4 : v === "flights" ? 18e3 : v === "bus" ? 15e3 : 1e4));
-        const settled = await settleSearchComplete(input, sweepBudget).catch(() => null);
-        if (settled) response = settled;
+      if (!response || response.state?.pendingRefresh) {
+        const late = await Promise.race([
+          searched,
+          new Promise((resolve) => setTimeout(() => resolve(null), 1200))
+        ]);
+        if (late && late.results?.length) response = late;
       }
       if (response) {
         const finalGate = gateRowsForDate(response.results || [], String(input.vertical), input.travelDates);

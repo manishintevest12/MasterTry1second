@@ -52,8 +52,22 @@ test('both search routes claim the budget and a hard race, not just the pipeline
   // 28 Oct: /api/assist/answer is the third route that serves real rows (the Ask
   // Try1Second AI answers in every vertical now), so it must honour the SAME capped
   // budget as the two feed routes instead of running an unbounded search.
+  // OWNER 3 Nov ('jitne v sellers hai unn sb ka data aaye'): /api/search now races the vertical's
+  // FULL SWEEP budget instead of the 2s cap - that cap is exactly what answered with 2 sellers
+  // one minute and 5 the next. It is still a hard race with a bounded ceiling (never unbounded,
+  // never a poll loop), so the contract below is: two routes keep the 2s cap, /api/search races
+  // sweepBudget.
   const capped = (routes.match(/setTimeout\(\(\) => resolve\(null\), (?:Math\.min\(resultDeadlineMs\(\), 2000\)|budgetMs)\)/g) || []).length;
-  assert.equal(capped, 3, `search, scrape/live and assist/answer must all race a capped budget (found ${capped})`);
+  assert.equal(capped, 2, `scrape/live and assist/answer keep the capped budget (found ${capped})`);
+  assert.ok(routes.includes('setTimeout(() => resolve(null), sweepBudget)'), '/api/search must race the full seller sweep');
+  assert.match(routes, /hotels' \? 20_000 : sweepVertical === 'flights' \? 18_000/, 'the sweep ceiling must be per vertical and bounded');
+  assert.ok(routes.includes('T1S_FULL_SWEEP_MS'), 'the sweep ceiling must be overridable from the environment');
+  // The starvation regression: /api/search must never poll the orchestrator in a loop.
+  assert.equal(
+    (routes.match(/settleSearchComplete\(|settleForRequestedDate\(/g) || []).length,
+    0,
+    'no polling settle loops in the route (it restarted acquisition and starved the pipeline)',
+  );
   assert.ok(routes.includes("apiRouter.post('/assist/answer'"), 'the assistant must answer from the real pipeline');
   assert.ok(routes.includes('lastChanceRows(searchInput, 600)'), 'the assistant answer must also use the bounded last-chance floor');
   assert.ok(routes.includes('const budgetMs = Math.min(resultDeadlineMs(), 2000)'), '/api/search must cap the acquisition budget');

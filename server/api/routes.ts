@@ -9,7 +9,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
-import { runSearch, runSearchPolled, runSearchFast, settleForRequestedDate, settleSearchComplete, type SearchInput } from '../search/searchOrchestrator';
+import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
 import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
@@ -929,9 +929,20 @@ apiRouter.post('/search', async (req, res) => {
   res.on('close', () => { if (!res.writableEnded) searchAbort.abort(); });
   const searched = runLiveSearch(input, { signal: searchAbort.signal });
   searched.catch(() => undefined); // the abandoned race leg must never crash the process
+  // ONE SEARCH = THE WHOLE SELLER SET (owner 3 Nov). The 2s race is what made the answer carry
+  // 2 sellers one minute and 5 the next, so the SAME promise is now given the vertical's full
+  // sweep budget: hotels 20s, flights 18s, bus 15s, others 10s (T1S_FULL_SWEEP_MS overrides).
+  // Crucially this is one await on one acquisition. An earlier version POLLED runSearch in a
+  // loop, which restarted acquisition every 1.5s and starved the pipeline - measured live on
+  // 3 Nov 12:0x: flights and hotels answered 0 rows after 20s while bus (already cached)
+  // answered 69. Never poll here again.
+  const sweepVertical = String(input.vertical || '');
+  const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (
+    sweepVertical === 'hotels' ? 20_000 : sweepVertical === 'flights' ? 18_000 : sweepVertical === 'bus' ? 15_000 : 10_000
+  )));
   let response = (await Promise.race([
     searched,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), sweepBudget)),
   ])) as Awaited<ReturnType<typeof runSearch>> | null;
   if (response && (response as any).results?.length) {
     // Everything the feed learns is remembered too, so "Ask Try1Second" starts from real history
@@ -956,11 +967,14 @@ apiRouter.post('/search', async (req, res) => {
   // answer still says pendingRefresh, it waits for the sweep to SETTLE (every worker answered,
   // failed or hit its own ceiling) and returns that - bounded per vertical, then the newest
   // snapshot is used unchanged.
-  if (response && (response as any).state?.pendingRefresh) {
-    const v = String(input.vertical || '');
-    const sweepBudget = Number(process.env.T1S_FULL_SWEEP_MS || (v === 'hotels' ? 20_000 : v === 'flights' ? 18_000 : v === 'bus' ? 15_000 : 10_000));
-    const settled = await settleSearchComplete(input, sweepBudget).catch(() => null);
-    if (settled) response = settled;
+  // If the sweep ceiling was hit, take ONE more look at the same acquisition (a promise that
+  // already resolved counts instantly) - no looping, no new scan.
+  if (!response || (response as any).state?.pendingRefresh) {
+    const late = (await Promise.race([
+      searched,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+    ])) as Awaited<ReturnType<typeof runSearch>> | null;
+    if (late && (late as any).results?.length) response = late;
   }
   // Nothing leaves the server without passing the same date + city + PRICE rules. A date whose
   // every priced row was dropped answers with the honest scan state, never a price-less card.
