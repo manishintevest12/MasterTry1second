@@ -63,7 +63,15 @@ test('both search routes claim the budget and a hard race, not just the pipeline
   // races its own bounded ceiling; the fast promise is only a fallback, still time-capped.
   assert.ok(routes.includes('awaitSettledAnswer(input, sweepBudget)'), '/api/search must await the settled sweep for this question');
   assert.ok(routes.includes('setTimeout(() => resolve(null), 1200)'), 'the fallback path must stay time-capped');
-  assert.match(routes, /hotels' \? 30_000 : sweepVertical === 'flights' \? 20_000/, 'the sweep ceiling must be per vertical and bounded');
+  // OWNER 3 Nov, again: "jo slow hai unka wait kr ke results lao, ek search pr miss ni krna kissi ko v".
+  // The measured slow tail (heavy flight OTAs still fetching at 20s, hotel publishers landing 12-30s)
+  // is why the ceilings were raised - still per vertical, still bounded, still inside the ~55s
+  // front-proxy wall, and still overridable.
+  assert.match(routes, /hotels' \? 34_000 : sweepVertical === 'flights' \? 28_000/, 'the sweep ceiling must be per vertical and bounded');
+  assert.match(routes, /flights' \? 28_000 : sweepVertical === 'bus' \? 22_000/, 'bus and the remaining verticals stay bounded too');
+  const ceilings = (routes.match(/hotels' \? 34_000 : sweepVertical === 'flights' \? 28_000 : sweepVertical === 'bus' \? 22_000 : 16_000/) || []).length;
+  assert.equal(ceilings, 1, 'one bounded per-vertical ceiling, not an unbounded wait');
+  assert.ok(34_000 < 55_000, 'the slowest ceiling must stay under the front-proxy 55s wall');
   assert.ok(routes.includes('T1S_FULL_SWEEP_MS'), 'the sweep ceiling must be overridable from the environment');
   // The starvation regression: /api/search must never poll the orchestrator in a loop.
   assert.equal(

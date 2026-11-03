@@ -21,6 +21,7 @@ import { firstPaintMs, resultDeadlineMs } from './latencyBudget';
 import { aiAssistedUnderstanding, understandQuery } from '../query/queryUnderstanding';
 import { selectSources } from '../sources/registry';
 import { acquireParallel } from '../sources/orchestrator';
+import { routeKeyOf, dateKeyOf, saveSellerMemory, loadSellerMemory, mergeSellerMemory } from './sellerMemory';
 import type { AcquisitionOutcome } from '../sources/orchestrator';
 import { dedupeOffers, normalizeOffer } from '../pipeline/normalization';
 import { validateOffer } from '../pipeline/validation';
@@ -1336,6 +1337,28 @@ async function finalizeLive(
     // later blocked/empty search can show "Last: ₹X · when" instead of nothing.
     recordSourcePrices(String(vertical), String(input.query || ''), liveOffers as any);
     state.sourcesFailed = enrichFailedWithLastPrice(String(vertical), state.sourcesFailed) as any;
+
+    // SELLER MEMORY (owner 3 Nov: "ek search pr miss ni krna kissi ko v ... ye sb ka data humere
+    // paas humesa rahe, sirf new price date wise ke liye mehnat kre"). Every seller that answered is
+    // written under vertical|route|date, then any seller this pass did NOT deliver (slow, still
+    // fetching, or gated right now) is restored from that memory so the seller set stops
+    // flip-flopping. Restored rows keep their own travel date and prices and still go through the
+    // date / city / price gates below, so memory can never introduce a wrong-date or priceless card.
+    try {
+      const memKey = {
+        vertical: String(vertical),
+        routeKey: routeKeyOf({ query: input.query, city: input.city, pincode: (input as any).pincode }),
+        dateKey: dateKeyOf(input.travelDates?.depart, input.travelDates?.return),
+      };
+      if (liveOffers.length) void saveSellerMemory(memKey, liveOffers as any[]);
+      const snaps = await loadSellerMemory(memKey, Number(process.env.T1S_SELLER_MEMORY_TTL_MS || 0) || undefined);
+      if (snaps.length) {
+        const merged = mergeSellerMemory(liveOffers as any[], snaps);
+        liveOffers = merged.offers;
+        if (merged.restored.length) (state as any).sellerMemoryRestored = merged.restored;
+      }
+      (state as any).sellerMemoryKey = `${memKey.vertical}|${memKey.routeKey}|${memKey.dateKey}`;
+    } catch { /* memory is an optimisation, never a failure path */ }
   } else {
     state.sourcesAttempted = [];
   }

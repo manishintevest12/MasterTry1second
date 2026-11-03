@@ -5272,9 +5272,9 @@ function cityFromRouteText(place) {
   return (parts.length ? parts[parts.length - 1] : noPin.replace(/\s+/g, " ").trim()) || place.trim();
 }
 async function cityForPlace(place) {
-  const clean3 = cityFromRouteText(place);
+  const clean4 = cityFromRouteText(place);
   const pin = place.match(/\((\d{6})\)/)?.[1];
-  if (!pin) return clean3 || null;
+  if (!pin) return clean4 || null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
@@ -5304,7 +5304,7 @@ async function cityForPlace(place) {
     }
   } catch {
   }
-  return clean3 || null;
+  return clean4 || null;
 }
 async function geocodePlace(name) {
   const a = await photonGeocode(name);
@@ -16296,9 +16296,9 @@ function routeFromQuery(raw) {
   const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
   const codeOf = (s) => s.match(/\(([A-Za-z]{3})\)/)?.[1]?.toUpperCase();
-  const clean3 = (s) => s.replace(/\([^)]*\)/g, " ").replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|cheap|direct|return|one-way|oneway|round trip|airport)\b/gi, " ").replace(/\b(on|for|tomorrow|today|tonight|night|morning|evening|at)\b.*$/i, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, " ").replace(/,.*$/, "").replace(/\s+/g, " ").trim();
-  const from = clean3(m[1]);
-  const to = clean3(m[2]);
+  const clean4 = (s) => s.replace(/\([^)]*\)/g, " ").replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|cheap|direct|return|one-way|oneway|round trip|airport)\b/gi, " ").replace(/\b(on|for|tomorrow|today|tonight|night|morning|evening|at)\b.*$/i, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, " ").replace(/,.*$/, "").replace(/\s+/g, " ").trim();
+  const from = clean4(m[1]);
+  const to = clean4(m[2]);
   if (!from || !to) return null;
   return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
 }
@@ -19217,8 +19217,8 @@ function parseBharatTaxiCabs(html, source, pageUrl, from, to) {
     for (const row of rows) {
       const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) ?? [];
       if (cells.length < 2) continue;
-      const clean3 = (s) => s.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
-      parsed.push({ car: clean3(cells[0] ?? ""), price: clean3(cells[1] ?? "") });
+      const clean4 = (s) => s.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
+      parsed.push({ car: clean4(cells[0] ?? ""), price: clean4(cells[1] ?? "") });
     }
     const isFlat = parsed.length > 0 && parsed.every((p) => /^[₹rs\.]*\s?[\d,]{3,6}$/i.test(p.price)) && parsed.every((p) => !/km/i.test(p.price));
     if (isFlat) {
@@ -19440,9 +19440,9 @@ async function throttledNominatim(path18) {
   }
 }
 async function geoSearch(q3, limit = 6) {
-  const clean3 = q3.trim().slice(0, 120);
-  if (clean3.length < 2) return [];
-  const path18 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const clean4 = q3.trim().slice(0, 120);
+  if (clean4.length < 2) return [];
+  const path18 = `/search?q=${encodeURIComponent(clean4)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
   const rows = await throttledNominatim(path18);
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
@@ -19536,11 +19536,11 @@ function photonFeatureToPlace(f, near) {
   return place;
 }
 async function geoSuggest(q3, opts = {}) {
-  const clean3 = q3.trim().slice(0, 120);
-  if (clean3.length < 2) return [];
+  const clean4 = q3.trim().slice(0, 120);
+  if (clean4.length < 2) return [];
   const limit = Math.min(Math.max(opts.limit ?? 8, 1), 10);
   const bias = Number.isFinite(opts.lat) && Number.isFinite(opts.lng) && Math.abs(opts.lat) <= 90 ? `&lat=${opts.lat.toFixed(5)}&lon=${opts.lng.toFixed(5)}` : "";
-  const data = await throttledPhoton(`?q=${encodeURIComponent(clean3)}&limit=${limit}&lang=en${bias}`);
+  const data = await throttledPhoton(`?q=${encodeURIComponent(clean4)}&limit=${limit}&lang=en${bias}`);
   const feats = Array.isArray(data?.features) ? data.features : [];
   const near = Number.isFinite(opts.lat) && Number.isFinite(opts.lng) ? { lat: opts.lat, lng: opts.lng } : void 0;
   return feats.map((f) => photonFeatureToPlace(f, near)).filter((p) => p !== null).slice(0, limit);
@@ -22651,13 +22651,13 @@ function ctxCity(ctx) {
   return c || void 0;
 }
 async function geocodePudo(name, city) {
-  const clean3 = String(name || "").trim();
-  if (!clean3) return null;
-  if (city && !clean3.toLowerCase().includes(city.toLowerCase())) {
-    const biased = await photonGeocode(`${clean3}, ${city}`);
+  const clean4 = String(name || "").trim();
+  if (!clean4) return null;
+  if (city && !clean4.toLowerCase().includes(city.toLowerCase())) {
+    const biased = await photonGeocode(`${clean4}, ${city}`);
     if (biased) return biased;
   }
-  return geocodePlace(clean3);
+  return geocodePlace(clean4);
 }
 function cabRoute(ctx) {
   const p = ctx?.query?.pudo;
@@ -24676,8 +24676,8 @@ async function cityFromMovieQuery(raw, fallback, fetchJson) {
   return fallback;
 }
 function extractMovieQuery(entity, cityTokens) {
-  const clean3 = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !cityTokens.includes(w) && !["movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing", "near", "in", "the", "latest", "current"].includes(w));
-  return clean3.join(" ");
+  const clean4 = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !cityTokens.includes(w) && !["movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing", "near", "in", "the", "latest", "current"].includes(w));
+  return clean4.join(" ");
 }
 function isExperienceOnlyQuery(q3) {
   const toks2 = normCity(q3).split(" ").filter(Boolean);
@@ -25089,10 +25089,10 @@ function parseCinepolisPage(body) {
     return { nowPlaying: [], comingSoon: [] };
   }
   const pp = d?.props?.pageProps || {};
-  const clean3 = (arr) => Array.isArray(arr) ? arr.filter((mv) => mv && typeof mv.Title === "string" && mv.Title.length > 0) : [];
+  const clean4 = (arr) => Array.isArray(arr) ? arr.filter((mv) => mv && typeof mv.Title === "string" && mv.Title.length > 0) : [];
   const np = pp.nowPlayingMoviesData;
-  const nowPlaying = np && typeof np === "object" && !Array.isArray(np) ? clean3(Object.values(np)) : clean3(np);
-  return { nowPlaying, comingSoon: clean3(pp.comingSoonMoviesData) };
+  const nowPlaying = np && typeof np === "object" && !Array.isArray(np) ? clean4(Object.values(np)) : clean4(np);
+  return { nowPlaying, comingSoon: clean4(pp.comingSoonMoviesData) };
 }
 function cinepolisDisplayTitle(title) {
   return title.replace(/\s*\((?:[A-Z]{2,8}(?:\s+WI\s+[A-Z]{2,8})?(?:\s+\([^)]*\))?(?:\s+\(\d+D\))?)?\)\s*$/i, "").trim() || title;
@@ -28999,6 +28999,135 @@ var init_orchestrator = __esm({
       search_provider: new SearchProviderAdapter()
     };
     WORKER_ADAPTER = new VerticalWorkerAdapter(workerTaskIndex());
+  }
+});
+
+// server/search/sellerMemory.ts
+function routeKeyOf(parts) {
+  const q3 = clean3(parts.query).replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  const origin = clean3(parts.origin);
+  const destination = clean3(parts.destination);
+  const corridor = origin && destination ? `${origin}>${destination}` : q3;
+  return [corridor, clean3(parts.city), clean3(parts.pincode)].filter(Boolean).join("|").slice(0, 240) || "global";
+}
+function dateKeyOf(depart, ret) {
+  const d = String(depart ?? "").slice(0, 10);
+  const r = String(ret ?? "").slice(0, 10);
+  return d ? r ? `${d}_${r}` : d : "any";
+}
+function sellerKeyOf(offer) {
+  const candidates = [offer?.seller, offer?.vendor, offer?.attributes?.seller, offer?.attributes?.merchant, offer?.sourceId, offer?.source];
+  for (const c of candidates) {
+    const v = String(c ?? "").trim();
+    if (v && v !== "undefined" && v !== "null") return v;
+  }
+  return "";
+}
+async function ensureSellerMemorySchema() {
+  if (schemaReady) return;
+  const store4 = getStore();
+  await store4.execute(`
+    CREATE TABLE IF NOT EXISTS seller_memory (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      vertical VARCHAR(32) NOT NULL,
+      route_key VARCHAR(255) NOT NULL,
+      date_key VARCHAR(32) NOT NULL,
+      seller VARCHAR(160) NOT NULL,
+      source_id VARCHAR(160) NULL,
+      rows_json MEDIUMTEXT NOT NULL,
+      row_count INT NOT NULL DEFAULT 0,
+      fetched_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_seller_memory (vertical, route_key, date_key, seller),
+      KEY idx_seller_memory_route (vertical, route_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  schemaReady = true;
+}
+async function saveSellerMemory(key, offers) {
+  try {
+    await ensureSellerMemorySchema();
+    const bySeller = /* @__PURE__ */ new Map();
+    for (const o of offers || []) {
+      const seller = sellerKeyOf(o);
+      if (!seller) continue;
+      const list = bySeller.get(seller) || [];
+      list.push(o);
+      bySeller.set(seller, list);
+    }
+    if (!bySeller.size) return 0;
+    const store4 = getStore();
+    for (const [seller, rows] of bySeller) {
+      const json = JSON.stringify(rows);
+      if (json.length > 4e6) continue;
+      await store4.execute(
+        `INSERT INTO seller_memory (vertical, route_key, date_key, seller, source_id, rows_json, row_count, fetched_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE source_id = VALUES(source_id), rows_json = VALUES(rows_json),
+           row_count = VALUES(row_count), fetched_at = NOW()`,
+        [key.vertical, key.routeKey, key.dateKey, seller, String(rows[0]?.sourceId || "").slice(0, 160), json, rows.length]
+      );
+    }
+    return bySeller.size;
+  } catch {
+    return 0;
+  }
+}
+async function loadSellerMemory(key, staleAfterMs) {
+  try {
+    await ensureSellerMemorySchema();
+    const store4 = getStore();
+    const params = [key.vertical, key.routeKey, key.dateKey];
+    let sql = `SELECT seller, source_id, rows_json, fetched_at FROM seller_memory WHERE vertical = ? AND route_key = ? AND date_key = ?`;
+    if (staleAfterMs && staleAfterMs > 0) {
+      sql += ` AND fetched_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)`;
+      params.push(Math.floor(staleAfterMs / 1e3));
+    }
+    const rows = await store4.query(sql, params);
+    return (rows || []).map((r) => {
+      let parsed = [];
+      try {
+        parsed = JSON.parse(r.rows_json || "[]");
+      } catch {
+        parsed = [];
+      }
+      return {
+        seller: String(r.seller || ""),
+        sourceId: r.source_id || void 0,
+        rows: Array.isArray(parsed) ? parsed : [],
+        fetchedAt: r.fetched_at ? new Date(r.fetched_at).toISOString() : void 0
+      };
+    }).filter((s) => s.seller && s.rows.length);
+  } catch {
+    return [];
+  }
+}
+function mergeSellerMemory(liveOffers, snaps, now = Date.now()) {
+  const offers = [...liveOffers || []];
+  const liveSellers = new Set(offers.map(sellerKeyOf).filter(Boolean));
+  const restored = [];
+  for (const snap of snaps || []) {
+    if (!snap?.seller || !Array.isArray(snap.rows) || !snap.rows.length) continue;
+    if (liveSellers.has(snap.seller)) continue;
+    const age = snap.fetchedAt ? Math.max(0, now - new Date(snap.fetchedAt).getTime()) : null;
+    for (const row of snap.rows) {
+      const copy = { ...row };
+      copy.attributes = { ...row?.attributes || {}, seller_memory: "1" };
+      if (age !== null) copy.attributes.memory_age_ms = String(age);
+      copy.prices = { ...row?.prices || {} };
+      offers.push(copy);
+    }
+    liveSellers.add(snap.seller);
+    restored.push(snap.seller);
+  }
+  return { offers, restored };
+}
+var clean3, schemaReady;
+var init_sellerMemory = __esm({
+  "server/search/sellerMemory.ts"() {
+    init_db();
+    clean3 = (v) => String(v ?? "").trim().toLowerCase();
+    schemaReady = false;
   }
 });
 
@@ -35551,6 +35680,22 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
     liveOffers = await processAdapterResults(outcome.results, parsed, persist5);
     recordSourcePrices(String(vertical), String(input.query || ""), liveOffers);
     state.sourcesFailed = enrichFailedWithLastPrice(String(vertical), state.sourcesFailed);
+    try {
+      const memKey = {
+        vertical: String(vertical),
+        routeKey: routeKeyOf({ query: input.query, city: input.city, pincode: input.pincode }),
+        dateKey: dateKeyOf(input.travelDates?.depart, input.travelDates?.return)
+      };
+      if (liveOffers.length) void saveSellerMemory(memKey, liveOffers);
+      const snaps = await loadSellerMemory(memKey, Number(process.env.T1S_SELLER_MEMORY_TTL_MS || 0) || void 0);
+      if (snaps.length) {
+        const merged = mergeSellerMemory(liveOffers, snaps);
+        liveOffers = merged.offers;
+        if (merged.restored.length) state.sellerMemoryRestored = merged.restored;
+      }
+      state.sellerMemoryKey = `${memKey.vertical}|${memKey.routeKey}|${memKey.dateKey}`;
+    } catch {
+    }
   } else {
     state.sourcesAttempted = [];
   }
@@ -35803,6 +35948,7 @@ var init_searchOrchestrator = __esm({
     init_queryUnderstanding();
     init_registry();
     init_orchestrator();
+    init_sellerMemory();
     init_normalization();
     init_validation();
     init_pricing();
@@ -37356,30 +37502,30 @@ async function isEligibleAdmin(email) {
   return rows.length > 0 && rows[0].role === "admin";
 }
 async function requestAdminOtp(email) {
-  const clean3 = String(email || "").trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean3)) return { ok: false, sent: false, error: "A valid email address is required" };
+  const clean4 = String(email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean4)) return { ok: false, sent: false, error: "A valid email address is required" };
   const store4 = getStore();
-  const recent = await store4.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean3]);
+  const recent = await store4.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean4]);
   const now = Date.now();
   const hourAgo = now - 60 * 60 * 1e3;
   const lastHour = recent.filter((r) => parseDbUtc(r.created_at) > hourAgo);
   if (lastHour.length >= HOURLY_CAP) return { ok: false, sent: false, error: "Too many codes requested. Try again later." };
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
-  await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+  await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
   const code = String(import_crypto26.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store4.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
-    [clean3, hashOtp(code), expiresAt, 0, nowIso2()]
+    [clean4, hashOtp(code), expiresAt, 0, nowIso2()]
   );
-  const eligible = await isEligibleAdmin(clean3);
+  const eligible = await isEligibleAdmin(clean4);
   if (!eligible) {
     log.info("Otp", `OTP requested for non-admin email (no mail sent)`);
     return { ok: true, sent: false };
   }
   const mail = await sendEmail(
-    clean3,
+    clean4,
     "Your Try1Second admin login code",
     `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto">
        <h2>Try1Second Admin Login</h2>
@@ -37390,39 +37536,39 @@ async function requestAdminOtp(email) {
     `Your Try1Second admin login code: ${code} (expires in 10 minutes)`
   );
   if (!mail.ok) {
-    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     log.warn("Otp", `OTP email delivery failed for admin: ${mail.error}`);
     return { ok: false, sent: false, error: "Could not send the login code right now. Please try again later.", deliveryError: mail.error };
   }
-  log.info("Otp", `Admin OTP sent to ${clean3}`);
+  log.info("Otp", `Admin OTP sent to ${clean4}`);
   return { ok: true, sent: true };
 }
 async function verifyAdminOtp(email, code) {
-  const clean3 = String(email || "").trim().toLowerCase();
+  const clean4 = String(email || "").trim().toLowerCase();
   const otp = String(code || "").replace(/\D/g, "");
-  if (!clean3 || otp.length !== 6) return { ok: false, error: "Enter the 6-digit code sent to your email" };
+  if (!clean4 || otp.length !== 6) return { ok: false, error: "Enter the 6-digit code sent to your email" };
   const store4 = getStore();
-  const rows = await store4.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean3]);
+  const rows = await store4.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean4]);
   if (rows.length === 0) return { ok: false, error: "No active code. Request a new one." };
   const row = rows[rows.length - 1];
   if (Number(row.attempts || 0) >= MAX_VERIFY_ATTEMPTS) {
-    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     return { ok: false, error: "Too many incorrect attempts. Request a new code." };
   }
   const exp = parseDbUtc(row.expires_at);
   if (!Number.isFinite(exp) || exp < Date.now()) {
-    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     return { ok: false, error: "Code expired. Request a new one." };
   }
   if (!verifyOtpHash(otp, row.code_hash)) {
     await store4.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?", [row.id]);
     return { ok: false, error: "Incorrect code" };
   }
-  await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
-  const eligible = await isEligibleAdmin(clean3);
+  await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+  const eligible = await isEligibleAdmin(clean4);
   if (!eligible) return { ok: false, error: "Invalid code" };
-  log.info("Otp", `Admin OTP verified for ${clean3}`);
-  return { ok: true, email: clean3 };
+  log.info("Otp", `Admin OTP verified for ${clean4}`);
+  return { ok: true, email: clean4 };
 }
 var import_crypto26, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
@@ -40099,9 +40245,9 @@ function extractRoute(text) {
   const t = text.toLowerCase().replace(/[?.!,]/g, " ");
   const pair = t.match(/\b([a-z][a-z .]{1,24}?)\s+(?:to|se|\u2192|->)\s+([a-z][a-z .]{1,24}?)(?=\s+(?:flight|flights|bus|buses|ka|ki|ke|rate|price|fare|cab|taxi|kal|tomorrow|today|aaj|on|for)\b|\s*$)/i);
   if (!pair) return null;
-  const clean3 = (s) => s.replace(FILLER, " ").replace(/\s+/g, " ").trim();
-  const a = clean3(pair[1]);
-  const b = clean3(pair[2]);
+  const clean4 = (s) => s.replace(FILLER, " ").replace(/\s+/g, " ").trim();
+  const a = clean4(pair[1]);
+  const b = clean4(pair[2]);
   if (!a || !b) return null;
   const title = (s) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
   return `${title(a)} to ${title(b)}`;
@@ -44557,7 +44703,7 @@ var init_routes = __esm({
       const searched = runLiveSearch(input, { signal: searchAbort.signal });
       searched.catch(() => void 0);
       const sweepVertical = String(input.vertical || "");
-      const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (sweepVertical === "hotels" ? 3e4 : sweepVertical === "flights" ? 2e4 : sweepVertical === "bus" ? 15e3 : 12e3)));
+      const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (sweepVertical === "hotels" ? 34e3 : sweepVertical === "flights" ? 28e3 : sweepVertical === "bus" ? 22e3 : 16e3)));
       let response = await awaitSettledAnswer(input, sweepBudget);
       if (response && response.results?.length) {
         const r = response;
@@ -46537,7 +46683,7 @@ function validateProfile(i) {
   if (!domain || !domain.includes(".")) return { ok: false, error: "Company domain is required (e.g. flipkart.com)" };
   if (!AFFILIATE_NETWORKS.includes(network)) return { ok: false, error: "Unknown network" };
   if (!template) {
-    const clean3 = {
+    const clean4 = {
       slug: slug5,
       company_domain: domain,
       network: AFFILIATE_NETWORKS.includes(network) ? network : "direct",
@@ -46550,7 +46696,7 @@ function validateProfile(i) {
       display_name: String(i.display_name ?? "").trim().slice(0, 120) || null,
       active: i.active === false ? 0 : 1
     };
-    return { ok: true, clean: clean3 };
+    return { ok: true, clean: clean4 };
   }
   if (!template.includes("{url}") && !template.includes("{url2}")) return { ok: false, error: "Template must contain {url} (or {url2}) where the merchant page goes" };
   let probe;
@@ -51429,7 +51575,7 @@ function resolveAppRoute(path18) {
   return { vertical: vid };
 }
 function resolveSeoPage(path18) {
-  let clean3 = path18.split("?")[0].replace(/\/+$/, "") || "/";
+  let clean4 = path18.split("?")[0].replace(/\/+$/, "") || "/";
   const ALIAS = {
     movie: "movies",
     cab: "cabs",
@@ -51438,14 +51584,14 @@ function resolveSeoPage(path18) {
     ecom: "ecommerce",
     grocery10: "grocery"
   };
-  const aliasSeg = clean3.split("/").filter(Boolean);
-  if (aliasSeg.length && ALIAS[aliasSeg[0]]) clean3 = "/" + [ALIAS[aliasSeg[0]], ...aliasSeg.slice(1)].join("/");
-  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(clean3);
+  const aliasSeg = clean4.split("/").filter(Boolean);
+  if (aliasSeg.length && ALIAS[aliasSeg[0]]) clean4 = "/" + [ALIAS[aliasSeg[0]], ...aliasSeg.slice(1)].join("/");
+  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(clean4);
   if (prod) {
     const words2 = prod[1].split("-").filter((w) => w.length > 1);
     const label = words2.map((w) => /^[0-9]+$/.test(w) ? w : w[0].toUpperCase() + w.slice(1)).join(" ");
     return {
-      path: clean3,
+      path: clean4,
       title: `${label} \u2014 Live Prices From Every Store | Try1Second`,
       description: `Compare live prices for ${label} across Amazon, Flipkart, Croma, Reliance Digital, Tata CLiQ, JioMart and quick-commerce stores. Lowest verified price first, updated continuously.`,
       h1: `${label} \u2014 compare live prices`,
@@ -51453,7 +51599,7 @@ function resolveSeoPage(path18) {
         `Try1Second scans every store that sells ${label} and ranks the offers by the price you actually pay, including delivery fees where the seller publishes them.`,
         `Prices on this page come from our own verified catalogue, so the list below is a real snapshot rather than an estimate. Open the live page to watch it update while the scan runs.`
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: "Shopping", path: "/ecommerce" }, { name: label, path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: "Shopping", path: "/ecommerce" }, { name: label, path: clean4 }],
       faqs: [
         { q: `Where is ${label} cheapest?`, a: `Try1Second compares Amazon, Flipkart, Croma, Reliance Digital, Tata CLiQ, JioMart and the 10-minute stores, then shows the lowest verified price first. It changes by the hour, so the page is refreshed continuously.` },
         { q: `Are these prices live?`, a: `The snapshot on this page is our last verified read and is stamped with the time it was captured. The live comparison page re-checks every source each time it opens.` }
@@ -51464,10 +51610,10 @@ function resolveSeoPage(path18) {
       ]
     };
   }
-  if (clean3 === "/about" || clean3 === "/privacy") {
-    const isAbout = clean3 === "/about";
+  if (clean4 === "/about" || clean4 === "/privacy") {
+    const isAbout = clean4 === "/about";
     return {
-      path: clean3,
+      path: clean4,
       title: isAbout ? "About Us \u2014 Try1Second" : "Privacy Policy \u2014 Try1Second",
       description: isAbout ? "Try1Second is an independent Indian metasearch engine comparing live prices across 13 verticals \u2014 travel, shopping, everyday and finance." : "How Try1Second collects, uses and protects your data: account info, search and location data, cookies, advertising and your rights.",
       h1: isAbout ? "About Try1Second" : "Privacy Policy",
@@ -51479,13 +51625,13 @@ function resolveSeoPage(path18) {
         { q: "What data does Try1Second collect?", a: "Account info when you sign in with Google, your search queries, approximate location for local searches, and basic technical data to keep the service fast and safe." },
         { q: "How do I delete my data?", a: "Email info@try1second.com and we will delete your account and associated data within a reasonable period." }
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: isAbout ? "About" : "Privacy", path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: isAbout ? "About" : "Privacy", path: clean4 }],
       links: [{ label: isAbout ? "Privacy Policy" : "About Us", href: isAbout ? "/privacy" : "/about" }]
     };
   }
-  const app = resolveAppRoute(clean3);
-  if (clean3 !== "/" && !app) return null;
-  if (clean3 === "/") {
+  const app = resolveAppRoute(clean4);
+  if (clean4 !== "/" && !app) return null;
+  if (clean4 === "/") {
     return {
       path: "/",
       title: "Try1Second \u2014 Compare Flights, Hotels, Cabs, Groceries & Loans in One Second",
@@ -51507,21 +51653,21 @@ function resolveSeoPage(path18) {
       links: VERTICALS2.map((v) => ({ label: v.label, href: `/${v.slug}` }))
     };
   }
-  const seg = clean3.split("/").filter(Boolean);
+  const seg = clean4.split("/").filter(Boolean);
   const head3 = seg[0];
   const tail = seg[1];
   const meta = verticalBySlug(head3);
   if (!meta) return null;
   if (!tail) {
     return {
-      path: clean3,
+      path: clean4,
       title: meta.title,
       description: meta.description,
       h1: meta.h1,
       intro: meta.intro,
       faqs: meta.faqs,
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: clean3 }],
-      links: seoLinksFor(clean3)
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: clean4 }],
+      links: seoLinksFor(clean4)
     };
   }
   if (head3 === "flights" && /-to-.*-flights$/.test(tail)) {
@@ -51531,7 +51677,7 @@ function resolveSeoPage(path18) {
     const routeName = `${A} to ${B}`;
     const codeSuffix = aI && bI ? ` (${aI}\u2013${bI})` : "";
     return {
-      path: clean3,
+      path: clean4,
       title: `${A} to ${B} Flights \u2014 Compare Live Airfares${codeSuffix} | Try1Second`,
       description: `Compare live ${A} to ${B} flight fares across 16+ airlines and OTAs. Every ${routeName} airfare ranked lowest first, direct booking links included.`,
       h1: `${A} to ${B} Flights \u2014 Live Fare Comparison`,
@@ -51545,7 +51691,7 @@ function resolveSeoPage(path18) {
         { q: "Do you add any booking fee?", a: "No. You book on the airline or OTA site at their price \u2014 Try1Second only finds and ranks the fares." },
         { q: `Can I book ${A} to ${B} flights from outside India?`, a: `Yes. NRIs and travellers in Dubai, Singapore, London, New York and the Gulf see the same live INR fares for ${routeName} and pay on the airline or OTA checkout from any country.` }
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: "Flights", path: "/flights" }, { name: `${A} to ${B}`, path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: "Flights", path: "/flights" }, { name: `${A} to ${B}`, path: clean4 }],
       links: [
         { label: "All flight routes", href: "/flights" },
         ...FLIGHT_ROUTES.filter(([a, b]) => a === m[1] || b === m[2]).slice(0, 5).map(([a, b]) => ({ label: `${cityName(a)} to ${cityName(b)} flights`, href: `/flights/${routeSlug(a, b, "flights")}` })),
@@ -51558,7 +51704,7 @@ function resolveSeoPage(path18) {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-bus$/.exec(tail);
     const A = cityName(m[1]), B = cityName(m[2]);
     return {
-      path: clean3,
+      path: clean4,
       title: `${A} to ${B} Bus Tickets \u2014 Compare Live Fares & Operators | Try1Second`,
       description: `Compare live ${A} to ${B} bus fares across redBus, zingbus, AbhiBus and state carriers. Every operator and price on one screen, cheapest seat first.`,
       h1: `${A} to ${B} Bus \u2014 Fare and Operator Comparison`,
@@ -51570,7 +51716,7 @@ function resolveSeoPage(path18) {
         { q: `Which operators run ${A} to ${B} buses?`, a: `The comparison on this page lists every operator our sources return live for the route \u2014 typically private carriers plus state road transport buses.` },
         { q: "Are bus fares live?", a: "Fares are fetched live at search time from the booking platforms we query. Confirm the final fare on the booking page." }
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: "Bus", path: "/bus" }, { name: `${A} to ${B}`, path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: "Bus", path: "/bus" }, { name: `${A} to ${B}`, path: clean4 }],
       links: [
         { label: "All bus routes", href: "/bus" },
         { label: `${A} to ${B} flights`, href: `/flights/${routeSlug(m[1], m[2], "flights")}` },
@@ -51592,7 +51738,7 @@ function resolveSeoPage(path18) {
     const noun = nounMap[head3] || vmeta.label.toLowerCase();
     const others = CITIES.filter((x) => x.slug !== tail).slice(0, 6);
     return {
-      path: clean3,
+      path: clean4,
       title: `${vmeta.label} in ${c} \u2014 Compare Live Prices | Try1Second`,
       description: `Compare live ${noun} in ${c} across every major provider in one second. All of ${c}\u2019s prices side by side, lowest first.`,
       h1: `${vmeta.label} in ${c} \u2014 Live Price Comparison`,
@@ -51605,7 +51751,7 @@ function resolveSeoPage(path18) {
         { q: `How do you get ${c} prices?`, a: `Live queries to every provider that serves ${c} at search time \u2014 no stale listings, no manual uploads.` },
         { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` }
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: vmeta.label, path: `/${head3}` }, { name: c, path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: vmeta.label, path: `/${head3}` }, { name: c, path: clean4 }],
       links: [
         { label: `${vmeta.label} home`, href: `/${head3}` },
         ...others.map((x) => ({ label: `${vmeta.label} in ${x.name}`, href: `/${head3}/${x.slug}` })),
@@ -51626,7 +51772,7 @@ function resolveSeoPage(path18) {
     const label = t.label;
     const isEcom = head3 === "ecommerce";
     return {
-      path: clean3,
+      path: clean4,
       title: isEcom ? `Compare ${label} Prices Across Amazon, Flipkart & More | Try1Second` : `Compare ${label} \u2014 Live Rates & Offers Across India | Try1Second`,
       description: isEcom ? `Compare live ${label.toLowerCase()} prices across Amazon, Flipkart, Myntra and more in one second. Every store\u2019s price for the same product, lowest first.` : `Compare live ${label.toLowerCase()} rates and offers across Indian providers in one second. Real numbers, ranked, with direct apply links.`,
       h1: isEcom ? `${label} Price Comparison \u2014 Every Store, One List` : `${label} Comparison \u2014 Live Rates Side by Side`,
@@ -51641,7 +51787,7 @@ function resolveSeoPage(path18) {
         { q: `How fresh are the ${label.toLowerCase()} results?`, a: "Every number is scanned live from provider sources at search time \u2014 the page never shows stale manual listings." },
         { q: "Is this comparison free?", a: "Yes. Comparison is always free; we may earn a commission when you complete a purchase or application on the provider\u2019s site." }
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: `/${head3}` }, { name: label, path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: `/${head3}` }, { name: label, path: clean4 }],
       links: [
         { label: `${meta.label} home`, href: `/${head3}` },
         ...table[head3].filter((x) => x.slug !== tail).slice(0, 6).map((x) => ({ label: x.label, href: `/${head3}/${x.slug}` }))
@@ -53199,10 +53345,10 @@ init_badRequestLog();
 var JSONISH = /^(application\/json|application\/[a-z0-9.+-]*\+json|text\/plain|text\/json)/i;
 var PASSTHROUGH = /^(multipart\/form-data|application\/octet-stream|application\/x-www-form-urlencoded)/i;
 function parseLenientJson(text) {
-  const clean3 = text.replace(/^\uFEFF/, "").trim();
-  if (!clean3) return { value: {}, repaired: true };
+  const clean4 = text.replace(/^\uFEFF/, "").trim();
+  if (!clean4) return { value: {}, repaired: true };
   try {
-    return { value: JSON.parse(clean3), repaired: false };
+    return { value: JSON.parse(clean4), repaired: false };
   } catch (_) {
   }
   const dropTrailingCommas = (s) => s.replace(/,\s*([}\]])/g, "$1");
@@ -53210,13 +53356,13 @@ function parseLenientJson(text) {
   const quoteBareKeys = (s) => s.replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3');
   const singleToDouble = (s) => s.replace(/'/g, '"');
   const attempts = [
-    dropTrailingCommas(clean3),
-    quotJsTokens(clean3),
-    quoteBareKeys(clean3),
-    singleToDouble(clean3),
-    singleToDouble(quoteBareKeys(quotJsTokens(dropTrailingCommas(clean3)))),
+    dropTrailingCommas(clean4),
+    quotJsTokens(clean4),
+    quoteBareKeys(clean4),
+    singleToDouble(clean4),
+    singleToDouble(quoteBareKeys(quotJsTokens(dropTrailingCommas(clean4)))),
     // "…=value&…" pasted into a JSON slot
-    clean3
+    clean4
   ];
   for (const attempt of attempts) {
     try {
@@ -53225,9 +53371,9 @@ function parseLenientJson(text) {
     } catch (_) {
     }
   }
-  if (clean3.includes("=")) {
+  if (clean4.includes("=")) {
     try {
-      const params = new URLSearchParams(clean3);
+      const params = new URLSearchParams(clean4);
       const obj = {};
       params.forEach((v, k) => {
         obj[k] = v;

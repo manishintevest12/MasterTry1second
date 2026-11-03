@@ -974,8 +974,16 @@ apiRouter.post('/search', async (req, res) => {
   // (local run 3 Nov: 163 priced rows, 8 sellers), hotels' publishers (Yatra/EMT/OYO/Agoda) land
   // later than that, and production measured 40-60s for a fully cold Shimla sweep. The owner's
   // rule is price-or-nothing, so hotels get the longest ceiling.
+  // OWNER 3 Nov: "jo slow hai unka wait kr ke results lao, ek search pr miss ni krna kissi ko v".
+  // Measured against production the slow tail is real work, not a hang: the heavy flight OTAs
+  // (makemytrip, goibibo, yatra, ixigo, budgetair, aix) were still fetching at the old 20s mark, and
+  // hotel publishers land 12-30s in. So the single search now waits longer ONCE instead of asking the
+  // user to search again: flights 28s, hotels 34s (their publishers are slowest), bus 22s, others
+  // 16s, still inside the ~55s front-proxy wall that made larger budgets impossible. Whatever a
+  // seller still does not deliver inside its own ceiling is covered by seller memory, so a late
+  // seller never disappears from the seller set.
   const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (
-    sweepVertical === 'hotels' ? 30_000 : sweepVertical === 'flights' ? 20_000 : sweepVertical === 'bus' ? 15_000 : 12_000
+    sweepVertical === 'hotels' ? 34_000 : sweepVertical === 'flights' ? 28_000 : sweepVertical === 'bus' ? 22_000 : 16_000
   )));
   let response = (await awaitSettledAnswer(input, sweepBudget)) as Awaited<ReturnType<typeof runSearch>> | null;
   if (response && (response as any).results?.length) {
