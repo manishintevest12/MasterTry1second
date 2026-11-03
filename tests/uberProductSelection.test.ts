@@ -89,4 +89,5 @@ test('a configured session that yields no fare reports a reason instead of vanis
   const cab = readFileSync(join(process.cwd(), 'server/workers/verticals/cab.ts'), 'utf8');
   assert.match(cab, /did not return a fare/);
   assert.match(cab, /HTTP \$\{r\.status\}\$\{snippet/, 'the HTTP status and body snippet are carried');
+  assert.match(cab, /session not accepted as a signed-in rider/, 'a session with 0 fares names the rider-session cause');
 });

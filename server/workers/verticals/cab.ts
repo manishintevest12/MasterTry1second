@@ -349,7 +349,7 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
       if (!Object.keys(jar).length) return { products: [], reason: 'no cookie' };
       try {
         const r = await cffiFetch('https://m.uber.com/go/product-selection', {
-          method: 'POST', impersonate: fp, timeoutMs: 25_000, cookies: jar,
+          method: 'POST', impersonate: fp, timeoutMs: 8_000, cookies: jar,
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json, text/plain, */*',
@@ -361,7 +361,7 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
           body: buildUberProductSelectionBody(pickup, drop),
         });
         const snippet = String(r.body || '').replace(/\s+/g, ' ').slice(0, 80);
-        if (r.status !== 200) return { products: [], reason: `HTTP ${r.status}${snippet ? `: ${snippet}` : ''}` };
+        if (r.status !== 200) return { products: [], reason: `HTTP ${r.status}${snippet ? `: ${snippet}` : ''}${r.status === 404 ? ' (this path is Uber\'s web page route; its fare API is /go/graphql)' : ''}` };
         const parsed = parseUberProductSelectionResponse(r.body).filter((p) => p.isAvailable).slice(0, 10);
         return { products: parsed, reason: parsed.length ? '' : 'HTTP 200 with no products' };
       } catch (e: any) { return { products: [], reason: `network error: ${String(e?.message || e).slice(0, 60)}` }; }
@@ -371,6 +371,13 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
     // Uber source was ATTEMPTED with the cookie set, returned no fare, and its rows were then hidden by
     // the price gate - with no reason anywhere in the answer.
     let sessionReason = graphql ? '' : 'Apollo Products returned no products';
+    if (graphql) {
+      const sessionProducts = parseUberProductsResponse(graphql.body).filter((p) => p.isAvailable);
+      const sessionFares = sessionProducts.filter((p) => p.fare != null).length;
+      // A valid rider session that still answers 0 fares means Uber did not accept the cookie as a
+      // signed-in rider (expired sid / app-only login) - say so instead of "no price".
+      if (!sessionFares) sessionReason = `Apollo Products with your session returned ${sessionProducts.length} products but 0 fares (session not accepted as a signed-in rider)`;
+    }
     if (!products.length && hasSession) {
       const attempt = await trySelection(session, 'chrome');
       products = attempt.products;

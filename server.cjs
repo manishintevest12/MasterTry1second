@@ -22871,7 +22871,7 @@ async function uberGoFlowSafe(ctx, rt) {
         const r = await cffiFetch("https://m.uber.com/go/product-selection", {
           method: "POST",
           impersonate: fp,
-          timeoutMs: 25e3,
+          timeoutMs: 8e3,
           cookies: jar,
           headers: {
             "Content-Type": "application/json",
@@ -22884,7 +22884,7 @@ async function uberGoFlowSafe(ctx, rt) {
           body: buildUberProductSelectionBody(pickup, drop)
         });
         const snippet = String(r.body || "").replace(/\s+/g, " ").slice(0, 80);
-        if (r.status !== 200) return { products: [], reason: `HTTP ${r.status}${snippet ? `: ${snippet}` : ""}` };
+        if (r.status !== 200) return { products: [], reason: `HTTP ${r.status}${snippet ? `: ${snippet}` : ""}${r.status === 404 ? " (this path is Uber's web page route; its fare API is /go/graphql)" : ""}` };
         const parsed = parseUberProductSelectionResponse(r.body).filter((p) => p.isAvailable).slice(0, 10);
         return { products: parsed, reason: parsed.length ? "" : "HTTP 200 with no products" };
       } catch (e2) {
@@ -22892,6 +22892,11 @@ async function uberGoFlowSafe(ctx, rt) {
       }
     };
     let sessionReason = graphql ? "" : "Apollo Products returned no products";
+    if (graphql) {
+      const sessionProducts = parseUberProductsResponse(graphql.body).filter((p) => p.isAvailable);
+      const sessionFares = sessionProducts.filter((p) => p.fare != null).length;
+      if (!sessionFares) sessionReason = `Apollo Products with your session returned ${sessionProducts.length} products but 0 fares (session not accepted as a signed-in rider)`;
+    }
     if (!products.length && hasSession) {
       const attempt = await trySelection(session, "chrome");
       products = attempt.products;
