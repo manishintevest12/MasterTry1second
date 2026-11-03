@@ -37,13 +37,15 @@ import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerP
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { enrichFlightSchedules } from '../common/flightSchedule';
-import { enforceRequestedTravelDate, normalizeTravelDate, offerTravelDate } from './travelDateGate';
+import { enforceRequestedTravelDate, normalizeTravelDate, offerTravelDate, enforceRequestedCity } from './travelDateGate';
 import { backfillFlightTimes, hideFlightRowsWithoutTimes, noteFlightTimeDrop } from './flightTimeBackfill';
 import { gateRapidoRows } from './rapidoPriceGate';
 import { cityFromRouteText } from '../workers/parsers/osmTravel';
 import { canonCity } from '../workers/parsers/rapidoCabs';
 import { filterByNamedProviders } from '../verticals/verticalEngine';
 import { attachAffiliateDeepLinks } from '../affiliate/affiliateNetwork';
+import { createMaskingPointer } from '../affiliate/deeplink';
+import { merchantDeepLink } from '../affiliate/merchantLinks';
 import { pollKey, forgetPending } from '../api/pollBudget';
 
 export interface SearchInput {
@@ -257,6 +259,17 @@ async function progressiveCatalogueResponse(
       });
       anyOffers.length = 0;
       anyOffers.push(...(floorGate.kept as any[]));
+    }
+    // CITY GATE (owner 3 Nov 5-7 Nov question): a catalogue hotel row can name a different city
+    // than the one asked for - measured: Shimla query answered 40 Manali properties with prices.
+    const floorCity = enforceRequestedCity(anyOffers as any[], String(vertical), inputQuery.location?.city || inputQuery.rawQuery);
+    if (floorCity.dropped) {
+      log.info('Search', 'catalogue floor rows dropped for another city', {
+        vertical: String(vertical), asked: String(inputQuery.location?.city || '').slice(0, 40),
+        dropped: floorCity.dropped, kept: floorCity.kept.length, droppedCities: floorCity.droppedCities,
+      });
+      anyOffers.length = 0;
+      anyOffers.push(...(floorCity.kept as any[]));
     }
   }
   for (const o of anyOffers) {
@@ -625,6 +638,33 @@ export function gateTravelDateResponse(input: SearchInput, response: SearchRespo
     checkin: (input.travelDates as any)?.checkin,
     checkout: (input.travelDates as any)?.checkout,
   }, { strictUndated: true, undatedAsPresence: String(vertical) === 'hotels' });
+  const cityGate = enforceRequestedCity(response.results as any[], vertical, input.city || String(input.query || ''));
+  if (cityGate.dropped) {
+    log.info('Search', 'rows dropped for another city (final answer gate)', {
+      vertical, dropped: cityGate.dropped, droppedCities: cityGate.droppedCities,
+    });
+    response.results = cityGate.kept as any;
+    if (!response.results.length) {
+      response.state = { ...(response.state || {}), pendingRefresh: true, triggeredRefresh: true } as any;
+      return response;
+    }
+  }
+  // EXIT DATES (owner 3 Nov, 5->7 Nov question): a catalogue hotel row carries the link it was
+  // mined with, so /api/out reopened Agoda with checkIn fixed to the requested day but los=1 -
+  // a 5->7 Nov search landed on a 5->6 Nov page. Re-mint the hotel exit from THIS request's
+  // check-in AND check-out so the nights match what the user asked for.
+  if (vertical === 'hotels' && input.travelDates?.depart) {
+    const city = String(input.city || '').trim();
+    response.results = (response.results as any[]).map((o: any) => {
+      const dest = merchantDeepLink(String(o?.seller || o?.vendor || ''), String(o?.title || ''), 'hotels', {
+        city,
+        date: String(input.travelDates?.depart || ''),
+        return: String(input.travelDates?.return || ''),
+      });
+      if (!dest) return o;
+      return { ...o, sellerUrl: createMaskingPointer(dest, { offerId: String(o?.id || '') }) };
+    });
+  }
   if (!gate.dropped) return response;
   log.info('Search', 'rows dropped for answering a different travel date (final answer gate)', {
     vertical,

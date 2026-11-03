@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enforceRequestedTravelDate, normalizeTravelDate, offerTravelDate } from '../server/search/travelDateGate';
+import { enforceRequestedTravelDate, enforceRequestedCity, normalizeTravelDate, offerTravelDate } from '../server/search/travelDateGate';
 
 /** OWNER 2 Nov: "19-11-2026 search kiya, result 2-11-2026 ka bata raha hai - aise issue hr
  *  vertical fix kro". These pin the rule that a date-answering vertical may only show rows for
@@ -152,4 +152,23 @@ test('hotels keep undated rows as price-less presence cards, never wrong-dated o
     'flights', { depart: '2026-11-20' }, { strictUndated: true },
   );
   assert.equal(flights.kept.length, 0);
+});
+
+// OWNER 3 Nov: "hotels in Shimla 5 Nov to 7 Nov 2 adults" answered 40 rows whose attributes.city
+// is Manali. A catalogue hotel row carries no travel date, so the date gate had nothing to say.
+test('hotels cannot answer with another city; other verticals are untouched', () => {
+  const rows: any[] = [
+    { id: 'cat_1', seller: 'Agoda', attributes: { city: 'Manali' }, prices: { effectivePrice: '18891' } },
+    { id: 'cat_2', seller: 'Agoda', attributes: { city: 'Shimla' }, prices: { effectivePrice: '3200' } },
+    { id: 'cat_3', seller: 'Agoda', attributes: {} , prices: { effectivePrice: '2500' } },  // no city named
+  ];
+  const g = enforceRequestedCity(rows, 'hotels', 'Shimla');
+  assert.deepEqual(g.kept.map((r: any) => r.id), ['cat_2', 'cat_3']);
+  assert.equal(g.droppedCities.manali, 1);
+  // "Shimla" vs a longer label still matches
+  assert.equal(enforceRequestedCity([{ id: 'x', attributes: { city: 'Shimla, Himachal Pradesh' } }] as any, 'hotels', 'Shimla').kept.length, 1);
+  // flights keep their rows
+  assert.equal(enforceRequestedCity([{ id: 'f', attributes: { city: 'Manali' } }] as any, 'flights', 'Shimla').kept.length, 1);
+  // no requested city = no filtering
+  assert.equal(enforceRequestedCity(rows, 'hotels', '').kept.length, 3);
 });

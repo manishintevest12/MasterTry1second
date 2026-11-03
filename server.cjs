@@ -34015,6 +34015,25 @@ function enforceRequestedTravelDate(offers, vertical, requested, opts = {}) {
   if (presenceKept) droppedOn["undated_as_presence"] = presenceKept;
   return { kept, dropped: offers.length - kept.length, droppedOn };
 }
+function enforceRequestedCity(offers, vertical, city) {
+  const want = String(city || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (String(vertical) !== "hotels" || !want) return { kept: offers, dropped: 0, droppedCities: {} };
+  const kept = [];
+  const droppedCities = {};
+  const firstToken = want.split(" ")[0];
+  for (const o of offers) {
+    const src2 = o;
+    const named = String(
+      src2?.attributes?.city ?? src2?.travel?.city ?? src2?.city ?? src2?.attributes?.destination ?? ""
+    ).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (named && !named.includes(want) && !(firstToken.length > 3 && named.includes(firstToken))) {
+      droppedCities[named] = (droppedCities[named] || 0) + 1;
+      continue;
+    }
+    kept.push(o);
+  }
+  return { kept, dropped: offers.length - kept.length, droppedCities };
+}
 var DATE_ANSWERING_VERTICALS, iso2;
 var init_travelDateGate = __esm({
   "server/search/travelDateGate.ts"() {
@@ -34683,6 +34702,18 @@ async function progressiveCatalogueResponse(vertical, inputQuery, offers, start,
       anyOffers.length = 0;
       anyOffers.push(...floorGate.kept);
     }
+    const floorCity = enforceRequestedCity(anyOffers, String(vertical), inputQuery.location?.city || inputQuery.rawQuery);
+    if (floorCity.dropped) {
+      log.info("Search", "catalogue floor rows dropped for another city", {
+        vertical: String(vertical),
+        asked: String(inputQuery.location?.city || "").slice(0, 40),
+        dropped: floorCity.dropped,
+        kept: floorCity.kept.length,
+        droppedCities: floorCity.droppedCities
+      });
+      anyOffers.length = 0;
+      anyOffers.push(...floorCity.kept);
+    }
   }
   for (const o of anyOffers) {
     if (o.freshnessStatus === "LIVE_VERIFIED") o.freshnessStatus = "CACHED_VERIFIED";
@@ -34850,6 +34881,31 @@ function gateTravelDateResponse(input, response) {
     checkin: input.travelDates?.checkin,
     checkout: input.travelDates?.checkout
   }, { strictUndated: true, undatedAsPresence: String(vertical) === "hotels" });
+  const cityGate = enforceRequestedCity(response.results, vertical, input.city || String(input.query || ""));
+  if (cityGate.dropped) {
+    log.info("Search", "rows dropped for another city (final answer gate)", {
+      vertical,
+      dropped: cityGate.dropped,
+      droppedCities: cityGate.droppedCities
+    });
+    response.results = cityGate.kept;
+    if (!response.results.length) {
+      response.state = { ...response.state || {}, pendingRefresh: true, triggeredRefresh: true };
+      return response;
+    }
+  }
+  if (vertical === "hotels" && input.travelDates?.depart) {
+    const city = String(input.city || "").trim();
+    response.results = response.results.map((o) => {
+      const dest = merchantDeepLink(String(o?.seller || o?.vendor || ""), String(o?.title || ""), "hotels", {
+        city,
+        date: String(input.travelDates?.depart || ""),
+        return: String(input.travelDates?.return || "")
+      });
+      if (!dest) return o;
+      return { ...o, sellerUrl: createMaskingPointer(dest, { offerId: String(o?.id || "") }) };
+    });
+  }
   if (!gate.dropped) return response;
   log.info("Search", "rows dropped for answering a different travel date (final answer gate)", {
     vertical,
@@ -35535,6 +35591,8 @@ var init_searchOrchestrator = __esm({
     init_rapidoPriceGate();
     init_verticalEngine();
     init_affiliateNetwork();
+    init_deeplink();
+    init_merchantLinks();
     init_pollBudget();
     BUS_PRIMARY_LIVE_SELLERS = ["abhibus", "redbus"];
     inflightPipelines = /* @__PURE__ */ new Map();

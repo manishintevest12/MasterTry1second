@@ -185,3 +185,36 @@ export function enforceRequestedTravelDate<T>(
   if (presenceKept) droppedOn['undated_as_presence'] = presenceKept;
   return { kept, dropped: offers.length - kept.length, droppedOn };
 }
+
+/**
+ * CITY GATE for hotels (found 3 Nov while answering the owner's 5-7 Nov question).
+ *
+ * Measured on production: `hotels in Shimla 5 Nov -> 7 Nov 2 adults` answered 40 rows from
+ * w_hotels_agoda whose attributes.city is "Manali" (ids cat_8248314..., titles like "Honeymoon
+ * Inn - Manali", per-night Agoda prices). The date gate had nothing to say because a catalogue
+ * row carries no travel date, so a Shimla search could paint another city's properties with
+ * prices - the same class of bug the owner keeps reporting, one field over.
+ *
+ * Rule, deliberately conservative: drop a hotel row only when it NAMES a city and that city is
+ * not the requested one. A row with no city attribute is left alone (unproven is not wrong), and
+ * no other vertical is touched.
+ */
+export function enforceRequestedCity<T>(offers: T[], vertical: string, city: string | undefined): { kept: T[]; dropped: number; droppedCities: Record<string, number> } {
+  const want = String(city || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (String(vertical) !== 'hotels' || !want) return { kept: offers, dropped: 0, droppedCities: {} };
+  const kept: T[] = [];
+  const droppedCities: Record<string, number> = {};
+  const firstToken = want.split(' ')[0];
+  for (const o of offers) {
+    const src: any = o;
+    const named = String(
+      src?.attributes?.city ?? src?.travel?.city ?? src?.city ?? src?.attributes?.destination ?? '',
+    ).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (named && !named.includes(want) && !(firstToken.length > 3 && named.includes(firstToken))) {
+      droppedCities[named] = (droppedCities[named] || 0) + 1;
+      continue;
+    }
+    kept.push(o);
+  }
+  return { kept, dropped: offers.length - kept.length, droppedCities };
+}
