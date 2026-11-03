@@ -1,5 +1,4 @@
 import { AdBannerSlot } from './AdBannerSlot';
-import { NativeBannerSlot } from './NetworkAdTags';
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { parseSmartFilter, matchSmartFilter } from '../utils/smartFilter';
@@ -493,7 +492,10 @@ export const ComparisonFeed: React.FC = () => {
         {/* NativeBanner_1 (owner 3 Nov): the network's own unit in the SAME ad position. It only
             shows when no vertical creative is configured, because network inventory cannot be
             vertical-targeted by us (that is where the poker creatives came from). */}
-        {!verticalAdActive && <NativeBannerSlot className="my-4" />}
+        {/* OWNER 3 Nov: the untargeted network unit is NOT shown inside a vertical any more - it
+            chooses its own inventory and filled the Flight feed with dating/poker creatives. The
+            vertical slot above is the only ad here: an operator creative, a Google unit, or the
+            vertical's own deals-registry sponsor strip. Nothing shows if none is available. */}
 
               {/* Load More Button Section: only appears if at least 4 results displayed on screen and more remain */}
               {shouldShowLoadMore && (

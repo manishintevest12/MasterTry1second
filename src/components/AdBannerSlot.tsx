@@ -10,11 +10,14 @@ import { Megaphone } from 'lucide-react';
  *  - NOTHING — when no ad is configured there is no placeholder, per no-fabrication.
  */
 interface AdSlot {
-  slot_key: string;
+  slot_key?: string;
   provider: string;
-  adsense_client: string | null;
-  adsense_slot: string | null;
-  custom_html: string | null;
+  adsense_client?: string | null;
+  adsense_slot?: string | null;
+  custom_html?: string | null;
+  /** Vertical house sponsor (provider 't1s_house'): deals-registry rows for THIS vertical. */
+  vertical?: string;
+  deals?: Array<{ merchant: string; title?: string; discount?: string; image?: string | null; url: string }>;
 }
 
 declare global {
@@ -36,7 +39,7 @@ export const AdBannerSlot: React.FC<{
       try {
         const res = await fetch(`/api/ads?slot=${encodeURIComponent(slotKey)}`);
         const data = await res.json();
-        const active = Boolean(data.active && (data.slot?.custom_html || (data.slot?.adsense_client && data.slot?.adsense_slot)));
+        const active = Boolean(data.active && (data.slot?.custom_html || (data.slot?.adsense_client && data.slot?.adsense_slot) || (data.slot?.provider === 't1s_house' && (data.slot?.deals || []).length)));
         if (!cancelled) {
           setSlot(data.active ? data.slot : null);
           onActiveChange?.(active);
@@ -74,6 +77,35 @@ export const AdBannerSlot: React.FC<{
   }, [slot]);
 
   if (!slot) return null;
+
+  // Vertical house sponsor (owner 3 Nov): a Flights feed shows flight offers, not a network's dating
+  // or poker inventory. Clicks already point at the masked /api/out pointer from the deals registry.
+  if (slot.provider === 't1s_house' && Array.isArray(slot.deals) && slot.deals.length) {
+    return (
+      <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2">Sponsored · {slot.vertical}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {slot.deals.slice(0, 3).map((d: any, i: number) => (
+            <a
+              key={`${d.merchant}-${i}`}
+              href={d.url}
+              target="_blank"
+              rel="noopener noreferrer sponsored"
+              className="flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2 hover:border-slate-300"
+            >
+              {d.image ? (
+                <img src={d.image} alt="" className="w-7 h-7 rounded object-contain bg-white" loading="lazy" referrerPolicy="no-referrer" />
+              ) : null}
+              <span className="min-w-0">
+                <span className="block text-[12px] font-bold text-slate-800 truncate">{d.merchant}</span>
+                <span className="block text-[11px] text-slate-600 truncate">{d.discount || d.title}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (slot.provider === 'custom_html' && slot.custom_html) {
     return (

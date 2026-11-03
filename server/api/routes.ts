@@ -3041,6 +3041,32 @@ async function buildTopPicksList(): Promise<any[]> {
   }
 }
 
+/**
+ * Vertical-relevant house sponsor strip (owner 3 Nov). Deals registry rows already carry a masked
+ * /api/out goUrl, a merchant logo and a discount line, so the feed can show a Flights ad that is
+ * actually about flights instead of whatever a network wanted to place.
+ */
+async function houseSponsorFor(vertical: string): Promise<any | null> {
+  try {
+    const { listPublicDeals, dealsVerticalFor } = await import('../marketing/deals');
+    const rows = await listPublicDeals({ vertical: dealsVerticalFor(vertical), limit: 12 });
+    const usable = (rows || [])
+      .filter((d: any) => d?.goUrl && (d?.title || d?.merchantName))
+      .slice(0, 3)
+      .map((d: any) => ({
+        merchant: String(d.merchantName || d.merchantKey || 'Partner'),
+        title: String(d.title || '').slice(0, 90),
+        discount: d.discountText ? String(d.discountText).slice(0, 40) : '',
+        image: d.imageUrl || null,
+        url: String(d.goUrl),
+      }));
+    if (!usable.length) return null;
+    return { provider: 't1s_house', vertical, deals: usable };
+  } catch {
+    return null;
+  }
+}
+
 apiRouter.get('/ads', async (req, res) => {
   // Public: active ad slot config (AdSense ids or custom HTML). Nothing configured -> active: false.
   //
@@ -3055,7 +3081,19 @@ apiRouter.get('/ads', async (req, res) => {
     const requested = String(req.query.slot || '');
     let slot = await getAdSlot(requested);
     if (!slot && requested.startsWith('vertical_') && requested !== 'vertical_feed') {
-      slot = await getAdSlot('vertical_feed');
+      // OWNER 3 Nov: "ad humesa vertical ke hisab se hoga ... naa ki aisa real vs fake girl type".
+      // The network's native unit chooses its own inventory (we cannot vertical-target it), which is
+      // exactly how dating/poker creatives landed under the Flights feed. So before falling back to a
+      // shared slot we mint a HOUSE sponsor strip from the deals registry for THIS vertical: real
+      // travel/e-commerce offers whose clicks already go through the masked /api/out pointer, so the
+      // ad is both relevant and monetised. Nothing is invented - zero matching deals means no slot.
+      const verticalName = requested.slice('vertical_'.length);
+      const house = await houseSponsorFor(verticalName);
+      if (house) {
+        slot = house;
+      } else {
+        slot = await getAdSlot('vertical_feed');
+      }
     }
     res.json({ success: true, active: Boolean(slot), slot });
   } catch (e: any) {

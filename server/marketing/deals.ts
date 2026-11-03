@@ -10,6 +10,27 @@ import { createMaskingPointer } from '../affiliate/deeplink';
 export const DEAL_KINDS = ['bank_offer', 'coupon', 'gift_card', 'credit_card', 'loan', 'insurance', 'account', 'movie', 'cashback', 'sale'] as const;
 export type DealKind = (typeof DEAL_KINDS)[number];
 
+/**
+ * OWNER 3 Nov: "ad humesa vertical ke hisab se hoga". The feed's vertical ids and the deals
+ * registry's vertical column do not use identical spellings (movie vs movies, creditcards vs
+ * credit_cards), and a mismatch would silently leave the ad slot empty or fill it with the WRONG
+ * vertical's offers - the exact thing the owner is complaining about. One mapping, tested, used by
+ * the ad slot resolver.
+ */
+const DEALS_VERTICAL_ALIAS: Record<string, string> = {
+  movie: 'movies', movies: 'movies',
+  cab: 'cab', ride: 'cab',
+  ecommerce: 'ecommerce', grocery: 'grocery', food: 'food',
+  flights: 'flights', hotels: 'hotels', bus: 'bus',
+  loans: 'loans', insurance: 'insurance',
+  creditcards: 'credit_cards', credit_cards: 'credit_cards', account: 'banking',
+};
+
+export function dealsVerticalFor(vertical: string): string {
+  const v = String(vertical || '').toLowerCase().trim();
+  return DEALS_VERTICAL_ALIAS[v] || v;
+}
+
 export const MERCHANT_VERTICAL: Record<string, string> = {
   amazon: 'ecommerce',
   flipkart: 'ecommerce',

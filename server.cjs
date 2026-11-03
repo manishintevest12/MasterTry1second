@@ -30523,6 +30523,7 @@ __export(deals_exports, {
   MERCHANT_VERTICAL: () => MERCHANT_VERTICAL,
   allDealsForSeller: () => allDealsForSeller,
   dealsForSeller: () => dealsForSeller,
+  dealsVerticalFor: () => dealsVerticalFor,
   deleteDeal: () => deleteDeal,
   ensureDealsSchema: () => ensureDealsSchema,
   findBestCoupon: () => findBestCoupon,
@@ -30536,6 +30537,10 @@ __export(deals_exports, {
   toPublicDeal: () => toPublicDeal,
   validateDeal: () => validateDeal
 });
+function dealsVerticalFor(vertical) {
+  const v = String(vertical || "").toLowerCase().trim();
+  return DEALS_VERTICAL_ALIAS[v] || v;
+}
 function merchantKeyOf(name) {
   const s = String(name || "").toLowerCase().replace(/\.(com|in|co\.in)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
   const first = s.split(" ")[0] || "";
@@ -30783,12 +30788,29 @@ async function saveDeal(i) {
 async function deleteDeal(id) {
   await getStore().execute("DELETE FROM deals WHERE id = ?", [Number(id)]);
 }
-var DEAL_KINDS, MERCHANT_VERTICAL, isLive, schemaChecked;
+var DEAL_KINDS, DEALS_VERTICAL_ALIAS, MERCHANT_VERTICAL, isLive, schemaChecked;
 var init_deals = __esm({
   "server/marketing/deals.ts"() {
     init_db();
     init_deeplink();
     DEAL_KINDS = ["bank_offer", "coupon", "gift_card", "credit_card", "loan", "insurance", "account", "movie", "cashback", "sale"];
+    DEALS_VERTICAL_ALIAS = {
+      movie: "movies",
+      movies: "movies",
+      cab: "cab",
+      ride: "cab",
+      ecommerce: "ecommerce",
+      grocery: "grocery",
+      food: "food",
+      flights: "flights",
+      hotels: "hotels",
+      bus: "bus",
+      loans: "loans",
+      insurance: "insurance",
+      creditcards: "credit_cards",
+      credit_cards: "credit_cards",
+      account: "banking"
+    };
     MERCHANT_VERTICAL = {
       amazon: "ecommerce",
       flipkart: "ecommerce",
@@ -43818,6 +43840,23 @@ async function buildTopPicksList() {
     throw new Error(e2?.message || "top_picks_build_failed");
   }
 }
+async function houseSponsorFor(vertical) {
+  try {
+    const { listPublicDeals: listPublicDeals2, dealsVerticalFor: dealsVerticalFor2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
+    const rows = await listPublicDeals2({ vertical: dealsVerticalFor2(vertical), limit: 12 });
+    const usable = (rows || []).filter((d) => d?.goUrl && (d?.title || d?.merchantName)).slice(0, 3).map((d) => ({
+      merchant: String(d.merchantName || d.merchantKey || "Partner"),
+      title: String(d.title || "").slice(0, 90),
+      discount: d.discountText ? String(d.discountText).slice(0, 40) : "",
+      image: d.imageUrl || null,
+      url: String(d.goUrl)
+    }));
+    if (!usable.length) return null;
+    return { provider: "t1s_house", vertical, deals: usable };
+  } catch {
+    return null;
+  }
+}
 function leadRateOk(ip) {
   const now = Date.now();
   const h = leadHits.get(ip);
@@ -45783,7 +45822,13 @@ var init_routes = __esm({
         const requested = String(req.query.slot || "");
         let slot2 = await getAdSlot2(requested);
         if (!slot2 && requested.startsWith("vertical_") && requested !== "vertical_feed") {
-          slot2 = await getAdSlot2("vertical_feed");
+          const verticalName = requested.slice("vertical_".length);
+          const house = await houseSponsorFor(verticalName);
+          if (house) {
+            slot2 = house;
+          } else {
+            slot2 = await getAdSlot2("vertical_feed");
+          }
         }
         res.json({ success: true, active: Boolean(slot2), slot: slot2 });
       } catch (e2) {
