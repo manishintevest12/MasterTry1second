@@ -69,7 +69,11 @@ test('both search routes claim the budget and a hard race, not just the pipeline
   // front-proxy wall, and still overridable.
   assert.match(routes, /hotels' \? 34_000 : sweepVertical === 'flights' \? 28_000/, 'the sweep ceiling must be per vertical and bounded');
   assert.match(routes, /flights' \? 28_000 : sweepVertical === 'bus' \? 22_000/, 'bus and the remaining verticals stay bounded too');
-  const ceilings = (routes.match(/hotels' \? 34_000 : sweepVertical === 'flights' \? 28_000 : sweepVertical === 'bus' \? 22_000 : 16_000/) || []).length;
+  // OWNER 3 Nov: movies join the slow set - their seller labels and the seat-price band land at
+  // 12-17s, so a 16s default answered the app with provider-null, price-less cards.
+  assert.match(routes, /sweepVertical === 'movies' \|\| sweepVertical === 'movie'\) \? 20_000 : 16_000/, 'movies get the enriched-set budget');
+  assert.match(routes, /hotels' \? 34_000 : sweepVertical === 'flights'/, 'the per-vertical ladder is intact');
+  const ceilings = (routes.match(/hotels' \? 34_000 : sweepVertical === 'flights' \? 28_000 : sweepVertical === 'bus' \? 22_000/) || []).length;
   assert.equal(ceilings, 1, 'one bounded per-vertical ceiling, not an unbounded wait');
   assert.ok(34_000 < 55_000, 'the slowest ceiling must stay under the front-proxy 55s wall');
   assert.ok(routes.includes('T1S_FULL_SWEEP_MS'), 'the sweep ceiling must be overridable from the environment');

@@ -44731,7 +44731,7 @@ var init_routes = __esm({
       const searched = runLiveSearch(input, { signal: searchAbort.signal });
       searched.catch(() => void 0);
       const sweepVertical = String(input.vertical || "");
-      const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (sweepVertical === "hotels" ? 34e3 : sweepVertical === "flights" ? 28e3 : sweepVertical === "bus" ? 22e3 : 16e3)));
+      const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (sweepVertical === "hotels" ? 34e3 : sweepVertical === "flights" ? 28e3 : sweepVertical === "bus" ? 22e3 : sweepVertical === "movies" || sweepVertical === "movie" ? 2e4 : 16e3)));
       let response = await awaitSettledAnswer(input, sweepBudget);
       if (response && response.results?.length) {
         const r = response;
@@ -44977,7 +44977,7 @@ var init_routes = __esm({
       res.on("close", () => {
         if (!res.writableEnded) liveAbort.abort();
       });
-      const hardDeadlineMs = Math.max(5e3, Number(process.env.T1S_HARD_REQUEST_MS || 15e3));
+      const hardDeadlineMs = Math.max(5e3, Number(process.env.T1S_HARD_REQUEST_MS || 26e3));
       const hardTimer = setTimeout(() => {
         if (res.writableEnded || res.headersSent) return;
         liveAbort.abort();
@@ -45004,7 +45004,8 @@ var init_routes = __esm({
             latencyMs: Date.now() - searchStart
           });
         }
-        const coldCeiling = Math.max(2e3, Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 9e3));
+        const coldCeilingMs = Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 0) || (["movies", "movie", "hotels"].includes(String(input.vertical)) ? 2e4 : String(input.vertical) === "flights" ? 16e3 : 9e3);
+        const coldCeiling = Math.max(2e3, coldCeilingMs);
         const late = await Promise.race([
           searchedLive,
           new Promise((resolve) => setTimeout(() => resolve(null), Math.max(0, coldCeiling - (Date.now() - searchStart))))

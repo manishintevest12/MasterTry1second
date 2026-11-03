@@ -983,7 +983,8 @@ apiRouter.post('/search', async (req, res) => {
   // seller still does not deliver inside its own ceiling is covered by seller memory, so a late
   // seller never disappears from the seller set.
   const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (
-    sweepVertical === 'hotels' ? 34_000 : sweepVertical === 'flights' ? 28_000 : sweepVertical === 'bus' ? 22_000 : 16_000
+    sweepVertical === 'hotels' ? 34_000 : sweepVertical === 'flights' ? 28_000 : sweepVertical === 'bus' ? 22_000
+      : (sweepVertical === 'movies' || sweepVertical === 'movie') ? 20_000 : 16_000
   )));
   let response = (await awaitSettledAnswer(input, sweepBudget)) as Awaited<ReturnType<typeof runSearch>> | null;
   if (response && (response as any).results?.length) {
@@ -1580,7 +1581,9 @@ apiRouter.post('/scrape/live', async (req, res) => {
   // OWNER 31 Oct ("Add a strict request timeout"): a hard ceiling above the 3s countdown and
   // the cold ceiling. If a search somehow still has not answered by then, the waiter is
   // abandoned and the client gets a 504 JSON answer (never a hung socket, never another job).
-  const hardDeadlineMs = Math.max(5_000, Number(process.env.T1S_HARD_REQUEST_MS || 15_000));
+  // Above the longest per-vertical cold ceiling (movies/hotels 20s) and still far below the ~55s
+  // front-proxy wall, so the enriched answer can actually be returned instead of being cut at 15s.
+  const hardDeadlineMs = Math.max(5_000, Number(process.env.T1S_HARD_REQUEST_MS || 26_000));
   const hardTimer = setTimeout(() => {
     if (res.writableEnded || res.headersSent) return;
     liveAbort.abort();
@@ -1613,7 +1616,17 @@ apiRouter.post('/scrape/live', async (req, res) => {
     // OWNER 30 Oct (same rule as /api/search): never hand the app an empty first answer
     // while the live search is still in flight — wait on it up to the cold ceiling and
     // return whatever real rows it produced.
-    const coldCeiling = Math.max(2000, Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 9000));
+    // OWNER 3 Nov: "abhi v movies ke liye ticketnew, district ka data ni aa raha aur bookmyshow mai
+    // price ni aa raha". MEASURED: /api/scrape/live movies Bhopal answered 22 rows in 3.2s with
+    // provider=null and 0 priced, while the SAME query's settled pipeline (POST /api/search, 17s)
+    // answered 11 rows ALL priced and labelled District by Zomato 5 / BookMyShow 3 / TicketNew 3.
+    // So the app was being answered mid-enrichment: the movie cards exist at ~2s but their seller
+    // label and the seat-price band (the only honest price source for movies) land at ~12-17s.
+    // The cold ceiling is therefore per vertical now - movies/hotels wait for their enriched set,
+    // the fast verticals keep the 9s ceiling they already meet.
+    const coldCeilingMs = Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 0)
+      || (['movies', 'movie', 'hotels'].includes(String(input.vertical)) ? 20_000 : String(input.vertical) === 'flights' ? 16_000 : 9_000);
+    const coldCeiling = Math.max(2000, coldCeilingMs);
     const late = (await Promise.race([
       searchedLive,
       new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.max(0, coldCeiling - (Date.now() - searchStart)))),

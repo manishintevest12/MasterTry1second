@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { DATE_ANSWERING_VERTICALS } from '../server/search/travelDateGate';
 import { smartlinkSafe } from '../server/marketing/adSafety';
@@ -46,4 +48,17 @@ test('the ad safety contract keeps the Play-policy flags advertised', () => {
   assert.equal(safe.ok, true);
   assert.ok(safe.allowedHosts.includes('araplhn.org'));
   assert.ok(safe.allowedHosts.includes('bauval.org'));
+});
+
+test('the cold ceiling is per vertical so movies can return their enriched set', () => {
+  const routes = readFileSync(join(process.cwd(), 'server/api/routes.ts'), 'utf8');
+  // Measured: /api/scrape/live movies Bhopal = 22 rows at 3.2s with provider null and 0 priced;
+  // POST /api/search the settled 17s answer = 11 rows all priced (District 5 / BMS 3 / TicketNew 3).
+  assert.match(routes, /\['movies', 'movie', 'hotels'\]\.includes\(String\(input\.vertical\)\) \? 20_000/, 'movies+hotels wait for their enriched set');
+  assert.match(routes, /String\(input\.vertical\) === 'flights' \? 16_000 : 9_000/, 'flights get a middle ceiling, the rest stay fast');
+  // The env override still wins when the operator sets it, but it no longer collapses every
+  // vertical to one number by default.
+  assert.match(routes, /const coldCeilingMs = Number\(process\.env\.T1S_COLD_SEARCH_CEILING_MS \|\| 0\)/, 'operator override still wins');
+  // The hard request cap must sit above the longest cold ceiling, or the wait is pointless.
+  assert.match(routes, /T1S_HARD_REQUEST_MS \|\| 26_000/, 'hard cap above the 20s ceiling, still under the 55s proxy wall');
 });
