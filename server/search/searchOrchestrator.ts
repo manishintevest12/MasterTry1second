@@ -37,7 +37,7 @@ import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerP
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { enrichFlightSchedules } from '../common/flightSchedule';
-import { enforceRequestedTravelDate, normalizeTravelDate, offerTravelDate, enforceRequestedCity } from './travelDateGate';
+import { enforceRequestedTravelDate, normalizeTravelDate, offerTravelDate, enforceRequestedCity, dropUnpricedRows } from './travelDateGate';
 import { backfillFlightTimes, hideFlightRowsWithoutTimes, noteFlightTimeDrop } from './flightTimeBackfill';
 import { gateRapidoRows } from './rapidoPriceGate';
 import { cityFromRouteText } from '../workers/parsers/osmTravel';
@@ -248,7 +248,7 @@ async function progressiveCatalogueResponse(
       return: inputQuery.travelDates?.return,
       checkin: (inputQuery.travelDates as any)?.checkin,
       checkout: (inputQuery.travelDates as any)?.checkout,
-    }, { strictUndated: true, undatedAsPresence: String(vertical) === 'hotels' });
+    }, { strictUndated: true, undatedAsPresence: false });
     if (floorGate.dropped) {
       log.info('Search', 'catalogue floor rows dropped for answering a different travel date', {
         vertical: String(vertical),
@@ -568,6 +568,37 @@ export async function runSearchFast(input: SearchInput, coldBudgetMs = 1_500): P
 }
 
 /**
+ * FULL-SWEEP SETTLE (owner 3 Nov: "jitne v sellers hai unn sb ka data aaye, kabhi 2 seller ka live
+ * aata hai kabhi 5 seller ka, aur ye hr vertical mai ho raha hai").
+ *
+ * The answer used to race the pipeline with a ~2s budget, so it returned whatever had landed by
+ * then - two sellers one minute, five the next. This waits for the pipeline to SETTLE (state
+ * pendingRefresh false, i.e. every worker for the vertical has answered, failed or hit its own
+ * ceiling) and returns that final answer, so one search carries the whole seller set. The wait is
+ * bounded: if the sweep is still running at the ceiling the newest snapshot is returned unchanged
+ * and keeps its honest pendingRefresh flag.
+ *
+ * It never starts a second acquisition - every poll joins the SAME in-flight pipeline.
+ */
+export async function settleSearchComplete(
+  input: SearchInput,
+  budgetMs = Number(process.env.T1S_FULL_SWEEP_MS || 18_000),
+): Promise<SearchResponse | null> {
+  const started = Date.now();
+  let last: SearchResponse | null = null;
+  while (Date.now() - started < Math.max(1000, budgetMs)) {
+    let attempt: SearchResponse | null = null;
+    try { attempt = await runSearch({ ...input, coldDeadlineMs: 1500 }); } catch { attempt = null; }
+    if (attempt) {
+      last = attempt;
+      if (!(attempt as any).state?.pendingRefresh) return attempt;
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return last;
+}
+
+/**
  * SETTLE FOR THE REQUESTED DATE (owner 3 Nov, requirement 3: "a single user search must fan out to
  * all partner workers ... and return one unified payload ... without requiring duplicate user
  * searches").
@@ -595,7 +626,7 @@ export async function settleForRequestedDate(
       return: input.travelDates?.return,
       checkin: (input.travelDates as any)?.checkin,
       checkout: (input.travelDates as any)?.checkout,
-    }, { strictUndated: true, undatedAsPresence: String(input.vertical || '') === 'hotels' });
+    }, { strictUndated: true, undatedAsPresence: false });
     return { rows: g.kept as any[], response: r };
   };
   let last: SearchResponse | null = null;
@@ -637,7 +668,19 @@ export function gateTravelDateResponse(input: SearchInput, response: SearchRespo
     return: input.travelDates?.return,
     checkin: (input.travelDates as any)?.checkin,
     checkout: (input.travelDates as any)?.checkout,
-  }, { strictUndated: true, undatedAsPresence: String(vertical) === 'hotels' });
+  }, { strictUndated: true, undatedAsPresence: false });
+  // Owner 3 Nov: no price = not shown. This removes presence cards, undated hotel properties and
+  // every "price on site" placeholder from the ANSWER, so what a user sees always carries a live
+  // price for this search.
+  const priced = dropUnpricedRows(response.results as any[], vertical);
+  if (priced.dropped) {
+    log.info('Search', 'price-less rows withheld from the answer', { vertical, dropped: priced.dropped, kept: priced.kept.length });
+    response.results = priced.kept as any;
+    if (!response.results.length) {
+      response.state = { ...(response.state || {}), pendingRefresh: true, triggeredRefresh: true } as any;
+      return response;
+    }
+  }
   const cityGate = enforceRequestedCity(response.results as any[], vertical, input.city || String(input.query || ''));
   if (cityGate.dropped) {
     log.info('Search', 'rows dropped for another city (final answer gate)', {
@@ -888,7 +931,13 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
       return: parsed.travelDates?.return,
       checkin: (parsed.travelDates as any)?.checkin,
       checkout: (parsed.travelDates as any)?.checkout,
-    }, { strictUndated: true, undatedAsPresence: String(vertical) === 'hotels' });
+    }, { strictUndated: true, undatedAsPresence: false });
+    const cachePriced = dropUnpricedRows(v.results as any[], String(vertical));
+    if (cachePriced.dropped) {
+      log.info('Search', 'cached price-less rows withheld', { vertical: String(vertical), dropped: cachePriced.dropped, kept: cachePriced.kept.length });
+      v.results = cachePriced.kept as any;
+      if (!v.results.length) cacheDel(cacheKey);
+    }
     if (cacheGate.dropped > 0) {
       log.info('Search', 'cached rows dropped for answering a different travel date', {
         vertical: String(vertical), asked: normalizeTravelDate(parsed.travelDates?.depart) || '',

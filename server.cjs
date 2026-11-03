@@ -34034,7 +34034,20 @@ function enforceRequestedCity(offers, vertical, city) {
   }
   return { kept, dropped: offers.length - kept.length, droppedCities };
 }
-var DATE_ANSWERING_VERTICALS, iso2;
+function priceOfRow(o) {
+  const p = o?.prices || {};
+  const n = (v) => {
+    const x = Number(String(v ?? "").replace(/[^0-9.\-]/g, ""));
+    return Number.isFinite(x) && x > 0 ? x : 0;
+  };
+  return n(p.effectivePrice) || n(p.mandatoryTotal) || n(p.listPrice) || n(o?.price) || 0;
+}
+function dropUnpricedRows(offers, vertical) {
+  if (NO_PRICE_VERTICALS.includes(String(vertical))) return { kept: offers, dropped: 0 };
+  const kept = (offers || []).filter((o) => priceOfRow(o) > 0);
+  return { kept, dropped: (offers || []).length - kept.length };
+}
+var DATE_ANSWERING_VERTICALS, iso2, NO_PRICE_VERTICALS;
 var init_travelDateGate = __esm({
   "server/search/travelDateGate.ts"() {
     DATE_ANSWERING_VERTICALS = ["flights", "hotels", "bus", "cab", "movies"];
@@ -34045,6 +34058,7 @@ var init_travelDateGate = __esm({
       const dd = String(d).padStart(2, "0");
       return `${y}-${mm}-${dd}`;
     };
+    NO_PRICE_VERTICALS = ["loans", "insurance", "creditcards", "account", "banking"];
   }
 });
 
@@ -34596,6 +34610,7 @@ __export(searchOrchestrator_exports, {
   runSearchFast: () => runSearchFast,
   runSearchPolled: () => runSearchPolled,
   settleForRequestedDate: () => settleForRequestedDate,
+  settleSearchComplete: () => settleSearchComplete,
   thinResultTtl: () => thinResultTtl
 });
 function parseCatalogueAttributes(raw) {
@@ -34690,7 +34705,7 @@ async function progressiveCatalogueResponse(vertical, inputQuery, offers, start,
       return: inputQuery.travelDates?.return,
       checkin: inputQuery.travelDates?.checkin,
       checkout: inputQuery.travelDates?.checkout
-    }, { strictUndated: true, undatedAsPresence: String(vertical) === "hotels" });
+    }, { strictUndated: true, undatedAsPresence: false });
     if (floorGate.dropped) {
       log.info("Search", "catalogue floor rows dropped for answering a different travel date", {
         vertical: String(vertical),
@@ -34845,6 +34860,24 @@ async function runSearchFast(input, coldBudgetMs = 1500) {
   const fast = await runSearchFastInner(input, coldBudgetMs);
   return gateTravelDateResponse(input, gateEcommerceResponse(input, fast));
 }
+async function settleSearchComplete(input, budgetMs = Number(process.env.T1S_FULL_SWEEP_MS || 18e3)) {
+  const started3 = Date.now();
+  let last = null;
+  while (Date.now() - started3 < Math.max(1e3, budgetMs)) {
+    let attempt = null;
+    try {
+      attempt = await runSearch({ ...input, coldDeadlineMs: 1500 });
+    } catch {
+      attempt = null;
+    }
+    if (attempt) {
+      last = attempt;
+      if (!attempt.state?.pendingRefresh) return attempt;
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return last;
+}
 async function settleForRequestedDate(input, budgetMs = Number(process.env.T1S_DATE_SETTLE_MS || 9e3)) {
   const started3 = Date.now();
   const gate = (r) => {
@@ -34854,7 +34887,7 @@ async function settleForRequestedDate(input, budgetMs = Number(process.env.T1S_D
       return: input.travelDates?.return,
       checkin: input.travelDates?.checkin,
       checkout: input.travelDates?.checkout
-    }, { strictUndated: true, undatedAsPresence: String(input.vertical || "") === "hotels" });
+    }, { strictUndated: true, undatedAsPresence: false });
     return { rows: g.kept, response: r };
   };
   let last = null;
@@ -34880,7 +34913,16 @@ function gateTravelDateResponse(input, response) {
     return: input.travelDates?.return,
     checkin: input.travelDates?.checkin,
     checkout: input.travelDates?.checkout
-  }, { strictUndated: true, undatedAsPresence: String(vertical) === "hotels" });
+  }, { strictUndated: true, undatedAsPresence: false });
+  const priced = dropUnpricedRows(response.results, vertical);
+  if (priced.dropped) {
+    log.info("Search", "price-less rows withheld from the answer", { vertical, dropped: priced.dropped, kept: priced.kept.length });
+    response.results = priced.kept;
+    if (!response.results.length) {
+      response.state = { ...response.state || {}, pendingRefresh: true, triggeredRefresh: true };
+      return response;
+    }
+  }
   const cityGate = enforceRequestedCity(response.results, vertical, input.city || String(input.query || ""));
   if (cityGate.dropped) {
     log.info("Search", "rows dropped for another city (final answer gate)", {
@@ -35087,7 +35129,13 @@ async function runSearchPipeline(input) {
       return: parsed.travelDates?.return,
       checkin: parsed.travelDates?.checkin,
       checkout: parsed.travelDates?.checkout
-    }, { strictUndated: true, undatedAsPresence: String(vertical) === "hotels" });
+    }, { strictUndated: true, undatedAsPresence: false });
+    const cachePriced = dropUnpricedRows(v.results, String(vertical));
+    if (cachePriced.dropped) {
+      log.info("Search", "cached price-less rows withheld", { vertical: String(vertical), dropped: cachePriced.dropped, kept: cachePriced.kept.length });
+      v.results = cachePriced.kept;
+      if (!v.results.length) cacheDel(cacheKey);
+    }
     if (cacheGate.dropped > 0) {
       log.info("Search", "cached rows dropped for answering a different travel date", {
         vertical: String(vertical),
@@ -35394,7 +35442,7 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   if (String(vertical) === "ecommerce" && String(input.query || "").trim().length >= 2) {
-    const priceOfRow = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
+    const priceOfRow2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
     const dept = getEcomDepartment(input.browseDepartmentId);
     if (dept) {
       const before = combined.length;
@@ -35405,9 +35453,9 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
         before,
         kept: combined.length
       });
-      combined = collapseSellerVariants(combined, priceOfRow);
+      combined = collapseSellerVariants(combined, priceOfRow2);
     } else {
-      const gated = gateFeedProductRows(combined, String(input.query), priceOfRow);
+      const gated = gateFeedProductRows(combined, String(input.query), priceOfRow2);
       if (gated.dropped.length) {
         log.info("Search", "Withheld off-product e-commerce rows", {
           query: String(input.query).slice(0, 60),
@@ -35421,7 +35469,7 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
         });
       }
       combined = gated.kept;
-      combined = collapseSellerVariants(combined, priceOfRow);
+      combined = collapseSellerVariants(combined, priceOfRow2);
     }
   }
   if (String(vertical) === "cab") {
@@ -43302,13 +43350,19 @@ async function buildQuickAppsList() {
   }
 }
 function gateRowsForDate(rows, vertical, dates2) {
+  const priced = dropUnpricedRows(rows, vertical);
+  rows = priced.kept;
   const g = enforceRequestedTravelDate(rows, vertical, dates2 || {}, {
     strictUndated: true,
     // hotels keep their undated property rows as price-less presence cards so the first poll is
     // never empty (owner 3 Nov); every other vertical still drops undated rows.
-    undatedAsPresence: String(vertical) === "hotels"
+    undatedAsPresence: false
   });
-  return { rows: g.kept, dropped: g.dropped, droppedOn: g.droppedOn };
+  return {
+    rows: g.kept,
+    dropped: g.dropped + priced.dropped,
+    droppedOn: { ...g.droppedOn, ...priced.dropped ? { unpriced: priced.dropped } : {} }
+  };
 }
 async function lastChanceRows(input, ms = 500) {
   try {
@@ -44276,7 +44330,7 @@ var init_routes = __esm({
       });
       const searched = runLiveSearch(input, { signal: searchAbort.signal });
       searched.catch(() => void 0);
-      const response = await Promise.race([
+      let response = await Promise.race([
         searched,
         new Promise((resolve) => setTimeout(() => resolve(null), budgetMs))
       ]);
@@ -44289,19 +44343,23 @@ var init_routes = __esm({
           )).catch(() => void 0);
         }
       }
+      if (response && response.state?.pendingRefresh) {
+        const v = String(input.vertical || "");
+        const sweepBudget = Number(process.env.T1S_FULL_SWEEP_MS || (v === "hotels" ? 2e4 : v === "flights" ? 18e3 : v === "bus" ? 15e3 : 1e4));
+        const settled = await settleSearchComplete(input, sweepBudget).catch(() => null);
+        if (settled) response = settled;
+      }
       if (response) {
-        const nowGate = gateRowsForDate(response.results || [], String(input.vertical), input.travelDates);
-        if (!nowGate.rows.length && response.state?.pendingRefresh) {
-          const settleBudget = String(input.vertical) === "hotels" ? Number(process.env.T1S_HOTEL_SETTLE_MS || 14e3) : Number(process.env.T1S_DATE_SETTLE_MS || 9e3);
-          const settled = await settleForRequestedDate(input, settleBudget).catch(() => null);
-          if (settled && (settled.results || []).length) {
-            return res.json({
-              ...settled,
-              results: orderFlightRowsLast(settled.results || [], String(input.vertical)),
-              pendingRefresh: false,
-              latencyMs: Date.now() - searchStart
-            });
-          }
+        const finalGate = gateRowsForDate(response.results || [], String(input.vertical), input.travelDates);
+        if (finalGate.dropped) {
+          log.info("Search", "final answer gated", {
+            vertical: String(input.vertical),
+            dropped: finalGate.dropped,
+            kept: finalGate.rows.length,
+            on: finalGate.droppedOn
+          });
+          response.results = orderFlightRowsLast(finalGate.rows, String(input.vertical));
+          if (!finalGate.rows.length) response.state = { ...response.state || {}, pendingRefresh: true };
         }
       }
       if (!response) {

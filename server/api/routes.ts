@@ -9,13 +9,13 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
-import { runSearch, runSearchPolled, runSearchFast, settleForRequestedDate, type SearchInput } from '../search/searchOrchestrator';
+import { runSearch, runSearchPolled, runSearchFast, settleForRequestedDate, settleSearchComplete, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
 import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, recallGoodForVertical, rememberGood } from '../search/lastKnownGood';
-import { enforceRequestedTravelDate } from '../search/travelDateGate';
+import { dropUnpricedRows, enforceRequestedTravelDate } from '../search/travelDateGate';
 import { allowPending, forgetPending, pollKey } from './pollBudget';
 import { refreshMovieDestination } from '../movies/freshMovieLink';
 import { refreshSeatDestination } from '../movies/liveSeatSession';
@@ -850,13 +850,20 @@ function gateRowsForDate<T extends Record<string, any>>(
   vertical: string,
   dates: { depart?: string; return?: string; checkin?: string; checkout?: string } | undefined,
 ): { rows: T[]; dropped: number; droppedOn: Record<string, number> } {
+  // Owner 3 Nov: nothing price-less may be shown while live prices are missing.
+  const priced = dropUnpricedRows(rows as any[], vertical);
+  rows = priced.kept as T[];
   const g = enforceRequestedTravelDate(rows, vertical, dates || {}, {
     strictUndated: true,
     // hotels keep their undated property rows as price-less presence cards so the first poll is
     // never empty (owner 3 Nov); every other vertical still drops undated rows.
-    undatedAsPresence: String(vertical) === 'hotels',
+    undatedAsPresence: false,
   });
-  return { rows: g.kept as T[], dropped: g.dropped, droppedOn: g.droppedOn };
+  return {
+    rows: g.kept as T[],
+    dropped: g.dropped + priced.dropped,
+    droppedOn: { ...g.droppedOn, ...(priced.dropped ? { unpriced: priced.dropped } : {}) },
+  };
 }
 
 async function lastChanceRows(input: SearchInput, ms = 500): Promise<any | null> {
@@ -922,7 +929,7 @@ apiRouter.post('/search', async (req, res) => {
   res.on('close', () => { if (!res.writableEnded) searchAbort.abort(); });
   const searched = runLiveSearch(input, { signal: searchAbort.signal });
   searched.catch(() => undefined); // the abandoned race leg must never crash the process
-  const response = (await Promise.race([
+  let response = (await Promise.race([
     searched,
     new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
   ])) as Awaited<ReturnType<typeof runSearch>> | null;
@@ -943,23 +950,28 @@ apiRouter.post('/search', async (req, res) => {
   // by the date gate is not an answer while the pipeline is still scanning this exact date, so wait
   // on the SAME in-flight search (no new acquisition, no second press) and answer with its gated
   // rows. Measured before this: flights/hotels/bus 2026-11-27 answered 0 rows in 1.5-3.2s.
+  // ONE SEARCH = THE WHOLE SELLER SET (owner 3 Nov: "jitne v sellers hai unn sb ka data aaye,
+  // kabhi 2 seller ka live aata hai kabhi 5 seller ka, aur ye hr vertical mai ho raha hai").
+  // The answer used to race the pipeline for ~2s and return whatever had landed. Now, while the
+  // answer still says pendingRefresh, it waits for the sweep to SETTLE (every worker answered,
+  // failed or hit its own ceiling) and returns that - bounded per vertical, then the newest
+  // snapshot is used unchanged.
+  if (response && (response as any).state?.pendingRefresh) {
+    const v = String(input.vertical || '');
+    const sweepBudget = Number(process.env.T1S_FULL_SWEEP_MS || (v === 'hotels' ? 20_000 : v === 'flights' ? 18_000 : v === 'bus' ? 15_000 : 10_000));
+    const settled = await settleSearchComplete(input, sweepBudget).catch(() => null);
+    if (settled) response = settled;
+  }
+  // Nothing leaves the server without passing the same date + city + PRICE rules. A date whose
+  // every priced row was dropped answers with the honest scan state, never a price-less card.
   if (response) {
-    const nowGate = gateRowsForDate((response as any).results || [], String(input.vertical), input.travelDates);
-    if (!nowGate.rows.length && (response as any).state?.pendingRefresh) {
-      // Hotels earn a longer settle window: their live publishers (Yatra/EMT/OYO) land at
-      // ~12-20s, while flights/bus answer inside the default 9s (measured 20 Nov Shimla).
-      const settleBudget = String(input.vertical) === 'hotels'
-        ? Number(process.env.T1S_HOTEL_SETTLE_MS || 14_000)
-        : Number(process.env.T1S_DATE_SETTLE_MS || 9_000);
-      const settled = await settleForRequestedDate(input, settleBudget).catch(() => null);
-      if (settled && (settled.results || []).length) {
-        return res.json({
-          ...(settled as any),
-          results: orderFlightRowsLast((settled.results || []) as any[], String(input.vertical)),
-          pendingRefresh: false,
-          latencyMs: Date.now() - searchStart,
-        });
-      }
+    const finalGate = gateRowsForDate((response as any).results || [], String(input.vertical), input.travelDates);
+    if (finalGate.dropped) {
+      log.info('Search', 'final answer gated', {
+        vertical: String(input.vertical), dropped: finalGate.dropped, kept: finalGate.rows.length, on: finalGate.droppedOn,
+      });
+      (response as any).results = orderFlightRowsLast(finalGate.rows as any[], String(input.vertical));
+      if (!finalGate.rows.length) (response as any).state = { ...((response as any).state || {}), pendingRefresh: true };
     }
   }
   if (!response) {

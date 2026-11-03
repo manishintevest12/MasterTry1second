@@ -218,3 +218,31 @@ export function enforceRequestedCity<T>(offers: T[], vertical: string, city: str
   }
   return { kept, dropped: offers.length - kept.length, droppedCities };
 }
+
+/**
+ * OWNER 3 Nov: "jab tak live price data ni aa raha tb tk kuch v show mt kro".
+ *
+ * The price-less cards (hotel properties kept as presence, seller presence rows, "price on site"
+ * placeholders) must not appear at all until a live price exists for THIS search. This is a
+ * deliberate reversal of the 2 Nov hotels first-poll behaviour: an empty answer with the honest
+ * scan state beats a card that shows no price.
+ *
+ * Vertical-aware on purpose: loans / insurance / credit cards / bank accounts are lead requests
+ * where no price exists at all, so they are never filtered here.
+ */
+const NO_PRICE_VERTICALS = ['loans', 'insurance', 'creditcards', 'account', 'banking'];
+
+export function priceOfRow(o: any): number {
+  const p = o?.prices || {};
+  const n = (v: any) => {
+    const x = Number(String(v ?? '').replace(/[^0-9.\-]/g, ''));
+    return Number.isFinite(x) && x > 0 ? x : 0;
+  };
+  return n(p.effectivePrice) || n(p.mandatoryTotal) || n(p.listPrice) || n(o?.price) || 0;
+}
+
+export function dropUnpricedRows<T>(offers: T[], vertical: string): { kept: T[]; dropped: number } {
+  if (NO_PRICE_VERTICALS.includes(String(vertical))) return { kept: offers, dropped: 0 };
+  const kept = (offers || []).filter((o) => priceOfRow(o) > 0);
+  return { kept, dropped: (offers || []).length - kept.length };
+}

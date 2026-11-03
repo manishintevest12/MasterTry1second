@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { enforceRequestedTravelDate, enforceRequestedCity, normalizeTravelDate, offerTravelDate } from '../server/search/travelDateGate';
+import { dropUnpricedRows, enforceRequestedTravelDate, enforceRequestedCity, normalizeTravelDate, offerTravelDate, priceOfRow } from '../server/search/travelDateGate';
 
 /** OWNER 2 Nov: "19-11-2026 search kiya, result 2-11-2026 ka bata raha hai - aise issue hr
  *  vertical fix kro". These pin the rule that a date-answering vertical may only show rows for
@@ -171,4 +171,23 @@ test('hotels cannot answer with another city; other verticals are untouched', ()
   assert.equal(enforceRequestedCity([{ id: 'f', attributes: { city: 'Manali' } }] as any, 'flights', 'Shimla').kept.length, 1);
   // no requested city = no filtering
   assert.equal(enforceRequestedCity(rows, 'hotels', '').kept.length, 3);
+});
+
+// OWNER 3 Nov: "jab tak live price data ni aa raha tb tk kuch v show mt kro" - a card with no
+// live price must not be shown at all (this reverses the price-less presence behaviour).
+test('price-less rows never reach the answer; lead verticals are exempt', () => {
+  const rows: any[] = [
+    { id: 'priced', prices: { effectivePrice: '7370' } },
+    { id: 'presence_ixigo', prices: {}, attributes: { price_basis: 'live_fares_unavailable' } },
+    { id: 'undated_hotel', prices: { effectivePrice: '0' }, attributes: { undated_listing: '1' } },
+    { id: 'string_price', prices: { effectivePrice: 'Rs 2,499' } },
+  ];
+  for (const v of ['flights', 'hotels', 'bus', 'ecommerce']) {
+    const g = dropUnpricedRows(rows, v);
+    assert.deepEqual(g.kept.map((r: any) => r.id), ['priced', 'string_price'], `${v} keeps only priced rows`);
+    assert.equal(g.dropped, 2);
+  }
+  // loan/insurance/card/account answers are lead requests, never filtered by price
+  assert.equal(dropUnpricedRows(rows, 'loans').dropped, 0);
+  assert.equal(priceOfRow({ prices: { effectivePrice: 'Rs 2,499' } }), 2499);
 });
