@@ -222,3 +222,19 @@ String defaultQueryFor(String vertical, [String? city]) {
   }
   return '';
 }
+
+/// OWNER 3 Nov ("hr vertical ke dusre se alag hai unka aapas mai kuch lena dena ni hai"):
+/// a search intent carries the vertical it was created for, and it may ONLY be applied to that
+/// vertical. Consuming it on whatever tab happened to be open is what put a Goa hotel search
+/// into the E-Commerce box. Kept here (not in the screen) so it is unit-testable.
+String normalizeVerticalId(String v) {
+  final t = v.trim().toLowerCase();
+  return t == 'movies' ? 'movie' : t;
+}
+
+bool pendingFitsVertical(String pendingVertical, String currentVertical) {
+  final a = normalizeVerticalId(pendingVertical);
+  final b = normalizeVerticalId(currentVertical);
+  if (a.isEmpty || b.isEmpty) return false;
+  return a == b;
+}

@@ -96,7 +96,13 @@ class _CompareScreenState extends State<CompareScreen> {
   /// an EMPTY auto search: the compare tab opened with no loader and no results
   /// at all. Consume the pending FIRST, exactly like the _onState path does.
   void _start() {
-    final p = _state.takePending();
+    var p = _state.takePending();
+    // OWNER 3 Nov ("hotels mai Goa search kiya, e-commerce mai bhi Goa aa gaya; har vertical
+    // alag hai, unka aapas mai kuch lena dena nahi"): a pending search used to be applied to
+    // WHATEVER vertical happened to be on screen when it was consumed, so a leftover hotels
+    // intent filled the e-commerce box and even ran an e-commerce search for it. A pending
+    // intent now only belongs to the vertical that created it; anything else is dropped.
+    if (p != null && !p.productPage && !pendingFitsVertical(p.vertical, _meta.id)) p = null;
     if (p == null) {
       // Owner 23 Oct mismatch fix: on (re)mount, if this vertical already has
       // results, the form must show THAT query — the auto search revalidates
@@ -168,15 +174,20 @@ class _CompareScreenState extends State<CompareScreen> {
       _start();
       return;
     }
-    final pending = _state.takePending();
+    var pending = _state.takePending();
     if (pending != null) {
       if (pending.productPage) {
         _state.openProduct(pending);
         return;
       }
-      _syncFormFromQuery(pending.query);
-      _runSearch(query: pending.query);
-      return;
+      // Owner 3 Nov: never let another vertical's search text land in this one's box.
+      if (!pendingFitsVertical(pending.vertical, _meta.id)) {
+        pending = null;
+      } else {
+        _syncFormFromQuery(pending.query);
+        _runSearch(query: pending.query);
+        return;
+      }
     }
     // Background revalidation finished: same query, fresher prices — adopt
     // them silently so the user never sees a spinner for data already shown.
@@ -195,6 +206,11 @@ class _CompareScreenState extends State<CompareScreen> {
     _q.text = '';
     _from.text = _meta.defaultFrom;
     _to.text = _meta.defaultTo;
+    // OWNER 3 Nov (vertical independence): the box must show this vertical's OWN last search
+    // (or its own seed) so switching verticals never shows another vertical's text or a blank
+    // box over results the user did not ask for here.
+    final own = _state.lastQueryFor(_meta.id);
+    if (own.isNotEmpty) _syncFormFromQuery(own);
   }
 
   /// Owner 23 Oct ('results Indore to Mumbai, box Indore to New Delhi'): the
