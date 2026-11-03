@@ -34040,7 +34040,7 @@ function priceOfRow(o) {
     const x = Number(String(v ?? "").replace(/[^0-9.\-]/g, ""));
     return Number.isFinite(x) && x > 0 ? x : 0;
   };
-  return n(p.effectivePrice) || n(p.mandatoryTotal) || n(p.listPrice) || n(o?.price) || 0;
+  return n(p.effectivePrice) || n(p.mandatoryTotal) || n(p.listPrice) || n(o?.primaryPrice) || n(o?.primary_price) || n(o?.effectivePrice) || n(o?.effective_price) || n(o?.mandatoryTotal) || n(o?.mandatory_total) || n(o?.listPrice) || n(o?.list_price) || n(o?.price) || 0;
 }
 function dropUnpricedRows(offers, vertical) {
   if (NO_PRICE_VERTICALS.includes(String(vertical))) return { kept: offers, dropped: 0 };
@@ -43496,6 +43496,16 @@ function gateRowsForDate(rows, vertical, dates2) {
     droppedOn: { ...g.droppedOn, ...priced.dropped ? { unpriced: priced.dropped } : {} }
   };
 }
+function finaliseLiveAnswer(response, vertical, dates2) {
+  if (!response) return response;
+  const gated = gateRowsForDate(response.results || [], vertical, dates2 || {});
+  if (gated.dropped) {
+    log.info("Search", "live answer gated before the web sees it", { vertical, dropped: gated.dropped, droppedOn: gated.droppedOn, kept: gated.rows.length });
+    response.results = gated.rows;
+    if (!gated.rows.length) response.pendingRefresh = true;
+  }
+  return reconcileResponseSources(response);
+}
 async function lastChanceRows(input, ms = 500) {
   try {
     const attempt = runSearchFast({ ...input, coldDeadlineMs: Math.max(250, ms - 120) }, Math.max(250, ms - 120));
@@ -44532,7 +44542,7 @@ var init_routes = __esm({
         ]);
         if (late && (late.results || []).length) {
           return res.json({
-            ...late,
+            ...finaliseLiveAnswer(late, String(input.vertical), input.travelDates),
             pendingRefresh: allowPending(chainKey, true),
             honestNotice: "Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.",
             latencyMs: Date.now() - searchStart
@@ -44562,8 +44572,9 @@ var init_routes = __esm({
         for (const o of response.results) vc[String(o.vendor || o.seller || "?")] = (vc[String(o.vendor || o.seller || "?")] || 0) + 1;
         console.error(JSON.stringify({ dbg: "runSearch raw", n: response.results.length, vendors: vc, vertical: String(input.vertical || "") }));
       }
-      const orderedResults = orderFlightRowsLast(response.results, String(input.vertical));
-      res.json({ success: response.results.length > 0 || response.state.servedFrom !== "unavailable", ...response, results: orderedResults });
+      const gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates);
+      const orderedResults = orderFlightRowsLast(gatedResponse.results, String(input.vertical));
+      res.json({ success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== "unavailable", ...gatedResponse, results: orderedResults });
     });
     HOTEL_SOURCE_LABEL = {
       w_hotels_ixigo: "Ixigo",
@@ -45769,7 +45780,11 @@ var init_routes = __esm({
     apiRouter.get("/ads", async (req, res) => {
       try {
         const { getAdSlot: getAdSlot2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
-        const slot2 = await getAdSlot2(String(req.query.slot || ""));
+        const requested = String(req.query.slot || "");
+        let slot2 = await getAdSlot2(requested);
+        if (!slot2 && requested.startsWith("vertical_") && requested !== "vertical_feed") {
+          slot2 = await getAdSlot2("vertical_feed");
+        }
         res.json({ success: true, active: Boolean(slot2), slot: slot2 });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Could not load ad slot" });

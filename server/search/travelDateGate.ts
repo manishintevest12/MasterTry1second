@@ -238,7 +238,15 @@ export function priceOfRow(o: any): number {
     const x = Number(String(v ?? '').replace(/[^0-9.\-]/g, ''));
     return Number.isFinite(x) && x > 0 ? x : 0;
   };
-  return n(p.effectivePrice) || n(p.mandatoryTotal) || n(p.listPrice) || n(o?.price) || 0;
+  // OWNER 3 Nov (flights screenshot: three "Price unavailable" cards on the web feed): the rows
+  // the WEB receives are ComparisonItem shaped - the fare lives in `primaryPrice`, never in
+  // prices.*. priceOfRow only looked at prices.*, so every item-shaped row read as priceless and
+  // the No-Price-No-Card filter was a no-op on that surface. Both shapes are read here; a row is
+  // priceless only when none of these carry a positive number.
+  return n(p.effectivePrice) || n(p.mandatoryTotal) || n(p.listPrice)
+    || n(o?.primaryPrice) || n(o?.primary_price) || n(o?.effectivePrice) || n(o?.effective_price)
+    || n(o?.mandatoryTotal) || n(o?.mandatory_total) || n(o?.listPrice) || n(o?.list_price)
+    || n(o?.price) || 0;
 }
 
 export function dropUnpricedRows<T>(offers: T[], vertical: string): { kept: T[]; dropped: number } {

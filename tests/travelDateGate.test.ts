@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { distinctSellerCount, dropUnpricedRows, reconcileVerifiedSources, enforceRequestedTravelDate, enforceRequestedCity, normalizeTravelDate, offerTravelDate, priceOfRow } from '../server/search/travelDateGate';
+import { distinctSellerCount, dropUnpricedRows, priceOfRow, reconcileVerifiedSources, enforceRequestedTravelDate, enforceRequestedCity, normalizeTravelDate, offerTravelDate, priceOfRow } from '../server/search/travelDateGate';
 
 /** OWNER 2 Nov: "19-11-2026 search kiya, result 2-11-2026 ka bata raha hai - aise issue hr
  *  vertical fix kro". These pin the rule that a date-answering vertical may only show rows for
@@ -217,4 +217,26 @@ test('verified sources are reconciled to the rows the user can see', () => {
     reconcileVerifiedSources([{ id: 'f', seller: 'MakeMyTrip', prices: { effectivePrice: '5200' } }], ['w_flights_mmt', 'w_flights_ixigo', 'w_flights_yatra']),
     ['w_flights_mmt'],
   );
+});
+
+// OWNER 3 Nov (desktop web flights screenshot: three cards reading "Price unavailable" while the
+// app showed the same search fine): the WEB reads /api/scrape/live, whose rows are ComparisonItem
+// shaped (fare in primaryPrice, no prices.* block). priceOfRow only knew prices.*, so the
+// No-Price-No-Card filter silently passed every priceless card through on that surface.
+test('priceOfRow reads the item shape the web feed receives', () => {
+  assert.equal(priceOfRow({ primaryPrice: 7437 }), 7437);
+  assert.equal(priceOfRow({ primary_price: '1,299' }), 1299);
+  assert.equal(priceOfRow({ effectivePrice: '8842' }), 8842);
+  assert.equal(priceOfRow({ prices: { effectivePrice: '5200' } }), 5200);
+  assert.equal(priceOfRow({ price: 899 }), 899);
+  // A presence card claims no fare in any shape: it must read as priceless so the gate drops it.
+  assert.equal(priceOfRow({ primaryPrice: 0, prices: {} }), 0);
+  assert.equal(priceOfRow({ priceAvailable: false }), 0);
+  // And the drop actually happens on the web shape.
+  const kept = dropUnpricedRows([
+    { id: 'a', primaryPrice: 7437 },
+    { id: 'presence_emt', primaryPrice: 0, attributes: { price_basis: 'live_fares_unavailable' } },
+  ], 'flights');
+  assert.deepEqual(kept.kept.map((r: any) => r.id), ['a']);
+  assert.equal(kept.dropped, 1);
 });

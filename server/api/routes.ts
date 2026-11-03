@@ -880,6 +880,25 @@ function gateRowsForDate<T extends Record<string, any>>(
   };
 }
 
+/**
+ * OWNER 3 Nov (desktop web flights screenshot: "Price unavailable" cards, 83 offers, no fares):
+ * the web feed reads /api/scrape/live, and that path had NO date gate and NO price gate - the gates
+ * lived on /api/search only, so every unpriced presence row reached desktop/mobile web while the app
+ * (which reads /api/search) stayed clean. Same rules, same helpers, applied at the one place the web
+ * gets its rows, so web and app can never disagree again: no price, no card; wrong date, no card;
+ * and "N sources verified" only counts shops whose row survives.
+ */
+function finaliseLiveAnswer(response: any, vertical: string, dates: any): any {
+  if (!response) return response;
+  const gated = gateRowsForDate((response.results || []) as any[], vertical, dates || {});
+  if (gated.dropped) {
+    log.info('Search', 'live answer gated before the web sees it', { vertical, dropped: gated.dropped, droppedOn: gated.droppedOn, kept: gated.rows.length });
+    response.results = gated.rows;
+    if (!gated.rows.length) response.pendingRefresh = true;
+  }
+  return reconcileResponseSources(response);
+}
+
 async function lastChanceRows(input: SearchInput, ms = 500): Promise<any | null> {
   try {
     const attempt = runSearchFast({ ...input, coldDeadlineMs: Math.max(250, ms - 120) }, Math.max(250, ms - 120));
@@ -1046,7 +1065,7 @@ apiRouter.post('/search', async (req, res) => {
     ])) as Awaited<ReturnType<typeof runSearch>> | null;
     if (late && (late.results || []).length) {
       return res.json({
-        ...late,
+        ...finaliseLiveAnswer(late, String(input.vertical), input.travelDates),
         pendingRefresh: allowPending(chainKey, true),
         honestNotice: 'Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.',
         latencyMs: Date.now() - searchStart,
@@ -1084,8 +1103,9 @@ apiRouter.post('/search', async (req, res) => {
   // Owner 28 Oct, standing rule enforced at the API boundary: a flight row missing
   // flight number / dep-arr / duration goes to the BOTTOM of the feed. The installed
   // Play Store app cannot be patched remotely, so this ordering ships server-side.
-  const orderedResults = orderFlightRowsLast(response.results as any[], String(input.vertical));
-  res.json({ success: response.results.length > 0 || response.state.servedFrom !== 'unavailable', ...response, results: orderedResults });
+  const gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates);
+  const orderedResults = orderFlightRowsLast(gatedResponse.results as any[], String(input.vertical));
+  res.json({ success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== 'unavailable', ...gatedResponse, results: orderedResults });
 });
 
 
@@ -3023,9 +3043,20 @@ async function buildTopPicksList(): Promise<any[]> {
 
 apiRouter.get('/ads', async (req, res) => {
   // Public: active ad slot config (AdSense ids or custom HTML). Nothing configured -> active: false.
+  //
+  // OWNER 3 Nov ("flight vertical open hua hai tho neeche flight se related ad aaye, abhi poker ka
+  // ad dikhta hai"): the feed now asks for a PER-VERTICAL slot (vertical_flights, vertical_hotels,
+  // ...). An operator-authored vertical creative wins; when none is configured we fall back to the
+  // shared vertical_feed slot, and only if that is empty does the slot answer inactive (the network
+  // banner then shows, because the network chooses its own inventory - it cannot be vertical-targeted
+  // by us).
   try {
     const { getAdSlot } = await import('../marketing/placements');
-    const slot = await getAdSlot(String(req.query.slot || ''));
+    const requested = String(req.query.slot || '');
+    let slot = await getAdSlot(requested);
+    if (!slot && requested.startsWith('vertical_') && requested !== 'vertical_feed') {
+      slot = await getAdSlot('vertical_feed');
+    }
     res.json({ success: true, active: Boolean(slot), slot });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'Could not load ad slot' });

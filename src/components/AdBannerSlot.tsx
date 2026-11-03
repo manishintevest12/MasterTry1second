@@ -21,7 +21,12 @@ declare global {
   interface Window { adsbygoogle?: unknown[] }
 }
 
-export const AdBannerSlot: React.FC<{ slotKey: string; format?: string }> = ({ slotKey, format = 'horizontal' }) => {
+export const AdBannerSlot: React.FC<{
+  slotKey: string;
+  format?: string;
+  /** Lets the parent know whether a configured ad really rendered, so a network fallback can stand down. */
+  onActiveChange?: (active: boolean) => void;
+}> = ({ slotKey, format = 'horizontal', onActiveChange }) => {
   const [slot, setSlot] = useState<AdSlot | null>(null);
   const pushed = useRef(false);
 
@@ -31,13 +36,17 @@ export const AdBannerSlot: React.FC<{ slotKey: string; format?: string }> = ({ s
       try {
         const res = await fetch(`/api/ads?slot=${encodeURIComponent(slotKey)}`);
         const data = await res.json();
-        if (!cancelled) setSlot(data.active ? data.slot : null);
+        const active = Boolean(data.active && (data.slot?.custom_html || (data.slot?.adsense_client && data.slot?.adsense_slot)));
+        if (!cancelled) {
+          setSlot(data.active ? data.slot : null);
+          onActiveChange?.(active);
+        }
       } catch {
-        if (!cancelled) setSlot(null);
+        if (!cancelled) { setSlot(null); onActiveChange?.(false); }
       }
     })();
     return () => { cancelled = true; };
-  }, [slotKey]);
+  }, [slotKey, onActiveChange]);
 
   useEffect(() => {
     if (!slot || slot.provider !== 'adsense' || !slot.adsense_client || !slot.adsense_slot) return;

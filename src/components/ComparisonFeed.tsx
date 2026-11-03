@@ -60,6 +60,8 @@ export const ComparisonFeed: React.FC = () => {
     });
   };
   const [ccCompareOpen, setCcCompareOpen] = useState(false);
+  // True when an operator-configured creative rendered for this vertical (see the ad slot below).
+  const [verticalAdActive, setVerticalAdActive] = useState(false);
 
   // Account vertical: real bank-account offers come from the admin-managed deals
   // registry (/api/deals?kind=account) — no scraping, no mock cards. Mapped into the
@@ -482,11 +484,16 @@ export const ComparisonFeed: React.FC = () => {
                 />
               )}
 
-        {/* AdSense: vertical feed unit (renders nothing when unset) */}
-        <div className="my-4"><AdBannerSlot slotKey="vertical_feed" /></div>
-        {/* NativeBanner_1 (owner 3 Nov): the network unit sits in the SAME ad position, so no new
-            section and no layout shift; it renders nothing on /admin. */}
-        <NativeBannerSlot className="my-4" />
+        {/* AdSense: vertical feed unit. The slot key is per vertical (vertical_flights,
+            vertical_hotels, ...) so an operator-authored creative can match the vertical the user is
+            in; the API falls back to the shared vertical_feed slot when a vertical has none.
+            OWNER 3 Nov: "flight vertical open hua hai tho neeche flight se related ad aaye" - a
+            configured vertical creative wins and the network banner below stands down. */}
+        <div className="my-4"><AdBannerSlot slotKey={`vertical_${vertical}`} onActiveChange={setVerticalAdActive} /></div>
+        {/* NativeBanner_1 (owner 3 Nov): the network's own unit in the SAME ad position. It only
+            shows when no vertical creative is configured, because network inventory cannot be
+            vertical-targeted by us (that is where the poker creatives came from). */}
+        {!verticalAdActive && <NativeBannerSlot className="my-4" />}
 
               {/* Load More Button Section: only appears if at least 4 results displayed on screen and more remain */}
               {shouldShowLoadMore && (
