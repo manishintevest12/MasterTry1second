@@ -52,6 +52,44 @@ export interface AcquisitionOutcome {
  * slow sources keep acquiring in the background (the full pipeline still runs
  * to completion and caches the complete result).
  */
+/**
+ * OWNER 3 Nov, third time of asking: "hotels, flight mai kuch website ka hi price aata hai sb ka ni
+ * aata". Measured on production (flights IDR-DEL 20 Nov): of the sources that were cut, cleartrip
+ * TIMEOUT at its 20s ceiling, starair at 30s, srilankan at 40s, and expedia/qatar/emirates/cathay
+ * were DEADLINE_CUT at the shared wall - they were still fetching when the budget ran out. None of
+ * them was blocked, they were merely slow, so their prices never reached the feed. Every one of those
+ * sources starts simultaneously (Promise.allSettled above), which means a slow source cannot be
+ * "behind" another: it simply has not answered yet when the wall arrives.
+ *
+ * Fix: after the main pass, give the slow/timed-out sources ONE short second chance in parallel,
+ * inside whatever budget still exists, so a source that needs 8s instead of 6s still contributes.
+ * Bounded on purpose (max 6 sources, per-retry cap, never past the wall) so this can never turn a
+ * 6-seller answer into a 55s gateway timeout.
+ */
+export function pickSlowRetries(
+  failed: Array<{ sourceId: string; failureClass: string }>,
+  sources: Array<{ id: string }>,
+  opts: { deadlineAt?: number; now?: number; maxSources?: number; perRetryMs?: number; reserveMs?: number },
+): Array<{ sourceId: string; budgetMs: number }> {
+  const now = opts.now ?? Date.now();
+  const remaining = opts.deadlineAt ? opts.deadlineAt - now : Infinity;
+  if (Number.isFinite(remaining) && remaining <= (opts.reserveMs ?? 3000) + 2000) return [];
+  const perRetryMs = Math.min(opts.perRetryMs ?? 7000, Number.isFinite(remaining) ? remaining - (opts.reserveMs ?? 3000) : (opts.perRetryMs ?? 7000));
+  if (perRetryMs < 2500) return [];
+  const known = new Set(sources.map((s) => s.id));
+  const slow = new Set(['TIMEOUT', 'DEADLINE_CUT']);
+  const seen = new Set<string>();
+  const out: Array<{ sourceId: string; budgetMs: number }> = [];
+  for (const f of failed) {
+    if (!slow.has(String(f.failureClass))) continue;
+    if (!known.has(f.sourceId) || seen.has(f.sourceId)) continue;
+    seen.add(f.sourceId);
+    out.push({ sourceId: f.sourceId, budgetMs: perRetryMs });
+    if (out.length >= (opts.maxSources ?? 6)) break;
+  }
+  return out;
+}
+
 export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: number; deadlineAt?: number; onPartial?: (snapshot: AcquisitionOutcome) => void } = {}): Promise<AcquisitionOutcome> {
   const sources = selectSources(query).slice(0, opts.maxSources ?? 6);
   const outcome: AcquisitionOutcome = { results: [], attempted: sources.map((s) => s.id), succeeded: [], failed: [] };
@@ -113,6 +151,8 @@ export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: n
     }
   };
 
+
+
   // TOTAL SEARCH DEADLINE (owner self-healing rule, 21 Oct): shared hosting's proxy
   // cuts the connection at ~55s. The search must return honest partial results
   // BEFORE that wall — a source that has not answered by the deadline is cut and
@@ -159,6 +199,35 @@ export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: n
     }),
   ));
   void settled;
+
+  // Second chance for sources that were merely slow (see pickSlowRetries): one short parallel retry
+  // for TIMEOUT / DEADLINE_CUT sources, inside the remaining budget only.
+  const retries = pickSlowRetries(
+    outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: String(f.failureClass) })),
+    sources.map((x) => ({ id: x.id })),
+    { deadlineAt: opts.deadlineAt, maxSources: 6, perRetryMs: 7000 },
+  );
+  if (retries.length) {
+    const byId = new Map(sources.map((x) => [x.id, x]));
+    await Promise.allSettled(retries.map(async ({ sourceId, budgetMs }) => {
+      const original = byId.get(sourceId);
+      if (!original) return;
+      const short = { ...original, timeoutMs: Math.min(budgetMs, (original as any).timeoutMs ?? budgetMs) } as SourceConfig;
+      const r = await runSource(short).catch((e: any) => ({ kind: 'fail' as const, sourceId, failureClass: 'UNKNOWN', error: String(e?.message || e).slice(0, 120) }));
+      if (r.kind === 'ok') {
+        outcome.results.push(r.result);
+        outcome.succeeded.push(r.result.sourceId);
+        outcome.failed = outcome.failed.filter((f) => f.sourceId !== sourceId);
+        recordSuccess(sourceId, r.result.latencyMs);
+      }
+    }));
+    opts.onPartial?.({
+      results: [...outcome.results],
+      attempted: outcome.attempted,
+      succeeded: [...outcome.succeeded],
+      failed: [...outcome.failed],
+    });
+  }
   return outcome;
 }
 

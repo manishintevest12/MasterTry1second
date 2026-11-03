@@ -28833,6 +28833,25 @@ function getAdapter(source) {
   if (workerTaskIndex().has(source.id)) return WORKER_ADAPTER;
   return ADAPTERS[source.method];
 }
+function pickSlowRetries(failed, sources2, opts) {
+  const now = opts.now ?? Date.now();
+  const remaining = opts.deadlineAt ? opts.deadlineAt - now : Infinity;
+  if (Number.isFinite(remaining) && remaining <= (opts.reserveMs ?? 3e3) + 2e3) return [];
+  const perRetryMs = Math.min(opts.perRetryMs ?? 7e3, Number.isFinite(remaining) ? remaining - (opts.reserveMs ?? 3e3) : opts.perRetryMs ?? 7e3);
+  if (perRetryMs < 2500) return [];
+  const known = new Set(sources2.map((s) => s.id));
+  const slow = /* @__PURE__ */ new Set(["TIMEOUT", "DEADLINE_CUT"]);
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const f of failed) {
+    if (!slow.has(String(f.failureClass))) continue;
+    if (!known.has(f.sourceId) || seen.has(f.sourceId)) continue;
+    seen.add(f.sourceId);
+    out.push({ sourceId: f.sourceId, budgetMs: perRetryMs });
+    if (out.length >= (opts.maxSources ?? 6)) break;
+  }
+  return out;
+}
 async function acquireParallel(query, opts = {}) {
   const sources2 = selectSources(query).slice(0, opts.maxSources ?? 6);
   const outcome = { results: [], attempted: sources2.map((s) => s.id), succeeded: [], failed: [] };
@@ -28918,6 +28937,32 @@ async function acquireParallel(query, opts = {}) {
     })
   ));
   void settled;
+  const retries = pickSlowRetries(
+    outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: String(f.failureClass) })),
+    sources2.map((x) => ({ id: x.id })),
+    { deadlineAt: opts.deadlineAt, maxSources: 6, perRetryMs: 7e3 }
+  );
+  if (retries.length) {
+    const byId = new Map(sources2.map((x) => [x.id, x]));
+    await Promise.allSettled(retries.map(async ({ sourceId, budgetMs }) => {
+      const original = byId.get(sourceId);
+      if (!original) return;
+      const short = { ...original, timeoutMs: Math.min(budgetMs, original.timeoutMs ?? budgetMs) };
+      const r = await runSource(short).catch((e2) => ({ kind: "fail", sourceId, failureClass: "UNKNOWN", error: String(e2?.message || e2).slice(0, 120) }));
+      if (r.kind === "ok") {
+        outcome.results.push(r.result);
+        outcome.succeeded.push(r.result.sourceId);
+        outcome.failed = outcome.failed.filter((f) => f.sourceId !== sourceId);
+        recordSuccess(sourceId, r.result.latencyMs);
+      }
+    }));
+    opts.onPartial?.({
+      results: [...outcome.results],
+      attempted: outcome.attempted,
+      succeeded: [...outcome.succeeded],
+      failed: [...outcome.failed]
+    });
+  }
   return outcome;
 }
 async function checkSourceHealth(source) {

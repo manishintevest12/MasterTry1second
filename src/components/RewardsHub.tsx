@@ -9,6 +9,7 @@ import { CardOptimizer } from './CardOptimizer';
 import { RewardsTopPicks } from './RewardsTopPicks';
 import { HomeBannerStrip } from './HomeBannerStrip';
 import { ReferAndEarn } from './ReferAndEarn';
+import { NativeBannerSlot } from './NetworkAdTags';
 import { Crown } from 'lucide-react';
 
 export const RewardsHub: React.FC = () => {
@@ -120,6 +121,12 @@ export const RewardsHub: React.FC = () => {
       {/* Owner 24 Oct: admin banner option inside Rewards (admin HomeBannersTab,
           section=rewards). Renders nothing when no rewards banner is set. */}
       <HomeBannerStrip slot={0} section="rewards" />
+
+      {/* OWNER 3 Nov: "iss ad ko reward section mai kr do, wahi dikhega bas". The network native unit
+          lives ONLY here now - it is not rendered in any vertical feed, so a Flights/Hotels/Movies
+          page never shows its untargeted inventory (the dating/poker creatives). Still skipped inside
+          the app webview, on /admin and on /api by the component itself. */}
+      <NativeBannerSlot className="my-2" />
 
       {/* Subtab Contents */}
       <div>
