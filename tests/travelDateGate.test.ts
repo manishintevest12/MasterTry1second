@@ -123,3 +123,33 @@ test('strict mode drops undated rows but keeps seller presence cards', () => {
   const lenient = enforceRequestedTravelDate(rows, 'flights', { depart: '2026-11-27' });
   assert.equal(lenient.kept.length, 4);
 });
+
+// OWNER 3 Nov: "fix hotels results now it should give results in first poll". A hotel catalogue
+// row is a property, not a dated fare, so an undated one is kept as a PRICE-LESS presence card
+// instead of being dropped (which emptied the first paint: measured 0 rows on the first two polls
+// of a 20 Nov Shimla search, 87 rows only at ~40s). Wrong-dated rows must still disappear.
+test('hotels keep undated rows as price-less presence cards, never wrong-dated ones', () => {
+  const rows: any[] = [
+    { id: 'h1', travel: { date: '2026-11-20' }, prices: { effectivePrice: '4200' }, title: 'Hotel A' },
+    { id: 'h2', travel: { date: '2026-12-02' }, prices: { effectivePrice: '3100' }, title: 'Hotel B' },
+    { id: 'h3', prices: { effectivePrice: '2600' }, title: 'Hotel C' },   // undated property row
+  ];
+  const strictOnly = enforceRequestedTravelDate(rows, 'hotels', { depart: '2026-11-20', return: '2026-11-22' }, { strictUndated: true });
+  assert.deepEqual(strictOnly.kept.map((r: any) => r.id), ['h1']);
+
+  const withPresence = enforceRequestedTravelDate(rows, 'hotels', { depart: '2026-11-20', return: '2026-11-22' }, { strictUndated: true, undatedAsPresence: true });
+  assert.deepEqual(withPresence.kept.map((r: any) => r.id), ['h1', 'h3']);
+  const kept3 = withPresence.kept.find((r: any) => r.id === 'h3')!;
+  assert.equal(Number(kept3.prices.effectivePrice), 0, 'an undated card must claim no price');
+  assert.equal(kept3.attributes.price_basis, 'live_fares_unavailable');
+  assert.equal(withPresence.droppedOn['undated_as_presence'], 1);
+  // the wrong-dated hotel is still gone
+  assert.equal(withPresence.kept.some((r: any) => r.id === 'h2'), false);
+  assert.equal(withPresence.droppedOn['2026-12-02'], 1);
+  // flights do NOT get the treatment: an undated flight row is still dropped
+  const flights = enforceRequestedTravelDate(
+    [{ id: 'f1', prices: { effectivePrice: '5000' }, title: '6E-1' }] as any,
+    'flights', { depart: '2026-11-20' }, { strictUndated: true },
+  );
+  assert.equal(flights.kept.length, 0);
+});

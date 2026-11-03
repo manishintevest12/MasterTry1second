@@ -115,7 +115,25 @@ export function enforceRequestedTravelDate<T>(
   offers: T[],
   vertical: string,
   requested: { depart?: string; return?: string; checkin?: string; checkout?: string } | undefined,
-  opts: { strictUndated?: boolean } = {},
+  opts: {
+    strictUndated?: boolean;
+    /**
+     * HOTELS first-poll rule (owner 3 Nov: "fix hotels results now it should give results in
+     * first poll").
+     *
+     * A hotel catalogue row is a PROPERTY, not a dated fare: the same Shimla hotel exists for
+     * every check-in, and the row loses its date when it was mined without one. Strict mode used
+     * to drop those rows, which emptied the first paint and made hotels answer only after the live
+     * scan finished (~40s measured on 20 Nov Shimla: two polls of 0 rows, then 87 rows).
+     *
+     * With this flag an undated row is KEPT but stripped of every price and marked with the
+     * existing owner-approved presence convention (price_basis 'live_fares_unavailable'), so the
+     * first poll shows the hotels it knows while claiming no price, and the live scan replaces
+     * them with dated, priced rows. Nothing wrong-dated is ever shown: a row carrying ANOTHER
+     * date is still dropped exactly as before.
+     */
+    undatedAsPresence?: boolean;
+  } = {},
 ): DateGateResult<T> {
   if (!DATE_ANSWERING_VERTICALS.includes(String(vertical))) {
     return { kept: offers, dropped: 0, droppedOn: {} };
@@ -128,6 +146,7 @@ export function enforceRequestedTravelDate<T>(
   if (!allowed.size) return { kept: offers, dropped: 0, droppedOn: {} };
   const kept: T[] = [];
   const droppedOn: Record<string, number> = {};
+  let presenceKept = 0;
   for (const o of offers) {
     const d = offerTravelDate(o);
     if (!d) {
@@ -137,6 +156,20 @@ export function enforceRequestedTravelDate<T>(
       // The one exception stays: a seller presence card never claims a fare or a day, so it is
       // honest reference (owner-requested 22 Oct) and is kept.
       if (opts.strictUndated && !isUndatedPresenceRow(o)) {
+        if (opts.undatedAsPresence) {
+          // keep the property/listing, claim no price, mark it with the presence convention
+          const src: any = o;
+          kept.push({
+            ...src,
+            prices: {
+              ...(src?.prices || {}),
+              listPrice: 0, mandatoryTotal: 0, effectivePrice: 0,
+            },
+            attributes: { ...(src?.attributes || {}), price_basis: 'live_fares_unavailable', undated_listing: '1' },
+          } as T);
+          presenceKept += 1;
+          continue;
+        }
         droppedOn['undated'] = (droppedOn['undated'] || 0) + 1;
         continue;
       }
@@ -149,5 +182,6 @@ export function enforceRequestedTravelDate<T>(
     }
     droppedOn[d] = (droppedOn[d] || 0) + 1;
   }
+  if (presenceKept) droppedOn['undated_as_presence'] = presenceKept;
   return { kept, dropped: offers.length - kept.length, droppedOn };
 }

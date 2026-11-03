@@ -33980,10 +33980,26 @@ function enforceRequestedTravelDate(offers, vertical, requested, opts = {}) {
   if (!allowed.size) return { kept: offers, dropped: 0, droppedOn: {} };
   const kept = [];
   const droppedOn = {};
+  let presenceKept = 0;
   for (const o of offers) {
     const d = offerTravelDate(o);
     if (!d) {
       if (opts.strictUndated && !isUndatedPresenceRow(o)) {
+        if (opts.undatedAsPresence) {
+          const src2 = o;
+          kept.push({
+            ...src2,
+            prices: {
+              ...src2?.prices || {},
+              listPrice: 0,
+              mandatoryTotal: 0,
+              effectivePrice: 0
+            },
+            attributes: { ...src2?.attributes || {}, price_basis: "live_fares_unavailable", undated_listing: "1" }
+          });
+          presenceKept += 1;
+          continue;
+        }
         droppedOn["undated"] = (droppedOn["undated"] || 0) + 1;
         continue;
       }
@@ -33996,6 +34012,7 @@ function enforceRequestedTravelDate(offers, vertical, requested, opts = {}) {
     }
     droppedOn[d] = (droppedOn[d] || 0) + 1;
   }
+  if (presenceKept) droppedOn["undated_as_presence"] = presenceKept;
   return { kept, dropped: offers.length - kept.length, droppedOn };
 }
 var DATE_ANSWERING_VERTICALS, iso2;
@@ -34654,7 +34671,7 @@ async function progressiveCatalogueResponse(vertical, inputQuery, offers, start,
       return: inputQuery.travelDates?.return,
       checkin: inputQuery.travelDates?.checkin,
       checkout: inputQuery.travelDates?.checkout
-    }, { strictUndated: true });
+    }, { strictUndated: true, undatedAsPresence: String(vertical) === "hotels" });
     if (floorGate.dropped) {
       log.info("Search", "catalogue floor rows dropped for answering a different travel date", {
         vertical: String(vertical),
@@ -34806,7 +34823,7 @@ async function settleForRequestedDate(input, budgetMs = Number(process.env.T1S_D
       return: input.travelDates?.return,
       checkin: input.travelDates?.checkin,
       checkout: input.travelDates?.checkout
-    }, { strictUndated: true });
+    }, { strictUndated: true, undatedAsPresence: String(input.vertical || "") === "hotels" });
     return { rows: g.kept, response: r };
   };
   let last = null;
@@ -34832,7 +34849,7 @@ function gateTravelDateResponse(input, response) {
     return: input.travelDates?.return,
     checkin: input.travelDates?.checkin,
     checkout: input.travelDates?.checkout
-  }, { strictUndated: true });
+  }, { strictUndated: true, undatedAsPresence: String(vertical) === "hotels" });
   if (!gate.dropped) return response;
   log.info("Search", "rows dropped for answering a different travel date (final answer gate)", {
     vertical,
@@ -35014,7 +35031,7 @@ async function runSearchPipeline(input) {
       return: parsed.travelDates?.return,
       checkin: parsed.travelDates?.checkin,
       checkout: parsed.travelDates?.checkout
-    }, { strictUndated: true });
+    }, { strictUndated: true, undatedAsPresence: String(vertical) === "hotels" });
     if (cacheGate.dropped > 0) {
       log.info("Search", "cached rows dropped for answering a different travel date", {
         vertical: String(vertical),
@@ -43227,7 +43244,12 @@ async function buildQuickAppsList() {
   }
 }
 function gateRowsForDate(rows, vertical, dates2) {
-  const g = enforceRequestedTravelDate(rows, vertical, dates2 || {}, { strictUndated: true });
+  const g = enforceRequestedTravelDate(rows, vertical, dates2 || {}, {
+    strictUndated: true,
+    // hotels keep their undated property rows as price-less presence cards so the first poll is
+    // never empty (owner 3 Nov); every other vertical still drops undated rows.
+    undatedAsPresence: String(vertical) === "hotels"
+  });
   return { rows: g.kept, dropped: g.dropped, droppedOn: g.droppedOn };
 }
 async function lastChanceRows(input, ms = 500) {
@@ -44212,7 +44234,8 @@ var init_routes = __esm({
       if (response) {
         const nowGate = gateRowsForDate(response.results || [], String(input.vertical), input.travelDates);
         if (!nowGate.rows.length && response.state?.pendingRefresh) {
-          const settled = await settleForRequestedDate(input).catch(() => null);
+          const settleBudget = String(input.vertical) === "hotels" ? Number(process.env.T1S_HOTEL_SETTLE_MS || 14e3) : Number(process.env.T1S_DATE_SETTLE_MS || 9e3);
+          const settled = await settleForRequestedDate(input, settleBudget).catch(() => null);
           if (settled && (settled.results || []).length) {
             return res.json({
               ...settled,

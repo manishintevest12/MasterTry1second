@@ -246,7 +246,7 @@ async function progressiveCatalogueResponse(
       return: inputQuery.travelDates?.return,
       checkin: (inputQuery.travelDates as any)?.checkin,
       checkout: (inputQuery.travelDates as any)?.checkout,
-    }, { strictUndated: true });
+    }, { strictUndated: true, undatedAsPresence: String(vertical) === 'hotels' });
     if (floorGate.dropped) {
       log.info('Search', 'catalogue floor rows dropped for answering a different travel date', {
         vertical: String(vertical),
@@ -582,7 +582,7 @@ export async function settleForRequestedDate(
       return: input.travelDates?.return,
       checkin: (input.travelDates as any)?.checkin,
       checkout: (input.travelDates as any)?.checkout,
-    }, { strictUndated: true });
+    }, { strictUndated: true, undatedAsPresence: String(input.vertical || '') === 'hotels' });
     return { rows: g.kept as any[], response: r };
   };
   let last: SearchResponse | null = null;
@@ -624,7 +624,7 @@ export function gateTravelDateResponse(input: SearchInput, response: SearchRespo
     return: input.travelDates?.return,
     checkin: (input.travelDates as any)?.checkin,
     checkout: (input.travelDates as any)?.checkout,
-  }, { strictUndated: true });
+  }, { strictUndated: true, undatedAsPresence: String(vertical) === 'hotels' });
   if (!gate.dropped) return response;
   log.info('Search', 'rows dropped for answering a different travel date (final answer gate)', {
     vertical,
@@ -848,7 +848,7 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
       return: parsed.travelDates?.return,
       checkin: (parsed.travelDates as any)?.checkin,
       checkout: (parsed.travelDates as any)?.checkout,
-    }, { strictUndated: true });
+    }, { strictUndated: true, undatedAsPresence: String(vertical) === 'hotels' });
     if (cacheGate.dropped > 0) {
       log.info('Search', 'cached rows dropped for answering a different travel date', {
         vertical: String(vertical), asked: normalizeTravelDate(parsed.travelDates?.depart) || '',

@@ -850,7 +850,12 @@ function gateRowsForDate<T extends Record<string, any>>(
   vertical: string,
   dates: { depart?: string; return?: string; checkin?: string; checkout?: string } | undefined,
 ): { rows: T[]; dropped: number; droppedOn: Record<string, number> } {
-  const g = enforceRequestedTravelDate(rows, vertical, dates || {}, { strictUndated: true });
+  const g = enforceRequestedTravelDate(rows, vertical, dates || {}, {
+    strictUndated: true,
+    // hotels keep their undated property rows as price-less presence cards so the first poll is
+    // never empty (owner 3 Nov); every other vertical still drops undated rows.
+    undatedAsPresence: String(vertical) === 'hotels',
+  });
   return { rows: g.kept as T[], dropped: g.dropped, droppedOn: g.droppedOn };
 }
 
@@ -941,7 +946,12 @@ apiRouter.post('/search', async (req, res) => {
   if (response) {
     const nowGate = gateRowsForDate((response as any).results || [], String(input.vertical), input.travelDates);
     if (!nowGate.rows.length && (response as any).state?.pendingRefresh) {
-      const settled = await settleForRequestedDate(input).catch(() => null);
+      // Hotels earn a longer settle window: their live publishers (Yatra/EMT/OYO) land at
+      // ~12-20s, while flights/bus answer inside the default 9s (measured 20 Nov Shimla).
+      const settleBudget = String(input.vertical) === 'hotels'
+        ? Number(process.env.T1S_HOTEL_SETTLE_MS || 14_000)
+        : Number(process.env.T1S_DATE_SETTLE_MS || 9_000);
+      const settled = await settleForRequestedDate(input, settleBudget).catch(() => null);
       if (settled && (settled.results || []).length) {
         return res.json({
           ...(settled as any),
