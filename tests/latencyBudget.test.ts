@@ -59,8 +59,11 @@ test('both search routes claim the budget and a hard race, not just the pipeline
   // sweepBudget.
   const capped = (routes.match(/setTimeout\(\(\) => resolve\(null\), (?:Math\.min\(resultDeadlineMs\(\), 2000\)|budgetMs)\)/g) || []).length;
   assert.equal(capped, 2, `scrape/live and assist/answer keep the capped budget (found ${capped})`);
-  assert.ok(routes.includes('setTimeout(() => resolve(null), sweepBudget)'), '/api/search must race the full seller sweep');
-  assert.match(routes, /hotels' \? 20_000 : sweepVertical === 'flights' \? 18_000/, 'the sweep ceiling must be per vertical and bounded');
+  // /api/search now awaits the REAL live pipeline for this question (awaitSettledAnswer), which
+  // races its own bounded ceiling; the fast promise is only a fallback, still time-capped.
+  assert.ok(routes.includes('awaitSettledAnswer(input, sweepBudget)'), '/api/search must await the settled sweep for this question');
+  assert.ok(routes.includes('setTimeout(() => resolve(null), 1200)'), 'the fallback path must stay time-capped');
+  assert.match(routes, /hotels' \? 30_000 : sweepVertical === 'flights' \? 20_000/, 'the sweep ceiling must be per vertical and bounded');
   assert.ok(routes.includes('T1S_FULL_SWEEP_MS'), 'the sweep ceiling must be overridable from the environment');
   // The starvation regression: /api/search must never poll the orchestrator in a loop.
   assert.equal(

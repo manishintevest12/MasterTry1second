@@ -9,7 +9,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
-import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
+import { awaitSettledAnswer, runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
 import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
@@ -937,13 +937,14 @@ apiRouter.post('/search', async (req, res) => {
   // 3 Nov 12:0x: flights and hotels answered 0 rows after 20s while bus (already cached)
   // answered 69. Never poll here again.
   const sweepVertical = String(input.vertical || '');
+  // Ceilings measured, not guessed: flights land priced rows by ~15-22s from a cold start
+  // (local run 3 Nov: 163 priced rows, 8 sellers), hotels' publishers (Yatra/EMT/OYO/Agoda) land
+  // later than that, and production measured 40-60s for a fully cold Shimla sweep. The owner's
+  // rule is price-or-nothing, so hotels get the longest ceiling.
   const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (
-    sweepVertical === 'hotels' ? 20_000 : sweepVertical === 'flights' ? 18_000 : sweepVertical === 'bus' ? 15_000 : 10_000
+    sweepVertical === 'hotels' ? 30_000 : sweepVertical === 'flights' ? 20_000 : sweepVertical === 'bus' ? 15_000 : 12_000
   )));
-  let response = (await Promise.race([
-    searched,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), sweepBudget)),
-  ])) as Awaited<ReturnType<typeof runSearch>> | null;
+  let response = (await awaitSettledAnswer(input, sweepBudget)) as Awaited<ReturnType<typeof runSearch>> | null;
   if (response && (response as any).results?.length) {
     // Everything the feed learns is remembered too, so "Ask Try1Second" starts from real history
     // rather than only from questions asked inside the assistant.
@@ -967,15 +968,13 @@ apiRouter.post('/search', async (req, res) => {
   // answer still says pendingRefresh, it waits for the sweep to SETTLE (every worker answered,
   // failed or hit its own ceiling) and returns that - bounded per vertical, then the newest
   // snapshot is used unchanged.
-  // If the sweep ceiling was hit, take ONE more look at the same acquisition (a promise that
-  // already resolved counts instantly) - no looping, no new scan.
-  if (!response || (response as any).state?.pendingRefresh) {
-    const late = (await Promise.race([
-      searched,
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
-    ])) as Awaited<ReturnType<typeof runSearch>> | null;
-    if (late && (late as any).results?.length) response = late;
-  }
+  // No second look needed: awaitSettledAnswer already awaited the real live pipeline for this
+  // exact question (not the fast floor answer). `searched` stays referenced so the load governor
+  // still sees this waiter and the scan keeps filling the cache if the client hangs up.
+  if (!response) response = (await Promise.race([
+    searched,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+  ])) as Awaited<ReturnType<typeof runSearch>> | null;
   // Nothing leaves the server without passing the same date + city + PRICE rules. A date whose
   // every priced row was dropped answers with the honest scan state, never a price-less card.
   if (response) {

@@ -213,6 +213,51 @@ export function thinResultTtl(response: SearchResponse, ttlSec: number, staleSec
  * response's state.pendingRefresh tells them a refresh is still running.
  */
 const inflightPipelines = new Map<string, Promise<SearchResponse>>();
+/**
+ * The SAME pipelines, indexed by the plain question (vertical|query|city|pin|depart|return).
+ *
+ * Why this exists (owner 3 Nov, "price aana hi chaiye"): runSearch answers fast on purpose - the
+ * catalogue floor goes out immediately with pendingRefresh true while the real acquisition keeps
+ * running, and its promise lives only in inflightPipelines keyed by the hashed cache key. A route
+ * cannot await that hash, so "wait for the whole seller set" had nothing real to wait on and the
+ * previous attempt guessed by polling (which restarted acquisition and answered 0 rows in 20s).
+ * This registry lets awaitSettledAnswer() await the ACTUAL run once, so one search returns the
+ * settled sweep with every seller that answered.
+ */
+const pipelineByQuestion = new Map<string, Promise<SearchResponse>>();
+
+export function questionKeyOf(input: {
+  vertical?: string; query?: string; city?: string; pincode?: string;
+  travelDates?: { depart?: string; return?: string };
+}): string {
+  return [
+    String(input.vertical || ''), String(input.query || ''), String(input.city || ''),
+    String(input.pincode || ''), String(input.travelDates?.depart || ''), String(input.travelDates?.return || ''),
+  ].join('|').toLowerCase();
+}
+
+/**
+ * Await the settled sweep for exactly this question: the fast catalogue answer first, then the
+ * live pipeline's own promise if that answer was still pending. Returns whichever is better.
+ */
+export async function awaitSettledAnswer(
+  input: SearchInput,
+  budgetMs = Number(process.env.T1S_FULL_SWEEP_MS || 18_000),
+): Promise<SearchResponse | null> {
+  const first = await runSearch(input).catch(() => null);
+  const pending = !first || Boolean((first as any).state?.pendingRefresh);
+  if (!pending) return first;
+  const live = pipelineByQuestion.get(questionKeyOf(input));
+  if (!live) return first;
+  const settled = await Promise.race([
+    live.catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.max(800, budgetMs))),
+  ]);
+  if (!settled) return first;
+  const firstRows = ((first as any)?.results || []).length;
+  const settledRows = ((settled as any)?.results || []).length;
+  return settledRows >= firstRows ? settled : first;
+}
 /** Newest live partial snapshot per cacheKey while a cold pipeline runs (owner 22 Oct):
  *  a re-poll must serve the sources that have ALREADY landed instead of blocking on
  *  the full pipeline. `response` memoizes the finalized partial until a newer
@@ -1053,8 +1098,9 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
           else { const bs = busSelfHealTtl(vertical, response, t, st); const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec); cachePut(cacheKey, response, bt.ttlSec, bt.staleSec); }
           return response;
         })
-        .finally(() => { inflightPipelines.delete(cacheKey); });
+        .finally(() => { inflightPipelines.delete(cacheKey); pipelineByQuestion.delete(questionKeyOf(input)); });
       inflightPipelines.set(cacheKey, pipeline);
+      pipelineByQuestion.set(questionKeyOf(input), pipeline);
       pipeline.catch(() => {}); // never crash the caller on a background failure
       return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     }
@@ -1114,8 +1160,9 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
       }
       return response;
     })
-    .finally(() => { inflightPipelines.delete(cacheKey); inflightPartials.delete(cacheKey); });
+    .finally(() => { inflightPipelines.delete(cacheKey); inflightPartials.delete(cacheKey); pipelineByQuestion.delete(questionKeyOf(input)); });
   inflightPipelines.set(cacheKey, full);
+  pipelineByQuestion.set(questionKeyOf(input), full);
   full.catch(() => {}); // background pipeline failure never crashes this caller
   // The full pipeline persists every offer; the partial path must not double-write.
   const servePartial = async (): Promise<SearchResponse | null> => {

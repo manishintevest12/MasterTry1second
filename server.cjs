@@ -34600,11 +34600,13 @@ var init_financeOffers = __esm({
 // server/search/searchOrchestrator.ts
 var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
+  awaitSettledAnswer: () => awaitSettledAnswer,
   busSelfHealTtl: () => busSelfHealTtl,
   filterRowsByAge: () => filterRowsByAge,
   floorWindows: () => floorWindows,
   gateTravelDateResponse: () => gateTravelDateResponse,
   namesOtherCity: () => namesOtherCity,
+  questionKeyOf: () => questionKeyOf,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
   runSearchFast: () => runSearchFast,
@@ -34692,6 +34694,31 @@ function thinResultTtl(response, ttlSec, staleSec) {
   const succeeded = (response.state?.sourcesSucceeded || []).length;
   if (n <= 2 && succeeded >= 5) return { ttlSec: 120, staleSec: 240 };
   return { ttlSec, staleSec };
+}
+function questionKeyOf(input) {
+  return [
+    String(input.vertical || ""),
+    String(input.query || ""),
+    String(input.city || ""),
+    String(input.pincode || ""),
+    String(input.travelDates?.depart || ""),
+    String(input.travelDates?.return || "")
+  ].join("|").toLowerCase();
+}
+async function awaitSettledAnswer(input, budgetMs = Number(process.env.T1S_FULL_SWEEP_MS || 18e3)) {
+  const first = await runSearch(input).catch(() => null);
+  const pending = !first || Boolean(first.state?.pendingRefresh);
+  if (!pending) return first;
+  const live = pipelineByQuestion.get(questionKeyOf(input));
+  if (!live) return first;
+  const settled = await Promise.race([
+    live.catch(() => null),
+    new Promise((resolve) => setTimeout(() => resolve(null), Math.max(800, budgetMs)))
+  ]);
+  if (!settled) return first;
+  const firstRows = (first?.results || []).length;
+  const settledRows = (settled?.results || []).length;
+  return settledRows >= firstRows ? settled : first;
 }
 async function progressiveCatalogueResponse(vertical, inputQuery, offers, start, pending) {
   const anyOffers = offers;
@@ -35228,8 +35255,10 @@ async function runSearchPipeline(input) {
         return response;
       }).finally(() => {
         inflightPipelines.delete(cacheKey);
+        pipelineByQuestion.delete(questionKeyOf(input));
       });
       inflightPipelines.set(cacheKey, pipeline2);
+      pipelineByQuestion.set(questionKeyOf(input), pipeline2);
       pipeline2.catch(() => {
       });
       return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
@@ -35266,8 +35295,10 @@ async function runSearchPipeline(input) {
   }).finally(() => {
     inflightPipelines.delete(cacheKey);
     inflightPartials.delete(cacheKey);
+    pipelineByQuestion.delete(questionKeyOf(input));
   });
   inflightPipelines.set(cacheKey, full);
+  pipelineByQuestion.set(questionKeyOf(input), full);
   full.catch(() => {
   });
   const servePartial = async () => {
@@ -35609,7 +35640,7 @@ async function recordSearchMetrics(input, parsed, response) {
   } catch {
   }
 }
-var BUS_PRIMARY_LIVE_SELLERS, inflightPipelines, inflightPartials, RELEVANCE_GATED_CATALOGUE, MAJOR_CITIES2;
+var BUS_PRIMARY_LIVE_SELLERS, inflightPipelines, pipelineByQuestion, inflightPartials, RELEVANCE_GATED_CATALOGUE, MAJOR_CITIES2;
 var init_searchOrchestrator = __esm({
   "server/search/searchOrchestrator.ts"() {
     init_lastPrice();
@@ -35644,6 +35675,7 @@ var init_searchOrchestrator = __esm({
     init_pollBudget();
     BUS_PRIMARY_LIVE_SELLERS = ["abhibus", "redbus"];
     inflightPipelines = /* @__PURE__ */ new Map();
+    pipelineByQuestion = /* @__PURE__ */ new Map();
     inflightPartials = /* @__PURE__ */ new Map();
     RELEVANCE_GATED_CATALOGUE = /* @__PURE__ */ new Set(["ecommerce", "grocery", "food", "movies", "movie"]);
     MAJOR_CITIES2 = [
@@ -44331,11 +44363,8 @@ var init_routes = __esm({
       const searched = runLiveSearch(input, { signal: searchAbort.signal });
       searched.catch(() => void 0);
       const sweepVertical = String(input.vertical || "");
-      const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (sweepVertical === "hotels" ? 2e4 : sweepVertical === "flights" ? 18e3 : sweepVertical === "bus" ? 15e3 : 1e4)));
-      let response = await Promise.race([
-        searched,
-        new Promise((resolve) => setTimeout(() => resolve(null), sweepBudget))
-      ]);
+      const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (sweepVertical === "hotels" ? 3e4 : sweepVertical === "flights" ? 2e4 : sweepVertical === "bus" ? 15e3 : 12e3)));
+      let response = await awaitSettledAnswer(input, sweepBudget);
       if (response && response.results?.length) {
         const r = response;
         if (!r.state?.pendingRefresh) {
@@ -44345,13 +44374,10 @@ var init_routes = __esm({
           )).catch(() => void 0);
         }
       }
-      if (!response || response.state?.pendingRefresh) {
-        const late = await Promise.race([
-          searched,
-          new Promise((resolve) => setTimeout(() => resolve(null), 1200))
-        ]);
-        if (late && late.results?.length) response = late;
-      }
+      if (!response) response = await Promise.race([
+        searched,
+        new Promise((resolve) => setTimeout(() => resolve(null), 1200))
+      ]);
       if (response) {
         const finalGate = gateRowsForDate(response.results || [], String(input.vertical), input.travelDates);
         if (finalGate.dropped) {
