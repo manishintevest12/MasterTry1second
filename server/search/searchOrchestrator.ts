@@ -555,6 +555,49 @@ export async function runSearchFast(input: SearchInput, coldBudgetMs = 1_500): P
 }
 
 /**
+ * SETTLE FOR THE REQUESTED DATE (owner 3 Nov, requirement 3: "a single user search must fan out to
+ * all partner workers ... and return one unified payload ... without requiring duplicate user
+ * searches").
+ *
+ * The strict gate created a new failure mode the moment it went live: the catalogue floor is wiped
+ * for a future date, so the FIRST answer of a cold search became 0 rows with pendingRefresh - which
+ * is honest but forces the user to search again, exactly what the owner forbade. Measured after the
+ * 3 Nov deploy: flights/hotels/bus for 2026-11-27 all answered 0 rows in 1.5-3.2s while the live
+ * pipeline was still working.
+ *
+ * This helper keeps the gate (nothing wrong-dated can come out) but waits for the SAME in-flight
+ * search to produce rows FOR THE REQUESTED DATE, polling the cheap cached path instead of starting
+ * any new acquisition, so one press is enough. It returns the first answer that survives the gate,
+ * or the last answer it saw once the budget is spent.
+ */
+export async function settleForRequestedDate(
+  input: SearchInput,
+  budgetMs = Number(process.env.T1S_DATE_SETTLE_MS || 9000),
+): Promise<SearchResponse | null> {
+  const started = Date.now();
+  const gate = (r: SearchResponse | null) => {
+    if (!r) return { rows: [] as any[], response: r };
+    const g = enforceRequestedTravelDate((r.results || []) as any[], String(input.vertical || ''), {
+      depart: input.travelDates?.depart,
+      return: input.travelDates?.return,
+      checkin: (input.travelDates as any)?.checkin,
+      checkout: (input.travelDates as any)?.checkout,
+    }, { strictUndated: true });
+    return { rows: g.kept as any[], response: r };
+  };
+  let last: SearchResponse | null = null;
+  while (Date.now() - started < Math.max(600, budgetMs)) {
+    let attempt: SearchResponse | null = null;
+    try { attempt = await runSearch({ ...input, coldDeadlineMs: 1200 }); } catch { attempt = null; }
+    const g = gate(attempt);
+    if (g.rows.length) return { ...(attempt as SearchResponse), results: g.rows };
+    if (attempt) last = attempt;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return last;
+}
+
+/**
  * FINAL travel-date gate for an ANSWER (owner 3 Nov: "search results ... intermittently returns
  * cached or misaligned results from entirely different dates ... reproducible on desktop web,
  * mobile web and the app").
@@ -764,13 +807,18 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     // rev 5 (3 Nov): owner's cache-isolation rule - the key now also binds the RETURN date
     // (a 27-29 Nov hotel search and a 27-30 Nov one are different questions) and retires every
     // snapshot minted before the final answer gate existed.
-    rev: 5,
+    // rev 6 (3 Nov): cache-key isolation completed - the pickup/drop pair (cab) joins the key
+    // alongside origin/destination-in-query + depart + return, and every snapshot minted before
+    // that is retired, so no legacy answer can be replayed for an itinerary it never answered.
+    rev: 6,
     vertical,
     q: input.query,
     pin: input.pincode,
     city: input.city,
     dates: parsed.travelDates?.depart,
     ret: parsed.travelDates?.return,
+    from: parsed.pudo?.from || '',
+    to: parsed.pudo?.to || '',
     pax: parsed.parties?.passengers || parsed.parties?.guests,
     cfg: parsed.configuration ? JSON.stringify(parsed.configuration) : '',
   });

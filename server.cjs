@@ -34559,6 +34559,7 @@ __export(searchOrchestrator_exports, {
   runSearch: () => runSearch,
   runSearchFast: () => runSearchFast,
   runSearchPolled: () => runSearchPolled,
+  settleForRequestedDate: () => settleForRequestedDate,
   thinResultTtl: () => thinResultTtl
 });
 function parseCatalogueAttributes(raw) {
@@ -34796,6 +34797,33 @@ async function runSearchFast(input, coldBudgetMs = 1500) {
   const fast = await runSearchFastInner(input, coldBudgetMs);
   return gateTravelDateResponse(input, gateEcommerceResponse(input, fast));
 }
+async function settleForRequestedDate(input, budgetMs = Number(process.env.T1S_DATE_SETTLE_MS || 9e3)) {
+  const started3 = Date.now();
+  const gate = (r) => {
+    if (!r) return { rows: [], response: r };
+    const g = enforceRequestedTravelDate(r.results || [], String(input.vertical || ""), {
+      depart: input.travelDates?.depart,
+      return: input.travelDates?.return,
+      checkin: input.travelDates?.checkin,
+      checkout: input.travelDates?.checkout
+    }, { strictUndated: true });
+    return { rows: g.kept, response: r };
+  };
+  let last = null;
+  while (Date.now() - started3 < Math.max(600, budgetMs)) {
+    let attempt = null;
+    try {
+      attempt = await runSearch({ ...input, coldDeadlineMs: 1200 });
+    } catch {
+      attempt = null;
+    }
+    const g = gate(attempt);
+    if (g.rows.length) return { ...attempt, results: g.rows };
+    if (attempt) last = attempt;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return last;
+}
 function gateTravelDateResponse(input, response) {
   if (!response || !Array.isArray(response.results) || response.results.length === 0) return response;
   const vertical = String(input.vertical || response.query?.vertical || "");
@@ -34958,13 +34986,18 @@ async function runSearchPipeline(input) {
     // rev 5 (3 Nov): owner's cache-isolation rule - the key now also binds the RETURN date
     // (a 27-29 Nov hotel search and a 27-30 Nov one are different questions) and retires every
     // snapshot minted before the final answer gate existed.
-    rev: 5,
+    // rev 6 (3 Nov): cache-key isolation completed - the pickup/drop pair (cab) joins the key
+    // alongside origin/destination-in-query + depart + return, and every snapshot minted before
+    // that is retired, so no legacy answer can be replayed for an itinerary it never answered.
+    rev: 6,
     vertical,
     q: input.query,
     pin: input.pincode,
     city: input.city,
     dates: parsed.travelDates?.depart,
     ret: parsed.travelDates?.return,
+    from: parsed.pudo?.from || "",
+    to: parsed.pudo?.to || "",
     pax: parsed.parties?.passengers || parsed.parties?.guests,
     cfg: parsed.configuration ? JSON.stringify(parsed.configuration) : ""
   });
@@ -44174,6 +44207,20 @@ var init_routes = __esm({
             { vertical: String(input.vertical || ""), query: String(input.query || ""), city: String(input.city || ""), depart: String(input.travelDates?.depart || "") },
             { rows: r.results, sellers: (r.state?.sourcesSucceeded || []).map((id) => id.replace(/^w_[a-z]+_/, "")) }
           )).catch(() => void 0);
+        }
+      }
+      if (response) {
+        const nowGate = gateRowsForDate(response.results || [], String(input.vertical), input.travelDates);
+        if (!nowGate.rows.length && response.state?.pendingRefresh) {
+          const settled = await settleForRequestedDate(input).catch(() => null);
+          if (settled && (settled.results || []).length) {
+            return res.json({
+              ...settled,
+              results: orderFlightRowsLast(settled.results || [], String(input.vertical)),
+              pendingRefresh: false,
+              latencyMs: Date.now() - searchStart
+            });
+          }
         }
       }
       if (!response) {

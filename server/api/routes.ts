@@ -9,7 +9,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
-import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
+import { runSearch, runSearchPolled, runSearchFast, settleForRequestedDate, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
 import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
@@ -932,6 +932,24 @@ apiRouter.post('/search', async (req, res) => {
           { rows: r.results, sellers: (r.state?.sourcesSucceeded || []).map((id: string) => id.replace(/^w_[a-z]+_/, '')) },
         ))
         .catch(() => undefined);
+    }
+  }
+  // SINGLE SEARCH MUST LAND ROWS (owner 3 Nov requirement 3). A cold answer whose floor was wiped
+  // by the date gate is not an answer while the pipeline is still scanning this exact date, so wait
+  // on the SAME in-flight search (no new acquisition, no second press) and answer with its gated
+  // rows. Measured before this: flights/hotels/bus 2026-11-27 answered 0 rows in 1.5-3.2s.
+  if (response) {
+    const nowGate = gateRowsForDate((response as any).results || [], String(input.vertical), input.travelDates);
+    if (!nowGate.rows.length && (response as any).state?.pendingRefresh) {
+      const settled = await settleForRequestedDate(input).catch(() => null);
+      if (settled && (settled.results || []).length) {
+        return res.json({
+          ...(settled as any),
+          results: orderFlightRowsLast((settled.results || []) as any[], String(input.vertical)),
+          pendingRefresh: false,
+          latencyMs: Date.now() - searchStart,
+        });
+      }
     }
   }
   if (!response) {
