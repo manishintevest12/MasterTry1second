@@ -246,3 +246,71 @@ export function dropUnpricedRows<T>(offers: T[], vertical: string): { kept: T[];
   const kept = (offers || []).filter((o) => priceOfRow(o) > 0);
   return { kept, dropped: (offers || []).length - kept.length };
 }
+
+/**
+ * OWNER 3 Nov (screenshot): the app header read "40 live offers · 8 sources verified" while the
+ * SELLERS facet listed only two shops (OYO, EaseMyTrip). Both numbers were true in isolation and
+ * together they were a lie: 8 sources DID answer the sweep, but after the date/city/price gates
+ * only two of them still had a row in the answer. The header is drawn from
+ * state.sourcesSucceeded, so the fix belongs on the server: verified sources must mean "sources
+ * whose row you can actually see", for every vertical, without touching any UI copy.
+ */
+const SOURCE_ALIASES: Record<string, string> = {
+  emt: 'easemytrip', easemytrip: 'easemytrip',
+  mmt: 'makemytrip', makemytrip: 'makemytrip', mytrip: 'makemytrip',
+  ixigo: 'ixigo', cleartrip: 'cleartrip', ct: 'cleartrip',
+  yatra: 'yatra', goibibo: 'goibibo', agoda: 'agoda', oyo: 'oyo',
+  booking: 'booking', bookingcom: 'booking', expedia: 'expedia', hotelscom: 'hotelscom',
+  airbnb: 'airbnb', saffronstays: 'saffronstays', akbar: 'akbartravels',
+  abhibus: 'abhibus', redbus: 'redbus', zingbus: 'zingbus', paytm: 'paytm',
+  ola: 'ola', uber: 'uber', rapido: 'rapido', indrive: 'indrive', meru: 'meru',
+  zomato: 'zomato', swiggy: 'swiggy', amazon: 'amazon', flipkart: 'flipkart',
+  myntra: 'myntra', ajio: 'ajio', croma: 'croma', reliance: 'reliance', vijaysales: 'vijaysales',
+};
+
+function normalizeShopName(raw: unknown): string {
+  return String(raw ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function canonicalShop(raw: unknown): string {
+  const n = normalizeShopName(raw);
+  return SOURCE_ALIASES[n] || n;
+}
+
+/** Distinct shops a user can actually see in these rows. */
+export function distinctSellerCount(rows: any[]): number {
+  const seen = new Set<string>();
+  for (const row of rows || []) {
+    const name = canonicalShop(row?.seller || row?.vendor || row?.provider || row?.shop || row?.brand || '');
+    if (name) seen.add(name);
+  }
+  return seen.size;
+}
+
+/**
+ * Keep only the sources that contributed a row still present in the answer.
+ * Falls back to trimming the list to the visible shop count when the source ids and the row
+ * seller names do not line up (never claims more sources than shops on screen).
+ */
+export function reconcileVerifiedSources(rows: any[], sourcesSucceeded: string[] | undefined): string[] {
+  const declared = (sourcesSucceeded || []).map((s) => String(s));
+  if (!rows || rows.length === 0) return [];
+  const rowTokens = new Set<string>();
+  for (const row of rows) {
+    const direct = canonicalShop(row?.seller || row?.vendor || row?.provider || row?.shop || row?.brand || '');
+    if (direct) rowTokens.add(direct);
+  }
+  const matched = declared.filter((id) => {
+    const bare = id.replace(/^w_[a-z]+_/i, '');
+    const token = canonicalShop(bare);
+    if (!token) return false;
+    if (rowTokens.has(token)) return true;
+    for (const rt of rowTokens) {
+      if (rt.length >= 3 && token.length >= 3 && (rt.includes(token) || token.includes(rt))) return true;
+    }
+    return false;
+  });
+  if (matched.length) return matched;
+  const visible = distinctSellerCount(rows);
+  return visible > 0 ? declared.slice(0, Math.min(declared.length, visible)) : [];
+}

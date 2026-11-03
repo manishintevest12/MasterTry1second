@@ -15,7 +15,7 @@ import { proxyPoolStatus } from '../common/proxyRotator';
 import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, recallGoodForVertical, rememberGood } from '../search/lastKnownGood';
-import { dropUnpricedRows, enforceRequestedTravelDate } from '../search/travelDateGate';
+import { dropUnpricedRows, enforceRequestedTravelDate, reconcileVerifiedSources } from '../search/travelDateGate';
 import { allowPending, forgetPending, pollKey } from './pollBudget';
 import { refreshMovieDestination } from '../movies/freshMovieLink';
 import { refreshSeatDestination } from '../movies/liveSeatSession';
@@ -845,6 +845,20 @@ apiRouter.get('/history', async (req, res) => {
  * caller skips the fallback when nothing honest is left, so the client gets the "still
  * scanning" state for its own date instead of another date's prices.
  */
+/** Header honesty on every exit path: verified sources must equal the shops on screen. */
+function reconcileResponseSources<T extends Record<string, any>>(response: any): any {
+  if (!response) return response;
+  const state = (response.state || {}) as any;
+  const verified = reconcileVerifiedSources((response.results || []) as any[], state.sourcesSucceeded);
+  if (verified.length !== (state.sourcesSucceeded || []).length) {
+    log.info('Search', 'verified-source count reconciled to the rows in the answer', {
+      vertical: String(response?.query?.vertical || ''), claimed: (state.sourcesSucceeded || []).length, visible: verified.length,
+    });
+    response.state = { ...state, sourcesSucceeded: verified };
+  }
+  return response;
+}
+
 function gateRowsForDate<T extends Record<string, any>>(
   rows: T[],
   vertical: string,
@@ -978,6 +992,7 @@ apiRouter.post('/search', async (req, res) => {
   // Nothing leaves the server without passing the same date + city + PRICE rules. A date whose
   // every priced row was dropped answers with the honest scan state, never a price-less card.
   if (response) {
+    response = reconcileResponseSources(response);
     const finalGate = gateRowsForDate((response as any).results || [], String(input.vertical), input.travelDates);
     if (finalGate.dropped) {
       log.info('Search', 'final answer gated', {
@@ -985,6 +1000,7 @@ apiRouter.post('/search', async (req, res) => {
       });
       (response as any).results = orderFlightRowsLast(finalGate.rows as any[], String(input.vertical));
       if (!finalGate.rows.length) (response as any).state = { ...((response as any).state || {}), pendingRefresh: true };
+      response = reconcileResponseSources(response);
     }
   }
   if (!response) {

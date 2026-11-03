@@ -34047,7 +34047,44 @@ function dropUnpricedRows(offers, vertical) {
   const kept = (offers || []).filter((o) => priceOfRow(o) > 0);
   return { kept, dropped: (offers || []).length - kept.length };
 }
-var DATE_ANSWERING_VERTICALS, iso2, NO_PRICE_VERTICALS;
+function normalizeShopName(raw) {
+  return String(raw ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function canonicalShop(raw) {
+  const n = normalizeShopName(raw);
+  return SOURCE_ALIASES[n] || n;
+}
+function distinctSellerCount(rows) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const row of rows || []) {
+    const name = canonicalShop(row?.seller || row?.vendor || row?.provider || row?.shop || row?.brand || "");
+    if (name) seen.add(name);
+  }
+  return seen.size;
+}
+function reconcileVerifiedSources(rows, sourcesSucceeded) {
+  const declared = (sourcesSucceeded || []).map((s) => String(s));
+  if (!rows || rows.length === 0) return [];
+  const rowTokens2 = /* @__PURE__ */ new Set();
+  for (const row of rows) {
+    const direct = canonicalShop(row?.seller || row?.vendor || row?.provider || row?.shop || row?.brand || "");
+    if (direct) rowTokens2.add(direct);
+  }
+  const matched = declared.filter((id) => {
+    const bare = id.replace(/^w_[a-z]+_/i, "");
+    const token = canonicalShop(bare);
+    if (!token) return false;
+    if (rowTokens2.has(token)) return true;
+    for (const rt of rowTokens2) {
+      if (rt.length >= 3 && token.length >= 3 && (rt.includes(token) || token.includes(rt))) return true;
+    }
+    return false;
+  });
+  if (matched.length) return matched;
+  const visible = distinctSellerCount(rows);
+  return visible > 0 ? declared.slice(0, Math.min(declared.length, visible)) : [];
+}
+var DATE_ANSWERING_VERTICALS, iso2, NO_PRICE_VERTICALS, SOURCE_ALIASES;
 var init_travelDateGate = __esm({
   "server/search/travelDateGate.ts"() {
     DATE_ANSWERING_VERTICALS = ["flights", "hotels", "bus", "cab", "movies"];
@@ -34059,6 +34096,45 @@ var init_travelDateGate = __esm({
       return `${y}-${mm}-${dd}`;
     };
     NO_PRICE_VERTICALS = ["loans", "insurance", "creditcards", "account", "banking"];
+    SOURCE_ALIASES = {
+      emt: "easemytrip",
+      easemytrip: "easemytrip",
+      mmt: "makemytrip",
+      makemytrip: "makemytrip",
+      mytrip: "makemytrip",
+      ixigo: "ixigo",
+      cleartrip: "cleartrip",
+      ct: "cleartrip",
+      yatra: "yatra",
+      goibibo: "goibibo",
+      agoda: "agoda",
+      oyo: "oyo",
+      booking: "booking",
+      bookingcom: "booking",
+      expedia: "expedia",
+      hotelscom: "hotelscom",
+      airbnb: "airbnb",
+      saffronstays: "saffronstays",
+      akbar: "akbartravels",
+      abhibus: "abhibus",
+      redbus: "redbus",
+      zingbus: "zingbus",
+      paytm: "paytm",
+      ola: "ola",
+      uber: "uber",
+      rapido: "rapido",
+      indrive: "indrive",
+      meru: "meru",
+      zomato: "zomato",
+      swiggy: "swiggy",
+      amazon: "amazon",
+      flipkart: "flipkart",
+      myntra: "myntra",
+      ajio: "ajio",
+      croma: "croma",
+      reliance: "reliance",
+      vijaysales: "vijaysales"
+    };
   }
 });
 
@@ -34946,7 +35022,7 @@ function gateTravelDateResponse(input, response) {
     log.info("Search", "price-less rows withheld from the answer", { vertical, dropped: priced.dropped, kept: priced.kept.length });
     response.results = priced.kept;
     if (!response.results.length) {
-      response.state = { ...response.state || {}, pendingRefresh: true, triggeredRefresh: true };
+      response.state = { ...response.state || {}, sourcesSucceeded: [], pendingRefresh: true, triggeredRefresh: true };
       return response;
     }
   }
@@ -34959,7 +35035,7 @@ function gateTravelDateResponse(input, response) {
     });
     response.results = cityGate.kept;
     if (!response.results.length) {
-      response.state = { ...response.state || {}, pendingRefresh: true, triggeredRefresh: true };
+      response.state = { ...response.state || {}, sourcesSucceeded: [], pendingRefresh: true, triggeredRefresh: true };
       return response;
     }
   }
@@ -34974,6 +35050,16 @@ function gateTravelDateResponse(input, response) {
       if (!dest) return o;
       return { ...o, sellerUrl: createMaskingPointer(dest, { offerId: String(o?.id || "") }) };
     });
+  }
+  const verified = reconcileVerifiedSources(response.results, response.state?.sourcesSucceeded);
+  if (verified.length !== (response.state?.sourcesSucceeded || []).length) {
+    log.info("Search", "verified-source count reconciled to the rows in the answer", {
+      vertical,
+      claimed: (response.state?.sourcesSucceeded || []).length,
+      visible: verified.length,
+      claims: verified.join(",")
+    });
+    response.state = { ...response.state || {}, sourcesSucceeded: verified };
   }
   if (!gate.dropped) return response;
   log.info("Search", "rows dropped for answering a different travel date (final answer gate)", {
@@ -43381,6 +43467,20 @@ async function buildQuickAppsList() {
     throw new Error("quick_apps_build_failed");
   }
 }
+function reconcileResponseSources(response) {
+  if (!response) return response;
+  const state = response.state || {};
+  const verified = reconcileVerifiedSources(response.results || [], state.sourcesSucceeded);
+  if (verified.length !== (state.sourcesSucceeded || []).length) {
+    log.info("Search", "verified-source count reconciled to the rows in the answer", {
+      vertical: String(response?.query?.vertical || ""),
+      claimed: (state.sourcesSucceeded || []).length,
+      visible: verified.length
+    });
+    response.state = { ...state, sourcesSucceeded: verified };
+  }
+  return response;
+}
 function gateRowsForDate(rows, vertical, dates2) {
   const priced = dropUnpricedRows(rows, vertical);
   rows = priced.kept;
@@ -44379,6 +44479,7 @@ var init_routes = __esm({
         new Promise((resolve) => setTimeout(() => resolve(null), 1200))
       ]);
       if (response) {
+        response = reconcileResponseSources(response);
         const finalGate = gateRowsForDate(response.results || [], String(input.vertical), input.travelDates);
         if (finalGate.dropped) {
           log.info("Search", "final answer gated", {
@@ -44389,6 +44490,7 @@ var init_routes = __esm({
           });
           response.results = orderFlightRowsLast(finalGate.rows, String(input.vertical));
           if (!finalGate.rows.length) response.state = { ...response.state || {}, pendingRefresh: true };
+          response = reconcileResponseSources(response);
         }
       }
       if (!response) {

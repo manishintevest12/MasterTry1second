@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dropUnpricedRows, enforceRequestedTravelDate, enforceRequestedCity, normalizeTravelDate, offerTravelDate, priceOfRow } from '../server/search/travelDateGate';
+import { distinctSellerCount, dropUnpricedRows, reconcileVerifiedSources, enforceRequestedTravelDate, enforceRequestedCity, normalizeTravelDate, offerTravelDate, priceOfRow } from '../server/search/travelDateGate';
 
 /** OWNER 2 Nov: "19-11-2026 search kiya, result 2-11-2026 ka bata raha hai - aise issue hr
  *  vertical fix kro". These pin the rule that a date-answering vertical may only show rows for
@@ -190,4 +190,31 @@ test('price-less rows never reach the answer; lead verticals are exempt', () => 
   // loan/insurance/card/account answers are lead requests, never filtered by price
   assert.equal(dropUnpricedRows(rows, 'loans').dropped, 0);
   assert.equal(priceOfRow({ prices: { effectivePrice: 'Rs 2,499' } }), 2499);
+});
+
+// OWNER 3 Nov (screenshot): header said "40 live offers · 8 sources verified" while the SELLERS
+// facet listed only OYO and EaseMyTrip. Verified sources must mean the shops on screen.
+test('verified sources are reconciled to the rows the user can see', () => {
+  const rows: any[] = [
+    { id: '1', seller: 'OYO', prices: { effectivePrice: '1899' } },
+    { id: '2', seller: 'EaseMyTrip', prices: { effectivePrice: '2499' } },
+    { id: '3', seller: 'oyo', prices: { effectivePrice: '2199' } },
+  ];
+  const declared = [
+    'w_hotels_oyo', 'w_hotels_emt', 'w_hotels_agoda', 'w_hotels_yatra',
+    'w_hotels_booking', 'w_hotels_expedia', 'w_hotels_ixigo', 'w_hotels_cleartrip',
+  ];
+  const verified = reconcileVerifiedSources(rows, declared);
+  assert.deepEqual(verified, ['w_hotels_oyo', 'w_hotels_emt'], 'only the shops with a visible row survive');
+  assert.equal(distinctSellerCount(rows), 2, 'OYO and EaseMyTrip are the two shops on screen');
+  // No rows at all: nothing can be claimed as verified.
+  assert.deepEqual(reconcileVerifiedSources([], declared), []);
+  // Source ids that do not line up with seller names still never claim more than the shops shown.
+  const odd = reconcileVerifiedSources([{ id: 'x', vendor: 'Saffron Stays', prices: { effectivePrice: '900' } }], declared);
+  assert.equal(odd.length, 1);
+  // Flights: a seller name and its source id match through the alias table.
+  assert.deepEqual(
+    reconcileVerifiedSources([{ id: 'f', seller: 'MakeMyTrip', prices: { effectivePrice: '5200' } }], ['w_flights_mmt', 'w_flights_ixigo', 'w_flights_yatra']),
+    ['w_flights_mmt'],
+  );
 });

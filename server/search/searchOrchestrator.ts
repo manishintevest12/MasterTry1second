@@ -37,7 +37,7 @@ import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerP
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { enrichFlightSchedules } from '../common/flightSchedule';
-import { enforceRequestedTravelDate, normalizeTravelDate, offerTravelDate, enforceRequestedCity, dropUnpricedRows } from './travelDateGate';
+import { enforceRequestedTravelDate, normalizeTravelDate, offerTravelDate, enforceRequestedCity, dropUnpricedRows, reconcileVerifiedSources } from './travelDateGate';
 import { backfillFlightTimes, hideFlightRowsWithoutTimes, noteFlightTimeDrop } from './flightTimeBackfill';
 import { gateRapidoRows } from './rapidoPriceGate';
 import { cityFromRouteText } from '../workers/parsers/osmTravel';
@@ -722,7 +722,7 @@ export function gateTravelDateResponse(input: SearchInput, response: SearchRespo
     log.info('Search', 'price-less rows withheld from the answer', { vertical, dropped: priced.dropped, kept: priced.kept.length });
     response.results = priced.kept as any;
     if (!response.results.length) {
-      response.state = { ...(response.state || {}), pendingRefresh: true, triggeredRefresh: true } as any;
+      response.state = { ...(response.state || {}), sourcesSucceeded: [], pendingRefresh: true, triggeredRefresh: true } as any;
       return response;
     }
   }
@@ -733,7 +733,7 @@ export function gateTravelDateResponse(input: SearchInput, response: SearchRespo
     });
     response.results = cityGate.kept as any;
     if (!response.results.length) {
-      response.state = { ...(response.state || {}), pendingRefresh: true, triggeredRefresh: true } as any;
+      response.state = { ...(response.state || {}), sourcesSucceeded: [], pendingRefresh: true, triggeredRefresh: true } as any;
       return response;
     }
   }
@@ -752,6 +752,17 @@ export function gateTravelDateResponse(input: SearchInput, response: SearchRespo
       if (!dest) return o;
       return { ...o, sellerUrl: createMaskingPointer(dest, { offerId: String(o?.id || '') }) };
     });
+  }
+  // Header honesty: 'N sources verified' must equal the shops the user can actually see.
+  const verified = reconcileVerifiedSources(response.results as any[], (response.state as any)?.sourcesSucceeded);
+  if (verified.length !== ((response.state as any)?.sourcesSucceeded || []).length) {
+    log.info('Search', 'verified-source count reconciled to the rows in the answer', {
+      vertical,
+      claimed: ((response.state as any)?.sourcesSucceeded || []).length,
+      visible: verified.length,
+      claims: verified.join(','),
+    });
+    response.state = { ...(response.state || {}), sourcesSucceeded: verified } as any;
   }
   if (!gate.dropped) return response;
   log.info('Search', 'rows dropped for answering a different travel date (final answer gate)', {
