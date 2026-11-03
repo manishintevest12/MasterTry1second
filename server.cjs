@@ -22806,7 +22806,7 @@ function parseUberSessionCookie(raw) {
   return out;
 }
 function uberCsrfToken(jar) {
-  const wanted = ["xsrf-token", "csrf-token", "csrftoken", "_csrf", "uber-csrf"];
+  const wanted = ["xsrf-token", "csrf-token", "ds_csrf", "csrftoken", "_csrf", "uber-csrf"];
   for (const k of wanted) {
     const hit = Object.keys(jar).find((c) => c.toLowerCase() === k);
     if (hit && jar[hit]) {

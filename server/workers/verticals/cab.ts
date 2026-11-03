@@ -278,7 +278,9 @@ const uberSessionCookies = (): Record<string, string> => parseUberSessionCookie(
  * ANONYMOUS bundle literally sends x-csrf-token: x (that is what the guest Products query accepts).
  */
 export function uberCsrfToken(jar: Record<string, string>): string {
-  const wanted = ['xsrf-token', 'csrf-token', 'csrftoken', '_csrf', 'uber-csrf'];
+  // 'ds_csrf' comes from the owner's 3 Nov snippet; 'csrftoken'/'_csrf'/'uber-csrf' are the other
+  // names Uber's web stack has used. First match wins, percent-decoded because jars store %3D.
+  const wanted = ['xsrf-token', 'csrf-token', 'ds_csrf', 'csrftoken', '_csrf', 'uber-csrf'];
   for (const k of wanted) {
     const hit = Object.keys(jar).find((c) => c.toLowerCase() === k);
     if (hit && jar[hit]) { try { return decodeURIComponent(jar[hit]); } catch { return jar[hit]; } }

@@ -65,6 +65,7 @@ test('the Apollo products{tiers} shape still routes through the existing parser'
 
 test('csrf token comes from the pasted session jar, else hPanel, else Uber\'s own literal x', () => {
   assert.equal(uberCsrfToken({ 'XSRF-TOKEN': 'abc%3D' }), 'abc=');
+  assert.equal(uberCsrfToken({ ds_csrf: 'd5%2Ftok' }), 'd5/tok', "owner's snippet cookie name is honoured");
   const prev = process.env.UBER_CSRF_TOKEN;
   delete process.env.UBER_CSRF_TOKEN;
   assert.equal(uberCsrfToken({ sid: 'only' }), 'x');
