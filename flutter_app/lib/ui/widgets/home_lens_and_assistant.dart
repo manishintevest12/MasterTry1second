@@ -9,6 +9,7 @@ import '../../core/assist_voice.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import 'common.dart';
+import 'kit.dart';
 
 /// Home: Price Lens (paste ANY product link -> cheapest across sites)
 ///      + Ask Try1Second AI (text or voice -> opens that vertical and searches).
@@ -312,6 +313,36 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: T1SText.body(context).copyWith(fontSize: 9, color: T1SColors.slate500),
+                              ),
+                            // OWNER 3 Nov: a button next to the seller so the answer itself takes
+                            // the user to that partner's site. r.url is the server-minted masked
+                            // /api/out pointer, so the affiliate id is attached server-side at
+                            // click time and the in-app browser + interstitial rules are unchanged.
+                            if (r.url != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: GestureDetector(
+                                  onTap: () => openDeal(
+                                    r.url!,
+                                    sellerName: r.provider.isEmpty ? null : r.provider,
+                                    price: r.priceAvailable ? r.price : null,
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: T1SColors.red,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      'Go to ${r.provider.isEmpty ? 'site' : r.provider} →',
+                                      style: T1SText.body(context).copyWith(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
                           ],
                         ),

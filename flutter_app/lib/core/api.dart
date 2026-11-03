@@ -504,6 +504,9 @@ class AssistRow {
   final double price;
   final bool priceAvailable;
   final String? imageUrl;
+  /// Server-minted masked exit pointer (/api/out?t=...). The affiliate token is added by the
+  /// server at click time, never shipped here (owner 3 Nov: a button next to the seller).
+  final String? url;
   final Map<String, String> specs;
   const AssistRow({
     required this.vertical,
@@ -512,6 +515,7 @@ class AssistRow {
     required this.price,
     required this.priceAvailable,
     this.imageUrl,
+    this.url,
     this.specs = const {},
   });
   factory AssistRow.fromJson(Map<String, dynamic> j) => AssistRow(
@@ -521,6 +525,7 @@ class AssistRow {
         price: Offer._num(j['price']),
         priceAvailable: j['priceAvailable'] == true,
         imageUrl: j['imageUrl'] == null ? null : '${j['imageUrl']}',
+        url: (j['url'] as String?)?.trim().isEmpty ?? true ? null : j['url'] as String?,
         specs: ((j['specs'] as Map?) ?? const {})
             .map((k, v) => MapEntry('$k', '$v')),
       );
