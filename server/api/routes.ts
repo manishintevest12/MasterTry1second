@@ -3032,6 +3032,19 @@ apiRouter.get('/ads', async (req, res) => {
   }
 });
 
+// ============ App ad tag (public) ============
+// GET /api/app-ads  -> the operator's Smartlink for the Flutter app.
+//
+// OWNER 3 Nov: "website mai native banner, popunder and app mai smartlink". The web tags are
+// injected by the web bundle (src/components/NetworkAdTags.tsx). A Flutter app cannot execute a JS
+// tag, so the APP gets the Smartlink URL from here and opens it in the in-app browser - the same
+// URL the network issued, never rewritten. Nothing is returned when the operator turns it off.
+apiRouter.get('/app-ads', async (_req, res) => {
+  const enabled = String(process.env.T1S_APP_SMARTLINK_ENABLED || '1') !== '0';
+  const url = String(process.env.T1S_APP_SMARTLINK_URL || 'https://araplhn.org/4/d507e5d07b8864a761b95b057aaea9a8');
+  res.json({ success: true, smartlink: enabled ? url : null });
+});
+
 // ============ Deals (public) ============
 // GET /api/deals?merchant=flipkart&kind=coupon&vertical=ecommerce&hasImage=1  -> live, unexpired deals (affiliate-free pointers) + counts
 apiRouter.get('/deals', async (req, res) => {

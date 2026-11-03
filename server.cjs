@@ -45775,6 +45775,11 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Could not load ad slot" });
       }
     });
+    apiRouter.get("/app-ads", async (_req, res) => {
+      const enabled = String(process.env.T1S_APP_SMARTLINK_ENABLED || "1") !== "0";
+      const url = String(process.env.T1S_APP_SMARTLINK_URL || "https://araplhn.org/4/d507e5d07b8864a761b95b057aaea9a8");
+      res.json({ success: true, smartlink: enabled ? url : null });
+    });
     apiRouter.get("/deals", async (req, res) => {
       try {
         const cacheKey = `deals:${req.query.merchant || ""}|${req.query.kind || ""}|${req.query.vertical || ""}|${req.query.hasImage || ""}|${Number(req.query.limit) || 100}`;

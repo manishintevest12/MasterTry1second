@@ -1,4 +1,5 @@
 import { AdBannerSlot } from './AdBannerSlot';
+import { NativeBannerSlot } from './NetworkAdTags';
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { parseSmartFilter, matchSmartFilter } from '../utils/smartFilter';
@@ -483,6 +484,9 @@ export const ComparisonFeed: React.FC = () => {
 
         {/* AdSense: vertical feed unit (renders nothing when unset) */}
         <div className="my-4"><AdBannerSlot slotKey="vertical_feed" /></div>
+        {/* NativeBanner_1 (owner 3 Nov): the network unit sits in the SAME ad position, so no new
+            section and no layout shift; it renders nothing on /admin. */}
+        <NativeBannerSlot className="my-4" />
 
               {/* Load More Button Section: only appears if at least 4 results displayed on screen and more remain */}
               {shouldShowLoadMore && (
