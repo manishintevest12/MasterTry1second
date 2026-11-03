@@ -17,7 +17,7 @@ import { geoSearch, geoReverse } from '../../common/geoProxy';
 import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity } from '../parsers/rapidoCabs';
 import { rapidoGuestFares, rapidoServiceCatalog, buildRapidoFareRows } from '../parsers/rapidoFares';
 import { uberIndiaCityFor } from '../parsers/uberIndiaCities';
-import { buildUberProductsRequestBody, parseUberProductsResponse, buildUberGoBookUrl, type UberGoPlace } from '../parsers/uberGoProducts';
+import { buildUberProductsRequestBody, parseUberProductsResponse, buildUberGoBookUrl, buildUberProductSelectionBody, parseUberProductSelectionResponse, type UberGoPlace, type UberGoProduct } from '../parsers/uberGoProducts';
 import { AcquisitionError } from '../../common/httpClient';
 
 /**
@@ -270,6 +270,22 @@ export function parseUberSessionCookie(raw: unknown): Record<string, string> {
 
 const uberSessionCookies = (): Record<string, string> => parseUberSessionCookie(process.env.UBER_SESSION_COOKIE);
 
+/**
+ * OWNER 3 Nov: a rider session alone is NOT enough. MEASURED on m.uber.com/go/product-selection
+ * with the owner's payload and no csrf header: HTTP 403 body "Missing csrf token." So the header
+ * must carry the session's real token — read from the session jar when the owner pasted a full
+ * cookie string, else UBER_CSRF_TOKEN from hPanel. 'x' stays as the last resort because Uber's own
+ * ANONYMOUS bundle literally sends x-csrf-token: x (that is what the guest Products query accepts).
+ */
+export function uberCsrfToken(jar: Record<string, string>): string {
+  const wanted = ['xsrf-token', 'csrf-token', 'csrftoken', '_csrf', 'uber-csrf'];
+  for (const k of wanted) {
+    const hit = Object.keys(jar).find((c) => c.toLowerCase() === k);
+    if (hit && jar[hit]) { try { return decodeURIComponent(jar[hit]); } catch { return jar[hit]; } }
+  }
+  return String(process.env.UBER_CSRF_TOKEN || '').trim() || 'x';
+}
+
 /** Returns availability rows from Uber's own guest web catalog. Never throws. */
 async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promise<any[]> {
   try {
@@ -314,8 +330,47 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
       if (r.status === 200 && (r.body || '').includes('"products"')) { graphql = r; break; }
       if (r.status !== 403) break; // 403 -> rotate fingerprint; other failures are not fingerprint-shaped
     }
-    if (!graphql) return [];
-    const products = parseUberProductsResponse(graphql.body).filter((p) => p.isAvailable).slice(0, 10);
+    let liveSession = hasSession;
+    let products: UberGoProduct[] = graphql
+      ? parseUberProductsResponse(graphql.body).filter((p) => p.isAvailable).slice(0, 10)
+      : [];
+    // OWNER 3 Nov: the rider-session Product Selection call (his captured payload). Tried when the
+    // Apollo Products query did not return products - with the operator's own session first, then
+    // with the primed guest jar so the csrf header comes from a real cookie, not a guess.
+    const trySelection = async (jar: Record<string, string>, fp: string): Promise<UberGoProduct[]> => {
+      if (!Object.keys(jar).length) return [];
+      try {
+        const r = await cffiFetch('https://m.uber.com/go/product-selection', {
+          method: 'POST', impersonate: fp, timeoutMs: 25_000, cookies: jar,
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/plain, */*',
+            'Accept-Language': 'en-IN,en;q=0.9',
+            'x-csrf-token': uberCsrfToken(jar),
+            Origin: 'https://m.uber.com',
+            Referer: 'https://m.uber.com/go/product-selection',
+          },
+          body: buildUberProductSelectionBody(pickup, drop),
+        });
+        if (r.status !== 200) return [];
+        return parseUberProductSelectionResponse(r.body).filter((p) => p.isAvailable).slice(0, 10);
+      } catch { return []; }
+    };
+    if (!products.length && hasSession) {
+      products = await trySelection(session, 'chrome');
+      if (products.length) liveSession = true;
+    }
+    if (!products.length) {
+      for (const fp of ['chrome', 'safari17_0']) {
+        const prime = await cffiFetch('https://m.uber.com/go/looking', {
+          impersonate: fp, timeoutMs: 20_000, returnCookies: true,
+          headers: { Accept: 'text/html', 'Accept-Language': 'en-IN,en;q=0.9', Referer: 'https://www.uber.com/global/en/price-estimate/' },
+        });
+        if (prime.status !== 200) continue;
+        products = await trySelection(prime.cookies || {}, fp);
+        if (products.length) { liveSession = false; break; }
+      }
+    }
     if (!products.length) return [];
     const uberClientId = String(process.env.UBER_CLIENT_ID || 'vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w').trim();
     const today = new Date().toISOString().slice(0, 10);
@@ -342,11 +397,11 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
         ...(p.description ? { vehicle_description: p.description } : {}),
         ...(p.tier ? { fare_tier: p.tier } : {}),
         price_basis: p.fare != null
-          ? (hasSession ? `Uber live session quote for this route on ${today}` : `Uber guest web quote for this route on ${today}`)
+          ? (liveSession ? `Uber live session quote for this route on ${today}` : `Uber guest web quote for this route on ${today}`)
           : 'app_only_fares',
         data_note: p.fare != null
-          ? (hasSession
-            ? `Live fare from Uber's own ride web app (m.uber.com/go Products query, sent with the operator's own rider session on ${today}); deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.`
+          ? (liveSession
+            ? `Live fare from Uber's own ride web app (m.uber.com/go Products / Product Selection query, sent with the operator's own rider session + csrf token on ${today}); deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.`
             : `Live fare from Uber's own guest ride web app (m.uber.com/go Products query) on ${today}; deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.`)
           : `Uber's own guest ride web app (m.uber.com/go) lists ${p.displayName} as available for this exact route, but quotes the fare only after login / in the app -- never estimated. Deeplink opens Uber's booking flow with this route prefilled, routed via /api/out so an affiliate campaign attaches when available.`,
       },

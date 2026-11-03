@@ -22613,6 +22613,48 @@ function buildUberGoBookUrl(clientId, pickup, drop) {
   q3.push(`drop[0]=${encodeURIComponent(JSON.stringify({ latitude: drop.lat, longitude: drop.lng, addressLine1: drop.name.slice(0, 120) }))}`);
   return `https://m.uber.com/looking/?${q3.join("&")}`;
 }
+function buildUberProductSelectionBody(pickup, drop) {
+  return JSON.stringify({
+    pickup: { latitude: pickup.lat, longitude: pickup.lng, source: "MANUAL_PIN" },
+    drop: [{ latitude: drop.lat, longitude: drop.lng, source: "MANUAL_PIN" }],
+    requestTime: 0
+  });
+}
+function parseUberProductSelectionResponse(body) {
+  let j;
+  try {
+    j = JSON.parse(String(body || ""));
+  } catch {
+    return [];
+  }
+  const products = j?.data?.products ?? j?.products;
+  if (products && !Array.isArray(products) && Array.isArray(products.tiers)) return parseUberProductsResponse(body);
+  if (!Array.isArray(products)) return [];
+  const money3 = (v) => {
+    const nums = (String(v ?? "").match(/[\d,.]+/g) || []).map((x) => Number(x.replace(/,/g, ""))).filter((n) => Number.isFinite(n) && n > 0);
+    if (!nums.length) return null;
+    return Math.round(nums.length >= 2 ? (nums[0] + nums[1]) / 2 : nums[0]);
+  };
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const p of products) {
+    const displayName = String(p?.displayName || p?.title || "").trim();
+    if (!displayName || seen.has(displayName)) continue;
+    seen.add(displayName);
+    const eta = Number((String(p?.etaString ?? "").match(/(\d+)/) || [])[1] || p?.etaInMin || 0);
+    out.push({
+      tier: String(p?.tier || ""),
+      displayName,
+      description: String(p?.description || p?.subtitle || "").trim(),
+      capacity: p?.capacity != null ? Number(p.capacity) : null,
+      isAvailable: p?.isAvailable !== false,
+      productUuid: String(p?.productUuid || p?.id || ""),
+      fare: money3(p?.fareString ?? p?.fare ?? p?.priceString ?? p?.price),
+      etaMinutes: Number.isFinite(eta) && eta > 0 ? eta : null
+    });
+  }
+  return out;
+}
 var UBER_PRODUCTS_QUERY;
 var init_uberGoProducts = __esm({
   "server/workers/parsers/uberGoProducts.ts"() {
@@ -22763,6 +22805,20 @@ function parseUberSessionCookie(raw) {
   }
   return out;
 }
+function uberCsrfToken(jar) {
+  const wanted = ["xsrf-token", "csrf-token", "csrftoken", "_csrf", "uber-csrf"];
+  for (const k of wanted) {
+    const hit = Object.keys(jar).find((c) => c.toLowerCase() === k);
+    if (hit && jar[hit]) {
+      try {
+        return decodeURIComponent(jar[hit]);
+      } catch {
+        return jar[hit];
+      }
+    }
+  }
+  return String(process.env.UBER_CSRF_TOKEN || "").trim() || "x";
+}
 async function uberGoFlowSafe(ctx, rt) {
   try {
     const city = ctxCity(ctx);
@@ -22807,8 +22863,52 @@ async function uberGoFlowSafe(ctx, rt) {
       }
       if (r.status !== 403) break;
     }
-    if (!graphql) return [];
-    const products = parseUberProductsResponse(graphql.body).filter((p) => p.isAvailable).slice(0, 10);
+    let liveSession = hasSession;
+    let products = graphql ? parseUberProductsResponse(graphql.body).filter((p) => p.isAvailable).slice(0, 10) : [];
+    const trySelection = async (jar, fp) => {
+      if (!Object.keys(jar).length) return [];
+      try {
+        const r = await cffiFetch("https://m.uber.com/go/product-selection", {
+          method: "POST",
+          impersonate: fp,
+          timeoutMs: 25e3,
+          cookies: jar,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json, text/plain, */*",
+            "Accept-Language": "en-IN,en;q=0.9",
+            "x-csrf-token": uberCsrfToken(jar),
+            Origin: "https://m.uber.com",
+            Referer: "https://m.uber.com/go/product-selection"
+          },
+          body: buildUberProductSelectionBody(pickup, drop)
+        });
+        if (r.status !== 200) return [];
+        return parseUberProductSelectionResponse(r.body).filter((p) => p.isAvailable).slice(0, 10);
+      } catch {
+        return [];
+      }
+    };
+    if (!products.length && hasSession) {
+      products = await trySelection(session, "chrome");
+      if (products.length) liveSession = true;
+    }
+    if (!products.length) {
+      for (const fp of ["chrome", "safari17_0"]) {
+        const prime = await cffiFetch("https://m.uber.com/go/looking", {
+          impersonate: fp,
+          timeoutMs: 2e4,
+          returnCookies: true,
+          headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9", Referer: "https://www.uber.com/global/en/price-estimate/" }
+        });
+        if (prime.status !== 200) continue;
+        products = await trySelection(prime.cookies || {}, fp);
+        if (products.length) {
+          liveSession = false;
+          break;
+        }
+      }
+    }
     if (!products.length) return [];
     const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
     const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -22835,8 +22935,8 @@ async function uberGoFlowSafe(ctx, rt) {
         ...p.etaMinutes ? { eta_minutes: String(p.etaMinutes) } : {},
         ...p.description ? { vehicle_description: p.description } : {},
         ...p.tier ? { fare_tier: p.tier } : {},
-        price_basis: p.fare != null ? hasSession ? `Uber live session quote for this route on ${today2}` : `Uber guest web quote for this route on ${today2}` : "app_only_fares",
-        data_note: p.fare != null ? hasSession ? `Live fare from Uber's own ride web app (m.uber.com/go Products query, sent with the operator's own rider session on ${today2}); deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.` : `Live fare from Uber's own guest ride web app (m.uber.com/go Products query) on ${today2}; deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.` : `Uber's own guest ride web app (m.uber.com/go) lists ${p.displayName} as available for this exact route, but quotes the fare only after login / in the app -- never estimated. Deeplink opens Uber's booking flow with this route prefilled, routed via /api/out so an affiliate campaign attaches when available.`
+        price_basis: p.fare != null ? liveSession ? `Uber live session quote for this route on ${today2}` : `Uber guest web quote for this route on ${today2}` : "app_only_fares",
+        data_note: p.fare != null ? liveSession ? `Live fare from Uber's own ride web app (m.uber.com/go Products / Product Selection query, sent with the operator's own rider session + csrf token on ${today2}); deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.` : `Live fare from Uber's own guest ride web app (m.uber.com/go Products query) on ${today2}; deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.` : `Uber's own guest ride web app (m.uber.com/go) lists ${p.displayName} as available for this exact route, but quotes the fare only after login / in the app -- never estimated. Deeplink opens Uber's booking flow with this route prefilled, routed via /api/out so an affiliate campaign attaches when available.`
       },
       identifiers: { sku: `uber-go-${rt.from}-${rt.to}-${p.displayName}`.toLowerCase().replace(/\s+/g, "-") },
       evidence: { sourceUrl: "https://m.uber.com/go/graphql", extractedFields: ["products tiers", "displayName", "fares", "capacity"], sourceReference: "Uber guest ride web app Products query (ANONYMOUS)" }

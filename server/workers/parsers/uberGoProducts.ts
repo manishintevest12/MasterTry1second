@@ -105,3 +105,56 @@ export function buildUberGoBookUrl(clientId: string, pickup: UberGoPlace, drop: 
   q.push(`drop[0]=${encodeURIComponent(JSON.stringify({ latitude: drop.lat, longitude: drop.lng, addressLine1: drop.name.slice(0, 120) }))}`);
   return `https://m.uber.com/looking/?${q.join('&')}`;
 }
+
+/** OWNER 3 Nov: the rider-session Product Selection call, exact payload captured from a live
+ *  m.uber.com session (pickup/drop MANUAL_PIN + requestTime 0) posted to /go/product-selection.
+ *  MEASURED from our egress without a rider session: HTTP 403 "Missing csrf token." — so this path
+ *  needs BOTH the rider cookie and a real csrf token (see uberCsrfToken in cab.ts), never a guess. */
+export function buildUberProductSelectionBody(pickup: UberGoPlace, drop: UberGoPlace): string {
+  return JSON.stringify({
+    pickup: { latitude: pickup.lat, longitude: pickup.lng, source: 'MANUAL_PIN' },
+    drop: [{ latitude: drop.lat, longitude: drop.lng, source: 'MANUAL_PIN' }],
+    requestTime: 0,
+  });
+}
+
+/**
+ * Parse the Product Selection answer. Tolerates BOTH shapes we have evidence for:
+ *  - rider-session shape: { data: { products: [ { displayName, fareString, etaString } ] } }
+ *  - Apollo shape:        { data: { products: { tiers: [...] } } }  (same as the anonymous query)
+ * fareString is a LOCALIZED string ("₹374.01", "₹110-130"): a range takes its midpoint and
+ * anything without a positive number stays unpriced — never estimated.
+ */
+export function parseUberProductSelectionResponse(body: string | null | undefined): UberGoProduct[] {
+  let j: any;
+  try { j = JSON.parse(String(body || '')); } catch { return []; }
+  const products = j?.data?.products ?? j?.products;
+  if (products && !Array.isArray(products) && Array.isArray(products.tiers)) return parseUberProductsResponse(body);
+  if (!Array.isArray(products)) return [];
+  const money = (v: unknown): number | null => {
+    const nums = (String(v ?? '').match(/[\d,.]+/g) || [])
+      .map((x: string) => Number(x.replace(/,/g, '')))
+      .filter((n: number) => Number.isFinite(n) && n > 0);
+    if (!nums.length) return null;
+    return Math.round(nums.length >= 2 ? (nums[0] + nums[1]) / 2 : nums[0]);
+  };
+  const seen = new Set<string>();
+  const out: UberGoProduct[] = [];
+  for (const p of products) {
+    const displayName = String(p?.displayName || p?.title || '').trim();
+    if (!displayName || seen.has(displayName)) continue;
+    seen.add(displayName);
+    const eta = Number((String(p?.etaString ?? '').match(/(\d+)/) || [])[1] || p?.etaInMin || 0);
+    out.push({
+      tier: String(p?.tier || ''),
+      displayName,
+      description: String(p?.description || p?.subtitle || '').trim(),
+      capacity: p?.capacity != null ? Number(p.capacity) : null,
+      isAvailable: p?.isAvailable !== false,
+      productUuid: String(p?.productUuid || p?.id || ''),
+      fare: money(p?.fareString ?? p?.fare ?? p?.priceString ?? p?.price),
+      etaMinutes: Number.isFinite(eta) && eta > 0 ? eta : null,
+    });
+  }
+  return out;
+}
