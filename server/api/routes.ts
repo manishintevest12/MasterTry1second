@@ -53,6 +53,8 @@ import { beginScrape, send429, send504, withDeadline } from './requestGuard';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
+import { liveAnswerMemoStats, memoComparisonItem, memoRelevanceHit } from './liveAnswerMemo';
+import { liveReplayStats, readLiveReplay, writeLiveReplay } from './liveReplay';
 import { jsonMemoStats } from '../common/jsonMemo';
 import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
@@ -811,6 +813,8 @@ apiRouter.get('/status', authMiddleware, requireAdmin, (_req, res) => {
     // Owner 4 Nov (CPU): proof of the savings, not a claim - how many responses were served from
     // the serialisation memo instead of re-running JSON.stringify over the same answer.
     jsonMemo: jsonMemoStats(),
+    liveAnswer: liveAnswerMemoStats(),
+    liveReplay: liveReplayStats(),
   });
 });
 
@@ -1560,6 +1564,24 @@ apiRouter.post('/scrape/live', async (req, res) => {
     req.ip, input.vertical, input.query, input.city, input.pincode,
     input.travelDates?.depart, input.travelDates?.return,
   ]);
+  // OWNER 4 Nov (CPU): the same screen fire can send this search 2-3 times inside a few hundred ms.
+  // A complete answer from this exact poll chain (ip + vertical + query + city + pin + dates) is
+  // replayed instead of re-assembling it. Empty and still-scanning answers are never stored, so a
+  // replay can never show an empty page or hold back rows that are about to land.
+  const replayKey = `${chainKey}|${String(input.vertical)}|${req.body?.vertical || ''}`;
+  const replayed = readLiveReplay(replayKey);
+  if (replayed) {
+    res.setHeader('x-t1s-replay', '1');
+    return res.json({ ...replayed.payload, latencyMs: Date.now() - searchStart });
+  }
+  // Every answer this request produces (main, fallback, late, merged) is eligible for the replay
+  // window - but only when it is complete, which writeLiveReplay decides.
+  const originalJson = res.json.bind(res);
+  res.json = (payload: any) => {
+    try { writeLiveReplay(replayKey, payload); } catch { /* never break an answer for a cache write */ }
+    return originalJson(payload);
+  };
+
   // Cab: a bare location ("vijay nagar indore") is resolved to the city's standard outstation route.
   if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   // Same origin and destination is not a trip: refuse instead of showing some other route's fares.
@@ -1709,11 +1731,16 @@ apiRouter.post('/scrape/live', async (req, res) => {
     }
     return false;
   };
+  // OWNER 4 Nov (CPU on /api/scrape/live): the same answer is polled every ~2s, and this scoring ran
+  // a RegExp per query word per row on every poll. The hit for a (query, title) pair cannot change, so
+  // it is computed once (server/api/liveAnswerMemo.ts). Rows, order and prices are untouched.
+  const relevanceQueryKey = `${String(input.vertical || '')}|${String(input.query || '').toLowerCase()}`;
   const scored = (response.results as any[]).map((o) => {
     const t = String(o.title || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
     // Regex token boundary: 'milk' must appear as a WHOLE word, so 'buttermilk'
     // does not match 'milk'. Simple plural stemming keeps 'shoes' matching 'shoe'.
-    let hit = stems.length ? stems.filter((w) => stemMatches(t, w)).length / stems.length : 1;
+    const rawHit = memoRelevanceHit(relevanceQueryKey, t, () => (stems.length ? stems.filter((w) => stemMatches(t, w)).length / stems.length : 1));
+    let hit = rawHit;
     // Owner 22 Oct ('smart tv / tablet pe results nahi aate'): an accessory or
     // supplement of the product must not pose AS the product — 'Tablet Stand' and
     // 'Multivitamin Tablets' for a 'tablets' query, 'USB Charger & Mobile Holder'
@@ -1853,8 +1880,10 @@ apiRouter.post('/scrape/live', async (req, res) => {
       return /\bto\b/i.test(q) ? q : undefined;
     })(),
   };
+  // Same rows, same mapping: build each item once per (offer, travel context) instead of on every poll.
+  const travelSig = `${reqTravelDates.date || ''}|${reqTravelDates.return || ''}|${reqTravelDates.city || ''}|${reqTravelDates.route || ''}`;
   const mappedItems = keptResults.map((o: any) => {
-    const item = offerToComparisonItem(o, reqTravelDates);
+    const item = memoComparisonItem(o, travelSig, () => offerToComparisonItem(o, reqTravelDates));
     return req.body.vertical === 'movie' ? { ...item, vertical: 'movie', category: 'movie' }
       : req.body.vertical === 'account' ? { ...item, vertical: 'account', category: 'account' }
       : item;
