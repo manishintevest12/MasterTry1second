@@ -87,7 +87,31 @@ const e = encodeURIComponent;
  * Returns a deep link for `merchant`, or '' when the merchant is unknown (the
  * caller then keeps whatever URL the offer carried).
  */
+/**
+ * OWNER 4 Nov (CPU): exit links are re-minted for every row on every gate pass AND on every poll of
+ * the same cached answer, yet the result is a pure function of (merchant, title, vertical, city,
+ * route, date, return). Measured hotel answers carry 80-240 rows, so one poll used to rebuild
+ * hundreds of URLs for byte-identical output. This memo (LRU, bounded, 10 min) returns the SAME
+ * string for the SAME inputs - no price, no row and no destination changes, only the work.
+ */
+const linkMemo = new Map<string, { at: number; url: string }>();
+const LINK_MEMO_MAX = Math.max(100, Number(process.env.T1S_DEEPLINK_MEMO_MAX) || 4000);
+const LINK_MEMO_TTL_MS = Math.max(1000, Number(process.env.T1S_DEEPLINK_MEMO_TTL_MS) || 600_000);
+
+/** Test hook: prove the memo is used and clear it between cases. */
+export function _resetDeepLinkMemo(): void { linkMemo.clear(); }
+
 export function merchantDeepLink(merchant: string, title: string, vertical?: string, ctx: TravelCtx = {}): string {
+  const memoKey = `${String(merchant || '').toLowerCase()}|${String(vertical || '')}|${String(title || '')}|${String(ctx.city || '')}|${String(ctx.route || '')}|${String(ctx.date || '')}|${String(ctx.return || '')}`;
+  const cached = linkMemo.get(memoKey);
+  if (cached && Date.now() - cached.at < LINK_MEMO_TTL_MS) return cached.url;
+  const built = buildMerchantDeepLink(merchant, title, vertical, ctx);
+  if (linkMemo.size >= LINK_MEMO_MAX) linkMemo.clear();
+  linkMemo.set(memoKey, { at: Date.now(), url: built });
+  return built;
+}
+
+function buildMerchantDeepLink(merchant: string, title: string, vertical?: string, ctx: TravelCtx = {}): string {
   const v = String(merchant || '').toLowerCase();
   if (!v) return '';
   // No product name and no travel context: inventing a destination would be a

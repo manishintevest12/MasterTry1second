@@ -706,7 +706,34 @@ export async function settleForRequestedDate(
  * gate empties an answer, the response says so (results [], pendingRefresh true) instead of
  * handing back the other day's rows.
  */
+/**
+ * OWNER 4 Nov (CPU): this gate walks EVERY row of an answer (date parse + city compare + price read
+ * + exit re-mint) and the clients poll the SAME cached response object every ~2s while a sweep runs,
+ * so an identical, already-gated answer was being re-gated dozens of times for byte-identical output.
+ * The work is a pure function of (response object, requested dates/city), so the signature of the
+ * last successful pass is remembered per response object (WeakMap - nothing retained after eviction).
+ * Same object + same request = the answer is returned untouched; a different request or a mutation
+ * that changes the object identity still runs the full gate, so no stale rule can leak.
+ */
+const gatePassMemo = new WeakMap<object, string>();
+
 export function gateTravelDateResponse(input: SearchInput, response: SearchResponse): SearchResponse {
+  if (!response || !Array.isArray(response.results) || response.results.length === 0) return response;
+  const signature = [
+    String(input.vertical || ''),
+    String(input.travelDates?.depart || ''),
+    String(input.travelDates?.return || ''),
+    String((input.travelDates as any)?.checkin || ''),
+    String((input.travelDates as any)?.checkout || ''),
+    String(input.city || ''),
+  ].join('|');
+  if (gatePassMemo.get(response as unknown as object) === signature) return response;
+  const gated = gateTravelDateResponseUncached(input, response);
+  if (gated && typeof gated === 'object') gatePassMemo.set(gated as unknown as object, signature);
+  return gated;
+}
+
+function gateTravelDateResponseUncached(input: SearchInput, response: SearchResponse): SearchResponse {
   if (!response || !Array.isArray(response.results) || response.results.length === 0) return response;
   const vertical = String(input.vertical || response.query?.vertical || '');
   const gate = enforceRequestedTravelDate(response.results as any[], vertical, {

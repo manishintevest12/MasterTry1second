@@ -13,6 +13,7 @@ import express, { type Request, type Response } from 'express';
 // Gzip all text responses (JS/CSS/JSON/API) — the #1 PageSpeed item missing on
 // Hostinger: Apache does not compress proxied Node output, so Express must.
 import compression from 'compression';
+import { jsonStringMemo } from './common/jsonMemo';
 import * as canonicalHost from './common/canonicalHost';
 
 // Bundle-safe: resolve dist/ from the process working directory (the app root on Hostinger / KVM4).
@@ -27,6 +28,22 @@ export async function createApp(): Promise<express.Express> {
   app.disable('x-powered-by');
   app.use((_req, res, next) => { res.removeHeader('X-Powered-By'); res.removeHeader('Server'); next(); });
   app.use(compression()); // gzip BEFORE routes so API JSON + static both compress
+  // OWNER 4 Nov: serialise each response body ONCE. A vertical answer is 100KB-2MB and both clients
+  // poll the same search while a sweep runs, so the cache replays the SAME response object to dozens
+  // of polls - Express was re-running JSON.stringify over that identical tree on every one. The
+  // memo is keyed by the body object (WeakMap) and returns byte-identical JSON, so no client sees a
+  // difference; it only stops paying for the same serialisation twice. Non-object bodies, oversized
+  // bodies and unserialisable bodies fall through to Express exactly as before.
+  app.use((_req: any, res: any, next: any) => {
+    const original = res.json.bind(res);
+    res.json = (body: any) => {
+      const memoised = jsonStringMemo(body);
+      if (memoised === null) return original(body);
+      if (!res.getHeader('Content-Type')) res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.send(memoised);
+    };
+    next();
+  });
   // OWNER 31 Oct (second time, angry): "fix chaiye muje ab issue kaise v ... jo purana build hai usme hi
   // result show kro". The installed APK turns ANY non-2xx into a red error box, so the 400 must not be
   // produced at all: the body parser repairs whatever the phone sends instead of rejecting it, and

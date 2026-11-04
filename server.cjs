@@ -117,6 +117,43 @@ var init_lastKnownGood = __esm({
   }
 });
 
+// server/common/jsonMemo.ts
+function jsonStringMemo(value) {
+  if (!value || typeof value !== "object") return null;
+  const hit = memo.get(value);
+  if (hit !== void 0) {
+    servedFromMemo += 1;
+    return hit;
+  }
+  let text;
+  try {
+    text = JSON.stringify(value);
+  } catch {
+    return null;
+  }
+  if (typeof text !== "string" || text.length > MAX_MEMO_BYTES) return null;
+  memo.set(value, text);
+  serialised += 1;
+  return text;
+}
+function jsonMemoStats() {
+  const total = servedFromMemo + serialised;
+  return {
+    servedFromMemo,
+    serialised,
+    savedPct: total ? Math.round(servedFromMemo / total * 100) : 0
+  };
+}
+var memo, MAX_MEMO_BYTES, servedFromMemo, serialised;
+var init_jsonMemo = __esm({
+  "server/common/jsonMemo.ts"() {
+    memo = /* @__PURE__ */ new WeakMap();
+    MAX_MEMO_BYTES = 4 * 1024 * 1024;
+    servedFromMemo = 0;
+    serialised = 0;
+  }
+});
+
 // server/marketing/appLinkVerify.ts
 var appLinkVerify_exports = {};
 __export(appLinkVerify_exports, {
@@ -30515,6 +30552,15 @@ function hotelCity(title, ctx) {
   return m ? canonicalCity(m[1]) || m[1].trim() : "";
 }
 function merchantDeepLink(merchant, title, vertical, ctx = {}) {
+  const memoKey = `${String(merchant || "").toLowerCase()}|${String(vertical || "")}|${String(title || "")}|${String(ctx.city || "")}|${String(ctx.route || "")}|${String(ctx.date || "")}|${String(ctx.return || "")}`;
+  const cached3 = linkMemo.get(memoKey);
+  if (cached3 && Date.now() - cached3.at < LINK_MEMO_TTL_MS) return cached3.url;
+  const built = buildMerchantDeepLink(merchant, title, vertical, ctx);
+  if (linkMemo.size >= LINK_MEMO_MAX) linkMemo.clear();
+  linkMemo.set(memoKey, { at: Date.now(), url: built });
+  return built;
+}
+function buildMerchantDeepLink(merchant, title, vertical, ctx = {}) {
   const v = String(merchant || "").toLowerCase();
   if (!v) return "";
   if (!String(title || "").trim() && !String(ctx.route || "").trim() && !String(ctx.city || "").trim()) return "";
@@ -30709,7 +30755,7 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
   if (has("makemytrip")) return "https://www.makemytrip.com/";
   return "";
 }
-var IATA2, cityCode, slug2, e;
+var IATA2, cityCode, slug2, e, linkMemo, LINK_MEMO_MAX, LINK_MEMO_TTL_MS;
 var init_merchantLinks = __esm({
   "server/affiliate/merchantLinks.ts"() {
     init_cityAlias();
@@ -30755,6 +30801,9 @@ var init_merchantLinks = __esm({
     cityCode = (name) => IATA2[String(name || "").toLowerCase().trim()] || "";
     slug2 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 60);
     e = encodeURIComponent;
+    linkMemo = /* @__PURE__ */ new Map();
+    LINK_MEMO_MAX = Math.max(100, Number(process.env.T1S_DEEPLINK_MEMO_MAX) || 4e3);
+    LINK_MEMO_TTL_MS = Math.max(1e3, Number(process.env.T1S_DEEPLINK_MEMO_TTL_MS) || 6e5);
   }
 });
 
@@ -35684,6 +35733,21 @@ async function settleForRequestedDate(input, budgetMs = Number(process.env.T1S_D
 }
 function gateTravelDateResponse(input, response) {
   if (!response || !Array.isArray(response.results) || response.results.length === 0) return response;
+  const signature2 = [
+    String(input.vertical || ""),
+    String(input.travelDates?.depart || ""),
+    String(input.travelDates?.return || ""),
+    String(input.travelDates?.checkin || ""),
+    String(input.travelDates?.checkout || ""),
+    String(input.city || "")
+  ].join("|");
+  if (gatePassMemo.get(response) === signature2) return response;
+  const gated = gateTravelDateResponseUncached(input, response);
+  if (gated && typeof gated === "object") gatePassMemo.set(gated, signature2);
+  return gated;
+}
+function gateTravelDateResponseUncached(input, response) {
+  if (!response || !Array.isArray(response.results) || response.results.length === 0) return response;
   const vertical = String(input.vertical || response.query?.vertical || "");
   const gate = enforceRequestedTravelDate(response.results, vertical, {
     depart: input.travelDates?.depart,
@@ -35976,17 +36040,17 @@ async function runSearchPipeline(input) {
       new Promise((res) => setTimeout(() => res(null), 600))
     ]);
     if (early2 && early2.kind === "full") return early2.r;
-    const memo = inflightPartials.get(cacheKey);
-    if (memo && memo.snap.results.length > 0) {
-      if (!memo.response) {
+    const memo2 = inflightPartials.get(cacheKey);
+    if (memo2 && memo2.snap.results.length > 0) {
+      if (!memo2.response) {
         const ctx = await buildLiveCtx(parsed, input);
-        const partial = await finalizeLive(Date.now(), input, parsed, ctx, memo.snap, false);
+        const partial = await finalizeLive(Date.now(), input, parsed, ctx, memo2.snap, false);
         if (partial.results.length > 0) {
           partial.state.pendingRefresh = true;
-          memo.response = partial;
+          memo2.response = partial;
         }
       }
-      if (memo.response) return memo.response;
+      if (memo2.response) return memo2.response;
     }
     const w = floorWindows(vertical);
     const offers = await freshCatalogueOffers(vertical, input, parsed, w.strict, w.fallback);
@@ -36416,7 +36480,7 @@ async function recordSearchMetrics(input, parsed, response) {
   } catch {
   }
 }
-var BUS_PRIMARY_LIVE_SELLERS, inflightPipelines, pipelineByQuestion, inflightPartials, RELEVANCE_GATED_CATALOGUE, MAJOR_CITIES2;
+var BUS_PRIMARY_LIVE_SELLERS, inflightPipelines, pipelineByQuestion, inflightPartials, RELEVANCE_GATED_CATALOGUE, MAJOR_CITIES2, gatePassMemo;
 var init_searchOrchestrator = __esm({
   "server/search/searchOrchestrator.ts"() {
     init_lastPrice();
@@ -36540,6 +36604,7 @@ var init_searchOrchestrator = __esm({
       "vapi",
       "siliguri"
     ];
+    gatePassMemo = /* @__PURE__ */ new WeakMap();
   }
 });
 
@@ -41370,6 +41435,9 @@ async function recallAnswer(k) {
   }
 }
 async function sellerReliability(vertical, limit = 40) {
+  const memoKey = `${String(vertical)}|${limit}`;
+  const hit = reliabilityMemo.get(memoKey);
+  if (hit && Date.now() - hit.at < RELIABILITY_TTL_MS()) return hit.value;
   try {
     const rows = await getStore().query(
       `SELECT sellers, times_seen FROM ${TABLE} WHERE vertical = ? ORDER BY last_verified_at DESC LIMIT ?`,
@@ -41382,6 +41450,8 @@ async function sellerReliability(vertical, limit = 40) {
         score[s] = (score[s] || 0) + seen;
       }
     }
+    reliabilityMemo.set(memoKey, { at: Date.now(), value: score });
+    if (reliabilityMemo.size > 200) reliabilityMemo.clear();
     return score;
   } catch {
     return {};
@@ -41441,7 +41511,7 @@ function memoryNotice(mem) {
   const when = new Date(mem.lastVerifiedAt).toISOString().slice(0, 16).replace("T", " ");
   return `Last time you asked this, ${mem.rowCount} live rows came from ${mem.sellers.slice(0, 4).join(", ") || "our sources"} (verified ${when}Z). I start from those and re-check prices now.`;
 }
-var norm7, TABLE, parseJson;
+var norm7, TABLE, parseJson, reliabilityMemo, RELIABILITY_TTL_MS;
 var init_searchMemory = __esm({
   "server/lens/searchMemory.ts"() {
     init_db();
@@ -41455,6 +41525,8 @@ var init_searchMemory = __esm({
         return fallback;
       }
     };
+    reliabilityMemo = /* @__PURE__ */ new Map();
+    RELIABILITY_TTL_MS = () => Math.max(1e3, Number(process.env.T1S_RELIABILITY_TTL_MS) || 6e4);
   }
 });
 
@@ -45152,6 +45224,7 @@ var init_routes = __esm({
     init_db();
     init_db();
     init_cache();
+    init_jsonMemo();
     init_settings();
     init_registry();
     init_productLink();
@@ -45608,7 +45681,10 @@ var init_routes = __esm({
         success: true,
         sources: sourcesStatusReport(),
         health: getAllHealth(),
-        cache: cacheStats()
+        cache: cacheStats(),
+        // Owner 4 Nov (CPU): proof of the savings, not a claim - how many responses were served from
+        // the serialisation memo instead of re-running JSON.stringify over the same answer.
+        jsonMemo: jsonMemoStats()
       });
     });
     apiRouter.get("/history", async (req, res) => {
@@ -54491,6 +54567,7 @@ var import_path9 = __toESM(require("path"), 1);
 var import_fs9 = __toESM(require("fs"), 1);
 var import_express5 = __toESM(require("express"), 1);
 var import_compression = __toESM(require("compression"), 1);
+init_jsonMemo();
 
 // server/common/canonicalHost.ts
 var APEX_HOST = "try1second.com";
@@ -54523,6 +54600,16 @@ async function createApp() {
     next();
   });
   app.use((0, import_compression.default)());
+  app.use((_req, res, next) => {
+    const original = res.json.bind(res);
+    res.json = (body) => {
+      const memoised = jsonStringMemo(body);
+      if (memoised === null) return original(body);
+      if (!res.getHeader("Content-Type")) res.setHeader("Content-Type", "application/json; charset=utf-8");
+      return res.send(memoised);
+    };
+    next();
+  });
   app.use(lenientJsonBody("256kb"));
   gracefulPublicStatus(app, {
     fallbackRows: (req) => {

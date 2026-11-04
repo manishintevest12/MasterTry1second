@@ -98,7 +98,20 @@ export async function recallAnswer(k: MemoryKey): Promise<RememberedAnswer | nul
 }
 
 /** Seller reliability for one vertical: which sellers actually deliver rows for this vertical. */
+/**
+ * OWNER 4 Nov ("cpu usage km kro bina results impact kiye"): this ran a MySQL SELECT on EVERY
+ * assistant answer, even though the ranking hint it produces changes on the scale of a whole
+ * search sweep, not per request. It is now memoised for T1S_RELIABILITY_TTL_MS (60s) per
+ * vertical|limit: same rows in, same score out, one query instead of one per question. Failures are
+ * never cached (a DB hiccup must not stick for a minute).
+ */
+const reliabilityMemo = new Map<string, { at: number; value: Record<string, number> }>();
+const RELIABILITY_TTL_MS = () => Math.max(1000, Number(process.env.T1S_RELIABILITY_TTL_MS) || 60_000);
+
 export async function sellerReliability(vertical: string, limit = 40): Promise<Record<string, number>> {
+  const memoKey = `${String(vertical)}|${limit}`;
+  const hit = reliabilityMemo.get(memoKey);
+  if (hit && Date.now() - hit.at < RELIABILITY_TTL_MS()) return hit.value;
   try {
     const rows = await getStore().query<any>(
       `SELECT sellers, times_seen FROM ${TABLE} WHERE vertical = ? ORDER BY last_verified_at DESC LIMIT ?`,
@@ -111,9 +124,11 @@ export async function sellerReliability(vertical: string, limit = 40): Promise<R
         score[s] = (score[s] || 0) + seen;
       }
     }
+    reliabilityMemo.set(memoKey, { at: Date.now(), value: score });
+    if (reliabilityMemo.size > 200) reliabilityMemo.clear(); // bounded: one entry per vertical
     return score;
   } catch {
-    return {};
+    return {}; // never cached, so a DB hiccup cannot stick for a minute
   }
 }
 

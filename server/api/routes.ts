@@ -53,6 +53,7 @@ import { beginScrape, send429, send504, withDeadline } from './requestGuard';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
+import { jsonMemoStats } from '../common/jsonMemo';
 import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, normalizeTypedProductQuery } from '../lens/productLink';
@@ -807,6 +808,9 @@ apiRouter.get('/status', authMiddleware, requireAdmin, (_req, res) => {
     sources: sourcesStatusReport(),
     health: getAllHealth(),
     cache: cacheStats(),
+    // Owner 4 Nov (CPU): proof of the savings, not a claim - how many responses were served from
+    // the serialisation memo instead of re-running JSON.stringify over the same answer.
+    jsonMemo: jsonMemoStats(),
   });
 });
 
