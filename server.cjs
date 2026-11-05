@@ -4,13 +4,8 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __esm = (fn, res, err) => function __init() {
-  if (err) throw err[0];
-  try {
-    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-  } catch (e2) {
-    throw err = [e2], e2;
-  }
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -387,8 +382,8 @@ function recordSourcePrices(vertical, query, offers) {
     perSource.set(sid, Math.min(perSource.get(sid) ?? Infinity, p));
   }
   const now = Date.now();
-  for (const [sid, price] of perSource) {
-    store6[`${vertical}|${sid}`] = { price: Math.round(price * 100) / 100, query: String(query || "").slice(0, 80), at: now };
+  for (const [sid, price2] of perSource) {
+    store6[`${vertical}|${sid}`] = { price: Math.round(price2 * 100) / 100, query: String(query || "").slice(0, 80), at: now };
   }
   if (perSource.size) persistSoon();
 }
@@ -2453,9 +2448,9 @@ function devFixturesEnabled() {
 function buildDevFixtures(source, vertical, query) {
   if (!devFixturesEnabled()) return [];
   const q3 = String(query || "sample query").slice(0, 60);
-  const mk = (title, price) => newRawItem(source, {
+  const mk = (title, price2) => newRawItem(source, {
     title,
-    price,
+    price: price2,
     currency: "INR",
     seller: "DEV FIXTURE SELLER",
     sellerUrl: "https://example.com/",
@@ -3343,9 +3338,9 @@ function parseAmazonIn(html, source, searchUrl) {
     const nameText = (card.find('[data-cy="title-recipe"] a.a-link-normal[class*="line-clamp"]').first().text() || card.find('a.a-link-normal[class*="s-line-clamp"]').first().text() || card.find("img.s-image").first().attr("alt") || "").replace(/\s+/g, " ").trim();
     const title = nameText ? brandText && !nameText.toLowerCase().startsWith(brandText.toLowerCase()) ? `${brandText} ${nameText}` : nameText : brandText;
     const h2 = card.find("h2").first();
-    const price = parseInr(card.find("span.a-price:not(.a-text-price) > span.a-offscreen").first().text());
+    const price2 = parseInr(card.find("span.a-price:not(.a-text-price) > span.a-offscreen").first().text());
     const mrp = parseInr(card.find("span.a-price.a-text-price > span.a-offscreen").first().text());
-    if (!title || !price) return;
+    if (!title || !price2) return;
     const rating = card.find("span.a-icon-alt").first().text().match(/([\d.]+) out of 5/)?.[1];
     const href = h2.find("a").attr("href") || card.find('a.a-link-normal[href*="/dp/"]').attr("href") || `/dp/${asin}`;
     const url = new URL(href.startsWith("http") ? href : `https://www.amazon.in${href.startsWith("/") ? "" : "/"}${href}`);
@@ -3357,9 +3352,9 @@ function parseAmazonIn(html, source, searchUrl) {
     const unavailable = /currently unavailable|out of stock/i.test(card.text());
     out.push(newRawItem(source, {
       title: title.slice(0, 220),
-      price,
+      price: price2,
       currency: "INR",
-      listPrice: mrp && mrp > price ? mrp : void 0,
+      listPrice: mrp && mrp > price2 ? mrp : void 0,
       identifiers: { vendorProductId: asin },
       attributes: { ...rating ? { rating } : {}, ...prime ? { prime: "true" } : {}, ...imageUrl ? { image_url: imageUrl } : {} },
       seller: "Amazon.in",
@@ -3554,9 +3549,9 @@ function parseMyntra(html, source, pageUrl) {
   const items = [];
   for (const p of products.slice(0, 40)) {
     const name = String(p.productName || p.product || "").trim();
-    const price = Number(p.price);
-    if (!name || !Number.isFinite(price) || price <= 0) continue;
-    const mrp = Number(p.mrp) > price ? Number(p.mrp) : void 0;
+    const price2 = Number(p.price);
+    if (!name || !Number.isFinite(price2) || price2 <= 0) continue;
+    const mrp = Number(p.mrp) > price2 ? Number(p.mrp) : void 0;
     const landing = String(p.landingPageUrl || "");
     const url = landing ? `https://www.myntra.com/${landing.replace(/^\/+/, "")}` : "https://www.myntra.com";
     const img = p.searchImage ? String(p.searchImage).replace(/^http:/, "https:") : void 0;
@@ -3565,7 +3560,7 @@ function parseMyntra(html, source, pageUrl) {
       title: name.slice(0, 200),
       brand: p.brand ? String(p.brand).slice(0, 120) : void 0,
       model: p.productId ? String(p.productId) : void 0,
-      price,
+      price: price2,
       listPrice: mrp,
       currency: "INR",
       seller: "Myntra",
@@ -3627,9 +3622,9 @@ function parseAjio(rawBody, source, pageUrl) {
   const items = [];
   for (const p of products.slice(0, 40)) {
     const name = String(p.name || "").trim();
-    const price = Number(p.price?.value);
-    if (!name || !Number.isFinite(price) || price <= 0) continue;
-    const mrp = Number(p.wasPriceData?.value) > price ? Number(p.wasPriceData?.value) : void 0;
+    const price2 = Number(p.price?.value);
+    if (!name || !Number.isFinite(price2) || price2 <= 0) continue;
+    const mrp = Number(p.wasPriceData?.value) > price2 ? Number(p.wasPriceData?.value) : void 0;
     const brand = p.fnlColorVariantData?.brandName ? String(p.fnlColorVariantData.brandName) : void 0;
     const rel = String(p.url || "");
     const url = rel ? `https://www.ajio.com${rel.startsWith("/") ? rel : `/${rel}`}` : "https://www.ajio.com";
@@ -3638,7 +3633,7 @@ function parseAjio(rawBody, source, pageUrl) {
       title: (brand ? `${brand} ${name}` : name).slice(0, 200),
       brand,
       model: p.code ? String(p.code) : void 0,
-      price,
+      price: price2,
       listPrice: mrp,
       currency: "INR",
       seller: "Ajio",
@@ -3677,13 +3672,13 @@ function parseTataCliq(rawBody, source, pageUrl) {
     const results = grp?.product_search_page?.search_result || [];
     for (const p of results) {
       const name = String(p.productname || p.productTitle || "").trim();
-      const price = Number(p.price?.sellingPrice?.doubleValue);
-      if (!name || !Number.isFinite(price) || price <= 0) continue;
+      const price2 = Number(p.price?.sellingPrice?.doubleValue);
+      if (!name || !Number.isFinite(price2) || price2 <= 0) continue;
       const sku = String(p.ussid || p.productId || "");
       if (sku && seen.has(sku)) continue;
       if (sku) seen.add(sku);
       const mrpVal = Number(p.price?.mrpPrice?.doubleValue);
-      const mrp = Number.isFinite(mrpVal) && mrpVal > price ? mrpVal : void 0;
+      const mrp = Number.isFinite(mrpVal) && mrpVal > price2 ? mrpVal : void 0;
       const brand = p.brandname ? String(p.brandname) : void 0;
       const rel = String(p.webURL || "");
       const url = rel ? `https://www.tatacliq.com${rel.startsWith("/") ? rel : `/${rel}`}` : "https://www.tatacliq.com";
@@ -3696,7 +3691,7 @@ function parseTataCliq(rawBody, source, pageUrl) {
         title: (brand && !name.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${name}` : name).slice(0, 200),
         brand,
         model: p.productId ? String(p.productId) : void 0,
-        price,
+        price: price2,
         listPrice: mrp,
         currency: "INR",
         seller: "Tata CLiQ",
@@ -3777,8 +3772,8 @@ function parseNykaa(html, source, pageUrl) {
     if (!full) continue;
     const sell = Number(p.discountedPrice);
     const mrp = Number(p.price);
-    const price = Number.isFinite(sell) && sell > 0 ? sell : mrp;
-    if (!Number.isFinite(price) || price <= 0) continue;
+    const price2 = Number.isFinite(sell) && sell > 0 ? sell : mrp;
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
     const id = p.id != null ? String(p.id) : "";
     const pdp = id && hrefs.get(id) ? `https://www.nykaa.com${hrefs.get(id)}` : "https://www.nykaa.com";
     const https = (u) => u.replace(/^http:/, "https:");
@@ -3788,8 +3783,8 @@ function parseNykaa(html, source, pageUrl) {
       title: full.slice(0, 200),
       brand: brand || void 0,
       model: p.sku ? String(p.sku) : id || void 0,
-      price,
-      listPrice: mrp > price ? mrp : void 0,
+      price: price2,
+      listPrice: mrp > price2 ? mrp : void 0,
       currency: "INR",
       seller: "Nykaa",
       sellerUrl: pdp,
@@ -3827,13 +3822,13 @@ function parseCromaSearch(rawBody, source, pageUrl) {
   const seen = /* @__PURE__ */ new Set();
   for (const p of products) {
     const name = String(p.name || "").trim();
-    const price = Number(p.price?.value ?? p.pincodePrice?.value);
-    if (!name || !Number.isFinite(price) || price <= 0) continue;
+    const price2 = Number(p.price?.value ?? p.pincodePrice?.value);
+    if (!name || !Number.isFinite(price2) || price2 <= 0) continue;
     const sku = String(p.code || "");
     if (sku && seen.has(sku)) continue;
     if (sku) seen.add(sku);
     const mrpVal = Number(p.mrp?.value);
-    const mrp = Number.isFinite(mrpVal) && mrpVal > price ? mrpVal : void 0;
+    const mrp = Number.isFinite(mrpVal) && mrpVal > price2 ? mrpVal : void 0;
     const brand = p.manufacturer ? String(p.manufacturer) : void 0;
     const rel = String(p.url || "");
     const url = rel ? `https://www.croma.com${rel.startsWith("/") ? rel : `/${rel}`}` : "https://www.croma.com";
@@ -3845,7 +3840,7 @@ function parseCromaSearch(rawBody, source, pageUrl) {
       title: (brand && !name.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${name}` : name).slice(0, 200),
       brand,
       model: sku || void 0,
-      price,
+      price: price2,
       listPrice: mrp,
       currency: "INR",
       seller: "Croma",
@@ -3917,14 +3912,14 @@ function parseXiaomiSearch(rawBody, source, pageUrl) {
     const id = String(p.id || p.spu_id || "");
     if (id && seen.has(id)) continue;
     if (id) seen.add(id);
-    const price = num(p.price_min_num) ?? num(p.price_max_num) ?? num((entry.commodity || [])[0]?.sales_price);
-    if (!price) continue;
-    items.push(makeItem(source, pageUrl, p, entry, price));
+    const price2 = num(p.price_min_num) ?? num(p.price_max_num) ?? num((entry.commodity || [])[0]?.sales_price);
+    if (!price2) continue;
+    items.push(makeItem(source, pageUrl, p, entry, price2));
     if (items.length >= 30) break;
   }
   return items;
 }
-function makeItem(source, pageUrl, p, entry, price) {
+function makeItem(source, pageUrl, p, entry, price2) {
   const name = String(p.name || "").trim();
   const id = String(p.id || p.spu_id || "");
   const mrp = num(p.market_price_min_num) ?? num(p.market_price_max_num);
@@ -3946,8 +3941,8 @@ function makeItem(source, pageUrl, p, entry, price) {
     title: name.slice(0, 200),
     brand,
     model: p.spu_id ? String(p.spu_id) : void 0,
-    price,
-    listPrice: mrp && mrp > price ? mrp : void 0,
+    price: price2,
+    listPrice: mrp && mrp > price2 ? mrp : void 0,
     currency: "INR",
     seller: "Xiaomi (mi.com)",
     sellerUrl: url,
@@ -4014,8 +4009,8 @@ function parseLenovoSearch(rawBody, source, pageUrl) {
   const items = [];
   const seen = /* @__PURE__ */ new Set();
   for (const p of products) {
-    const price = money(p.finalPrice) ?? money(p.beforeTaxPrice);
-    if (!price) continue;
+    const price2 = money(p.finalPrice) ?? money(p.beforeTaxPrice);
+    if (!price2) continue;
     const id = String(p.id || p.productCode || "");
     if (id && seen.has(id)) continue;
     if (id) seen.add(id);
@@ -4043,8 +4038,8 @@ function parseLenovoSearch(rawBody, source, pageUrl) {
     items.push(newRawItem(source, {
       title,
       brand: "Lenovo",
-      price,
-      listPrice: listPrice && listPrice > price ? listPrice : void 0,
+      price: price2,
+      listPrice: listPrice && listPrice > price2 ? listPrice : void 0,
       currency: String(p.currencyCode || "INR"),
       seller: "Lenovo (lenovo.com)",
       sellerUrl: url,
@@ -4099,8 +4094,8 @@ function parseRealmeSearch(rawBody, source, pageUrl) {
     const sku = String(r?.skuId || r?.spuId || "");
     if (!name || !sku || seen.has(sku)) continue;
     if (r?.isPricePendingDisplay) continue;
-    const price = num2(r?.currentPrice) ?? num2(r?.useCouponPrice);
-    if (!price) continue;
+    const price2 = num2(r?.currentPrice) ?? num2(r?.useCouponPrice);
+    if (!price2) continue;
     seen.add(sku);
     const mrp = num2(r?.mrpPrice) ?? num2(r?.originalPrice);
     const hero = /^https?:\/\//.test(String(r?.overviewUrl || "")) ? String(r.overviewUrl) : "";
@@ -4114,8 +4109,8 @@ function parseRealmeSearch(rawBody, source, pageUrl) {
       title: name.slice(0, 200),
       brand,
       model: String(r?.spuId || sku),
-      price,
-      listPrice: mrp && mrp > price ? mrp : void 0,
+      price: price2,
+      listPrice: mrp && mrp > price2 ? mrp : void 0,
       currency: "INR",
       seller: "Realme (realme.com)",
       sellerUrl: url,
@@ -4237,8 +4232,8 @@ function parseOppoPdp(html) {
 }
 function extractVariant(body) {
   const priceM = /"offers"\s*:\s*\{[^{}]*?"price"\s*:\s*"([0-9.]+)"/.exec(body);
-  const price = num3(priceM?.[1]);
-  if (!price) return null;
+  const price2 = num3(priceM?.[1]);
+  if (!price2) return null;
   const listM = /"listPrice"\s*:\s*\{\s*[^{}]*?"price"\s*:\s*"([0-9.]+)"/.exec(body);
   const skuM = /"sku"\s*:\s*"([0-9A-Za-z-]+)"/.exec(body);
   const nameM = /"name"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
@@ -4260,7 +4255,7 @@ function extractVariant(body) {
   return {
     name,
     sku: skuM?.[1] || `${name}-${colorM?.[1] || ""}`,
-    price,
+    price: price2,
     listPrice: num3(listM?.[1]),
     inStock: (availM?.[1] || "").includes("InStock"),
     images,
@@ -4280,9 +4275,9 @@ function extractOppoProsePrice(html) {
   for (const re of pats) {
     const m = re.exec(html);
     if (m) {
-      const price = indian(m[1]);
-      if (Number.isFinite(price) && price >= 1e3) {
-        return { price, matched: m[0].slice(0, 120) };
+      const price2 = indian(m[1]);
+      if (Number.isFinite(price2) && price2 >= 1e3) {
+        return { price: price2, matched: m[0].slice(0, 120) };
       }
     }
   }
@@ -4364,8 +4359,8 @@ function parseJiomart(body, source, pageUrl) {
     if (!name) continue;
     const eff = Number(it.price?.effective?.min ?? it.price?.effective?.max);
     const marked = Number(it.price?.marked?.min ?? it.price?.marked?.max);
-    const price = Number.isFinite(eff) && eff > 0 ? eff : marked;
-    if (!Number.isFinite(price) || price <= 0) continue;
+    const price2 = Number.isFinite(eff) && eff > 0 ? eff : marked;
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
     const brand = String(it.brand?.name || "").trim();
     const slug5 = String(it.slug || "").trim();
     const pdp = slug5 ? `https://www.jiomart.com/p/${slug5}` : "https://www.jiomart.com";
@@ -4373,14 +4368,14 @@ function parseJiomart(body, source, pageUrl) {
       (it.medias || []).filter((m) => m?.type === "image" && typeof m.url === "string").map((m) => String(m.url).replace(/^http:/, "https:")).filter((u) => /^https:\/\//.test(u))
     )].slice(0, 6);
     const hero = imgs[0] || "";
-    const discount = Number.isFinite(marked) && marked > price ? Math.round((marked - price) / marked * 100) : 0;
+    const discount = Number.isFinite(marked) && marked > price2 ? Math.round((marked - price2) / marked * 100) : 0;
     const sku = String(it.sku_code || it.item_code || "").trim();
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand: brand || void 0,
       model: sku || (it.uid != null ? String(it.uid) : void 0),
-      price,
-      listPrice: Number.isFinite(marked) && marked > price ? marked : void 0,
+      price: price2,
+      listPrice: Number.isFinite(marked) && marked > price2 ? marked : void 0,
       currency: it.price?.currency_code || "INR",
       seller: "JioMart",
       sellerUrl: pdp,
@@ -4449,14 +4444,14 @@ function parseRelianceDigital(html, source, pageUrl) {
   const seen = /* @__PURE__ */ new Set();
   for (const it of list.slice(0, 40)) {
     const name = String(it?.name || "").trim();
-    const price = Number(it?.price?.effective?.min);
-    if (!name || !Number.isFinite(price) || price <= 0) continue;
+    const price2 = Number(it?.price?.effective?.min);
+    if (!name || !Number.isFinite(price2) || price2 <= 0) continue;
     if (it?.sellable === false) continue;
     const slug5 = String(it?.slug || "").trim();
     if (!slug5 || seen.has(slug5)) continue;
     seen.add(slug5);
     const marked = Number(it?.price?.marked?.min);
-    const mrp = Number.isFinite(marked) && marked > price ? marked : void 0;
+    const mrp = Number.isFinite(marked) && marked > price2 ? marked : void 0;
     const brand = it?.brand?.name ? String(it.brand.name) : void 0;
     const medias = (Array.isArray(it?.medias) ? it.medias : []).filter((m) => m?.type !== "video" && typeof m?.url === "string").map((m) => String(m.url).replace(/^http:/, "https:"));
     const ean = Array.isArray(it?.attributes?.identifier?.ean) ? String(it.attributes.identifier.ean[0] || "") : "";
@@ -4467,14 +4462,14 @@ function parseRelianceDigital(html, source, pageUrl) {
       title: name.slice(0, 200),
       brand,
       model: sku || void 0,
-      price,
+      price: price2,
       listPrice: mrp,
       currency: "INR",
       seller: "Reliance Digital",
       sellerUrl: url,
       attributes: {
         brand: brand || "",
-        discount: mrp ? `${Math.round((mrp - price) / mrp * 100)}%` : "",
+        discount: mrp ? `${Math.round((mrp - price2) / mrp * 100)}%` : "",
         image: medias[0] || "",
         ...medias.length > 1 ? { image_urls: medias.slice(0, 6).join("|") } : {},
         ...Number.isFinite(rating) && rating > 0 ? { rating: String(rating) } : {},
@@ -4491,6 +4486,90 @@ var init_relianceDigital = __esm({
   "server/workers/parsers/relianceDigital.ts"() {
     init_contract();
     RELIANCE_WEB = "https://www.reliancedigital.in";
+  }
+});
+
+// server/workers/parsers/shopsy.ts
+function cdn(url) {
+  return String(url).replace("{@width}", "500").replace("{@height}", "500").replace("{@quality}", "70").replace(/^http:\/\//, "https://");
+}
+function nextData(html) {
+  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[1]);
+  } catch {
+    return null;
+  }
+}
+function productNodes(root) {
+  const slots = root?.props?.pageProps?.initialState?.pageData?.RESPONSE?.slots;
+  if (!Array.isArray(slots)) return [];
+  const out = [];
+  for (const slot2 of slots) {
+    if (slot2?.widget?.type !== "PRODUCT_SUMMARY") continue;
+    const list = slot2?.widget?.data?.products;
+    if (Array.isArray(list)) out.push(...list);
+  }
+  return out;
+}
+function price(v) {
+  const n = Number(String(v ?? "").replace(/,/g, ""));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : void 0;
+}
+function parseShopsy(html, source, pageUrl) {
+  const root = nextData(html);
+  if (!root) return [];
+  const items = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const node of productNodes(root).slice(0, 40)) {
+    const v = node?.productInfo?.value;
+    if (!v) continue;
+    const title = String(v?.titles?.title || v?.titles?.subtitle || "").replace(/\s+/g, " ").trim();
+    const sellPrice = price(v?.pricing?.finalPrice?.value ?? v?.pricing?.finalPrice?.decimalValue);
+    if (!title || !sellPrice) continue;
+    const mrpRaw = price(v?.pricing?.mrp?.value ?? v?.pricing?.mrp?.decimalValue);
+    const listPrice = mrpRaw && mrpRaw > sellPrice ? mrpRaw : void 0;
+    const rel = String(v?.baseUrl || "").trim();
+    const url = rel ? rel.startsWith("http") ? rel.replace(/^http:/, "https:") : `https://www.shopsy.in${rel.startsWith("/") ? "" : "/"}${rel}` : pageUrl;
+    const id = String(v?.id || v?.itemId || "");
+    if (id && seen.has(id)) continue;
+    if (id) seen.add(id);
+    const images = (v?.media?.images || []).map((i) => cdn(String(i?.url || ""))).filter(Boolean);
+    const uniqueImages = Array.from(new Set(images)).slice(0, 8);
+    const rating = Number(v?.rating?.average);
+    const ratingCount = Number(v?.rating?.count);
+    const stock = String(v?.availability?.displayState || "").toUpperCase();
+    items.push(
+      newRawItem(source, {
+        title: title.slice(0, 200),
+        price: sellPrice,
+        listPrice,
+        currency: "INR",
+        seller: "Shopsy",
+        sellerUrl: url,
+        identifiers: id ? { vendorProductId: id } : void 0,
+        availability: stock.includes("IN_STOCK") ? "in_stock" : stock.includes("OUT_OF_STOCK") ? "out_of_stock" : "unknown",
+        attributes: {
+          image: uniqueImages[0] || "",
+          ...uniqueImages.length > 1 ? { image_urls: uniqueImages.join("|") } : {},
+          ...Number.isFinite(rating) && rating > 0 ? { rating: rating.toFixed(1) } : {},
+          ...Number.isFinite(ratingCount) && ratingCount > 0 ? { rating_count: String(ratingCount) } : {},
+          ...listPrice ? { discount: `${Math.round((1 - sellPrice / listPrice) * 100)}%` } : {},
+          data_note: `Product as listed on Shopsy search, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+        },
+        evidence: {
+          sourceUrl: pageUrl,
+          extractedFields: ["title", "price", "mrp", "rating", "image", "url"]
+        }
+      })
+    );
+  }
+  return items;
+}
+var init_shopsy = __esm({
+  "server/workers/parsers/shopsy.ts"() {
+    init_contract();
   }
 });
 
@@ -4537,6 +4616,7 @@ var init_ecommerce = __esm({
     init_oppo();
     init_jiomart();
     init_relianceDigital();
+    init_shopsy();
     import_node_crypto = require("node:crypto");
     init_httpClient();
     init_curlCffiFetch();
@@ -4697,13 +4777,27 @@ var init_ecommerce = __esm({
         },
         // ---- Owner-mandated e-commerce sources: attempted live on every search, honestly reported ----
         {
-          sourceId: "w_ecom_meesho",
-          name: "Ecom worker: Meesho (probe)",
+          // Shopsy (shopsy.in), Flipkart-owned value e-commerce.
+          // No JSON search API: the SSR page carries every product in __NEXT_DATA__
+          // (PRODUCT_SUMMARY slots). Plain server fetches get 403/529 from the Flipkart
+          // WAF, so this source uses the Chrome TLS-impersonation transport.
+          sourceId: "w_ecom_shopsy",
+          name: "Ecom worker: Shopsy (Flipkart-owned)",
           priority: 15,
           run: async (ctx) => {
-            const term = q(ctx) || "products";
-            await cffiFetch(`https://www.meesho.com/search?q=${encodeURIComponent(term)}`, { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "Meesho search serves a client-rendered shell to browserless HTTP; product prices load only via session-gated app APIs.");
+            const term = q(ctx);
+            if (!term) return [];
+            const url = `https://www.shopsy.in/search?q=${encodeURIComponent(term)}`;
+            const r = await cffiFetch(url, {
+              impersonate: "chrome",
+              timeoutMs: 15e3,
+              headers: { "Accept-Language": "en-IN,en;q=0.9" }
+            });
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Shopsy HTTP ${r.status}`, r.status);
+            const items = parseShopsy(r.body, ctx.source, url);
+            if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "Shopsy presented a challenge page");
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Shopsy page carried no parseable products");
+            return items;
           }
         },
         {
@@ -5414,7 +5508,7 @@ function parseBookingHotels(html, source, searchUrl, checkin, checkout) {
     if (!name || seen.has(name)) return;
     seen.add(name);
     const priceEl = card.find('[data-testid="price-and-discounted-price"]').first().text() || card.find('[data-testid="price"]').first().text();
-    const { value: price, currency } = parseInr2(priceEl);
+    const { value: price2, currency } = parseInr2(priceEl);
     const scoreText = card.find('[data-testid="review-score"]').first().text().replace(/\s+/g, " ").trim();
     const score = scoreText.match(/(\d(?:\.\d)?)\b/)?.[1];
     const href = card.find('a[href*="/hotel/"]').first().attr("href") || "";
@@ -5422,10 +5516,10 @@ function parseBookingHotels(html, source, searchUrl, checkin, checkout) {
     const imgEl = card.find('img[data-testid="hotel-image"]').first().length ? card.find('img[data-testid="hotel-image"]').first() : card.find('img[src*="bstatic.com"], img[data-src*="bstatic.com"]').first();
     const img = String(imgEl.attr("src") || imgEl.attr("data-src") || "").trim();
     const distance = card.find('[data-testid="distance"]').first().text().trim();
-    if (!price) return;
+    if (!price2) return;
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
-      price,
+      price: price2,
       currency,
       seller: "Booking.com",
       sellerUrl: propUrl,
@@ -5481,19 +5575,19 @@ function parseExpediaGroup(body, source, site, checkin, checkout, fx) {
     if (L?.__typename !== "LodgingCard") continue;
     const name = String(L?.headingSection?.heading || "").trim();
     if (!name || seen.has(name)) continue;
-    const { value: price, currency } = parsePriceFormatted(String(L?.priceSection?.priceSummary?.options?.[0]?.displayPrice?.formatted || ""));
-    if (!price) continue;
+    const { value: price2, currency } = parsePriceFormatted(String(L?.priceSection?.priceSummary?.options?.[0]?.displayPrice?.formatted || ""));
+    if (!price2) continue;
     seen.add(name);
     const img = String(L?.mediaSection?.gallery?.media?.[0]?.media?.url || "").replace(/^http:/, "https:");
     const rel = String(L?.cardLink?.resource?.relativePath || "");
     const url = rel ? `${origin}${rel.startsWith("/") ? rel : `/${rel}`}` : origin;
     const sellerUrl = `${url}${url.includes("?") ? "&" : "?"}chkin=${checkin}&chkout=${checkout}`;
-    let finalPrice = price, finalCurrency = currency;
+    let finalPrice = price2, finalCurrency = currency;
     let note = `Nightly rate observed on ${site} live listing API, ${today2}`;
-    if (fx && currency === "USD" && price > 0) {
-      finalPrice = Math.round(price * fx.rate);
+    if (fx && currency === "USD" && price2 > 0) {
+      finalPrice = Math.round(price2 * fx.rate);
       finalCurrency = "INR";
-      note = `$${price} nightly listed on ${site}, converted to INR at live USD/INR ${fx.rate.toFixed(2)} (${fx.source}), ${today2}`;
+      note = `$${price2} nightly listed on ${site}, converted to INR at live USD/INR ${fx.rate.toFixed(2)} (${fx.source}), ${today2}`;
     }
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
@@ -5624,10 +5718,10 @@ var init_wikidataHotels = __esm({
 });
 
 // server/workers/parsers/cleartripHotels.ts
-function parseCleartripHotels(nextData) {
+function parseCleartripHotels(nextData2) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  const slots = nextData?.props?.pageProps?.initialState?.results?.data?.slotsData;
+  const slots = nextData2?.props?.pageProps?.initialState?.results?.data?.slotsData;
   if (!Array.isArray(slots)) return out;
   for (const slot2 of slots) {
     if (slot2?.slotData?.type !== "HOTEL_CARD_LIST") continue;
@@ -5637,10 +5731,10 @@ function parseCleartripHotels(nextData) {
       const d = card?.data;
       if (!d?.name || !d?.priceInfo?.data) continue;
       const pi = d.priceInfo.data;
-      const price = Number(pi.price) || 0;
-      if (price <= 0) continue;
+      const price2 = Number(pi.price) || 0;
+      if (price2 <= 0) continue;
       const id = String(d.ravenTracking?.eventData?.h_hotel_id || pi.hotelId || d.id || "");
-      const key = id || `${d.name}|${price}`;
+      const key = id || `${d.name}|${price2}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const imgRaw = d?.imageSlider?.data?.images?.[0]?.data?.url;
@@ -5651,7 +5745,7 @@ function parseCleartripHotels(nextData) {
       out.push({
         id,
         name: String(d.name).trim(),
-        price,
+        price: price2,
         slashedPrice: Number(pi.slashedPrice) || 0,
         currency: "INR",
         rating: d?.clearTripRatingAndReview?.data?.rating ? String(d.clearTripRatingAndReview.data.rating) : null,
@@ -5717,11 +5811,11 @@ function collectHermesHotels(node, out, depth = 0) {
     const candidates = node.filter(isHotelish);
     if (candidates.length >= 3) {
       for (const c of candidates) {
-        const price = toPrice(pick(c, PRICE_KEYS) ?? c.pricing ?? c.priceDetails ?? c.fareDetails);
-        if (price <= 0) continue;
+        const price2 = toPrice(pick(c, PRICE_KEYS) ?? c.pricing ?? c.priceDetails ?? c.fareDetails);
+        if (price2 <= 0) continue;
         out.push({
           name: String(pick(c, NAME_KEYS)).trim().slice(0, 160),
-          price,
+          price: price2,
           rating: (() => {
             const r = Number(pick(c, RATING_KEYS));
             return Number.isFinite(r) && r > 0 && r <= 5 ? r : void 0;
@@ -6119,9 +6213,9 @@ function parseGoibiboHotelsSsr(body) {
   for (const h of hits) {
     if (h.score < 5) continue;
     const name = String(pickFirst(h.obj, NAME_KEYS2) || "").trim();
-    let price = Number(pickFirst(h.obj, PRICE_KEYS2)) || 0;
-    if (Array.isArray(pickFirst(h.obj, PRICE_KEYS2))) price = Number(pickFirst(h.obj, PRICE_KEYS2)[0]) || 0;
-    if (!name || !Number.isFinite(price) || price < 100 || price > 1e7) continue;
+    let price2 = Number(pickFirst(h.obj, PRICE_KEYS2)) || 0;
+    if (Array.isArray(pickFirst(h.obj, PRICE_KEYS2))) price2 = Number(pickFirst(h.obj, PRICE_KEYS2)[0]) || 0;
+    if (!name || !Number.isFinite(price2) || price2 < 100 || price2 > 1e7) continue;
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -6130,7 +6224,7 @@ function parseGoibiboHotelsSsr(body) {
     if (image && image.startsWith("//")) image = "https:" + image;
     const locality = String(pickFirst(h.obj, ["locality", "area", "address", "location"]) || "");
     const slug5 = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
-    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug5 || void 0 });
+    out.push({ name, price: price2, rating, image: image || void 0, locality: locality || void 0, url: slug5 || void 0 });
     if (out.length >= 60) break;
   }
   return out;
@@ -6205,11 +6299,11 @@ function parseGoibiboHotelSsrState(body) {
     if (!h || typeof h !== "object") return;
     const name = String(h.name || h.maskedName || "").trim();
     const pd = h.priceDetail || {};
-    let price = Number(pd.discountedPrice ?? pd.price ?? 0) || 0;
-    if (!price) price = Number(pd.discountedPriceWithTax ?? pd.priceWithTax ?? 0) || 0;
-    if (!name || !Number.isFinite(price) || price < 100 || price > 1e7) return;
+    let price2 = Number(pd.discountedPrice ?? pd.price ?? 0) || 0;
+    if (!price2) price2 = Number(pd.discountedPriceWithTax ?? pd.priceWithTax ?? 0) || 0;
+    if (!name || !Number.isFinite(price2) || price2 < 100 || price2 > 1e7) return;
     if (h.soldOut === true || h.showCallToBook === true) return;
-    const key = name.toLowerCase() + "|" + Math.round(price);
+    const key = name.toLowerCase() + "|" + Math.round(price2);
     if (seen.has(key)) return;
     seen.add(key);
     let image = "";
@@ -6226,7 +6320,7 @@ function parseGoibiboHotelSsrState(body) {
     const loc = Array.isArray(h.locationPersuasion) ? String(h.locationPersuasion[0] || "") : String(h?.locationDetail?.name || "");
     out.rows.push({
       name,
-      price,
+      price: price2,
       rating,
       image,
       locality: loc,
@@ -6330,9 +6424,9 @@ function parseMmtHotelLanding(body) {
         return;
       }
       const name = String(pickFirst2(o, NAME_KEYS3) || "").trim();
-      const price = num4(pickFirst2(o, PRICE_KEYS3));
-      if (name && Number.isFinite(price) && price >= 100 && price <= 1e7) {
-        const key = name.toLowerCase() + "|" + Math.round(price);
+      const price2 = num4(pickFirst2(o, PRICE_KEYS3));
+      if (name && Number.isFinite(price2) && price2 >= 100 && price2 <= 1e7) {
+        const key = name.toLowerCase() + "|" + Math.round(price2);
         if (!seen.has(key)) {
           seen.add(key);
           let image = String(pickFirst2(o, IMG_KEYS2) || "");
@@ -6340,7 +6434,7 @@ function parseMmtHotelLanding(body) {
           const rating = num4(pickFirst2(o, RATING_KEYS3));
           out.rows.push({
             name,
-            price,
+            price: price2,
             rating: Number.isFinite(rating) && rating > 0 && rating <= 5 ? Math.round(rating * 10) / 10 : void 0,
             image,
             locality: String(pickFirst2(o, LOC_KEYS) || ""),
@@ -7114,8 +7208,8 @@ function parseSaffronVillas(data) {
 function parseSaffronOffers(villas, source, city) {
   const out = [];
   for (const v of villas) {
-    const price = v.perNightAfterDiscount ?? v.pricePerNight;
-    if (!v.title || price == null || price <= 0 || !v.available) continue;
+    const price2 = v.perNightAfterDiscount ?? v.pricePerNight;
+    if (!v.title || price2 == null || price2 <= 0 || !v.available) continue;
     const attrs = {
       image_url: v.imageIds[0] ? saffronImageUrl(v.imageIds[0]) : null,
       images: v.imageIds.map(saffronImageUrl).join("|") || null,
@@ -7128,7 +7222,7 @@ function parseSaffronOffers(villas, source, city) {
       bedrooms: v.bedrooms,
       max_capacity: v.capacity,
       collection: v.signature,
-      price_basis: v.totalWithTax && v.totalWithTax > price ? `villa per night on SaffronStays (\u20B9${Math.round(price)} + taxes; total \u20B9${Math.round(v.totalWithTax)})` : "villa per night on SaffronStays (as listed)",
+      price_basis: v.totalWithTax && v.totalWithTax > price2 ? `villa per night on SaffronStays (\u20B9${Math.round(price2)} + taxes; total \u20B9${Math.round(v.totalWithTax)})` : "villa per night on SaffronStays (as listed)",
       data_note: "Live villa per-night rates observed on SaffronStays search"
     };
     out.push(newRawItem(source, {
@@ -7136,7 +7230,7 @@ function parseSaffronOffers(villas, source, city) {
       seller: "SaffronStays",
       sellerUrl: v.seoUrl ? `${SAFFRON_WEB}/villas/${v.seoUrl}` : `${SAFFRON_WEB}/villas`,
       currency: "INR",
-      price: Math.round(price),
+      price: Math.round(price2),
       attributes: attrs,
       travel: { route: `${city} stay` },
       evidence: {
@@ -8377,8 +8471,8 @@ function ixigoIsoDate(d) {
   if (!m) return /^\d{4}-\d{2}-\d{2}$/.test(String(d || "")) ? String(d).trim() : "";
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
-function parseIxigoFlights(nextData, fromCode, toCode) {
-  const entries2 = nextData?.props?.pageProps?.cheapFlightsData;
+function parseIxigoFlights(nextData2, fromCode, toCode) {
+  const entries2 = nextData2?.props?.pageProps?.cheapFlightsData;
   if (!Array.isArray(entries2)) return [];
   const flights = [];
   for (const e2 of entries2) {
@@ -9432,10 +9526,10 @@ function parseAertripJourneys(body, opts) {
     for (const j of journeys) {
       const depTime = String(j?.dt || "").slice(0, 5);
       const arrTime = String(j?.at || "").slice(0, 5);
-      const price = aertripJourneyPrice(j);
+      const price2 = aertripJourneyPrice(j);
       const flightNo2 = aertripFlightNumber(j);
       if (!/^\d{2}:\d{2}$/.test(depTime) || !/^\d{2}:\d{2}$/.test(arrTime)) continue;
-      if (!price || price < 500 || price > 5e5) continue;
+      if (!price2 || price2 < 500 || price2 > 5e5) continue;
       if (!flightNo2) continue;
       const ap = (j?.ap || []).map((c) => String(c).toUpperCase());
       if (ap.length >= 2 && (ap[0] !== opts.fromCode.toUpperCase() || ap[ap.length - 1] !== opts.toCode.toUpperCase())) continue;
@@ -9443,7 +9537,7 @@ function parseAertripJourneys(body, opts) {
       const stops = Number.isFinite(Number(j?.stp)) ? Number(j?.stp) : Math.max(0, (j?.leg || []).length - 1);
       const duration = aertripDurationMinutes(j);
       const cabin = String(j?.segment_cabin_classes?.[0] || "economy");
-      const key = `${flightNo2}|${depTime}|${price}`;
+      const key = `${flightNo2}|${depTime}|${price2}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const dispNo = flightNo2.split("-").reduce((acc, part, i, arr) => {
@@ -9453,7 +9547,7 @@ function parseAertripJourneys(body, opts) {
       out.push(newRawItem(opts.source, {
         title: `${dispNo} \xB7 ${opts.routeLabel}`.slice(0, 200),
         brand: carrierCode.slice(0, 80),
-        price,
+        price: price2,
         currency: "INR",
         seller: AERTRIP_SELLER,
         sellerUrl: deeplink,
@@ -9506,11 +9600,11 @@ function parseAkasaFareCalendar(xml) {
   const blocks = xml.match(/<data>[\s\S]*?<\/data>/g) || [];
   for (const b of blocks) {
     const date = b.match(/<date>([^<]+)<\/date>/)?.[1]?.slice(0, 10) || null;
-    const price = Number(b.match(/<price>([^<]+)<\/price>/)?.[1] || 0);
+    const price2 = Number(b.match(/<price>([^<]+)<\/price>/)?.[1] || 0);
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     out.push({
       date,
-      price,
+      price: price2,
       isLowest: /<isLowest>true<\/isLowest>/.test(b),
       noFlights: /<noFlights>true<\/noFlights>/.test(b),
       soldOut: /<soldOut>true<\/soldOut>/.test(b)
@@ -9574,9 +9668,9 @@ function parseBudgetAirCalendar(body) {
     const date = String(e2.date ?? "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     const raw = e2.totalPrice;
-    const price = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
-    if (!Number.isFinite(price) || price <= 0) continue;
-    out.push({ date, price });
+    const price2 = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
+    out.push({ date, price: price2 });
   }
   return out;
 }
@@ -9700,9 +9794,9 @@ function parseEtraveliFlights(body) {
   return { flights, flightsCount, searchPath };
 }
 function etraveliFlightFare(f) {
-  const price = f.travelerPrices?.[0]?.price?.price;
-  const value = Number(price?.value);
-  const currency = String(price?.currency?.code || "").toUpperCase();
+  const price2 = f.travelerPrices?.[0]?.price?.price;
+  const value = Number(price2?.value);
+  const currency = String(price2?.currency?.code || "").toUpperCase();
   if (!Number.isFinite(value) || value <= 0) return { fare: NaN, currency };
   return { fare: value / 100, currency };
 }
@@ -10507,8 +10601,8 @@ function parseYatraBatch(body, source, srpUrl, routeKey, fromCity, toCity) {
       const segs = Array.isArray(od.FS) ? od.FS : [];
       if (!segs.length) continue;
       const fare = fares?.[fid]?.O?.ADT;
-      const price = Number(fare?.tf ?? fare?.ftf);
-      if (!Number.isFinite(price) || price <= 0) continue;
+      const price2 = Number(fare?.tf ?? fare?.ftf);
+      if (!Number.isFinite(price2) || price2 <= 0) continue;
       const first = segs[0];
       const last = segs[segs.length - 1];
       const ac = String(first.ac || "");
@@ -10521,7 +10615,7 @@ function parseYatraBatch(body, source, srpUrl, routeKey, fromCity, toCity) {
       out.push(newRawItem(source, {
         title: `${name} ${ac}${fl ? `-${fl}` : ""} ${routeLabel} ${stops ? `(${stops} stop${stops > 1 ? "s" : ""})` : "non-stop"}`.slice(0, 200),
         brand: name,
-        price: Math.round(price),
+        price: Math.round(price2),
         currency: "INR",
         seller: "Yatra",
         sellerUrl: srpUrl,
@@ -10583,17 +10677,17 @@ function yatraCalendarItems(body, source, fromCity, toCity, fromCode, toCode, de
   const srp = yatraSrpUrl3(fromCode, toCode, targetKey);
   const items = [];
   for (const [code, af] of Object.entries(day[targetKey].af)) {
-    const price = Number(af?.tf);
-    if (!Number.isFinite(price) || price <= 0) continue;
+    const price2 = Number(af?.tf);
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
     const ow = Array.isArray(af.ow) ? af.ow[0] : null;
     const name = String(ow?.an || EMT_AIRLINES[code]?.name || code);
     const fl = String(ow?.fl || "");
     const depT = String(ow?.ddt || "").slice(11, 16);
     const arrT = String(ow?.adt || "").slice(11, 16);
     items.push(newRawItem(source, {
-      title: `${name} ${code}${fl ? `-${fl}` : ""} ${fromCity} \u2192 ${toCity} ${dateLabel} from \u20B9${Math.round(price)}`.slice(0, 200),
+      title: `${name} ${code}${fl ? `-${fl}` : ""} ${fromCity} \u2192 ${toCity} ${dateLabel} from \u20B9${Math.round(price2)}`.slice(0, 200),
       brand: name,
-      price: Math.round(price),
+      price: Math.round(price2),
       currency: "INR",
       seller: "Yatra",
       sellerUrl: srp,
@@ -10671,8 +10765,8 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
   const journeys = Array.isArray(groups[0]) ? groups[0] : [];
   const out = [];
   for (const j of journeys) {
-    const price = Number(j.fare);
-    if (!Number.isFinite(price) || price <= 0) continue;
+    const price2 = Number(j.fare);
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
     const keys = Array.isArray(j.journeyKeys) ? j.journeyKeys : [];
     if (!keys.length) continue;
     const legs2 = String(keys[0]).split("|");
@@ -10691,7 +10785,7 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
     out.push(newRawItem(source, {
       title: `${name} ${flightNo2} ${routeLabel} ${stops ? `(${stops} stop${stops > 1 ? "s" : ""})` : "non-stop"} ${dateLabel}`.slice(0, 200),
       brand: name,
-      price: Math.round(price),
+      price: Math.round(price2),
       currency: "INR",
       seller: "Goibibo",
       sellerUrl: pageUrl,
@@ -11551,15 +11645,15 @@ function parseAllianceAirSchedule(schedule, depIso) {
     if (!dep?.day) continue;
     const travelDate = `${dep.year}-${String(dep.month).padStart(2, "0")}-${String(dep.day).padStart(2, "0")}`;
     if (travelDate !== depIso) continue;
-    const price = Number(row?.fare_info?.total_search_fare?.amount);
-    if (!Number.isFinite(price) || price <= 0) continue;
+    const price2 = Number(row?.fare_info?.total_search_fare?.amount);
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
     out.push({
       flightNo: String(first.flight_number || ""),
       aircraft: String(first.aircraft || ""),
       depTime: `${String(dep.hour || "0").padStart(2, "0")}:${String(dep.minute || "0").padStart(2, "0")}`,
       arrTime: `${String(last.arrival_date?.hour || "0").padStart(2, "0")}:${String(last.arrival_date?.minute || "0").padStart(2, "0")}`,
       route: String(first.route || ""),
-      price: Math.round(price),
+      price: Math.round(price2),
       availability: Number(first.availability || 0),
       travelDate,
       stops: legs2.length - 1,
@@ -11673,9 +11767,9 @@ function parseFly91Results(html, depIso) {
     const dur = blk.match(/data-key="travelduration" data-value="(\d{2}):(\d{2})"/) || [];
     const durationMin = dur.length ? Number(dur[1]) * 60 + Number(dur[2]) : 0;
     const priceRaw = (blk.match(/class="flightAmount">\s*([\d,]+)\s*INR/) || [])[1];
-    const price = priceRaw ? Number(priceRaw.replace(/,/g, "")) : 0;
-    if (!flightNo2 || !depTime || !arrTime || !Number.isFinite(price) || price <= 0) continue;
-    out.push({ flightNo: flightNo2, depTime, arrTime, boardPoint: boardPoint || "", offPoint: offPoint || "", durationMin, price, travelDate: depIso });
+    const price2 = priceRaw ? Number(priceRaw.replace(/,/g, "")) : 0;
+    if (!flightNo2 || !depTime || !arrTime || !Number.isFinite(price2) || price2 <= 0) continue;
+    out.push({ flightNo: flightNo2, depTime, arrTime, boardPoint: boardPoint || "", offPoint: offPoint || "", durationMin, price: price2, travelDate: depIso });
   }
   return out;
 }
@@ -11995,11 +12089,11 @@ function parseStarAirAvailability(html, depIso) {
 function starAirFlightItems(journeys, source, fromCity, toCity, depIso) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   return journeys.map((j) => {
-    const price = j.fareEconomy || j.fareBusiness;
+    const price2 = j.fareEconomy || j.fareBusiness;
     return newRawItem(source, {
-      title: `Star Air ${j.flightNo} ${fromCity} \u2192 ${toCity} on ${j.depDateIso} from \u20B9${price} (${j.depTime}\u2013${j.arrTime})`,
+      title: `Star Air ${j.flightNo} ${fromCity} \u2192 ${toCity} on ${j.depDateIso} from \u20B9${price2} (${j.depTime}\u2013${j.arrTime})`,
       brand: "Star Air",
-      price,
+      price: price2,
       currency: "INR",
       seller: "Star Air",
       sellerUrl: STAR_HOME,
@@ -12573,7 +12667,7 @@ function parseBaAvailability(body) {
     const priced = cabins.filter((c) => !c.isNotAvailable && typeof c?.cabinPrice?.lowestJourneyPrice === "number").sort((a, b) => a.cabinPrice.lowestJourneyPrice - b.cabinPrice.lowestJourneyPrice);
     const best = priced[0];
     if (!fn || !best) continue;
-    const price = best.cabinPrice.lowestJourneyPriceRounded || Math.ceil(best.cabinPrice.lowestJourneyPrice);
+    const price2 = best.cabinPrice.lowestJourneyPriceRounded || Math.ceil(best.cabinPrice.lowestJourneyPrice);
     const key = `${fn}-${isoTime2(first.departureDateTime || "")}`;
     if (out.some((o) => `${o.flightNumber}-${o.depTime}` === key)) continue;
     out.push({
@@ -12583,7 +12677,7 @@ function parseBaAvailability(body) {
       depIso: first.departureDateTime || "",
       arrIso: last.arrivalDateTime || "",
       stops: Math.max(0, events.length - 1),
-      price,
+      price: price2,
       currency: best.cabinPrice.currencyCode || best.fareCurrency || "GBP",
       cabin: best.dominantFareName || best.dominantFareType || ""
     });
@@ -12661,8 +12755,8 @@ function parseCleartripFlights(body, source, fromCity, toCity, depIso) {
     const st = Array.isArray(c.subTravelOptionIds) ? subOptions[c.subTravelOptionIds[0]] : null;
     const fareId = st?.fareIds?.[0] || st?.cheapestFareId;
     const fare = fareId ? fares[fareId] : null;
-    const price = Number(fare?.pricing?.totalPricing?.totalPrice);
-    if (!Number.isFinite(price) || price <= 0) continue;
+    const price2 = Number(fare?.pricing?.totalPricing?.totalPrice);
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
     const airlineName2 = EMT_AIRLINES[airlineCode]?.name || airlineCode || "Flight";
     const stops = Number(s.stops || 0);
     const depT = String(s.firstDeparture?.time || s.firstDeparture?.airport?.time || "").slice(11, 16);
@@ -12673,7 +12767,7 @@ function parseCleartripFlights(body, source, fromCity, toCity, depIso) {
     out.push(newRawItem(source, {
       title: `${airlineName2} ${flightNo2} ${fromCity} \u2192 ${toCity} ${stops ? `(${stops} stop${stops > 1 ? "s" : ""})` : "non-stop"}`.slice(0, 200),
       brand: airlineName2,
-      price: Math.round(price),
+      price: Math.round(price2),
       currency: "INR",
       seller: "Cleartrip",
       sellerUrl: srpUrl,
@@ -16594,7 +16688,7 @@ function parseExpediaFlights(body, source, route2, dateIso, srpUrl, fx, cap = 40
     if (seen.has(key)) continue;
     seen.add(key);
     if (out.length >= cap) break;
-    const { price, currency, dataNote } = fx && fx.rate > 0 ? {
+    const { price: price2, currency, dataNote } = fx && fx.rate > 0 ? {
       price: Math.round(usd2 * fx.rate),
       currency: "INR",
       dataNote: `$${usd2} listed on expedia.com, converted to INR at live USD/INR ${fx.rate} (${fx.source}); live fare observed on Expedia flight search on ${today2}. Fare may change at checkout.`
@@ -16607,7 +16701,7 @@ function parseExpediaFlights(body, source, route2, dateIso, srpUrl, fx, cap = 40
     out.push(newRawItem(source, {
       title: `${airline}${flightNo2 ? ` ${flightNo2}` : ""} \xB7 ${routeLabel}`,
       brand: airline,
-      price,
+      price: price2,
       currency,
       seller: "Expedia",
       sellerUrl: srpUrl,
@@ -18870,9 +18964,9 @@ function pizzaHutItems(rawBody, source, query, pageUrl) {
   for (const kind of kinds) {
     for (const p of kind?.products || []) {
       const title = String(p?.title || "").trim();
-      const price = Number(p?.price);
-      if (!title || !Number.isFinite(price) || price <= 0) continue;
-      const key = `${title}|${p.size || ""}|${price}`;
+      const price2 = Number(p?.price);
+      if (!title || !Number.isFinite(price2) || price2 <= 0) continue;
+      const key = `${title}|${p.size || ""}|${price2}`;
       if (seen.has(key)) continue;
       seen.add(key);
       products.push(p);
@@ -20537,11 +20631,11 @@ function buildRapidoFareRows(inp) {
     const vehicle = svc.displayName;
     if (seen.has(vehicle)) continue;
     seen.add(vehicle);
-    const price = Math.round((q3.min + q3.max) / 2);
+    const price2 = Math.round((q3.min + q3.max) / 2);
     rows.push(newRawItem(inp.source, {
       title: `${inp.from} to ${inp.to} Rapido ${vehicle} (city ride, one-way)`,
       brand: "Rapido",
-      price,
+      price: price2,
       currency: "INR",
       seller: "Rapido",
       sellerUrl: M_RAPIDO,
@@ -23137,8 +23231,8 @@ async function uberCityFares(slug5, city) {
   for (let i = 0; i + 1 < txts.length; i++) {
     const priceM = txts[i + 1].match(/^\s*(?:₹|Rs\.?\s*)([\d,]+)\s*$/);
     if (priceM && !/^\s*[₹]/.test(txts[i])) {
-      const price = Number(priceM[1].replace(/,/g, ""));
-      if (price > 0) out.push({ dest: txts[i], price, city, slug: slug5, fetchedUrl: url });
+      const price2 = Number(priceM[1].replace(/,/g, ""));
+      if (price2 > 0) out.push({ dest: txts[i], price: price2, city, slug: slug5, fetchedUrl: url });
     }
   }
   return out;
@@ -23518,8 +23612,8 @@ async function olaRateCardFallback(ctx, rt, reason) {
   for (const { cat, label } of OLA_CATEGORY_LABELS) {
     const card = best[cat];
     if (!card) continue;
-    const price = olaCardFare(card, km, mins);
-    if (!price || price < 10 || price > 1e5) continue;
+    const price2 = olaCardFare(card, km, mins);
+    if (!price2 || price2 < 10 || price2 > 1e5) continue;
     const ul = new URL("https://book.olacabs.com/");
     ul.searchParams.set("lat", String(a.lat));
     ul.searchParams.set("lng", String(a.lon));
@@ -23528,7 +23622,7 @@ async function olaRateCardFallback(ctx, rt, reason) {
     items.push(newRawItem(ctx.source, {
       title: `${rt.from} to ${rt.to} cab (${label}, one-way)`,
       brand: "Ola",
-      price,
+      price: price2,
       currency: "INR",
       seller: "Ola",
       travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: "unknown" },
@@ -23649,13 +23743,13 @@ var init_cab = __esm({
             for (const c of cats.slice(0, 4)) {
               const fares = c?.ride_estimate?.fare_breakup;
               const total = Array.isArray(fares) ? fares.find((f) => String(f?.type || "").includes("total")) : null;
-              const price = Math.round(Number(total?.amount ?? c?.ride_estimate?.amount_max ?? 0));
-              if (!price) continue;
+              const price2 = Math.round(Number(total?.amount ?? c?.ride_estimate?.amount_max ?? 0));
+              if (!price2) continue;
               const vehicle = String(c.display_name || c.category || "Ola cab").slice(0, 60);
               items.push(newRawItem(ctx.source, {
                 title: `${rt.from} to ${rt.to} cab (${vehicle}, one-way)`,
                 brand: "Ola",
-                price,
+                price: price2,
                 currency: "INR",
                 seller: "Ola",
                 sellerUrl: cabAppOpenUrl(cabLinks("Ola", {
@@ -23731,8 +23825,8 @@ var init_cab = __esm({
               return 0;
             };
             for (const p of prices.slice(0, 8)) {
-              const price = parseUberEstimate(p);
-              if (!price) continue;
+              const price2 = parseUberEstimate(p);
+              if (!price2) continue;
               const vehicle = String(p.localized_display_name || "Uber cab").slice(0, 60);
               const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
               const ul = new URL("https://m.uber.com/ul/");
@@ -23745,7 +23839,7 @@ var init_cab = __esm({
               items.push(newRawItem(ctx.source, {
                 title: `${rt.from} to ${rt.to} cab (${vehicle}, one-way)`,
                 brand: "Uber",
-                price,
+                price: price2,
                 currency: String(p.currency_code || "INR"),
                 seller: "Uber",
                 travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: "unknown" },
@@ -24108,10 +24202,10 @@ function parseBlinkit(rawBody, source, pageUrl, cityLabel, cap = 16) {
     const name = textOf(d.display_name) || textOf(d.name);
     if (!name) continue;
     const cart = d.atc_action?.add_to_cart?.cart_item;
-    const price = Number(cart?.price) > 0 ? Number(cart.price) : rupees(textOf(d.normal_price));
-    if (!price || price <= 0) continue;
+    const price2 = Number(cart?.price) > 0 ? Number(cart.price) : rupees(textOf(d.normal_price));
+    if (!price2 || price2 <= 0) continue;
     const mrpNum = Number(cart?.mrp);
-    const mrp = mrpNum > price ? mrpNum : void 0;
+    const mrp = mrpNum > price2 ? mrpNum : void 0;
     const pack = textOf(d.variant) || String(cart?.unit || "");
     const pid = String(d.product_id || d.identity?.id || "");
     const key = pid || `${name}|${pack}`;
@@ -24125,7 +24219,7 @@ function parseBlinkit(rawBody, source, pageUrl, cityLabel, cap = 16) {
     out.push(newRawItem(source, {
       title: `${name}${pack ? ` (${pack})` : ""}`.slice(0, 200),
       brand,
-      price,
+      price: price2,
       listPrice: mrp,
       currency: "INR",
       seller: "Blinkit",
@@ -24166,9 +24260,9 @@ function parseZeptoSsr(html, max = 400) {
   while (idx !== -1 && out.length < max) {
     const back = u.slice(Math.max(0, idx - 4500), idx);
     const fwd = u.slice(idx, idx + 2200);
-    let price;
+    let price2;
     const pm = [...back.matchAll(/"discountedSellingPrice":(\d+)/g)].pop();
-    if (pm) price = Number(pm[1]) / 100;
+    if (pm) price2 = Number(pm[1]) / 100;
     const bm = [...back.matchAll(/"brand":"([^"]{1,60})"/g)].pop();
     let name;
     if (bm) {
@@ -24182,16 +24276,16 @@ function parseZeptoSsr(html, max = 400) {
     const imgAbs = (fwd.match(/"(?:imageUrl|image_url|image)":"(https?:\/\/[^"]{5,240}\.(?:jpe?g|png|webp)[^"]*)"/) || [])[1];
     const imgPath = imgAbs || (imgRel ? IMG_CDN + imgRel : void 0);
     const availRaw = (fwd.match(/"availableQuantity":(\d+)/) || [])[1];
-    if (price && price > 0 && price < 5e5 && name && name.trim().length > 1) {
-      const key = vid || `${brandName(bm)}|${name}|${price}`;
+    if (price2 && price2 > 0 && price2 < 5e5 && name && name.trim().length > 1) {
+      const key = vid || `${brandName(bm)}|${name}|${price2}`;
       if (!seen.has(key)) {
         seen.add(key);
         const mrp = mrpRaw ? Number(mrpRaw) / 100 : void 0;
         out.push({
           brand: brandName(bm),
           name: name.trim().slice(0, 140),
-          price: Math.round(price * 100) / 100,
-          mrp: mrp && mrp >= price ? Math.round(mrp * 100) / 100 : void 0,
+          price: Math.round(price2 * 100) / 100,
+          mrp: mrp && mrp >= price2 ? Math.round(mrp * 100) / 100 : void 0,
           pack: pack ? pack.trim() : void 0,
           image: imgPath || void 0,
           variantId: vid,
@@ -24462,8 +24556,8 @@ function buildImItems(products, term, cityLabel, sourceUrl, cap) {
   const scored = [];
   for (const p of products) {
     const v = (p.variations || [])[0] || {};
-    const price = imRupees(v.price?.offerPrice) ?? imRupees(v.price?.mrp);
-    if (price == null || price <= 0) continue;
+    const price2 = imRupees(v.price?.offerPrice) ?? imRupees(v.price?.mrp);
+    if (price2 == null || price2 <= 0) continue;
     const mrp = imRupees(v.price?.mrp);
     const name = String(p.displayName || "");
     if (!name) continue;
@@ -24478,8 +24572,8 @@ function buildImItems(products, term, cityLabel, sourceUrl, cap) {
     const inStock = p.inStock === true && p.isAvail !== false;
     const item = {
       title: `${name}${v.quantityDescription ? ` (${v.quantityDescription})` : ""}`,
-      price,
-      listPrice: mrp && mrp > price ? mrp : void 0,
+      price: price2,
+      listPrice: mrp && mrp > price2 ? mrp : void 0,
       brand: p.brand ? String(p.brand).slice(0, 120) : void 0,
       identifiers: v.skuId ? { sku: v.skuId, vendorProductId: v.spinId || void 0 } : void 0,
       attributes: {
@@ -25809,9 +25903,9 @@ function cheapestShow(shows, base) {
     const areas = (sh.areas || []).filter((a) => Number(a?.price) > 0);
     if (!areas.length) continue;
     const cheapestArea = areas.reduce((a, b) => Number(a.price) <= Number(b.price) ? a : b);
-    const price = Number(cheapestArea.price);
-    if (!Number.isFinite(price) || price <= 0) continue;
-    if (best && best.price <= price) continue;
+    const price2 = Number(cheapestArea.price);
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
+    if (best && best.price <= price2) continue;
     const url = movieSeatLink({
       host: base.host,
       city: base.city,
@@ -25828,7 +25922,7 @@ function cheapestShow(shows, base) {
       theatre: String(sh.theatre || ""),
       time: String(sh.time || ""),
       seatClass: String(cheapestArea.label || ""),
-      price,
+      price: price2,
       url,
       platform: seatLinkPlatform(url)
     };
@@ -25963,9 +26057,9 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       if (!key) continue;
       const areas = [];
       for (const a of ss?.areas || []) {
-        const price = Number(a?.price);
-        if (!Number.isFinite(price) || price <= 0) continue;
-        areas.push({ label: String(a?.label || ""), price, avail: Number(a?.sAvail) || 0 });
+        const price2 = Number(a?.price);
+        if (!Number.isFinite(price2) || price2 <= 0) continue;
+        areas.push({ label: String(a?.label || ""), price: price2, avail: Number(a?.sAvail) || 0 });
       }
       if (!areas.length) continue;
       let agg = byTitle.get(key);
@@ -27209,23 +27303,23 @@ function parseMmtBusListing(json, source, deeplinkUrl, from, to, depart, maxRows
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const rows = [];
   for (const b of buses) {
-    const price = Math.round(Number(b?.fareDetails?.displayPrice ?? b?.fareDetails?.minPrice));
-    if (!Number.isFinite(price) || price <= 0) continue;
+    const price2 = Math.round(Number(b?.fareDetails?.displayPrice ?? b?.fareDetails?.minPrice));
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
     const operator = String(b?.operatorName || b?.operatorConfig?.shortName || "MMT operator").trim();
     const dep = istTime(Number(b?.journeyInfo?.departureTimeStamp));
     const arr = istTime(Number(b?.journeyInfo?.arrivalTimeStamp));
     const durMin = Number(b?.journeyInfo?.journeyTimeInMinutes) || 0;
     const overnight = dep && arr && arr < dep;
     const departureLabel = dep ? `${dep}${arr ? ` \u2192 ${arr}${overnight ? " (+1)" : ""}` : ""}` : "";
-    const key = String(b?.tripKey || b?.operatorConfig?.serviceId || `${operator}-${dep}-${price}`);
+    const key = String(b?.tripKey || b?.operatorConfig?.serviceId || `${operator}-${dep}-${price2}`);
     const seats = Number(b?.availability?.totalSeatsLeft);
     rows.push({
-      price,
+      price: price2,
       key,
       item: newRawItem(source, {
         title: `${operator} ${from} to ${to} bus (${dep || "departure"}${arr ? ` - ${arr}` : ""})`,
         brand: operator,
-        price,
+        price: price2,
         currency: "INR",
         seller: "makemytrip",
         sellerUrl: deeplinkUrl,
@@ -28723,9 +28817,9 @@ function parseMetaOffer($) {
   const priceMeta = $('meta[property="product:price:amount"]').attr("content") || $('meta[property="og:price:amount"]').attr("content") || $('[itemprop="price"]').first().attr("content") || $('[itemprop="price"]').first().text().trim() || "";
   const currency = $('meta[property="product:price:currency"]').attr("content") || $('meta[property="og:price:currency"]').attr("content") || "INR";
   const brandMeta = $('meta[property="og:site_name"]').attr("content") || void 0;
-  const price = toNumber(priceMeta);
+  const price2 = toNumber(priceMeta);
   const availability = /out of stock|sold out/i.test($("body").text().slice(0, 2e4)) ? "out_of_stock" : "unknown";
-  const offer = { title, price, brand: brandMeta, availability };
+  const offer = { title, price: price2, brand: brandMeta, availability };
   return offer;
 }
 var cheerio5, import_crypto18, HttpAcquisitionAdapter;
@@ -29310,12 +29404,12 @@ var init_browserRenderAdapter = __esm({
           const type = String(node["@type"] || "");
           if (/Product|Offer/i.test(type)) {
             const offer = /Offer|AggregateOffer/i.test(type) ? node : node.offers || node.offer;
-            const price = offer ? Number(offer.price ?? offer.lowPrice) : void 0;
+            const price2 = offer ? Number(offer.price ?? offer.lowPrice) : void 0;
             const title = String(node.name || node.itemOffered?.name || "").trim();
             if (!title) return;
             items.push(newRawItem(source, {
               title,
-              price: Number.isFinite(price) ? price : void 0,
+              price: Number.isFinite(price2) ? price2 : void 0,
               currency: String(offer?.priceCurrency || "INR"),
               identifiers: node.gtin13 ? { gtin: String(node.gtin13) } : node.sku ? { sku: String(node.sku) } : {},
               seller: String(node.brand?.name || node.seller?.name || ""),
@@ -29325,7 +29419,7 @@ var init_browserRenderAdapter = __esm({
               evidence: {
                 sourceUrl: url,
                 rawFingerprint: void 0,
-                extractedFields: ["json_ld", "title", ...price !== void 0 ? ["price"] : []]
+                extractedFields: ["json_ld", "title", ...price2 !== void 0 ? ["price"] : []]
               }
             }));
           }
@@ -29742,8 +29836,8 @@ function offerDedupKey(o) {
   const identity = o.identifiers.gtin || o.identifiers.ean || o.identifiers.upc || o.identifiers.sku || `${o.brand || ""}:${o.title}`.toLowerCase();
   if (["hotels", "flights", "bus", "cab", "movies"].includes(String(o.vertical))) {
     const svc = String(o.attributes?.["flight_number"] ?? o.attributes?.["flight number"] ?? o.attributes?.["departure"] ?? o.attributes?.["departure_time"] ?? o.attributes?.["departure time"] ?? "");
-    const price = String(o.prices?.effectivePrice ?? "");
-    return `${o.vertical}|${identity}|${o.seller.toLowerCase()}|${o.travel?.date || ""}|${o.travel?.route || ""}|${svc}|${o.vertical === "hotels" ? "" : price}`;
+    const price2 = String(o.prices?.effectivePrice ?? "");
+    return `${o.vertical}|${identity}|${o.seller.toLowerCase()}|${o.travel?.date || ""}|${o.travel?.route || ""}|${svc}|${o.vertical === "hotels" ? "" : price2}`;
   }
   const stableAttrs = o.attributes && Object.keys(o.attributes).length ? JSON.stringify(Object.fromEntries(Object.entries(o.attributes).filter(([k]) => k !== "data_note"))) : "";
   const pin = ["loans", "insurance", "creditcards", "banking"].includes(String(o.vertical)) ? "" : o.location?.pincode || "";
@@ -30195,46 +30289,6 @@ var init_lenderLogo = __esm({
   }
 });
 
-// server/affiliate/meeshoAffiliate.ts
-function meeshoAffiliateUrl(destination) {
-  const dest = String(destination || "");
-  if (!dest) return dest;
-  const tpl = template();
-  if (tpl) {
-    try {
-      const parsed = new URL(tpl.replace("{urlEncoded}", encodeURIComponent(dest)).replace("{url}", dest));
-      if (parsed.protocol !== "https:") return appendParams(dest);
-      if (tpl.includes("{url}") || tpl.includes("{urlEncoded}")) return parsed.toString();
-      parsed.searchParams.set("url", dest);
-      return parsed.toString();
-    } catch {
-      return appendParams(dest);
-    }
-  }
-  return appendParams(dest);
-}
-function appendParams(dest) {
-  const extra = extraParams();
-  if (!extra) return dest;
-  try {
-    const u = new URL(dest);
-    for (const pair of extra.split("&")) {
-      const [k, v] = pair.split("=");
-      if (k) u.searchParams.set(k.trim(), (v ?? "").trim());
-    }
-    return u.toString();
-  } catch {
-    return dest;
-  }
-}
-var template, extraParams;
-var init_meeshoAffiliate = __esm({
-  "server/affiliate/meeshoAffiliate.ts"() {
-    template = () => String(process.env.MEESHO_AFFILIATE_LINK_TEMPLATE || "").trim();
-    extraParams = () => String(process.env.MEESHO_AFFILIATE_PARAMS || "").trim();
-  }
-});
-
 // server/affiliate/linkinr/deephop.ts
 var deephop_exports = {};
 __export(deephop_exports, {
@@ -30616,7 +30670,7 @@ function buildMerchantDeepLink(merchant, title, vertical, ctx = {}) {
   if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
   if (has("flipkart") && has("minute")) return `https://www.flipkart.com/search?q=${q3}&marketplace=GROCERY`;
   if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
-  if (has("meesho")) return meeshoAffiliateUrl(`https://www.meesho.com/search?q=${q3}`);
+  if (has("shopsy")) return `https://www.shopsy.in/search?q=${q3}`;
   if (has("myntra")) return `https://www.myntra.com/${slug2(t)}`;
   if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
   if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
@@ -30798,7 +30852,6 @@ function buildMerchantDeepLink(merchant, title, vertical, ctx = {}) {
 var IATA2, cityCode, slug2, e, linkMemo, LINK_MEMO_MAX, LINK_MEMO_TTL_MS;
 var init_merchantLinks = __esm({
   "server/affiliate/merchantLinks.ts"() {
-    init_meeshoAffiliate();
     init_cityAlias();
     IATA2 = {
       // shared subset used by the airline/OTA SRPs
@@ -31043,7 +31096,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   };
   if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
   if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
-  if (has("meesho")) return meeshoAffiliateUrl(`https://www.meesho.com/search?q=${q3}`);
+  if (has("shopsy")) return `https://www.shopsy.in/search?q=${q3}`;
   if (has("myntra")) return `https://www.myntra.com/${encodeURIComponent(String(title || "").trim().toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "-").slice(0, 60))}`;
   if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
   if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
@@ -31074,7 +31127,6 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
 var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
-    init_meeshoAffiliate();
     init_airportLookup();
     import_crypto23 = __toESM(require("crypto"), 1);
     init_settings();
@@ -31084,7 +31136,7 @@ var init_deeplink = __esm({
     init_db();
     init_merchantLinks();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
-    CUELINKS_MERCHANTS = /* @__PURE__ */ new Set(["makemytrip.com", "goibibo.com"]);
+    CUELINKS_MERCHANTS = /* @__PURE__ */ new Set(["makemytrip.com", "goibibo.com", "shopsy.in"]);
     AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
     ALREADY_TRACKED_HOSTS = /(^|\.)(linksredirect\.com|fktr\.in|myntr\.it|earnkaro\.com|ekaro\.[a-z.]+|affiliaters\.in|bitli\.in|linkinr\.[a-z.]+|vcommission\.com|inr\.deals|cuelinks\.com|cashkaro\.com|amzn\.to|go\.redirectingat\.com|sjv\.io|linksynergy\.com|clicweb|pxf\.io|dl\.flipkart\.com)$/i;
   }
@@ -31560,7 +31612,7 @@ var init_deals = __esm({
       myntra: "ecommerce",
       ajio: "ecommerce",
       tatacliq: "ecommerce",
-      meesho: "ecommerce",
+      shopsy: "ecommerce",
       croma: "ecommerce",
       nykaa: "ecommerce",
       makemytrip: "flights",
@@ -31738,7 +31790,7 @@ var init_merchantLogos = __esm({
       ajio: "ajio.com",
       tatacliq: "tatacliq.com",
       tata: "tatacliq.com",
-      meesho: "meesho.com",
+      shopsy: "shopsy.in",
       nykaa: "nykaa.com",
       snapdeal: "snapdeal.com",
       jiomart: "jiomart.com",
@@ -33470,17 +33522,17 @@ function collapseSellerVariants(rows, priceOf3) {
     }
     const key = `${seller}|${sig}`;
     const existing = groups.get(key);
-    const price = priceOf3(row);
+    const price2 = priceOf3(row);
     if (!existing) {
-      groups.set(key, { best: row, bestPrice: price, count: 1, firstIndex: index });
+      groups.set(key, { best: row, bestPrice: price2, count: 1, firstIndex: index });
       order.push(key);
       return;
     }
     existing.count += 1;
-    const better = price > 0 && (existing.bestPrice <= 0 || price < existing.bestPrice);
+    const better = price2 > 0 && (existing.bestPrice <= 0 || price2 < existing.bestPrice);
     if (better) {
       existing.best = row;
-      existing.bestPrice = price;
+      existing.bestPrice = price2;
     }
   });
   return order.map((key) => {
@@ -33659,16 +33711,16 @@ async function buildFlightSellerPresence(parsed, combined, succeededSourceIds) {
     const needle = String(seller || "").toLowerCase().replace(/\s*air\s*$/i, "").trim();
     if (!needle) return false;
     return combined.some((o) => {
-      const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
-      if (!(price > 0)) return false;
+      const price2 = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+      if (!(price2 > 0)) return false;
       const attrs = o.attributes || {};
       const hay = `${attrs.airline || ""} ${o.title || ""} ${o.brand || ""}`.toLowerCase();
       return hay.includes(needle);
     });
   };
   const timedPricedRows = combined.filter((o) => {
-    const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
-    if (!(price > 0)) return false;
+    const price2 = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+    if (!(price2 > 0)) return false;
     const attrs = o.attributes || {};
     const dep = String(attrs.departure ?? attrs.dep_time ?? attrs.depTime ?? "").trim();
     const arr = String(attrs.arrival ?? attrs.arr_time ?? attrs.arrTime ?? "").trim();
@@ -35199,9 +35251,9 @@ var init_affiliateNetwork = __esm({
       }
       buildDeepLink(destinationUrl, _vendorDomain) {
         const apiKey2 = settings.cuelinks.apiKey;
-        const template2 = settings.cuelinks.campaignId ? `https://linksredirect.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}` : null;
-        if (!apiKey2 || !template2) return null;
-        return template2.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
+        const template = settings.cuelinks.campaignId ? `https://linksredirect.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}` : null;
+        if (!apiKey2 || !template) return null;
+        return template.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
       }
     };
     NETWORKS = [new CuelinksAdapter()];
@@ -35296,8 +35348,8 @@ function validateFinanceOffer(i) {
     return { ok: false, error: "URL must be a full https:// link" };
   }
   if (probe.protocol !== "https:") return { ok: false, error: "URL must start with https://" };
-  const price = i.price === null || i.price === void 0 || i.price === "" ? null : Number(i.price);
-  if (price !== null && !Number.isFinite(price)) return { ok: false, error: "Price/rate value must be a number" };
+  const price2 = i.price === null || i.price === void 0 || i.price === "" ? null : Number(i.price);
+  if (price2 !== null && !Number.isFinite(price2)) return { ok: false, error: "Price/rate value must be a number" };
   const image = String(i.image_url || "").trim();
   if (image) {
     const okImage = /^https:\/\//i.test(image) || /^\/api\/logos\/[A-Za-z0-9._-]+$/.test(image);
@@ -35317,7 +35369,7 @@ function validateFinanceOffer(i) {
       title,
       seller: String(i.seller || "").trim().slice(0, 160) || title,
       rate_label: String(i.rate_label || "").trim().slice(0, 80) || null,
-      price: price === null ? null : Math.max(0, price),
+      price: price2 === null ? null : Math.max(0, price2),
       highlights: String(i.highlights || "").trim().slice(0, 300) || null,
       url: rawUrl.slice(0, 1500),
       city: String(i.city || "").trim().slice(0, 120) || null,
@@ -37269,14 +37321,14 @@ function pickVoiceHits(response, limit = 3) {
   const results = Array.isArray(response?.results) ? response.results : [];
   const hits = [];
   for (const r of results) {
-    const price = Number(
+    const price2 = Number(
       r?.prices?.effectivePrice ?? r?.prices?.finalPayablePrice ?? r?.prices?.mandatoryTotal ?? r?.prices?.listPrice ?? r?.primaryPrice
     );
-    if (!Number.isFinite(price) || price <= 0) continue;
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
     const title = String(r?.title || "").trim();
     if (!title) continue;
     const seller = String(r?.seller || r?.vendor || "").trim();
-    hits.push({ title, seller, price, url: String(r?.sellerUrl || "") });
+    hits.push({ title, seller, price: price2, url: String(r?.sellerUrl || "") });
   }
   hits.sort((a, b) => a.price - b.price);
   const seen = /* @__PURE__ */ new Set();
@@ -39193,7 +39245,6 @@ var init_appTargets = __esm({
       [/(^|\.)flipkart\.com$/, { label: "Flipkart", pkg: "com.flipkart.android", scheme: "flipkart://" }],
       [/(^|\.)myntra\.com$/, { label: "Myntra", pkg: "com.myntra.android", scheme: "myntra://" }],
       [/(^|\.)ajio\.com$/, { label: "AJIO", pkg: "com.ril.ajio" }],
-      [/(^|\.)meesho\.com$/, { label: "Meesho", pkg: "com.meesho.supply" }],
       [/(^|\.)tatacliq\.com$/, { label: "Tata CLiQ", pkg: "com.tul.tatacliq" }],
       [/(^|\.)reliancedigital\.in$/, { label: "Reliance Digital", pkg: "in.digital.reliance" }],
       // banking / loans / insurance
@@ -39562,10 +39613,10 @@ function ratingFromAttributes(raw) {
 }
 function itemFromOffer(row) {
   const url = row.seller_url || null;
-  const price = priceOf2(row);
+  const price2 = priceOf2(row);
   const mrp = mrpOf(row);
-  if (!url || !price) return null;
-  const pct = mrp > price ? Math.round((mrp - price) / mrp * 100) : (() => {
+  if (!url || !price2) return null;
+  const pct = mrp > price2 ? Math.round((mrp - price2) / mrp * 100) : (() => {
     const st = statedDiscountPct(row.attributes);
     return st >= 1 ? st : null;
   })();
@@ -39579,8 +39630,8 @@ function itemFromOffer(row) {
       const dom = realMerchantDomain([row.seller_url]) || nameDomainOf(merchant);
       return dom ? `https://icons.duckduckgo.com/ip3/${dom}.ico` : null;
     })(),
-    price,
-    mrp: mrp > price ? mrp : null,
+    price: price2,
+    mrp: mrp > price2 ? mrp : null,
     discountPct: pct,
     rating: ratingFromAttributes(row.attributes),
     badge: pct && pct >= 1 ? `${pct}% OFF` : null,
@@ -40354,21 +40405,21 @@ function titleFromSlug(u) {
   }
   best = best.replace(/\s+/g, " ").trim();
   if (/(^|\.)(buyhatke|pricehistory)\./i.test(u.hostname) || /\bprice in india\b/i.test(best)) {
-    best = best.replace(/^(amazon|flipkart|myntra|ajio|tata cliq|tatacliq|meesho|nykaa|croma|snapdeal|jiomart)\s+/i, "").replace(/\s+price in india.*$/i, "").replace(/\s+\d{0,3}\s*\d{6,}$/i, "").trim();
+    best = best.replace(/^(amazon|flipkart|myntra|ajio|tata cliq|tatacliq|shopsy|nykaa|croma|snapdeal|jiomart)\s+/i, "").replace(/\s+price in india.*$/i, "").replace(/\s+\d{0,3}\s*\d{6,}$/i, "").trim();
   }
   return best.length >= 4 ? best.slice(0, 160) : null;
 }
 function stripComparisonBoilerplate(t) {
   let x = String(t || "").trim();
   x = x.replace(/^(price\s+history|price\s+tracker|price\s+comparison|compare\s+prices?)\s+(of|for)\s+/i, "");
-  x = x.replace(/\s+from\s+(amazon(\.in)?|flipkart|myntra|ajio|tata\s?cliq|meesho|nykaa|croma|reliance\s?digital|snapdeal|jiomart)\b.*$/i, "");
+  x = x.replace(/\s+from\s+(amazon(\.in)?|flipkart|myntra|ajio|tata\s?cliq|shopsy|nykaa|croma|reliance\s?digital|snapdeal|jiomart)\b.*$/i, "");
   x = x.replace(/\s*[|\u2013\u2014-]\s*(buyhatke|pricehistory\.app|pricebefore|smartprix|91mobiles|pricetree|mysmartprice|compareraja|desidime)[^|]*$/i, "");
   x = x.replace(/\s+price\s+in\s+india\b.*$/i, "");
   x = x.replace(/\s+(online\s+)?(price|prices)\s*(history|tracker|drop|comparison)?\s*$/i, "");
   return x.replace(/\s+/g, " ").trim();
 }
 function cleanTitle(t) {
-  return stripComparisonBoilerplate(t).replace(/\s*[|\u2013\u2014-]\s*(amazon\.in|flipkart\.com|myntra|ajio|tata ?cliq|meesho|nykaa|croma|reliance digital|snapdeal|jiomart|lenskart|bigbasket|blinkit)[^|]*$/i, "").replace(/^(buy|shop)\s+/i, "").replace(/\s+(online|at best price|best price)\b.*$/i, "").replace(/\s*:\s*amazon\.in.*$/i, "").replace(/\s+/g, " ").trim().slice(0, 180);
+  return stripComparisonBoilerplate(t).replace(/\s*[|\u2013\u2014-]\s*(amazon\.in|flipkart\.com|myntra|ajio|tata ?cliq|shopsy|nykaa|croma|reliance digital|snapdeal|jiomart|lenskart|bigbasket|blinkit)[^|]*$/i, "").replace(/^(buy|shop)\s+/i, "").replace(/\s+(online|at best price|best price)\b.*$/i, "").replace(/\s*:\s*amazon\.in.*$/i, "").replace(/\s+/g, " ").trim().slice(0, 180);
 }
 function priceNum(v) {
   const n = Math.round(parseFloat(String(v ?? "").replace(/[^\d.]/g, "")));
@@ -40546,7 +40597,7 @@ var init_productLink = __esm({
       [/(^|\.)myntra\.com$/, "Myntra"],
       [/(^|\.)ajio\.com$/, "Ajio"],
       [/(^|\.)tatacliq\.com$/, "Tata CLiQ"],
-      [/(^|\.)meesho\.com$/, "Meesho"],
+      [/(^|\.)shopsy\.in$/, "Shopsy"],
       [/(^|\.)nykaa\.com$/, "Nykaa"],
       [/(^|\.)croma\.com$/, "Croma"],
       [/(^|\.)reliancedigital\.in$/, "Reliance Digital"],
@@ -40561,7 +40612,7 @@ var init_productLink = __esm({
       [/(^|\.)pricehistory\.app$/, "PriceHistory"]
     ];
     JUNK_SLUG = /^(dp|gp|p|product|products|item|itm|buy|pd|shop|s|ip|sku|b0[a-z0-9]{8}|[a-z]{0,3}\d[a-z0-9]{6,})$/i;
-    TYPED_FILLER = /^(buy|purchase|price|prices|cost|rate|rates|best|cheapest|lowest|online|new|latest|original|genuine|offer|offers|deal|deals|sale|flipkart|amazon|myntra|ajio|meesho|india|in)$/i;
+    TYPED_FILLER = /^(buy|purchase|price|prices|cost|rate|rates|best|cheapest|lowest|online|new|latest|original|genuine|offer|offers|deal|deals|sale|flipkart|amazon|myntra|ajio|shopsy|india|in)$/i;
     GENERIC_TITLE_RE = /^(products?|shop|store|search|search results|buy online|online store|best sellers?|deals?|all products?|cart|checkout|home)$/i;
     ERROR_TITLE_RE = /(^|\b)(service unavailable|temporarily unavailable|access denied|forbidden|page not found|just a moment|unusual traffic|robot check|are you a human|human verification|error\s*(40[034]|50[023])?|40[034]|50[023]|429)(\b|$)/i;
   }
@@ -40889,7 +40940,7 @@ var init_verticalLexicon = __esm({
       "third wave coffee"
     ];
     QUESTION_NOISE = /\b(kaha|kahan|kahaan|kidhar|kaunse|kaunsi|konsa|konsi|kaunsa|which|where|milega|milegi|milta|milte|mile|milege|milegaa|available|aas\s*paas|near\s*me|nearby|sbse|sabse|sabsay|sasta|sasti|sastta|saste|cheapest|cheap|best|accha|behtar|bhav|bhaav|daam|dam|price|prices|rate|rates|kitne|kitna|kitni|kya|kaun|please|pls|plz|karna|karu|kare|karo|kar\s*do|kar|batao|bata\s*do|bata|bataye|dikhao|dikha\s*do|chahiye|chahie|hai|hain|hoga|hogi|ka|ki|ke|ko|me|mein|mai|se|tak|par|pe|is|are|the|of|for|a|an|i|want|need|looking|find|search|compare|check|what|how|much|does|cost|kaunse|par\s+mil|online|order|buy|kharidna|kharido|khareed|dukan|dukaan|store|stores|shop|shops|muje|mujhe|mujhko|mujko|mera|meri|mere|mai|main|hum|humko|hamko|apna|apni|apne|yaar|bhai|bro)\b/gi;
-    PLATFORM = /\b(zomato|swiggy|blinkit|zepto|instamart|bigbasket|bb\s*now|flipkart\s*minutes|dunzo|jiomart|amazon|flipkart|meesho|myntra|ajio|tatacliq|tata\s*cliq)\b/gi;
+    PLATFORM = /\b(zomato|swiggy|blinkit|zepto|instamart|bigbasket|bb\s*now|flipkart\s*minutes|dunzo|jiomart|amazon|flipkart|shopsy|myntra|ajio|tatacliq|tata\s*cliq)\b/gi;
     SPELLING = {
       aata: "atta",
       aattha: "atta",
@@ -41118,7 +41169,7 @@ function toAssistantRows(results, limit = 6, opts = {}) {
     const key = title.toLowerCase().replace(/[^a-z0-9]/g, "") + "|" + rowPrice(o);
     if (seen.has(key)) continue;
     seen.add(key);
-    const price = rowPrice(o);
+    const price2 = rowPrice(o);
     const specs = {};
     for (const [k, v] of Object.entries(o.attributes || {})) {
       if (v !== void 0 && v !== null && String(v).trim() && Object.keys(specs).length < 5) specs[k] = String(v);
@@ -41131,8 +41182,8 @@ function toAssistantRows(results, limit = 6, opts = {}) {
       vertical: String(o.vertical || ""),
       title,
       provider: String(o.vendor || o.seller || o.provider || ""),
-      price,
-      priceAvailable: price > 0,
+      price: price2,
+      priceAvailable: price2 > 0,
       currency: String(o?.prices?.currency || "INR"),
       ...o.imageUrl || o.image ? { imageUrl: String(o.imageUrl || o.image) } : {},
       ...o.sellerUrl ? { url: String(o.sellerUrl) } : {},
@@ -41235,12 +41286,12 @@ function sellerBreakdown(rows) {
   const best = /* @__PURE__ */ new Map();
   for (const r of Array.isArray(rows) ? rows : []) {
     const provider = String(r?.provider || r?.vendor || r?.seller || "").trim();
-    const price = Number(r?.price ?? r?.primaryPrice ?? 0);
-    if (!provider || !Number.isFinite(price) || price <= 0) continue;
+    const price2 = Number(r?.price ?? r?.primaryPrice ?? 0);
+    if (!provider || !Number.isFinite(price2) || price2 <= 0) continue;
     const key = provider.toLowerCase();
     const prev = best.get(key);
-    if (!prev || price < prev.price) {
-      best.set(key, { provider, title: String(r?.title || ""), price, currency: String(r?.currency || "INR") });
+    if (!prev || price2 < prev.price) {
+      best.set(key, { provider, title: String(r?.title || ""), price: price2, currency: String(r?.currency || "INR") });
     }
   }
   return [...best.values()].sort((a, b) => a.price - b.price);
@@ -41284,7 +41335,7 @@ var init_assistantThread = __esm({
     TTL_MS3 = 60 * 6e4;
     MAX_SESSIONS = 2e3;
     store5 = /* @__PURE__ */ new Map();
-    SITE_NAMES = /\b(blinkit|zepto|instamart|swiggy\s*instamart|bigbasket|big\s*basket|jiomart|jio\s*mart|dmart|d\s*mart|dunzo|flipkart\s*minutes|flipkart|amazon|ajio|myntra|meesho|nykaa|tatacliq|tata\s*cliq|croma|reliance\s*digital|snapdeal|paytm\s*mall|swiggy|zomato|dominos|domino'?s|eatsure|faasos|behrouz|ola\s*dash|uber\s*eats|makemytrip|goibibo|yatra|cleartrip|ixigo|easemytrip|ease\s*my\s*trip|agoda|booking|oyo|expedia|hotels\.com|redbus|abhibus|ola|uber|rapido)\b/gi;
+    SITE_NAMES = /\b(blinkit|zepto|instamart|swiggy\s*instamart|bigbasket|big\s*basket|jiomart|jio\s*mart|dmart|d\s*mart|dunzo|flipkart\s*minutes|flipkart|amazon|ajio|myntra|shopsy|nykaa|tatacliq|tata\s*cliq|croma|reliance\s*digital|snapdeal|paytm\s*mall|swiggy|zomato|dominos|domino'?s|eatsure|faasos|behrouz|ola\s*dash|uber\s*eats|makemytrip|goibibo|yatra|cleartrip|ixigo|easemytrip|ease\s*my\s*trip|agoda|booking|oyo|expedia|hotels\.com|redbus|abhibus|ola|uber|rapido)\b/gi;
     FOLLOW_VOCAB = /* @__PURE__ */ new Set([
       "aur",
       "or",
@@ -41618,11 +41669,11 @@ async function rememberAnswer(k, answer) {
     const seller = String(r?.seller || r?.vendor || r?.provider || "").trim();
     if (!seller) continue;
     sellers.add(seller);
-    const price = Number(
+    const price2 = Number(
       r?.prices?.effectivePrice ?? r?.prices?.mandatoryTotal ?? r?.price ?? r?.prices?.listPrice ?? 0
     );
-    if (Number.isFinite(price) && price > 0) {
-      cheapest[seller] = Math.min(cheapest[seller] || Infinity, price);
+    if (Number.isFinite(price2) && price2 > 0) {
+      cheapest[seller] = Math.min(cheapest[seller] || Infinity, price2);
     }
   }
   const key = memoryKey(k);
@@ -41762,7 +41813,7 @@ var init_spellFix = __esm({
       "flipkart",
       "myntra",
       "ajio",
-      "meesho",
+      "shopsy",
       "tatacliq",
       "croma",
       "reliance",
@@ -42458,11 +42509,11 @@ async function createNotification(i) {
   });
   return { ok: true, id };
 }
-function priceDropCopy(a, price, seller) {
+function priceDropCopy(a, price2, seller) {
   const inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
-  const pct = Math.round((1 - price / Number(a.target_price)) * 100);
-  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr3(price)}`;
-  const body = pct > 0 ? `Your tracked product just hit ${inr3(price)} on ${seller} \u2014 ${pct}% below your ${inr3(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr3(price)} on ${seller}, matching your ${inr3(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
+  const pct = Math.round((1 - price2 / Number(a.target_price)) * 100);
+  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr3(price2)}`;
+  const body = pct > 0 ? `Your tracked product just hit ${inr3(price2)} on ${seller} \u2014 ${pct}% below your ${inr3(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr3(price2)} on ${seller}, matching your ${inr3(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
   return { title, body };
 }
 async function recordPriceDropNotification(alert, live) {
@@ -42641,13 +42692,13 @@ function shouldNotify(alert, livePrice) {
   if (alert.notified_at) return false;
   return Number.isFinite(livePrice) && livePrice > 0 && livePrice <= Number(alert.target_price);
 }
-function alertEmail(a, price, seller, url) {
+function alertEmail(a, price2, seller, url) {
   const inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
-  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr3(price)}`;
+  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr3(price2)}`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px">
   <h2 style="color:#E7000B;margin:0 0 8px">Your Try1Second price alert hit</h2>
   <p><strong>${escapeHtml(a.product_title)}</strong></p>
-  <p style="font-size:22px;margin:6px 0"><strong>${inr3(price)}</strong> on ${escapeHtml(seller)}</p>
+  <p style="font-size:22px;margin:6px 0"><strong>${inr3(price2)}</strong> on ${escapeHtml(seller)}</p>
   <p style="color:#475569">Your target was ${inr3(a.target_price)}.</p>
   <p><a href="${url}" style="background:#E7000B;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Open the deal</a></p>
   <p style="color:#94a3b8;font-size:12px">Price observed live by Try1Second. Prices can change quickly.</p></div>`;
@@ -43286,7 +43337,7 @@ async function ecomSlide() {
   const c = rows.filter((r2) => servableRow(r2, 14) && imageFromAttributes(r2.attributes) && pctOf(r2) >= 0.4).sort((a, b) => pctOf(b) - pctOf(a));
   const r = c[0];
   if (!r) return null;
-  const price = priceOf2(r);
+  const price2 = priceOf2(r);
   const pct = Math.round(pctOf(r) * 100);
   return {
     id: `ecom-${r.id}`,
@@ -43295,7 +43346,7 @@ async function ecomSlide() {
     badge: "MEGA DEAL",
     subheading: "Biggest savings, live-verified prices",
     heading: r.title,
-    meta: `${pct}% OFF \xB7 now \u20B9${price.toLocaleString("en-IN")}`,
+    meta: `${pct}% OFF \xB7 now \u20B9${price2.toLocaleString("en-IN")}`,
     language: null,
     synopsis: null,
     poster: imageFromAttributes(r.attributes),
@@ -44845,7 +44896,7 @@ function assistantExitUrl(o, travel) {
   return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || "") }) : "";
 }
 function offerToComparisonItem(o, reqTravel = {}) {
-  const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+  const price2 = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
   const travelCtx = {
     route: o.travel?.route || reqTravel.route,
@@ -44978,9 +45029,9 @@ function offerToComparisonItem(o, reqTravel = {}) {
     description,
     sentimentSummary: attrs["data_note"] || "Live data from a verified source",
     criteriaRatings: [],
-    primaryPrice: price,
-    originalPrice: list > price ? list : 0,
-    priceAvailable: price > 0,
+    primaryPrice: price2,
+    originalPrice: list > price2 ? list : 0,
+    priceAvailable: price2 > 0,
     unit: o.vertical === "creditcards" ? "per year" : String(o.vertical) === "banking" ? String(attrs["price_unit"] || "per account") : "per unit",
     currency: o.prices?.currency || "INR",
     features: featurePills,
@@ -44988,21 +45039,21 @@ function offerToComparisonItem(o, reqTravel = {}) {
     reviews: [],
     pricePrediction: {
       advice: "fair_price",
-      headline: price > 0 ? "Newly tracked" : "Price not exposed by this source",
+      headline: price2 > 0 ? "Newly tracked" : "Price not exposed by this source",
       details: "Only real observations are charted; nothing is generated.",
-      historicalLow: price,
-      historicalHigh: price,
+      historicalLow: price2,
+      historicalHigh: price2,
       priceHistory: []
     },
     sellerQuotes: [
       {
         id: `sq-${o.id}`,
         sellerName: seller.slice(0, 80),
-        price,
-        originalPrice: list > price ? list : 0,
+        price: price2,
+        originalPrice: list > price2 ? list : 0,
         currency: o.prices?.currency || "INR",
         url,
-        badge: price > 0 ? "Live Verified" : "Live data",
+        badge: price2 > 0 ? "Live Verified" : "Live data",
         deliveryOrEta: attrs["eta"] || attrs["delivery"] || "Standard delivery",
         isLowest: true,
         isLiveScraped: o.freshnessStatus === "LIVE_VERIFIED",
@@ -46500,11 +46551,11 @@ var init_routes = __esm({
       const lensQuery = searchableTitle(product.title);
       const response = await runSearchPolled({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode });
       const priced = response.results.map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 })).filter((x) => x.price > 0 && isSameProduct(lensQuery, String(x.o.title || "")));
-      const results = priced.sort((a, b) => a.price - b.price).slice(0, 30).map(({ o, price }) => ({
+      const results = priced.sort((a, b) => a.price - b.price).slice(0, 30).map(({ o, price: price2 }) => ({
         id: o.id,
         title: o.title,
         seller: String(o.seller || o.vendor || ""),
-        price,
+        price: price2,
         listPrice: Number(o.prices?.listPrice ?? 0) || 0,
         image: o.image || o.images?.[0] || null,
         availability: o.availability || "unknown",
@@ -46636,10 +46687,10 @@ var init_routes = __esm({
         for (const v of ["ecommerce", "grocery"]) {
           const rows = await findProductCatalogueRows2(v, { query: lensQuery, pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
           for (const r of rows) {
-            const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
+            const price2 = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
             const title = String(r.title || "");
             const seller = String(r.seller || r.vendor || "");
-            if (price <= 0 || !title) continue;
+            if (price2 <= 0 || !title) continue;
             const rowAgeSec = (now - new Date(r.fetched_at).getTime()) / 1e3;
             if (rowAgeSec > 72 * 3600) continue;
             const k = `${seller.toLowerCase()}|${title.toLowerCase()}`;
@@ -46651,13 +46702,13 @@ var init_routes = __esm({
                 title,
                 seller,
                 sellerUrl: r.seller_url || "",
-                prices: { effectivePrice: price, mandatoryTotal: price, listPrice: 0 },
+                prices: { effectivePrice: price2, mandatoryTotal: price2, listPrice: 0 },
                 // Age travels with the row so the card can say how old a catalogue quote is.
                 attributes: { price_age_hours: String(Math.round(rowAgeSec / 360) / 10) },
                 availability: r.availability || "unknown",
                 canonicalEntityId: r.canonical_entity_id ?? null
               },
-              price
+              price: price2
             });
           }
         }
@@ -46674,7 +46725,7 @@ var init_routes = __esm({
         });
       }
       const productImageUrls = [product?.image, ...Array.isArray(product?.images) ? product.images : []].filter((u) => typeof u === "string" && u.startsWith("https://"));
-      const toRow = ({ o, price }) => {
+      const toRow = ({ o, price: price2 }) => {
         const attrs = o.attributes || {};
         const imgs = Array.from(new Set([
           String(attrs.image_url || o.image || o.images?.[0] || ""),
@@ -46687,7 +46738,7 @@ var init_routes = __esm({
           id: o.id,
           title: o.title,
           seller: sellerName,
-          price,
+          price: price2,
           // Seller brand logo: /api/logos/<key> always answers a real image now (admin upload
           // or the brand's own favicon), so the app can paint the seller mark instead of a
           // grey placeholder. Web resolves the same key via FAV().
@@ -46758,8 +46809,8 @@ var init_routes = __esm({
           const rows = await findProductCatalogueRows2(v, { query: lensQuery, pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
           for (const r of rows) {
             const title = String(r.title || "");
-            const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
-            if (!title || price <= 0) continue;
+            const price2 = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
+            if (!title || price2 <= 0) continue;
             if (!isSameProduct(lensQuery, title, matchMode)) continue;
             const seller = String(r.seller || r.vendor || "").trim();
             const k = seller.toLowerCase();
@@ -46771,12 +46822,12 @@ var init_routes = __esm({
                 title,
                 seller,
                 sellerUrl: r.seller_url ? createMaskingPointer(String(r.seller_url), { offerId: String(r.id) }) : "",
-                prices: { effectivePrice: price, mandatoryTotal: price, listPrice: 0 },
+                prices: { effectivePrice: price2, mandatoryTotal: price2, listPrice: 0 },
                 attributes: {},
                 availability: r.availability || "unknown",
                 canonicalEntityId: r.canonical_entity_id ?? null
               },
-              price
+              price: price2
             }));
           }
           if (floor.length >= 6) break;
@@ -47914,11 +47965,11 @@ function validateProfile(i) {
   const slug5 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
   const domain = String(i.company_domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
   const network = String(i.network || "").trim().toLowerCase();
-  const template2 = String(i.template || "").trim();
+  const template = String(i.template || "").trim();
   if (!slug5) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
   if (!domain || !domain.includes(".")) return { ok: false, error: "Company domain is required (e.g. flipkart.com)" };
   if (!AFFILIATE_NETWORKS.includes(network)) return { ok: false, error: "Unknown network" };
-  if (!template2) {
+  if (!template) {
     const clean4 = {
       slug: slug5,
       company_domain: domain,
@@ -47934,22 +47985,22 @@ function validateProfile(i) {
     };
     return { ok: true, clean: clean4 };
   }
-  if (!template2.includes("{url}") && !template2.includes("{url2}")) return { ok: false, error: "Template must contain {url} (or {url2}) where the merchant page goes" };
+  if (!template.includes("{url}") && !template.includes("{url2}")) return { ok: false, error: "Template must contain {url} (or {url2}) where the merchant page goes" };
   let probe;
   try {
-    probe = new URL(template2.replace(/\{[a-z0-9_]+\}/gi, "x"));
+    probe = new URL(template.replace(/\{[a-z0-9_]+\}/gi, "x"));
   } catch {
     return { ok: false, error: "Template must be a full https:// tracking link" };
   }
   if (probe.protocol !== "https:") return { ok: false, error: "Template must start with https://" };
-  if (template2.length > 500) return { ok: false, error: "Template is too long (max 500)" };
+  if (template.length > 500) return { ok: false, error: "Template is too long (max 500)" };
   return {
     ok: true,
     clean: {
       slug: slug5,
       company_domain: domain,
       network,
-      template: template2,
+      template,
       campaign_key: String(i.campaign_key ?? "").trim().slice(0, 160) || null,
       subid_param: String(i.subid_param ?? "subid").trim().replace(/[^a-z0-9_]/gi, "").slice(0, 40) || "subid",
       affiliate_id: String(i.affiliate_id ?? "").trim().slice(0, 190) || null,
@@ -48036,9 +48087,9 @@ function extractMyxDeals(root, limit = 24) {
   const out = [];
   for (const p of products.slice(0, limit)) {
     const name = strip(p?.productName);
-    const price = usd(p?.price);
+    const price2 = usd(p?.price);
     const disc = strip(p?.discountDisplayLabel || "").replace(/[()]/g, "");
-    if (!name || !price || !/\d+\s*%/.test(disc)) continue;
+    if (!name || !price2 || !/\d+\s*%/.test(disc)) continue;
     const landing = String(p?.landingPageUrl || "").replace(/^\/+/, "");
     if (!landing) continue;
     const brand = strip(p?.brand);
@@ -48047,7 +48098,7 @@ function extractMyxDeals(root, limit = 24) {
       merchant_name: "Myntra",
       kind: "sale",
       title: clip4(brand ? `${brand} ${name}` : name, 120),
-      description: `Live on Myntra's offers page at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.mrp) ?? price}).`,
+      description: `Live on Myntra's offers page at \u20B9${price2.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.mrp) ?? price2}).`,
       code: null,
       discount_text: disc,
       min_order: null,
@@ -48102,10 +48153,10 @@ function extractTatacliqDeals(body, cap = 32) {
     const rows = g?.product_search_page?.search_result || [];
     for (const p of rows) {
       const disc = Number(p?.discountPercent) || 0;
-      const price = usd(p?.price?.sellingPrice?.doubleValue);
+      const price2 = usd(p?.price?.sellingPrice?.doubleValue);
       const raw = String(p?.webURL || "");
       const url2 = raw.startsWith("https://www.tatacliq.com") ? raw : raw.startsWith("/") ? `https://www.tatacliq.com${raw}` : null;
-      if (disc < 40 || !price || !url2) continue;
+      if (disc < 40 || !price2 || !url2) continue;
       const brand = strip(p?.brandname);
       const title = strip(p?.productTitle || p?.productname);
       out.push({
@@ -48113,7 +48164,7 @@ function extractTatacliqDeals(body, cap = 32) {
         merchant_name: "Tata CLiQ",
         kind: "sale",
         title: clip4(brand ? `${brand} ${title}` : title, 120),
-        description: `In stock on Tata CLiQ at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.price?.mrpPrice?.doubleValue) ?? price}).`,
+        description: `In stock on Tata CLiQ at \u20B9${price2.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.price?.mrpPrice?.doubleValue) ?? price2}).`,
         code: null,
         discount_text: `${disc}% OFF`,
         min_order: null,
@@ -48240,7 +48291,7 @@ function cleanDeal(d) {
     myntra: "myntra.com",
     ajio: "ajio.com",
     tatacliq: "tatacliq.com",
-    meesho: "meesho.com",
+    shopsy: "shopsy.in",
     croma: "croma.com",
     nykaa: "nykaa.com",
     redbus: "redbus.in",
@@ -48768,8 +48819,8 @@ var init_acceptanceRegistry = __esm({
       { id: "myntra", name: "Myntra", vertical: "ecommerce", tier: "mandated", probes: [
         { capability: "product search", url: "https://www.myntra.com/jeans" }
       ] },
-      { id: "meesho", name: "Meesho", vertical: "ecommerce", tier: "mandated", probes: [
-        { capability: "product search", url: "https://www.meesho.com/jeans" }
+      { id: "shopsy", name: "Shopsy", vertical: "ecommerce", tier: "mandated", probes: [
+        { capability: "product search", url: "https://www.shopsy.in/search?q=jeans" }
       ] },
       { id: "ajio", name: "AJIO", vertical: "ecommerce", tier: "mandated", probes: [
         { capability: "product search", url: "https://www.ajio.com/s/jeans" }
@@ -49359,8 +49410,8 @@ function maskId(id) {
   if (v.length <= 4) return "\u2022\u2022\u2022\u2022";
   return `${"\u2022".repeat(Math.min(8, v.length - 4))}${v.slice(-4)}`;
 }
-function idFromTemplate(template2) {
-  const t = String(template2 || "");
+function idFromTemplate(template) {
+  const t = String(template || "");
   for (const key of ["pub_id", "affid", "aff_id", "aff", "tag", "pid", "id", "cid"]) {
     const m = t.match(new RegExp(`[?&]${key}=([^&]+)`, "i"));
     if (m) {
@@ -53261,7 +53312,7 @@ var init_data = __esm({
         slug: "ecommerce",
         label: "Online Shopping",
         title: "Compare Product Prices \u2014 Amazon, Flipkart, Myntra & More | Try1Second",
-        description: "Compare live product prices across Amazon, Flipkart, Myntra, Meesho and more Indian stores in one second. One product, every price, lowest first.",
+        description: "Compare live product prices across Amazon, Flipkart, Myntra, Shopsy and more Indian stores in one second. One product, every price, lowest first.",
         h1: "Product Price Comparison Across India\u2019s Biggest Online Stores",
         intro: [
           "Search any product and Try1Second asks Amazon, Flipkart, Myntra and other major stores for its current price at the same moment \u2014 then ranks them lowest first.",
