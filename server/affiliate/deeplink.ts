@@ -13,6 +13,7 @@
  * resolves the token server-side, validates the destination (anti open-redirect)
  * and 302s through the tracking link, recording the click for attribution.
  */
+import { meeshoAffiliateUrl } from './meeshoAffiliate';
 import { IATA } from '../common/airportLookup';
 import crypto from 'crypto';
 import { settings } from '../common/settings';
@@ -297,7 +298,8 @@ export function merchantSearchFallback(vendor: string, title: string, vertical?:
   };
   if (has('amazon')) return `https://www.amazon.in/s?k=${q}`;
   if (has('flipkart')) return `https://www.flipkart.com/search?q=${q}`;
-  if (has('meesho')) return `https://www.meesho.com/search?q=${q}`;
+  // OWNER 5 Nov: paid affiliate id, when configured (server/affiliate/meeshoAffiliate.ts).
+  if (has('meesho')) return meeshoAffiliateUrl(`https://www.meesho.com/search?q=${q}`);
   if (has('myntra')) return `https://www.myntra.com/${encodeURIComponent(String(title || '').trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '-').slice(0, 60))}`;
   if (has('ajio')) return `https://www.ajio.com/search/?text=${q}`;
   if (has('tata') && has('cliq')) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q}`;

@@ -30195,6 +30195,46 @@ var init_lenderLogo = __esm({
   }
 });
 
+// server/affiliate/meeshoAffiliate.ts
+function meeshoAffiliateUrl(destination) {
+  const dest = String(destination || "");
+  if (!dest) return dest;
+  const tpl = template();
+  if (tpl) {
+    try {
+      const parsed = new URL(tpl.replace("{urlEncoded}", encodeURIComponent(dest)).replace("{url}", dest));
+      if (parsed.protocol !== "https:") return appendParams(dest);
+      if (tpl.includes("{url}") || tpl.includes("{urlEncoded}")) return parsed.toString();
+      parsed.searchParams.set("url", dest);
+      return parsed.toString();
+    } catch {
+      return appendParams(dest);
+    }
+  }
+  return appendParams(dest);
+}
+function appendParams(dest) {
+  const extra = extraParams();
+  if (!extra) return dest;
+  try {
+    const u = new URL(dest);
+    for (const pair of extra.split("&")) {
+      const [k, v] = pair.split("=");
+      if (k) u.searchParams.set(k.trim(), (v ?? "").trim());
+    }
+    return u.toString();
+  } catch {
+    return dest;
+  }
+}
+var template, extraParams;
+var init_meeshoAffiliate = __esm({
+  "server/affiliate/meeshoAffiliate.ts"() {
+    template = () => String(process.env.MEESHO_AFFILIATE_LINK_TEMPLATE || "").trim();
+    extraParams = () => String(process.env.MEESHO_AFFILIATE_PARAMS || "").trim();
+  }
+});
+
 // server/affiliate/linkinr/deephop.ts
 var deephop_exports = {};
 __export(deephop_exports, {
@@ -30576,7 +30616,7 @@ function buildMerchantDeepLink(merchant, title, vertical, ctx = {}) {
   if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
   if (has("flipkart") && has("minute")) return `https://www.flipkart.com/search?q=${q3}&marketplace=GROCERY`;
   if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
-  if (has("meesho")) return `https://www.meesho.com/search?q=${q3}`;
+  if (has("meesho")) return meeshoAffiliateUrl(`https://www.meesho.com/search?q=${q3}`);
   if (has("myntra")) return `https://www.myntra.com/${slug2(t)}`;
   if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
   if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
@@ -30758,6 +30798,7 @@ function buildMerchantDeepLink(merchant, title, vertical, ctx = {}) {
 var IATA2, cityCode, slug2, e, linkMemo, LINK_MEMO_MAX, LINK_MEMO_TTL_MS;
 var init_merchantLinks = __esm({
   "server/affiliate/merchantLinks.ts"() {
+    init_meeshoAffiliate();
     init_cityAlias();
     IATA2 = {
       // shared subset used by the airline/OTA SRPs
@@ -31002,7 +31043,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   };
   if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
   if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
-  if (has("meesho")) return `https://www.meesho.com/search?q=${q3}`;
+  if (has("meesho")) return meeshoAffiliateUrl(`https://www.meesho.com/search?q=${q3}`);
   if (has("myntra")) return `https://www.myntra.com/${encodeURIComponent(String(title || "").trim().toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "-").slice(0, 60))}`;
   if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
   if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
@@ -31033,6 +31074,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
 var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
+    init_meeshoAffiliate();
     init_airportLookup();
     import_crypto23 = __toESM(require("crypto"), 1);
     init_settings();
@@ -35157,9 +35199,9 @@ var init_affiliateNetwork = __esm({
       }
       buildDeepLink(destinationUrl, _vendorDomain) {
         const apiKey2 = settings.cuelinks.apiKey;
-        const template = settings.cuelinks.campaignId ? `https://linksredirect.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}` : null;
-        if (!apiKey2 || !template) return null;
-        return template.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
+        const template2 = settings.cuelinks.campaignId ? `https://linksredirect.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}` : null;
+        if (!apiKey2 || !template2) return null;
+        return template2.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
       }
     };
     NETWORKS = [new CuelinksAdapter()];
@@ -43598,10 +43640,14 @@ var init_warm = __esm({
       { query: "milk", vertical: "grocery", city: "Indore", pincode: "452001" },
       { query: "biryani", vertical: "food", city: "Indore", pincode: "452001" },
       { query: "movies", vertical: "movies", city: "Indore", pincode: "452001" },
-      { query: "Indore to Bhopal", vertical: "bus", city: "Indore", pincode: "452001" },
-      { query: "Indore to Bhopal", vertical: "cab", city: "Indore", pincode: "452001" },
-      { query: "Indore (IDR) to Delhi (DEL)", vertical: "flights", city: "Indore", pincode: "452001" },
-      { query: "Indore", vertical: "hotels", city: "Indore", pincode: "452001" },
+      // OWNER 4 Nov: these must be the EXACT seeds the clients open with (src/lib/verticalSeed.ts,
+      // flutter_app/lib/core/verticals.dart) - hotels "Goa", flights "<city> to New Delhi",
+      // bus "<city> to Nagpur" - because a seed warmed under a different query is a different cache
+      // key, so the user's first tap still went live (the 22 Oct lesson, one seed drift later).
+      { query: "Indore to Nagpur", vertical: "bus", city: "Indore", pincode: "452001" },
+      { query: "Rajwada Indore to Airport Indore", vertical: "cab", city: "Indore", pincode: "452001" },
+      { query: "Indore to New Delhi", vertical: "flights", city: "Indore", pincode: "452001" },
+      { query: "Goa", vertical: "hotels", city: "Indore", pincode: "452001" },
       { query: "personal loan", vertical: "loans", city: "Indore", pincode: "452001" },
       { query: "health insurance", vertical: "insurance", city: "Indore", pincode: "452001" },
       { query: "hdfc credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
@@ -47868,11 +47914,11 @@ function validateProfile(i) {
   const slug5 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
   const domain = String(i.company_domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
   const network = String(i.network || "").trim().toLowerCase();
-  const template = String(i.template || "").trim();
+  const template2 = String(i.template || "").trim();
   if (!slug5) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
   if (!domain || !domain.includes(".")) return { ok: false, error: "Company domain is required (e.g. flipkart.com)" };
   if (!AFFILIATE_NETWORKS.includes(network)) return { ok: false, error: "Unknown network" };
-  if (!template) {
+  if (!template2) {
     const clean4 = {
       slug: slug5,
       company_domain: domain,
@@ -47888,22 +47934,22 @@ function validateProfile(i) {
     };
     return { ok: true, clean: clean4 };
   }
-  if (!template.includes("{url}") && !template.includes("{url2}")) return { ok: false, error: "Template must contain {url} (or {url2}) where the merchant page goes" };
+  if (!template2.includes("{url}") && !template2.includes("{url2}")) return { ok: false, error: "Template must contain {url} (or {url2}) where the merchant page goes" };
   let probe;
   try {
-    probe = new URL(template.replace(/\{[a-z0-9_]+\}/gi, "x"));
+    probe = new URL(template2.replace(/\{[a-z0-9_]+\}/gi, "x"));
   } catch {
     return { ok: false, error: "Template must be a full https:// tracking link" };
   }
   if (probe.protocol !== "https:") return { ok: false, error: "Template must start with https://" };
-  if (template.length > 500) return { ok: false, error: "Template is too long (max 500)" };
+  if (template2.length > 500) return { ok: false, error: "Template is too long (max 500)" };
   return {
     ok: true,
     clean: {
       slug: slug5,
       company_domain: domain,
       network,
-      template,
+      template: template2,
       campaign_key: String(i.campaign_key ?? "").trim().slice(0, 160) || null,
       subid_param: String(i.subid_param ?? "subid").trim().replace(/[^a-z0-9_]/gi, "").slice(0, 40) || "subid",
       affiliate_id: String(i.affiliate_id ?? "").trim().slice(0, 190) || null,
@@ -49313,8 +49359,8 @@ function maskId(id) {
   if (v.length <= 4) return "\u2022\u2022\u2022\u2022";
   return `${"\u2022".repeat(Math.min(8, v.length - 4))}${v.slice(-4)}`;
 }
-function idFromTemplate(template) {
-  const t = String(template || "");
+function idFromTemplate(template2) {
+  const t = String(template2 || "");
   for (const key of ["pub_id", "affid", "aff_id", "aff", "tag", "pid", "id", "cid"]) {
     const m = t.match(new RegExp(`[?&]${key}=([^&]+)`, "i"));
     if (m) {

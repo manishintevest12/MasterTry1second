@@ -37,10 +37,14 @@ export const SEED_QUERIES: Array<{ query: string; vertical: string; city?: strin
   { query: 'milk', vertical: 'grocery', city: 'Indore', pincode: '452001' },
   { query: 'biryani', vertical: 'food', city: 'Indore', pincode: '452001' },
   { query: 'movies', vertical: 'movies', city: 'Indore', pincode: '452001' },
-  { query: 'Indore to Bhopal', vertical: 'bus', city: 'Indore', pincode: '452001' },
-  { query: 'Indore to Bhopal', vertical: 'cab', city: 'Indore', pincode: '452001' },
-  { query: 'Indore (IDR) to Delhi (DEL)', vertical: 'flights', city: 'Indore', pincode: '452001' },
-  { query: 'Indore', vertical: 'hotels', city: 'Indore', pincode: '452001' },
+  // OWNER 4 Nov: these must be the EXACT seeds the clients open with (src/lib/verticalSeed.ts,
+  // flutter_app/lib/core/verticals.dart) - hotels "Goa", flights "<city> to New Delhi",
+  // bus "<city> to Nagpur" - because a seed warmed under a different query is a different cache
+  // key, so the user's first tap still went live (the 22 Oct lesson, one seed drift later).
+  { query: 'Indore to Nagpur', vertical: 'bus', city: 'Indore', pincode: '452001' },
+  { query: 'Rajwada Indore to Airport Indore', vertical: 'cab', city: 'Indore', pincode: '452001' },
+  { query: 'Indore to New Delhi', vertical: 'flights', city: 'Indore', pincode: '452001' },
+  { query: 'Goa', vertical: 'hotels', city: 'Indore', pincode: '452001' },
   { query: 'personal loan', vertical: 'loans', city: 'Indore', pincode: '452001' },
   { query: 'health insurance', vertical: 'insurance', city: 'Indore', pincode: '452001' },
   { query: 'hdfc credit card', vertical: 'creditcards', city: 'Indore', pincode: '452001' },

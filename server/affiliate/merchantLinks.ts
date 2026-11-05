@@ -12,6 +12,7 @@
  * so a flight row links to that exact route/date on every seller, not to "/".
  */
 
+import { meeshoAffiliateUrl } from './meeshoAffiliate';
 import { canonicalCity } from '../common/cityAlias';
 
 export interface TravelCtx {
@@ -131,7 +132,7 @@ function buildMerchantDeepLink(merchant: string, title: string, vertical?: strin
   if (has('amazon')) return `https://www.amazon.in/s?k=${q}`;
   if (has('flipkart') && has('minute')) return `https://www.flipkart.com/search?q=${q}&marketplace=GROCERY`;
   if (has('flipkart')) return `https://www.flipkart.com/search?q=${q}`;
-  if (has('meesho')) return `https://www.meesho.com/search?q=${q}`;
+  if (has('meesho')) return meeshoAffiliateUrl(`https://www.meesho.com/search?q=${q}`);
   if (has('myntra')) return `https://www.myntra.com/${slug(t)}`;
   if (has('ajio')) return `https://www.ajio.com/search/?text=${q}`;
   if (has('tata') && has('cliq')) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q}`;
