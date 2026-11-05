@@ -887,7 +887,7 @@ class Deal {
       'myntra': 'ecommerce',
       'ajio': 'ecommerce',
       'tatacliq': 'ecommerce',
-      'meesho': 'ecommerce',
+      'shopsy': 'ecommerce',
       'croma': 'ecommerce',
       'nykaa': 'ecommerce',
       'xiaomi': 'ecommerce',

@@ -8,7 +8,7 @@ own design language (white cards, slate borders, red-600 accent, Plus Jakarta Sa
 
 - **Cross-site best price on the product page** — the panel matches the product
   you're viewing against Try1Second's verified offers for the *same canonical
-  product* across sites (Amazon, Flipkart, Myntra, Ajio, Tata CLiQ, Meesho + every
+  product* across sites (Amazon, Flipkart, Myntra, Ajio, Tata CLiQ, Shopsy + every
   source the Try1Second engine has), not just a single-store price tracker.
 - **Real price history** — the graph plots only prices actually recorded by the
   Try1Second backend (`GET /api/history`). If no history exists yet, it says so.
@@ -31,7 +31,7 @@ own design language (white cards, slate borders, red-600 accent, Plus Jakarta Sa
 2. Enable **Developer mode** (top right)
 3. Click **Load unpacked** and select this `chrome-extension/` folder
 4. Open any product page on amazon.in, flipkart.com, myntra.com, ajio.com,
-   tatacliq.com or meesho.com — the Try1Second panel appears bottom-right.
+   tatacliq.com or shopsy.in — the Try1Second panel appears bottom-right.
 
 ## Architecture
 

@@ -70,7 +70,6 @@ const BY_HOST: Array<[RegExp, AppTarget]> = [
   [/(^|\.)flipkart\.com$/, { label: 'Flipkart', pkg: 'com.flipkart.android', scheme: 'flipkart://' }],
   [/(^|\.)myntra\.com$/, { label: 'Myntra', pkg: 'com.myntra.android', scheme: 'myntra://' }],
   [/(^|\.)ajio\.com$/, { label: 'AJIO', pkg: 'com.ril.ajio' }],
-  [/(^|\.)meesho\.com$/, { label: 'Meesho', pkg: 'com.meesho.supply' }],
   [/(^|\.)tatacliq\.com$/, { label: 'Tata CLiQ', pkg: 'com.tul.tatacliq' }],
   [/(^|\.)reliancedigital\.in$/, { label: 'Reliance Digital', pkg: 'in.digital.reliance' }],
   // banking / loans / insurance

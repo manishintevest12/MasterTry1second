@@ -64,7 +64,7 @@ const Map<String, SearchCopy> kSearchCopy = {
     heading: 'Finding your best price…',
     sub: 'The same product is priced differently on every store. We are checking them all right now.',
     unit: 'stores',
-    sources: ['Amazon India', 'Flipkart', 'Meesho', 'Myntra', 'Ajio', 'Tata CLiQ', 'Croma', 'Reliance Digital', 'JioMart'],
+    sources: ['Amazon India', 'Flipkart', 'Shopsy', 'Myntra', 'Ajio', 'Tata CLiQ', 'Croma', 'Reliance Digital', 'JioMart'],
   ),
   'grocery': SearchCopy(
     heading: 'Finding your best basket price…',

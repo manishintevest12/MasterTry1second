@@ -270,7 +270,7 @@ function cleanDeal(d: AcquiredDeal) {
   // Merchant logo as a stable image fallback so no live deal renders imageless.
   const merchantDomain: Record<string, string> = {
     amazon: 'amazon.in', flipkart: 'flipkart.com', myntra: 'myntra.com', ajio: 'ajio.com',
-    tatacliq: 'tatacliq.com', meesho: 'meesho.com', croma: 'croma.com', nykaa: 'nykaa.com',
+    tatacliq: 'tatacliq.com', shopsy: 'shopsy.in', croma: 'croma.com', nykaa: 'nykaa.com',
     redbus: 'redbus.in', abhibus: 'abhibus.com', zingbus: 'zingbus.com', dominos: 'dominos.co.in',
     pizzahut: 'pizzahut.co.in', swiggy: 'swiggy.com', zomato: 'zomato.com', eatsure: 'eatsure.com',
     blinkit: 'blinkit.com', zepto: 'zepto.com', instamart: 'swiggy.com', bigbasket: 'bigbasket.com',

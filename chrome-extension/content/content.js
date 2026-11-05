@@ -1218,7 +1218,7 @@
     if (!hasLists) {
       mine.innerHTML = `
         <div class="t1s-onel-hero">
-          <div class="t1s-onel-art"><span>Amazon</span><span>Flipkart</span><span>Myntra</span><span>Ajio</span><span>CLiQ</span><span>Meesho</span></div>
+          <div class="t1s-onel-art"><span>Amazon</span><span>Flipkart</span><span>Myntra</span><span>Ajio</span><span>CLiQ</span><span>Shopsy</span></div>
           <b>All your wishlists. All in one place.</b>
           <span>Save products from every store into ONE list — kept on this device.</span>
           <button type="button" class="t1s-pill-btn" id="t1s-new-list">Create your first Onelist</button>
@@ -1255,7 +1255,7 @@
   /** What's New — ALL 11 Try1Second verticals with honest source lists (no fake numbers). */
   function viewWhatsNew(body) {
     const cards = [
-      { icon: ICON.cart, badge: 'Shopping', title: 'Compare Shopping Prices', desc: 'Amazon, Flipkart, Meesho, Myntra, Ajio & Tata CLiQ — side by side, cheapest first.', tint: '#eef2f9' },
+      { icon: ICON.cart, badge: 'Shopping', title: 'Compare Shopping Prices', desc: 'Amazon, Flipkart, Shopsy, Myntra, Ajio & Tata CLiQ — side by side, cheapest first.', tint: '#eef2f9' },
       { icon: ICON.basket, badge: 'Grocery', title: 'Compare 10-Minute Grocery', desc: 'Blinkit, Zepto, Instamart, BigBasket & Flipkart Minutes prices for the same basket.', tint: '#edf9ef' },
       { icon: ICON.food, badge: 'Food', title: 'Compare Food Delivery Prices', desc: 'Swiggy, Zomato, Domino’s, Pizza Hut & EatSure — same dish, live prices.', tint: '#f9f2e8' },
       { icon: ICON.plane, badge: 'Flights', title: 'Compare Flight Fares', desc: 'MakeMyTrip, EaseMyTrip, Ixigo, Yatra, Cleartrip, IndiGo & Akasa Air — live fares.', tint: '#eef2f9' },

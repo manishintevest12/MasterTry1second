@@ -173,7 +173,7 @@ function classifyMerchantUrl(raw) {
   const host = u.hostname.replace(/^www\./, '');
   const q = (name) => (u.searchParams.get(name) || '').trim();
   // product pages
-  const productHosts = /(^|\.)(amazon\.(in|com)|flipkart\.com|myntra\.com|ajio\.com|tatacliq\.com|meesho\.com|blinkit\.com|bigbasket\.com|zeptonow\.com|jiomart\.com)$/;
+  const productHosts = /(^|\.)(amazon\.(in|com)|flipkart\.com|myntra\.com|ajio\.com|tatacliq\.com|shopsy\.in|blinkit\.com|bigbasket\.com|zeptonow\.com|jiomart\.com)$/;
   if (!productHosts.test(host)) return { kind: 'none' };
   const path = u.pathname;
   const isAmazonProduct = /\/dp\//.test(path) || /\/gp\/product\//.test(path);
@@ -250,7 +250,7 @@ async function pageFlow(url, { auto = false } = {}) {
     return doLens(url);
   }
   if (auto) {
-    box.innerHTML = '<div class="t1s-status t1s-muted">Open a product or search page on a supported store (Amazon, Flipkart, Myntra, Ajio, Tata CLiQ, Meesho, Blinkit, BigBasket…) and Try1Second compares it automatically.</div>';
+    box.innerHTML = '<div class="t1s-status t1s-muted">Open a product or search page on a supported store (Amazon, Flipkart, Shopsy, Myntra, Ajio, Tata CLiQ, Shopsy, Blinkit, BigBasket…) and Try1Second compares it automatically.</div>';
   } else {
     box.innerHTML = '<div class="t1s-status t1s-muted">That page has no readable product or search query. Paste a product link or type a product name.</div>';
   }
@@ -327,7 +327,7 @@ async function renderTracked() {
   $('#tracked-count').textContent = String(list.length);
   const box = $('#tracked-list');
   if (!list.length) {
-    box.innerHTML = '<div class="t1s-status t1s-muted">Nothing tracked yet. Open a product page on Amazon, Flipkart, Myntra, Ajio, Tata CLiQ or Meesho and press "Track price".</div>';
+    box.innerHTML = '<div class="t1s-status t1s-muted">Nothing tracked yet. Open a product page on Amazon, Flipkart, Shopsy, Ajio, Tata CLiQ or Shopsy and press "Track price".</div>';
   } else {
     box.innerHTML = '';
     for (const item of list) {

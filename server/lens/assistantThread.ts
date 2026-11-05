@@ -70,7 +70,7 @@ export function writeSubject(sessionId: string, subject: AssistantSubject): void
 }
 
 /** Every site the assistant can price a product on. A bare mention of one is not a new question. */
-const SITE_NAMES = /\b(blinkit|zepto|instamart|swiggy\s*instamart|bigbasket|big\s*basket|jiomart|jio\s*mart|dmart|d\s*mart|dunzo|flipkart\s*minutes|flipkart|amazon|ajio|myntra|meesho|nykaa|tatacliq|tata\s*cliq|croma|reliance\s*digital|snapdeal|paytm\s*mall|swiggy|zomato|dominos|domino'?s|eatsure|faasos|behrouz|ola\s*dash|uber\s*eats|makemytrip|goibibo|yatra|cleartrip|ixigo|easemytrip|ease\s*my\s*trip|agoda|booking|oyo|expedia|hotels\.com|redbus|abhibus|ola|uber|rapido)\b/gi;
+const SITE_NAMES = /\b(blinkit|zepto|instamart|swiggy\s*instamart|bigbasket|big\s*basket|jiomart|jio\s*mart|dmart|d\s*mart|dunzo|flipkart\s*minutes|flipkart|amazon|ajio|myntra|shopsy|nykaa|tatacliq|tata\s*cliq|croma|reliance\s*digital|snapdeal|paytm\s*mall|swiggy|zomato|dominos|domino'?s|eatsure|faasos|behrouz|ola\s*dash|uber\s*eats|makemytrip|goibibo|yatra|cleartrip|ixigo|easemytrip|ease\s*my\s*trip|agoda|booking|oyo|expedia|hotels\.com|redbus|abhibus|ola|uber|rapido)\b/gi;
 
 /** Question machinery: words that carry no subject at all. */
 const FOLLOW_VOCAB = new Set([

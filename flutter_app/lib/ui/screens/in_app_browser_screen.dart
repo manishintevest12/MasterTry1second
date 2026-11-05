@@ -44,7 +44,7 @@ String hostDisplayName(String url) {
     'myntra': 'Myntra',
     'ajio': 'AJIO',
     'tatacliq': 'Tata CLiQ',
-    'meesho': 'Meesho',
+    'shopsy': 'Shopsy',
     'zomato': 'Zomato',
     'swiggy': 'Swiggy',
     'dominos': "Domino's",

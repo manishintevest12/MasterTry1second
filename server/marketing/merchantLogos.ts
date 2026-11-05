@@ -95,7 +95,7 @@ const KEY_DOMAIN: Record<string, string> = {
   reliance: 'reliancedigital.in', reliancedigital: 'reliancedigital.in',
   croma: 'croma.com', amazon: 'amazon.in', amzn: 'amazon.in', flipkart: 'flipkart.com',
   myntra: 'myntra.com', ajio: 'ajio.com', tatacliq: 'tatacliq.com', tata: 'tatacliq.com',
-  meesho: 'meesho.com', nykaa: 'nykaa.com', snapdeal: 'snapdeal.com', jiomart: 'jiomart.com',
+  shopsy: 'shopsy.in', nykaa: 'nykaa.com', snapdeal: 'snapdeal.com', jiomart: 'jiomart.com',
   blinkit: 'blinkit.com', zepto: 'zeptonow.com', zeptonow: 'zeptonow.com',
   instamart: 'swiggy.com', swiggy: 'swiggy.com', bigbasket: 'bigbasket.com', bbnow: 'bigbasket.com',
   flipkartminutes: 'flipkart.com', dmart: 'dmart.in', spencer: 'spencers.in', more: 'moreretail.in',

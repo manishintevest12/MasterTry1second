@@ -94,16 +94,35 @@ function detectTataCliq() {
   };
 }
 
-function detectMeesho() {
-  const title = txt('h1, [class*="ProductTitle"], span[class*="name"]');
+function detectShopsy() {
+  // Shopsy (shopsy.in) is Flipkart-owned and server-renders schema.org JSON-LD plus
+  // og: meta on product pages; its DOM class names are build-hashed, so structured
+  // data is the stable read. Anything missing degrades to null instead of a bad card.
+  let ld = null;
+  try {
+    for (const el of document.querySelectorAll('script[type="application/ld+json"]')) {
+      const raw = el.textContent || '';
+      if (!raw.trim()) continue;
+      const parsed = JSON.parse(raw);
+      const candidates = Array.isArray(parsed) ? parsed : (parsed['@graph'] || [parsed]);
+      ld = candidates.find((x) => x && x['@type'] === 'Product') || null;
+      if (ld) break;
+    }
+  } catch (_) { ld = null; }
+  const meta = (prop) =>
+    document.querySelector(`meta[property="${prop}"], meta[name="${prop}"]`)?.content || '';
+  const title = String(ld?.name || meta('og:title') || txt('h1') || '').trim();
   if (!title) return null;
+  const offer = Array.isArray(ld?.offers) ? ld.offers[0] : ld?.offers;
+  const p = Number(offer?.price ?? offer?.lowPrice ?? 0);
+  const image = (Array.isArray(ld?.image) ? ld.image[0] : ld?.image) || meta('og:image') || null;
   return {
-    site: 'Meesho',
-    title,
+    site: 'Shopsy',
+    title: title.slice(0, 140),
     identifiers: {},
-    price: num('[class*="price"], span[class*="Price"]'),
-    mrp: num('[class*="mrp"], [class*="strike"], [class*="Mrp"]'),
-    image: document.querySelector('img[src*="cdn.meesho.com"], img[srcset*="cdn.meesho.com"]')?.src || null,
+    price: Number.isFinite(p) && p > 0 ? Math.round(p) : null,
+    mrp: null,
+    image: image || null,
   };
 }
 
@@ -247,7 +266,7 @@ const HOST_META = [
   ['myntra.com', 'Myntra', 'ecommerce'],
   ['ajio.com', 'Ajio', 'ecommerce'],
   ['tatacliq.com', 'Tata CLiQ', 'ecommerce'],
-  ['meesho.com', 'Meesho', 'ecommerce'],
+  ['shopsy.in', 'Shopsy', 'ecommerce'],
 ];
 
 /** Site info for the current hostname, or null when the site is unsupported. */
@@ -284,7 +303,7 @@ const DETECTORS = [
   ['myntra.com', detectMyntra],
   ['ajio.com', detectAjio],
   ['tatacliq.com', detectTataCliq],
-  ['meesho.com', detectMeesho],
+  ['shopsy.in', detectShopsy],
 ];
 
 /** Returns the detected product info or null when the page isn't a product page. */

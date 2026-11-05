@@ -13,7 +13,6 @@
  * resolves the token server-side, validates the destination (anti open-redirect)
  * and 302s through the tracking link, recording the click for attribution.
  */
-import { meeshoAffiliateUrl } from './meeshoAffiliate';
 import { IATA } from '../common/airportLookup';
 import crypto from 'crypto';
 import { settings } from '../common/settings';
@@ -87,7 +86,7 @@ export function safeDomain(url: string): string {
  * and 3942 both 302 to the exact destination. When the API key is set, the
  * provider's campaign sync can discover newer per-vertical campaigns.
  */
-const CUELINKS_MERCHANTS = new Set(['makemytrip.com', 'goibibo.com']);
+const CUELINKS_MERCHANTS = new Set(['makemytrip.com', 'goibibo.com', 'shopsy.in']);
 
 /** Read-only accessor for the admin coverage view (owner 27 Oct). */
 export function cuelinksKnownMerchants(): string[] { return [...CUELINKS_MERCHANTS]; }
@@ -298,8 +297,9 @@ export function merchantSearchFallback(vendor: string, title: string, vertical?:
   };
   if (has('amazon')) return `https://www.amazon.in/s?k=${q}`;
   if (has('flipkart')) return `https://www.flipkart.com/search?q=${q}`;
-  // OWNER 5 Nov: paid affiliate id, when configured (server/affiliate/meeshoAffiliate.ts).
-  if (has('meesho')) return meeshoAffiliateUrl(`https://www.meesho.com/search?q=${q}`);
+  // Shopsy (shopsy.in) replaced Meesho on 5 Nov. The exit is a plain search URL; the
+  // Cuelinks linkkit hop is applied by cuelinksMerchantUrl() (publisher 278473).
+  if (has('shopsy')) return `https://www.shopsy.in/search?q=${q}`;
   if (has('myntra')) return `https://www.myntra.com/${encodeURIComponent(String(title || '').trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '-').slice(0, 60))}`;
   if (has('ajio')) return `https://www.ajio.com/search/?text=${q}`;
   if (has('tata') && has('cliq')) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q}`;

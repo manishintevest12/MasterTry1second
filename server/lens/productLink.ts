@@ -26,7 +26,7 @@ const MERCHANTS: Array<[RegExp, string]> = [
   [/(^|\.)myntra\.com$/, 'Myntra'],
   [/(^|\.)ajio\.com$/, 'Ajio'],
   [/(^|\.)tatacliq\.com$/, 'Tata CLiQ'],
-  [/(^|\.)meesho\.com$/, 'Meesho'],
+  [/(^|\.)shopsy\.in$/, 'Shopsy'],
   [/(^|\.)nykaa\.com$/, 'Nykaa'],
   [/(^|\.)croma\.com$/, 'Croma'],
   [/(^|\.)reliancedigital\.in$/, 'Reliance Digital'],
@@ -88,7 +88,7 @@ export function titleFromSlug(u: URL): string | null {
   // Tracker slugs: "flipkart apple iphone 17 black 256 gb price in india 2 224849352"
   if (/(^|\.)(buyhatke|pricehistory)\./i.test(u.hostname) || /\bprice in india\b/i.test(best)) {
     best = best
-      .replace(/^(amazon|flipkart|myntra|ajio|tata cliq|tatacliq|meesho|nykaa|croma|snapdeal|jiomart)\s+/i, '')
+      .replace(/^(amazon|flipkart|myntra|ajio|tata cliq|tatacliq|shopsy|nykaa|croma|snapdeal|jiomart)\s+/i, '')
       .replace(/\s+price in india.*$/i, '')
       .replace(/\s+\d{0,3}\s*\d{6,}$/i, '')
       .trim();
@@ -105,7 +105,7 @@ export function titleFromSlug(u: URL): string | null {
 export function stripComparisonBoilerplate(t: string): string {
   let x = String(t || '').trim();
   x = x.replace(/^(price\s+history|price\s+tracker|price\s+comparison|compare\s+prices?)\s+(of|for)\s+/i, '');
-  x = x.replace(/\s+from\s+(amazon(\.in)?|flipkart|myntra|ajio|tata\s?cliq|meesho|nykaa|croma|reliance\s?digital|snapdeal|jiomart)\b.*$/i, '');
+  x = x.replace(/\s+from\s+(amazon(\.in)?|flipkart|myntra|ajio|tata\s?cliq|shopsy|nykaa|croma|reliance\s?digital|snapdeal|jiomart)\b.*$/i, '');
   x = x.replace(/\s*[|\u2013\u2014-]\s*(buyhatke|pricehistory\.app|pricebefore|smartprix|91mobiles|pricetree|mysmartprice|compareraja|desidime)[^|]*$/i, '');
   x = x.replace(/\s+price\s+in\s+india\b.*$/i, '');
   x = x.replace(/\s+(online\s+)?(price|prices)\s*(history|tracker|drop|comparison)?\s*$/i, '');
@@ -115,7 +115,7 @@ export function stripComparisonBoilerplate(t: string): string {
 /** Cleans store boilerplate off a page title: "Buy X Online at Best Price | Amazon.in" -> "X". */
 export function cleanTitle(t: string): string {
   return stripComparisonBoilerplate(t)
-    .replace(/\s*[|\u2013\u2014-]\s*(amazon\.in|flipkart\.com|myntra|ajio|tata ?cliq|meesho|nykaa|croma|reliance digital|snapdeal|jiomart|lenskart|bigbasket|blinkit)[^|]*$/i, '')
+    .replace(/\s*[|\u2013\u2014-]\s*(amazon\.in|flipkart\.com|myntra|ajio|tata ?cliq|shopsy|nykaa|croma|reliance digital|snapdeal|jiomart|lenskart|bigbasket|blinkit)[^|]*$/i, '')
     .replace(/^(buy|shop)\s+/i, '')
     .replace(/\s+(online|at best price|best price)\b.*$/i, '')
     .replace(/\s*:\s*amazon\.in.*$/i, '')
@@ -142,7 +142,7 @@ function priceNum(v: unknown): number | null {
  *      remaining words are the product identity the shop indexes.
  * Typed product names only — pasted product titles keep their exact words.
  */
-const TYPED_FILLER = /^(buy|purchase|price|prices|cost|rate|rates|best|cheapest|lowest|online|new|latest|original|genuine|offer|offers|deal|deals|sale|flipkart|amazon|myntra|ajio|meesho|india|in)$/i;
+const TYPED_FILLER = /^(buy|purchase|price|prices|cost|rate|rates|best|cheapest|lowest|online|new|latest|original|genuine|offer|offers|deal|deals|sale|flipkart|amazon|myntra|ajio|shopsy|india|in)$/i;
 
 export function normalizeTypedProductQuery(t: string): string {
   let out = String(t || '').replace(/\s+/g, ' ').trim();

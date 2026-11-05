@@ -18,6 +18,7 @@ import { parseRealmeSearch } from '../parsers/realme';
 import { parseOppoSearch, parseOppoPdp, oppoItem, extractOppoProsePrice } from '../parsers/oppo';
 import { parseJiomart } from '../parsers/jiomart';
 import { parseRelianceDigital } from '../parsers/relianceDigital';
+import { parseShopsy } from '../parsers/shopsy';
 import { createCipheriv } from 'node:crypto';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
@@ -199,13 +200,27 @@ export const ecommerceWorker: VerticalWorker = {
     },
     // ---- Owner-mandated e-commerce sources: attempted live on every search, honestly reported ----
     {
-      sourceId: 'w_ecom_meesho',
-      name: 'Ecom worker: Meesho (probe)',
+      // Shopsy (shopsy.in), Flipkart-owned value e-commerce.
+      // No JSON search API: the SSR page carries every product in __NEXT_DATA__
+      // (PRODUCT_SUMMARY slots). Plain server fetches get 403/529 from the Flipkart
+      // WAF, so this source uses the Chrome TLS-impersonation transport.
+      sourceId: 'w_ecom_shopsy',
+      name: 'Ecom worker: Shopsy (Flipkart-owned)',
       priority: 15,
       run: async (ctx) => {
-        const term = q(ctx) || 'products';
-        await cffiFetch(`https://www.meesho.com/search?q=${encodeURIComponent(term)}`, { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Meesho search serves a client-rendered shell to browserless HTTP; product prices load only via session-gated app APIs.');
+        const term = q(ctx);
+        if (!term) return [];
+        const url = `https://www.shopsy.in/search?q=${encodeURIComponent(term)}`;
+        const r = await cffiFetch(url, {
+          impersonate: 'chrome',
+          timeoutMs: 15_000,
+          headers: { 'Accept-Language': 'en-IN,en;q=0.9' },
+        });
+        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Shopsy HTTP ${r.status}`, r.status);
+        const items = parseShopsy(r.body, ctx.source, url);
+        if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError('ACCESS_CHALLENGE', 'Shopsy presented a challenge page');
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Shopsy page carried no parseable products');
+        return items;
       },
     },
     {

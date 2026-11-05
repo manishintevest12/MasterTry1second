@@ -38,7 +38,7 @@ class _HomeHeroState extends State<HomeHero> {
 
   @override
   Widget build(BuildContext context) {
-    const merchants = ['amazon.in', 'flipkart.com', 'myntra.com', 'ajio.com', 'tatacliq.com', 'meesho.com', 'croma.com', 'nykaa.com'];
+    const merchants = ['amazon.in', 'flipkart.com', 'myntra.com', 'ajio.com', 'tatacliq.com', 'shopsy.in', 'croma.com', 'nykaa.com'];
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 26),
       decoration: const BoxDecoration(

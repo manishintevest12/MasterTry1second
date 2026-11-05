@@ -426,7 +426,7 @@ String _logoDomainOf(String merchant) {
     'oppo': 'oppo.com',
     'realme': 'realme.com',
     'lenovo': 'lenovo.com',
-    'meesho': 'meesho.com',
+    'shopsy': 'shopsy.in',
     'nykaa': 'nykaa.com',
     'blinkit': 'blinkit.com',
     'zepto': 'zepto.com',

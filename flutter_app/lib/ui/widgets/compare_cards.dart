@@ -252,7 +252,7 @@ String _domainOf(String site) {
     'Oppo': 'oppo.com',
     'Realme': 'realme.com',
     'Lenovo': 'lenovo.com',
-    'Meesho': 'meesho.com',
+    'Shopsy': 'shopsy.in',
     'Blinkit': 'blinkit.com',
     'Zepto': 'zepto.com',
     'Instamart': 'swiggy.com',

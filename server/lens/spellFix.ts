@@ -21,7 +21,7 @@
 /** Brands, categories and products people actually type on Try1Second. */
 const VOCAB: string[] = [
   // retail brands
-  'amazon', 'flipkart', 'myntra', 'ajio', 'meesho', 'tatacliq', 'croma', 'reliance',
+  'amazon', 'flipkart', 'myntra', 'ajio', 'shopsy', 'tatacliq', 'croma', 'reliance',
   'apple', 'iphone', 'ipad', 'macbook', 'airpods', 'samsung', 'galaxy', 'oneplus', 'oppo',
   'vivo', 'realme', 'redmi', 'xiaomi', 'poco', 'nothing', 'motorola', 'nokia', 'google', 'pixel',
   'sony', 'boat', 'noise', 'boult', 'jbl', 'bose', 'sennheiser', 'logitech', 'hp', 'dell',

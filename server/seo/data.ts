@@ -146,7 +146,7 @@ const VERTICALS: VerticalMeta[] = [
   {
     id: 'ecommerce', slug: 'ecommerce', label: 'Online Shopping',
     title: 'Compare Product Prices — Amazon, Flipkart, Myntra & More | Try1Second',
-    description: 'Compare live product prices across Amazon, Flipkart, Myntra, Meesho and more Indian stores in one second. One product, every price, lowest first.',
+    description: 'Compare live product prices across Amazon, Flipkart, Myntra, Shopsy and more Indian stores in one second. One product, every price, lowest first.',
     h1: 'Product Price Comparison Across India\u2019s Biggest Online Stores',
     intro: [
       'Search any product and Try1Second asks Amazon, Flipkart, Myntra and other major stores for its current price at the same moment — then ranks them lowest first.',

@@ -139,8 +139,8 @@ export const ACCEPTANCE_TARGETS: AcceptanceTarget[] = [
     { capability: 'product search', url: 'https://www.flipkart.com/search?q=iphone%2015', parser: 'flipkart' } ] },
   { id: 'myntra', name: 'Myntra', vertical: 'ecommerce', tier: 'mandated', probes: [
     { capability: 'product search', url: 'https://www.myntra.com/jeans' } ] },
-  { id: 'meesho', name: 'Meesho', vertical: 'ecommerce', tier: 'mandated', probes: [
-    { capability: 'product search', url: 'https://www.meesho.com/jeans' } ] },
+  { id: 'shopsy', name: 'Shopsy', vertical: 'ecommerce', tier: 'mandated', probes: [
+    { capability: 'product search', url: 'https://www.shopsy.in/search?q=jeans' } ] },
   { id: 'ajio', name: 'AJIO', vertical: 'ecommerce', tier: 'mandated', probes: [
     { capability: 'product search', url: 'https://www.ajio.com/s/jeans' } ] },
   // ---- 16.9 Quick commerce (highest priority) ----

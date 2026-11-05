@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 VERTICAL_TARGETS: Dict[str, List[str]] = {
     "hotels":    ["makemytrip", "goibibo", "booking", "agoda", "yatra", "cleartrip", "oyo", "saffronstays", "easemytrip"],
     "flights":   ["makemytrip", "easemytrip", "ixigo", "yatra", "cleartrip", "akasaair", "indigo"],
-    "ecommerce": ["amazon", "flipkart", "meesho", "myntra", "ajio", "tatacliq", "nykaa", "croma", "xiaomi", "oppo", "realme", "lenovo"],
+    "ecommerce": ["amazon", "flipkart", "shopsy", "myntra", "ajio", "tatacliq", "nykaa", "croma", "xiaomi", "oppo", "realme", "lenovo"],
     "grocery":   ["blinkit", "zepto", "swiggy-instamart", "bigbasket", "flipkart-minutes"],
     "bus":       ["redbus", "abhibus", "zingbus", "makemytrip", "yatra", "ixigo"],
     "cab":       ["olacabs", "uber", "indrive", "meru", "fastdeals", "snap-e", "rapido"],
@@ -32,7 +32,7 @@ COMPANY_DOMAINS: Dict[str, str] = {
     "booking": "www.booking.com", "agoda": "www.agoda.com", "yatra": "www.yatra.com",
     "cleartrip": "www.cleartrip.com", "easemytrip": "www.easemytrip.com",
     "ixigo": "www.ixigo.com", "akasaair": "www.akasaair.com", "indigo": "www.goindigo.in",
-    "amazon": "www.amazon.in", "flipkart": "www.flipkart.com", "meesho": "www.meesho.com",
+    "amazon": "www.amazon.in", "flipkart": "www.flipkart.com", "shopsy": "www.shopsy.in",
     "myntra": "www.myntra.com", "ajio": "www.ajio.com", "tatacliq": "www.tatacliq.com",
     "nykaa": "www.nykaa.com", "croma": "www.croma.com", "xiaomi": "www.mi.com",
     "oppo": "www.oppo.com", "realme": "www.realme.com", "lenovo": "www.lenovo.com",
