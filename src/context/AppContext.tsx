@@ -1,4 +1,5 @@
 import { scrollToResults } from '../utils/scrollToResults';
+import { DEFAULT_QUERY_FOR, queryFitsVertical, seedQueryFor } from '../lib/verticalSeed';
 import { HOME_PATH, verticalPathFor, homePathFrom } from '../utils/verticalRoutes';
 import { pollDecision } from '../lib/searchPolling';
 import { canonicalizeRows, sameVertical, canonicalVertical } from '../lib/verticalAlias';
@@ -885,9 +886,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       try { window.history.pushState({ vertical: newVertical }, '', target); } catch { /* history is optional */ }
     }
     setSelectedCategory('All');
-    // Sticky last search (owner 24 Oct): coming back to a vertical refills
-    // ITS last query, never a blank box that re-seeds the default route.
-    setSearchQuery(verticalQueries[newVertical] || '');
+    // Sticky last search (owner 24 Oct) + OWNER 4 Nov: the box is never left blank, and a
+    // remembered query is reused only when it fits this vertical's shape (a route belongs to
+    // flights/bus/cab, a city/product to hotels and the rest). Anything else seeds the vertical's
+    // own default ("Goa" for hotels, "<city> to New Delhi" for flights, "<city> to Nagpur" for bus).
+    setSearchQuery(seedQueryFor(newVertical, userLocation?.city, verticalQueries[newVertical] || ''));
     setSmartFilterText('');
   };
 
@@ -1014,23 +1017,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const targetLoc = overrideLoc || userLocation;
     // Empty search box -> the vertical's own sensible starting query (what its placeholder suggests),
     // so a tab shows real data the moment it opens. These are SEARCH TERMS, never fake results.
+    // OWNER 4 Nov: ONE shared seed source for web + app (src/lib/verticalSeed.ts) so a vertical can
+    // never open empty. A remembered query is used only when it fits this vertical's shape.
     const DEFAULT_QUERY: Record<string, string> = {
-      flights: 'Indore (IDR) to Delhi (DEL)',
-      hotels: targetLoc.city || 'Indore',
-      bus: `${targetLoc.city || 'Indore'} to Bhopal`,
-      ecommerce: 'mobile phone',
-      grocery: 'milk',
-      food: 'biryani',
-      movie: 'movies',
-      movies: 'movies',
-      cab: `${targetLoc.city || 'Indore'} to Bhopal`,
-      loans: 'personal loan',
-      insurance: 'health insurance',
-      creditcards: 'best credit card',
-      account: 'savings account',
+      flights: DEFAULT_QUERY_FOR('flights', targetLoc.city),
+      hotels: DEFAULT_QUERY_FOR('hotels', targetLoc.city),
+      bus: DEFAULT_QUERY_FOR('bus', targetLoc.city),
+      ecommerce: DEFAULT_QUERY_FOR('ecommerce'),
+      grocery: DEFAULT_QUERY_FOR('grocery'),
+      food: DEFAULT_QUERY_FOR('food'),
+      movie: DEFAULT_QUERY_FOR('movie'),
+      movies: DEFAULT_QUERY_FOR('movies'),
+      cab: DEFAULT_QUERY_FOR('cab', targetLoc.city),
+      loans: DEFAULT_QUERY_FOR('loans'),
+      insurance: DEFAULT_QUERY_FOR('insurance'),
+      creditcards: DEFAULT_QUERY_FOR('creditcards'),
+      account: DEFAULT_QUERY_FOR('account'),
     };
     const rawQuery = overrideQuery !== undefined ? overrideQuery : searchQuery;
-    const targetQuery = rawQuery && rawQuery.trim() ? rawQuery : (DEFAULT_QUERY[vertical] || '');
+    const targetQuery = queryFitsVertical(vertical, rawQuery || '')
+      ? String(rawQuery).trim()
+      : (DEFAULT_QUERY[vertical] || '');
     // Sticky (owner 24 Oct): remember the effective query per vertical so a
     // vertical switch and back re-runs the user's own last search.
     setVerticalQueries((prev) => (prev[vertical] === targetQuery ? prev : { ...prev, [vertical]: targetQuery }));

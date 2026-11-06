@@ -136,6 +136,31 @@ class AppStore {
   // Entries whose city/pincode no longer match are dropped on load.
 
   static const _kLiveCache = 't1sLiveDiskCache';
+  static const _kWarmAt = 't1sWarmAt';
+
+  /// When each vertical's default search was last warmed (epoch ms). OWNER 4 Nov: the splash used
+  /// to re-run a live search for EVERY vertical on every app open, which is CPU spent on searches
+  /// nobody asked for. This lets a reopen reuse what was warmed minutes ago.
+  Future<Map<String, int>> warmAt() async {
+    try {
+      final raw = (await _p).getString(_kWarmAt);
+      if (raw == null || raw.isEmpty) return <String, int>{};
+      final m = jsonDecode(raw);
+      if (m is! Map) return <String, int>{};
+      return {for (final e in m.entries) '${e.key}': (e.value is num ? (e.value as num).toInt() : 0)};
+    } catch (_) {
+      return <String, int>{};
+    }
+  }
+
+  Future<void> setWarmAt(Map<String, int> value) async {
+    try {
+      await (await _p).setString(_kWarmAt, jsonEncode(value));
+    } catch (_) {
+      // A failed warm-stamp write only costs one extra background warm; never surface it.
+    }
+  }
+
 
   Future<Map<String, dynamic>> liveDiskCacheLoad() async {
     try {

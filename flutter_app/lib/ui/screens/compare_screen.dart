@@ -111,10 +111,13 @@ class _CompareScreenState extends State<CompareScreen> {
       if (_state.cache[_meta.id] != null && cachedQ.isNotEmpty) {
         _syncFormFromQuery(cachedQ);
       } else {
-        // Cold cache (fresh install / aged out): the sticky last search
-        // still paints the user's own query in the form, never the seed.
-        final sticky = _state.lastQueryFor(_meta.id);
-        if (sticky.isNotEmpty) _syncFormFromQuery(sticky);
+        // OWNER 4 Nov: the form must NEVER open blank, and must never carry another vertical's
+        // text. The remembered query is used only when it fits THIS vertical's shape (a route for
+        // flights/bus/cab, a city/product for hotels and the rest); otherwise the vertical's own
+        // default seed is shown ("Goa" for hotels, "Indore to New Delhi" for flights,
+        // "Indore to Nagpur" for bus...), so no tab can open on an empty screen.
+        final seed = seedQueryFor(_meta.id, _state.city, _state.lastQueryFor(_meta.id));
+        if (seed.isNotEmpty) _syncFormFromQuery(seed);
       }
       // OWNER 28 Oct: the automatic search belongs to the FIRST open of this
       // vertical. Once it has run, the result is fixed - leaving the compare tab
@@ -125,7 +128,8 @@ class _CompareScreenState extends State<CompareScreen> {
       // (AppState.setLocation clears `searched`).
       if (_state.searched.contains(_meta.id)) {
         _res = _state.cache[_meta.id];
-        _shownCacheKey = _state.cacheQuery[_meta.id];
+        _markSettledIfComplete();
+      _shownCacheKey = _state.cacheQuery[_meta.id];
         _pendingFlag = false;
         _loading = false;
         _error = null;
@@ -199,7 +203,16 @@ class _CompareScreenState extends State<CompareScreen> {
         _state.cacheQuery[_meta.id] == key &&
         mounted) {
       setState(() => _res = fresh);
+      _markSettledIfComplete();
     }
+  }
+
+  /// OWNER 6 Nov: remember WHEN this intent reached a complete answer, so an identical
+  /// re-press reuses it instead of starting a new sweep (and a different seller mix).
+  void _markSettledIfComplete() {
+    final r = _res;
+    if (r == null || r.pendingRefresh || r.items.isEmpty) return;
+    _settledAtMs = _nowMs;
   }
 
   void _seedForm() {
@@ -267,6 +280,11 @@ class _CompareScreenState extends State<CompareScreen> {
     }
   }
 
+  /// Signature of the answer currently on screen, and when it settled.
+  int get _nowMs => DateTime.now().millisecondsSinceEpoch;
+  String _settledSig = '';
+  int _settledAtMs = 0;
+
   Future<void> _runSearch({String? query, bool auto = false, bool force = false}) async {
     final q0 = (query ?? _effectiveQuery()).trim();
     // Web parity (AppContext triggerLive DEFAULT_QUERY): an empty search box
@@ -277,9 +295,43 @@ class _CompareScreenState extends State<CompareScreen> {
     // Owner 24 Oct: the vertical's OWN last searched query is sticky — it
     // wins over the registry seed, so reopening flights after switching
     // verticals re-runs the user's last route instead of Indore->Delhi.
-    final sticky = _state.lastQueryFor(_meta.id);
-    final q = q0.isEmpty ? (sticky.isNotEmpty ? sticky : defaultQueryFor(_meta.id, _state.city)) : q0;
+    final stickyRaw = _state.lastQueryFor(_meta.id);
+    // OWNER 4 Nov: a remembered query from ANOTHER vertical's shape ("Rau Tahsil to Bhopal" in
+    // Hotels) is not this vertical's search - ignore it and use this vertical's own seed.
+    final sticky = queryFitsVertical(_meta.id, stickyRaw) ? stickyRaw.trim() : '';
+    final q = q0.isEmpty ? seedQueryFor(_meta.id, _state.city, sticky) : q0;
     if (q.isEmpty) return;
+    // OWNER 6 Nov: "mai 5 baar flight mai search krta hoon aur 5 baar alag alag seller aate hai ...
+    // results final wala complete search kr ke hi aana chaiye". A press with the SAME intent (same
+    // vertical + query + date + route + address) while the answer on screen is already COMPLETE
+    // reuses that answer: no new sweep, so the seller set cannot shuffle, and no CPU is spent
+    // scanning the same question again. A changed intent (new place/product/city/date) still runs a
+    // real search, and a still-scanning answer always keeps polling.
+    final sig = searchSignature(
+      vertical: _meta.id,
+      query: q,
+      depart: _iso(_date),
+      from: _from.text,
+      to: _to.text,
+      city: _state.city,
+      pincode: _state.pincode,
+    );
+    final settledSameIntent = _res != null &&
+        !_res!.pendingRefresh &&
+        _res!.items.isNotEmpty &&
+        _settledSig == sig &&
+        (_nowMs - _settledAtMs) < const Duration(minutes: 5).inMilliseconds;
+    if (settledSameIntent) {
+      // Same question, already answered completely: repaint it. Never a second sweep.
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = null;
+        });
+      }
+      return;
+    }
+    if (!settledSameIntent) _settledSig = sig;
     if (!auto) {
       _bgPollCount = 0; // fresh user search: full poll budget again
       _settleDone = false; // ...and a fresh settle read if the chain ends empty

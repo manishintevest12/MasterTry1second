@@ -191,17 +191,28 @@ VerticalMeta verticalById(String id) {
 
 bool isKnownVertical(String id) => kVerticals.any((v) => v.id == (id == 'movies' ? 'movie' : id));
 
-/// Default search seed per vertical (website DEFAULT_QUERY + SEED_QUERIES, so a tab shows real data on open).
+/// Default search seed per vertical.
+///
+/// OWNER 4 Nov (screenshot: Hotels box holding "Rau Tahsil to Bhopal", 0 results):
+/// "hr vertical pr data user ke search ke phle ek default aaye jiss se koi v vertical khali naa
+/// dikhe — hotels ke liye Goa, flight ke liye Indore to New Delhi, bus ke liye Indore to Nagpur."
+/// So every vertical now has a REAL, searchable default that the form shows before the user types
+/// anything, and that seed is what the first open searches.
 String defaultQueryFor(String vertical, [String? city]) {
-  final targetCity = (city == null || city.trim().isEmpty) ? 'Indore' : city.trim();
+  // OWNER 6 Nov (screenshots: Hotels "Rau Tahsil", Bus "Rau 1 -> Bhop", E-Commerce "Rau Tahsil to
+  // Bhopal"): "mai ek jagah address daal raha hoon aur app hr jagah daal deta hai ... hr page ka ek
+  // default hoga". The seeds below are therefore LITERAL and independent of the device address - a
+  // village-level location can never become another vertical's search text, and every vertical opens
+  // on real data. The address only drives the location chip (and local delivery verticals).
   switch (vertical) {
     case 'flights':
-      return 'Indore (IDR) to Delhi (DEL)';
+      return 'Indore to New Delhi';
     case 'hotels':
-      return targetCity;
+      return 'Goa';
     case 'bus':
+      return 'Indore to Nagpur';
     case 'cab':
-      return '$targetCity to Bhopal';
+      return 'Rajwada Indore to Airport Indore';
     case 'ecommerce':
       return 'mobile phone';
     case 'grocery':
@@ -221,6 +232,60 @@ String defaultQueryFor(String vertical, [String? city]) {
       return 'savings account';
   }
   return '';
+}
+
+/// Identity of one search intent. OWNER 6 Nov: "mai 5 baar flight mai search krta hoon aur 5 baar
+/// alag alag seller aate hai" - so an identical press (same vertical, query, date, route, address)
+/// must resolve to the SAME settled answer instead of firing a brand-new sweep that can return a
+/// different seller mix.
+String searchSignature({
+  required String vertical,
+  required String query,
+  String? depart,
+  String? from,
+  String? to,
+  String? city,
+  String? pincode,
+}) {
+  return [
+    normalizeVerticalId(vertical),
+    query.trim().toLowerCase(),
+    (depart ?? '').trim(),
+    (from ?? '').trim().toLowerCase(),
+    (to ?? '').trim().toLowerCase(),
+    (city ?? '').trim().toLowerCase(),
+    (pincode ?? '').trim(),
+  ].join('|');
+}
+
+/// Does a remembered query actually BELONG to this vertical's search shape?
+///
+/// OWNER 4 Nov: the Hotels box was carrying "Rau Tahsil to Bhopal" — a ROUTE left over from a
+/// travel search — and the auto search ran it inside hotels, which can only answer with "No
+/// matching options found". A route shape ("X to Y") is valid for flights/bus/cab and nonsense
+/// for hotels/products/finance; the reverse is true too. Sticky queries that fail this check are
+/// ignored and the vertical's own default seed is used instead, so no vertical inherits another
+/// vertical's text.
+bool queryFitsVertical(String vertical, String query) {
+  final q = query.trim();
+  if (q.isEmpty) return false;
+  final isRoute = RegExp(r'\bto\b', caseSensitive: false).hasMatch(q);
+  switch (normalizeVerticalId(vertical)) {
+    case 'flights':
+    case 'bus':
+    case 'cab':
+      return isRoute;
+    default:
+      // hotels, ecommerce, grocery, food, movie, loans, insurance, creditcards, account
+      return !isRoute;
+  }
+}
+
+/// The exact query a vertical should search when the user has not typed one: the vertical's own
+/// remembered query only if it fits the shape, otherwise the owner's default seed.
+String seedQueryFor(String vertical, String city, String sticky) {
+  if (queryFitsVertical(vertical, sticky)) return sticky.trim();
+  return defaultQueryFor(vertical, city);
 }
 
 /// OWNER 3 Nov ("hr vertical ke dusre se alag hai unka aapas mai kuch lena dena ni hai"):

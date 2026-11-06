@@ -428,33 +428,59 @@ class AppState extends ChangeNotifier {
   /// 0..1 progress of the splash warm-up (verticals + deals feed finished).
   final ValueNotifier<double> warmProgress = ValueNotifier<double>(0);
 
+  /// Default-seed warm-up.
+  ///
+  /// OWNER 4 Nov (priority): "baar baar apne aap kuch v daal kr search se v cpu load increase hota
+  /// hai". The old version fired a LIVE search for all 12 verticals on EVERY app open (3 at a time),
+  /// so a single launch could start a dozen cold sweeps nobody asked for. It now:
+  ///   1. uses the vertical's own DEFAULT SEED (Goa for hotels, <city> to New Delhi for flights,
+  ///      <city> to Nagpur for bus...) so the warm cache matches what the tab will search,
+  ///   2. skips any vertical that is already warm on disk (real rows from the previous session) or
+  ///      was warmed within [warmTtl], so a reopen costs zero searches,
+  ///   3. trickles ONE at a time, so the phone never has several cold sweeps in flight,
+  ///   4. never overwrites the user's own query for a vertical (it only seeds verticals with none).
+  static const Duration warmTtl = Duration(minutes: 30);
+
   Future<void> prefetchDefaults() async {
-    final total = kVerticals.length + 1;
+    final stamps = await store.warmAt();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final stale = <VerticalMeta>[
+      for (final v in kVerticals)
+        if (!_hasFreshRows(v.id) && now - (stamps[v.id] ?? 0) > warmTtl.inMilliseconds) v,
+    ];
+    final total = stale.length + 1;
     var done = 0;
+    warmProgress.value = total <= 1 ? 0 : 0;
     void tick() {
       done++;
-      warmProgress.value = done / total;
+      warmProgress.value = total == 0 ? 1 : (done / total).clamp(0, 1).toDouble();
     }
 
     final jobs = <Future<void> Function()>[
-      for (final v in kVerticals)
-        () => live(v.id, defaultQueryFor(v.id, city))
-            .then<void>((_) {})
+      for (final v in stale)
+        () => live(v.id, seedQueryFor(v.id, city, lastQueryFor(v.id)))
+            .then<void>((_) {
+              stamps[v.id] = DateTime.now().millisecondsSinceEpoch;
+            })
             .catchError((_) {})
             .whenComplete(tick),
       () => deals().then<void>((_) {}).catchError((_) {}).whenComplete(tick),
     ];
-    // SPEED: 14 simultaneous cold searches used to wedge Hostinger shared
-    // hosting at app open and made the user's own first search slow. The
-    // server keep-warms every seed on a 12-min cron anyway — trickle at 3.
+    // ONE worker: the seeds share a single link, so the user's own search is never queued behind
+    // twelve background sweeps (that is what made the first tap slow on shared hosting).
     var next = 0;
-    Future<void> worker() async {
-      while (next < jobs.length) {
-        await jobs[next++]();
-      }
+    while (next < jobs.length) {
+      await jobs[next++]();
     }
+    await store.setWarmAt(stamps);
+  }
 
-    await Future.wait([worker(), worker(), worker()]);
+  /// True when this vertical already has real rows on disk from the previous session - nothing to
+  /// warm, the tab paints those instantly.
+  bool _hasFreshRows(String vertical) {
+    final key = vertical == 'movies' ? 'movie' : vertical;
+    final cached = cache[key];
+    return cached != null && cached.items.isNotEmpty;
   }
 
   Future<List<Deal>> deals({String? kind}) async {
