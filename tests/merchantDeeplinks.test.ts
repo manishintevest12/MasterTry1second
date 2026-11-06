@@ -37,7 +37,8 @@ test('e-commerce, grocery and food merchants search the typed product', () => {
   const cases: Array<[string, string, string]> = [
     ['Amazon', 'iphone 18', 'ecommerce'],
     ['Flipkart', 'iphone 18', 'ecommerce'],
-    ['Meesho', 'cotton kurta', 'ecommerce'],
+    // OWNER 5 Nov: Meesho was replaced by Shopsy.in (Cuelinks publisher 278473).
+    ['Shopsy', 'cotton kurta', 'ecommerce'],
     ['Myntra', 'running shoes', 'ecommerce'],
     ['Ajio', 'denim jacket', 'ecommerce'],
     ['Tata CLiQ', 'perfume', 'ecommerce'],
