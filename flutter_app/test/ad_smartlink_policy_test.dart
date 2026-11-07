@@ -20,8 +20,14 @@ void main() {
     }
   });
 
-  test('only https/http links may leave the app', () {
+  // OWNER 7 Nov: the guard's intent is "only a plain web scheme may leave the app". The launcher
+  // rejects anything that is not https and never allows http, so the contract is asserted on the
+  // https check plus the absence of any other scheme, instead of demanding an http allowance the
+  // code (correctly) never had.
+  test('only https links may leave the app', () {
     expect(src.contains("uri.isScheme('https')"), isTrue);
-    expect(src.contains("uri.isScheme('http')"), isTrue);
+    expect(src.contains("uri.isScheme('http')"), isFalse);
+    expect(src.contains('javascript:'), isFalse);
+    expect(src.contains('intent://'), isFalse);
   });
 }

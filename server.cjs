@@ -4556,7 +4556,7 @@ function parseShopsy(html, source, pageUrl) {
         identifiers: id ? { vendorProductId: id } : void 0,
         availability: stock.includes("IN_STOCK") ? "in_stock" : stock.includes("OUT_OF_STOCK") ? "out_of_stock" : "unknown",
         attributes: {
-          image: uniqueImages[0] || "",
+          image: String(uniqueImages[0] || ""),
           ...uniqueImages.length > 1 ? { image_urls: uniqueImages.join("|") } : {},
           ...Number.isFinite(rating) && rating > 0 ? { rating: rating.toFixed(1) } : {},
           ...Number.isFinite(ratingCount) && ratingCount > 0 ? { rating_count: String(ratingCount) } : {},
@@ -46872,6 +46872,21 @@ var init_routes = __esm({
           floorOnly = true;
         }
       }
+      if (offers.length > 0 && offers.length < 4) {
+        const haveSellers = new Set(offers.map((r) => String(r.seller || "").toLowerCase()));
+        const haveTitles = new Set(offers.map((r) => String(r.title || "").toLowerCase()));
+        for (const x of all) {
+          if (offers.length >= 4) break;
+          const row = toRow(x);
+          const sel = String(row.seller || "").toLowerCase();
+          const t = String(row.title || "").toLowerCase();
+          if (!row.title || !(row.price > 0) || haveSellers.has(sel) || haveTitles.has(t)) continue;
+          if (!sharesIdentity(lensQuery, String(x.o.title || ""))) continue;
+          offers.push({ ...row, variantCount: 0 });
+          haveSellers.add(sel);
+          haveTitles.add(t);
+        }
+      }
       let closestOnly = false;
       if (!offers.length) {
         const alt = all.filter((x) => sharesIdentity(lensQuery, String(x.o.title || ""))).map((x) => ({ ...toRow(x), variantCount: 0 })).slice(0, 6);
@@ -46882,7 +46897,7 @@ var init_routes = __esm({
       }
       const cheapest = offers[0] || null;
       const seen = new Set(offers.map((r) => r.title.toLowerCase()));
-      const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 10);
+      const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 30);
       let history = [];
       let historyEntity = null;
       const historyLookup = (async () => {

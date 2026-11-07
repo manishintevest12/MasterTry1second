@@ -98,7 +98,7 @@ export function parseShopsy(html: string, source: SourceConfig, pageUrl: string)
         identifiers: id ? { vendorProductId: id } : undefined,
         availability: stock.includes('IN_STOCK') ? 'in_stock' : stock.includes('OUT_OF_STOCK') ? 'out_of_stock' : 'unknown',
         attributes: {
-          image: uniqueImages[0] || '',
+          image: String(uniqueImages[0] || ''),
           ...(uniqueImages.length > 1 ? { image_urls: uniqueImages.join('|') } : {}),
           ...(Number.isFinite(rating) && rating > 0 ? { rating: rating.toFixed(1) } : {}),
           ...(Number.isFinite(ratingCount) && ratingCount > 0 ? { rating_count: String(ratingCount) } : {}),

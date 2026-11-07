@@ -318,18 +318,18 @@ group('QuickApp', () {
     };
 
     test('reads the affiliates key (and still tolerates the old apps key)', () {
-      final apps = QuickApp.parseRows(serverShape, baseUrl: 'https://try1second.com');
+      final apps = QuickApp.parseRows(serverShape, baseUrl: 'https://www.try1second.com');
       expect(apps.length, 1, reason: 'empty-name rows are skipped');
       expect(apps.first.name, 'Swiggy');
       expect(apps.first.category, 'Food');
       // relative masking pointer resolved against the API base
-      expect(apps.first.goUrl, 'https://try1second.com/api/out?t=abc.sig');
+      expect(apps.first.goUrl, 'https://www.try1second.com/api/out?t=abc.sig');
     });
 
     test('old {apps: [...]} shape still parses (server-evolution safe)', () {
-      final apps = QuickApp.parseRows({'apps': serverShape['affiliates']}, baseUrl: 'https://try1second.com');
+      final apps = QuickApp.parseRows({'apps': serverShape['affiliates']}, baseUrl: 'https://www.try1second.com');
       expect(apps.length, 1);
-      expect(apps.first.goUrl, startsWith('https://try1second.com/api/out?'));
+      expect(apps.first.goUrl, startsWith('https://www.try1second.com/api/out?'));
     });
 
     test('empty/failed responses stay empty, never crash', () {

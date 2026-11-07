@@ -2490,6 +2490,25 @@ apiRouter.post('/product-page', async (req, res) => {
   // Owner 27 Oct: never leave the page empty when the sources DO carry this
   // product family. If no listing is the exact product, promote the closest
   // real variants (same brand + model number) so the user sees live prices.
+  // OWNER 7 Nov ("comparison website atleast 4 tho aane hi chaiye"): when the answer carried only
+  // 1-3 sellers for this product, the comparison section dead-ended. Same-identity rows from the
+  // same live answer (same brand + model, a different seller) top it up to 4 - never a different
+  // product, never an unpriced row, never a repeat seller.
+  if (offers.length > 0 && offers.length < 4) {
+    const haveSellers = new Set(offers.map((r: any) => String(r.seller || '').toLowerCase()));
+    const haveTitles = new Set(offers.map((r: any) => String(r.title || '').toLowerCase()));
+    for (const x of all) {
+      if (offers.length >= 4) break;
+      const row: any = toRow(x);
+      const sel = String(row.seller || '').toLowerCase();
+      const t = String(row.title || '').toLowerCase();
+      if (!row.title || !(row.price > 0) || haveSellers.has(sel) || haveTitles.has(t)) continue;
+      if (!sharesIdentity(lensQuery, String(x.o.title || ''))) continue;
+      offers.push({ ...row, variantCount: 0 });
+      haveSellers.add(sel);
+      haveTitles.add(t);
+    }
+  }
   let closestOnly = false;
   if (!offers.length) {
     const alt = all
@@ -2505,11 +2524,15 @@ apiRouter.post('/product-page', async (req, res) => {
 
   // Related: other priced ecommerce results that are NOT this product (de-duplicated by title).
   const seen = new Set<string>(offers.map((r) => r.title.toLowerCase()));
+  // OWNER 7 Nov ("related products sirf kuch hi dikhta hai, neeche tak scroll krne pr products
+  // aata rahe"): the strip was capped at 10 items, which the app rendered as ONE horizontal row.
+  // Every priced, de-duplicated ecommerce row that is not this product is returned now (up to 30),
+  // so the app can lay them out as a scrolling grid. Real prices only - nothing is invented.
   const related = all
     .filter((x) => !isSameProduct(lensQuery, String(x.o.title || ''), matchMode))
     .map(toRow)
     .filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase()))
-    .slice(0, 10);
+    .slice(0, 30);
 
   // Real history: first same-product offer that carries a canonical entity id with recorded points.
   let history: Array<{ price: number; capturedAt: string }> = [];

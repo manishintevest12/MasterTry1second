@@ -358,31 +358,46 @@ class _PageState extends State<_Page> {
       if (page.related.isNotEmpty) ...[
         const SizedBox(height: 16),
         SectionTitle('RELATED PRODUCTS · REAL PRICES', dot: T1SColors.slate400),
-        SizedBox(
-          height: 118,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: page.related.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (c, i) {
-              final r = page.related[i];
-              return GestureDetector(
-                onTap: () => widget.onSearch(r.title),
-                child: Box(
-                  padding: const EdgeInsets.all(8),
-                  child: SizedBox(
-                    width: 96,
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      NetImage(r.image, height: 60, fit: BoxFit.contain, radius: 8, fallbackIcon: Icons.shopping_bag_outlined),
-                      const SizedBox(height: 5),
-                      Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(c, 9.5, w: FontWeight.w800)),
-                      Text(inrAmount(r.price), style: tx(c, 11, w: FontWeight.w900, mono: true)),
-                    ]),
-                  ),
+        // OWNER 7 Nov ("related products sirf kuch hi dikhta hai ... neeche tak scroll krne pr
+        // products aata rahe, atleast 6-7 rows tho aaye, abhi ek hi row aata hai"): this used to be
+        // a single 118px HORIZONTAL strip, so only one row ever existed. It is now a vertical
+        // 3-up grid of every related product the answer carries (up to 30 = 10 rows), so scrolling
+        // the page keeps revealing real priced products instead of ending after one row.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(children: [
+            for (var r0 = 0; r0 < page.related.length; r0 += 3)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var k = 0; k < 3; k++)
+                      Expanded(
+                        child: r0 + k < page.related.length
+                            ? GestureDetector(
+                                onTap: () => widget.onSearch(page.related[r0 + k].title),
+                                child: Box(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    NetImage(page.related[r0 + k].image, height: 72, fit: BoxFit.contain,
+                                        radius: 8, fallbackIcon: Icons.shopping_bag_outlined),
+                                    const SizedBox(height: 5),
+                                    Text(page.related[r0 + k].title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: tx(context, 9.5, w: FontWeight.w800)),
+                                    Text(inrAmount(page.related[r0 + k].price),
+                                        style: tx(context, 11, w: FontWeight.w900, mono: true)),
+                                  ]),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                  ],
                 ),
-              );
-            },
-          ),
+              ),
+          ]),
         ),
       ],
     ]);
