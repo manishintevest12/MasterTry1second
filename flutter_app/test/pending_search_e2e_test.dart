@@ -25,6 +25,8 @@ class _RecordingApi extends Try1SecondApi {
     double? lng,
     String? depart,
     String? returnDate,
+    bool settle = false,
+    int? settleMs,
     String? from,
     String? to,
   

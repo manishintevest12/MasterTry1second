@@ -1122,6 +1122,31 @@ apiRouter.post('/search', async (req, res) => {
     for (const o of response.results as any[]) vc[String((o as any).vendor || (o as any).seller || '?')] = (vc[String((o as any).vendor || (o as any).seller || '?')] || 0) + 1;
     console.error(JSON.stringify({ dbg: 'runSearch raw', n: response.results.length, vendors: vc, vertical: String(input.vertical || '') }));
   }
+  // OWNER 7 Nov ("flights mai sahi results ke liye app mai 2-3 baar new search karna padta hai"):
+  // the app's first press asked for a snapshot and then had to POLL until the pipeline finished -
+  // every poll is another round trip through the relay, and a throttled/slow poll looked to the
+  // owner like "the search did not work". A press may now ask for the SETTLED answer in the same
+  // request (`settle: true`, the app sends it on user presses). The wait joins the SAME in-flight
+  // pipeline (awaitSettledAnswer never starts a second scrape), is capped well under the proxy wall,
+  // and any failure falls straight through to the normal snapshot so this can never hang a search.
+  if (req.body?.settle === true && response && (response as any).pendingRefresh) {
+    const settleMs = Math.max(3000, Math.min(Number(req.body.settleMs) || 22000, 24000));
+    try {
+      const settled = await Promise.race([
+        awaitSettledAnswer(input, settleMs),
+        new Promise((resolve) => setTimeout(() => resolve(null), settleMs + 1500)),
+      ]);
+      if (settled && Array.isArray((settled as any).results)) {
+        const before = ((response as any).results || []).length;
+        const after = (settled as any).results.length;
+        // Only adopt a strictly better answer: a settled one that is at least as complete.
+        if (after >= before) response = settled as any;
+        if (process.env.LOG_LEVEL === 'debug') {
+          console.error(JSON.stringify({ dbg: 'settle adopted', vertical: input.vertical, before, after }));
+        }
+      }
+    } catch { /* best effort: the snapshot below is still a valid answer */ }
+  }
   // Owner 28 Oct, standing rule enforced at the API boundary: a flight row missing
   // flight number / dep-arr / duration goes to the BOTTOM of the feed. The installed
   // Play Store app cannot be patched remotely, so this ordering ships server-side.

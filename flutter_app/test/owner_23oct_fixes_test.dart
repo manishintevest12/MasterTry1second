@@ -25,7 +25,7 @@ class _SlowApi extends Try1SecondApi {
 
   @override
   Future<LiveResponse> live(String vertical, String query,
-      {String city = 'Indore', String pincode = '452001', double? lat, double? lng, String? depart, String? returnDate, String? from, String? to}) async {
+      {String city = 'Indore', String pincode = '452001', double? lat, double? lng, String? depart, String? returnDate, String? from, String? to, bool settle = false, int? settleMs}) async {
     liveCalls += 1;
     if (emptyFirst) {
       await Future<void>.delayed(const Duration(milliseconds: 200));

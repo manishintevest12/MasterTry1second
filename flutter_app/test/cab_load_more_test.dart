@@ -28,6 +28,8 @@ class _CabApi extends Try1SecondApi {
     double? lng,
     String? depart,
     String? returnDate,
+    bool settle = false,
+    int? settleMs,
     String? from,
     String? to,
   

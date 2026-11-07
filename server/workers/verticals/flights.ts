@@ -1952,7 +1952,13 @@ export const flightsWorker: VerticalWorker = {
 
         const out: any[] = [];
         const seen = new Set<string>();
-        for (let round = 0; round < 3; round++) {
+        // OWNER 7 Nov ("aertrip website v ni dikha"): measured live, Aertrip's per-supplier groups fill
+        // PROGRESSIVELY - group 6e answered 100 ffk rows on the first poll for 12 Nov while the other
+        // groups were still empty shells, and for 19 Nov every group was empty on poll 1. Three rounds
+        // were not enough to see that data, so the worker polls up to five rounds (1.2s apart, well
+        // inside its 45s ceiling) and stops as soon as it has a usable set. No row is ever invented:
+        // if Aertrip really has nothing priced for the date, the worker still says so honestly.
+        for (let round = 0; round < 5; round++) {
           for (const group of AERTRIP_GROUPS) {
             let r;
             try {
@@ -1971,7 +1977,7 @@ export const flightsWorker: VerticalWorker = {
               out.push(it);
             }
           }
-          if (out.length >= 8) break; // enough for a comparison card set; stop spending requests
+          if (out.length >= 12) break; // enough for a comparison card set; stop spending requests
           await new Promise((res) => setTimeout(res, 1200));
         }
         if (out.length) return out;

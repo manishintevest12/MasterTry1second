@@ -219,7 +219,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Runs (or reuses) the live search for a vertical, exactly like the website's triggerLiveLocationScrape.
-  Future<LiveResponse> live(String v, String query, {String? depart, String? returnDate, bool force = false, String? from, String? to}) async {
+  Future<LiveResponse> live(String v, String query, {String? depart, String? returnDate, bool force = false, String? from, String? to, bool settle = false}) async {
     final key = v == 'movies' ? 'movie' : v;
     final q = query.trim().isEmpty ? defaultQueryFor(key, city) : query.trim();
     lastQuery[key] = q; // sticky: this vertical reopens on its own last search
@@ -283,7 +283,7 @@ class AppState extends ChangeNotifier {
       _inFlight[cacheKey] = f;
       return f;
     }
-    final f = _fetchAndStore(key, cacheKey, q, depart: depart, returnDate: returnDate, from: from, to: to);
+    final f = _fetchAndStore(key, cacheKey, q, depart: depart, returnDate: returnDate, from: from, to: to, settle: settle);
     _inFlight[cacheKey] = f;
     return f;
   }
@@ -303,10 +303,12 @@ class AppState extends ChangeNotifier {
     String? returnDate,
     String? from,
     String? to,
+    bool settle = false,
   }) async {
     try {
       final res = await api
-          .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate, from: from, to: to);
+          .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate, from: from, to: to,
+              settle: settle, settleMs: settle ? 22000 : null);
       cache[key] = res;
       cacheQuery[key] = cacheKey;
       cacheAt[key] = _nowMs;

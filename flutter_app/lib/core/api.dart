@@ -1663,6 +1663,12 @@ class Try1SecondApi {
     String? returnDate,
     String? from,
     String? to,
+    /// OWNER 7 Nov ("sahi results ke liye 2-3 baar search karna padta hai"): a USER press asks the
+    /// server for the SETTLED answer in the same request (it joins the pipeline already running, it
+    /// never starts a second scan), so the first press returns the complete priced set instead of a
+    /// snapshot the screen then has to poll for. Background revalidation leaves this false.
+    bool settle = false,
+    int? settleMs,
   }) async {
     final dateSensitive = const [
       'hotels',
@@ -1689,6 +1695,8 @@ class Try1SecondApi {
       // ("Rajwada" alone geocoded to Nashik, 467 km from Indore).
       if (from != null && from.trim().isNotEmpty) 'from': from.trim(),
       if (to != null && to.trim().isNotEmpty) 'to': to.trim(),
+      if (settle) 'settle': true,
+      if (settle && settleMs != null) 'settleMs': settleMs,
     });
     return LiveResponse.fromJson(res);
   }

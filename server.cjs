@@ -18672,7 +18672,7 @@ var init_flights = __esm({
             if (!sid) return [];
             const out = [];
             const seen = /* @__PURE__ */ new Set();
-            for (let round = 0; round < 3; round++) {
+            for (let round = 0; round < 5; round++) {
               for (const group of AERTRIP_GROUPS) {
                 let r;
                 try {
@@ -18693,7 +18693,7 @@ var init_flights = __esm({
                   out.push(it);
                 }
               }
-              if (out.length >= 8) break;
+              if (out.length >= 12) break;
               await new Promise((res) => setTimeout(res, 1200));
             }
             if (out.length) return out;
@@ -46163,6 +46163,24 @@ var init_routes = __esm({
         const vc = {};
         for (const o of response.results) vc[String(o.vendor || o.seller || "?")] = (vc[String(o.vendor || o.seller || "?")] || 0) + 1;
         console.error(JSON.stringify({ dbg: "runSearch raw", n: response.results.length, vendors: vc, vertical: String(input.vertical || "") }));
+      }
+      if (req.body?.settle === true && response && response.pendingRefresh) {
+        const settleMs = Math.max(3e3, Math.min(Number(req.body.settleMs) || 22e3, 24e3));
+        try {
+          const settled = await Promise.race([
+            awaitSettledAnswer(input, settleMs),
+            new Promise((resolve) => setTimeout(() => resolve(null), settleMs + 1500))
+          ]);
+          if (settled && Array.isArray(settled.results)) {
+            const before = (response.results || []).length;
+            const after = settled.results.length;
+            if (after >= before) response = settled;
+            if (process.env.LOG_LEVEL === "debug") {
+              console.error(JSON.stringify({ dbg: "settle adopted", vertical: input.vertical, before, after }));
+            }
+          }
+        } catch {
+        }
       }
       const gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates);
       const orderedResults = orderFlightRowsLast(gatedResponse.results, String(input.vertical));

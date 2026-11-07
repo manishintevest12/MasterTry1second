@@ -17833,7 +17833,7 @@ var init_flights = __esm({
             if (!sid) return [];
             const out = [];
             const seen = /* @__PURE__ */ new Set();
-            for (let round = 0; round < 3; round++) {
+            for (let round = 0; round < 5; round++) {
               for (const group of AERTRIP_GROUPS) {
                 let r;
                 try {
@@ -17854,7 +17854,7 @@ var init_flights = __esm({
                   out.push(it);
                 }
               }
-              if (out.length >= 8) break;
+              if (out.length >= 12) break;
               await new Promise((res) => setTimeout(res, 1200));
             }
             if (out.length) return out;

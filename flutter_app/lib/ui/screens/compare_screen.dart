@@ -371,6 +371,9 @@ class _CompareScreenState extends State<CompareScreen> {
           depart: _iso(_date),
           returnDate: needsReturn ? _iso(_checkOutDate) : null,
           force: force,
+          // A user press asks for the settled answer (auto/background passes do not), so the first
+          // press lands the complete priced set instead of needing 2-3 attempts.
+          settle: !auto && force,
           from: isCab && _from.text.trim().isNotEmpty ? _from.text.trim() : null,
           to: isCab && _to.text.trim().isNotEmpty ? _to.text.trim() : null);
 
