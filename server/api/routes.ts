@@ -2570,6 +2570,33 @@ apiRouter.post('/product-page', async (req, res) => {
     .filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase()))
     .slice(0, 36);
 
+  // OWNER 7 Nov ("purane wale app mai tho ni dikh raha usme fix kro"): an already-installed build has
+  // no logo fallback, so for those phones the SERVER has to send a real photo or the card stays grey.
+  // A related row whose own parser carried no photo now borrows the photo of the SAME product title
+  // already stored in the catalogue (identical name, real https URL - nothing is invented). Bounded to
+  // 12 lookups at concurrency 4 with a 1200ms deadline so the product page's deadline is untouched.
+  const needPhoto = related.filter((r) => !r.image).slice(0, 12);
+  if (needPhoto.length) {
+    const photoDeadline = Date.now() + 1200;
+    const queue = [...needPhoto];
+    await Promise.all(Array.from({ length: 4 }, async () => {
+      while (queue.length && Date.now() < photoDeadline) {
+        const row: any = queue.shift();
+        if (!row) break;
+        try {
+          const url = await resolveCatalogueImage(String(row.title || ''), 'ecommerce');
+          if (url && url.startsWith('https://')) {
+            row.image = url;
+            row.images = [url, ...(Array.isArray(row.images) ? row.images : [])].slice(0, 8);
+          }
+        } catch { /* no photo available: the row keeps image: null */ }
+      }
+    }));
+    log.info('ProductPage', 'Borrowed catalogue photos for related rows', {
+      needed: needPhoto.length, filled: needPhoto.filter((r) => r.image).length,
+    });
+  }
+
   // Real history: first same-product offer that carries a canonical entity id with recorded points.
   let history: Array<{ price: number; capturedAt: string }> = [];
   let historyEntity: number | null = null;

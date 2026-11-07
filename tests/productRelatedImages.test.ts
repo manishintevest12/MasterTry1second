@@ -18,3 +18,12 @@ test('the app falls back to the seller logo when a related row has no photo', ()
   assert.ok(app.includes('_absLogo(page.related[r0 + k].sellerLogo)'), 'logo fallback wired into the grid');
   assert.ok(app.includes('String? _absLogo('), 'logo path is made absolute');
 });
+
+// OWNER 7 Nov ("purane wale app mai tho ni dikh raha usme fix kro"): an installed build has no logo
+// fallback, so the server must send a real photo for related rows or those phones show grey cards.
+test('related rows without a photo borrow the same title photo from the catalogue', () => {
+  const src = readFileSync(new URL('../server/api/routes.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('const needPhoto = related.filter((r) => !r.image)'), 'missing photos are detected');
+  assert.ok(src.includes("resolveCatalogueImage(String(row.title || ''), 'ecommerce')"), 'borrows by exact title');
+  assert.ok(src.includes('photoDeadline'), 'borrow pass is deadline-bounded');
+});
