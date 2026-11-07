@@ -163,6 +163,14 @@ class _PageState extends State<_Page> {
     _loadSponsor();
   }
 
+  /// `/api/logos/<key>` is a server-relative path: make it absolute for the image loader.
+  String? _absLogo(String path) {
+    if (path.isEmpty) return null;
+    if (path.startsWith('http')) return path;
+    final base = AppState.instance.api.baseUrl;
+    return base.isEmpty ? null : '$base$path';
+  }
+
   Future<void> _loadSponsor() async {
     if (_sponsorAsked) return;
     _sponsorAsked = true;
@@ -457,8 +465,17 @@ class _PageState extends State<_Page> {
                                 child: Box(
                                   padding: const EdgeInsets.all(8),
                                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    NetImage(page.related[r0 + k].image, height: 72, fit: BoxFit.contain,
-                                        radius: 8, fallbackIcon: Icons.shopping_bag_outlined),
+                                    // OWNER 7 Nov: a related row without its own product photo used to
+                                    // paint a grey placeholder. The SELLER's logo is a real image we always
+                                    // have (/api/logos/<key>), so it stands in instead of an empty box.
+                                    NetImage(
+                                      page.related[r0 + k].image ??
+                                          _absLogo(page.related[r0 + k].sellerLogo),
+                                      height: 72,
+                                      fit: BoxFit.contain,
+                                      radius: 8,
+                                      fallbackIcon: Icons.shopping_bag_outlined,
+                                    ),
                                     const SizedBox(height: 5),
                                     Text(page.related[r0 + k].title,
                                         maxLines: 2,

@@ -46861,9 +46861,18 @@ var init_routes = __esm({
       const productImageUrls = [product?.image, ...Array.isArray(product?.images) ? product.images : []].filter((u) => typeof u === "string" && u.startsWith("https://"));
       const toRow = ({ o, price: price2 }) => {
         const attrs = o.attributes || {};
+        const firstPhoto = [
+          attrs.image_url,
+          attrs.image,
+          o.image,
+          o.imageUrl,
+          o.thumbnail,
+          o.thumbnail_url,
+          o.images?.[0]
+        ].map((u) => typeof u === "string" ? u : "").find((u) => u.startsWith("https://")) || "";
         const imgs = Array.from(new Set([
-          String(attrs.image_url || o.image || o.images?.[0] || ""),
-          ...String(attrs.image_urls || "").split("|"),
+          String(firstPhoto || ""),
+          ...String(attrs.image_urls || attrs.images || "").split("|"),
           ...productImageUrls
         ].filter((u) => u.startsWith("https://"))));
         const sellerName = String(o.seller || o.vendor || "");

@@ -2394,9 +2394,19 @@ apiRouter.post('/product-page', async (req, res) => {
     .filter((u: any) => typeof u === 'string' && u.startsWith('https://'));
   const toRow = ({ o, price }: any) => {
     const attrs = o.attributes || {};
+    // OWNER 7 Nov ("product page pr logo and image ni aa raha related products section mai"):
+    // MEASURED on production - every related row came back with image: null while the same rows in
+    // `offers` had photos, because this only read attrs.image_url. Each parser spells the product
+    // photo differently (Shopsy: attributes.image, others: attributes.image_urls / thumbnail /
+    // o.imageUrl), so every honest spelling is read here. A row with no real photo still sends null -
+    // the app then paints the seller's logo instead of an empty grey box.
+    const firstPhoto = [
+      attrs.image_url, attrs.image, o.image, o.imageUrl, o.thumbnail, o.thumbnail_url,
+      o.images?.[0],
+    ].map((u: any) => (typeof u === 'string' ? u : '')).find((u: string) => u.startsWith('https://')) || '';
     const imgs = Array.from(new Set([
-      String(attrs.image_url || o.image || o.images?.[0] || ''),
-      ...String(attrs.image_urls || '').split('|'),
+      String(firstPhoto || ''),
+      ...String(attrs.image_urls || attrs.images || '').split('|'),
       ...productImageUrls,
     ].filter((u: string) => u.startsWith('https://'))));
     const sellerName = String(o.seller || o.vendor || '');
