@@ -56,6 +56,44 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 
 const URL_AP = 'https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat';
 
+
+/** Indian city short forms / IATA codes -> full city name.
+ *  OWNER 7 Nov: he typed "delhi to mum" and every source was asked for a place called "mum", so the
+ *  answer was 0-3 rows while the same route spelled out returns real fares. Route text is expanded
+ *  here, before any source is called. Codes are only used when the whole token IS a code. */
+const CITY_BY_CODE: Record<string, string> = {
+  DEL: 'Delhi', BOM: 'Mumbai', BLR: 'Bengaluru', HYD: 'Hyderabad', MAA: 'Chennai', CCU: 'Kolkata',
+  PNQ: 'Pune', AMD: 'Ahmedabad', JAI: 'Jaipur', GOI: 'Goa', LKO: 'Lucknow', NAG: 'Nagpur',
+  IDR: 'Indore', STV: 'Surat', PAT: 'Patna', BHO: 'Bhopal', CJB: 'Coimbatore', COK: 'Kochi',
+  GAU: 'Guwahati', IXC: 'Chandigarh', DED: 'Dehradun', ATQ: 'Amritsar', VNS: 'Varanasi',
+  SXR: 'Srinagar', TRV: 'Thiruvananthapuram', VTZ: 'Visakhapatnam', IXM: 'Madurai',
+  UDR: 'Udaipur', JDH: 'Jodhpur', IXR: 'Ranchi', RPR: 'Raipur', BBI: 'Bhubaneswar',
+  IMF: 'Imphal', IXB: 'Siliguri', BDQ: 'Vadodara', RAJ: 'Rajkot', DXB: 'Dubai', SIN: 'Singapore',
+  LHR: 'London', JFK: 'New York', BKK: 'Bangkok', KUL: 'Kuala Lumpur', DOH: 'Doha', AUH: 'Abu Dhabi',
+};
+/** Everyday short forms people actually type. */
+const CITY_SHORT: Record<string, string> = {
+  mum: 'Mumbai', bombay: 'Mumbai', del: 'Delhi', ndls: 'New Delhi', blr: 'Bengaluru', bangalore: 'Bengaluru',
+  hyd: 'Hyderabad', madras: 'Chennai', cal: 'Kolkata', calcutta: 'Kolkata', bom: 'Mumbai',
+  pnq: 'Pune', amd: 'Ahmedabad', idr: 'Indore', bho: 'Bhopal', nag: 'Nagpur', goi: 'Goa',
+};
+
+export function expandCityToken(token: string): string {
+  const t = token.trim();
+  if (!t) return t;
+  if (/^[A-Za-z]{3}$/.test(t)) {
+    const code = CITY_BY_CODE[t.toUpperCase()];
+    if (code) return code;
+  }
+  const short = CITY_SHORT[t.toLowerCase()];
+  if (short) return short;
+  // "goa" is a real city name that is also a 3-letter word: capitalise it, never drop it.
+  if (/^[a-z]{3,}$/.test(t) && Object.values(CITY_BY_CODE).some((c) => c.toLowerCase() === t.toLowerCase())) {
+    return Object.values(CITY_BY_CODE).find((c) => c.toLowerCase() === t.toLowerCase()) || t;
+  }
+  return t;
+}
+
 /** "Indore (IDR) to Delhi (DEL) on 20 oct", "patna to delhi flight", "DEL → BOM" -> clean city names (codes stripped). */
 export function routeFromQuery(raw: string): { from: string; to: string; fromCode?: string; toCode?: string } | null {
   // Normalise bare trailing IATA codes ("indore idr to delhi del") into the "City (IDR)" form.
@@ -80,9 +118,13 @@ export function routeFromQuery(raw: string): { from: string; to: string; fromCod
     .replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, ' ')
     .replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, ' ')
     .replace(/,.*$/, '').replace(/\s+/g, ' ').trim();
-  const from = clean(m[1]); const to = clean(m[2]);
+  // Abbreviations / bare IATA codes become real city names before any source is asked.
+  const from = expandCityToken(clean(m[1]));
+  const to = expandCityToken(clean(m[2]));
   if (!from || !to) return null;
-  return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
+  const codeFor = (raw: string, city: string) =>
+    codeOf(raw) || Object.keys(CITY_BY_CODE).find((c) => CITY_BY_CODE[c].toLowerCase() === city.toLowerCase());
+  return { from, to, fromCode: codeFor(m[1], from), toCode: codeFor(m[2], to) };
 }
 
 /** Expedia flights live search (flights-shopping-pwa GraphQL, browserless):

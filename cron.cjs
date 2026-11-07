@@ -15904,6 +15904,20 @@ var init_expediaFlights = __esm({
 });
 
 // server/workers/verticals/flights.ts
+function expandCityToken(token) {
+  const t = token.trim();
+  if (!t) return t;
+  if (/^[A-Za-z]{3}$/.test(t)) {
+    const code = CITY_BY_CODE[t.toUpperCase()];
+    if (code) return code;
+  }
+  const short = CITY_SHORT[t.toLowerCase()];
+  if (short) return short;
+  if (/^[a-z]{3,}$/.test(t) && Object.values(CITY_BY_CODE).some((c) => c.toLowerCase() === t.toLowerCase())) {
+    return Object.values(CITY_BY_CODE).find((c) => c.toLowerCase() === t.toLowerCase()) || t;
+  }
+  return t;
+}
 function routeFromQuery(raw) {
   const KNOWN_CODES = /* @__PURE__ */ new Set(["DEL", "BOM", "BLR", "HYD", "MAA", "CCU", "PNQ", "AMD", "JAI", "GOI", "LKO", "NAG", "IDR", "STV", "PAT", "BHO", "CJB", "COK", "GAU", "IXC", "DED", "ATQ", "VNS", "SXR", "TRV", "VTZ", "IXM", "UDR", "JDH", "IXR", "RPR", "BBI", "IMF", "IXL", "IXB", "IXU", "IXE", "BDQ", "RAJ", "IXJ", "IXD", "GOP", "JRG", "DIB", "TEZ", "KNU", "MYQ", "HBX", "IXG", "KLH", "ISK", "SAG", "TIR", "DXB", "SIN", "LHR", "JFK", "BKK", "KUL", "DOH", "AUH", "SHJ"]);
   raw = raw.replace(/\b([a-zA-Z][a-zA-Z.]{2,})\s+([A-Za-z]{3})\b(?!\s*\))/g, (full, city, code) => {
@@ -15916,10 +15930,11 @@ function routeFromQuery(raw) {
   if (!m) return null;
   const codeOf = (s) => s.match(/\(([A-Za-z]{3})\)/)?.[1]?.toUpperCase();
   const clean4 = (s) => s.replace(/\([^)]*\)/g, " ").replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|cheap|direct|return|one-way|oneway|round trip|airport)\b/gi, " ").replace(/\b(on|for|tomorrow|today|tonight|night|morning|evening|at)\b.*$/i, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, " ").replace(/,.*$/, "").replace(/\s+/g, " ").trim();
-  const from = clean4(m[1]);
-  const to = clean4(m[2]);
+  const from = expandCityToken(clean4(m[1]));
+  const to = expandCityToken(clean4(m[2]));
   if (!from || !to) return null;
-  return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
+  const codeFor = (raw2, city) => codeOf(raw2) || Object.keys(CITY_BY_CODE).find((c) => CITY_BY_CODE[c].toLowerCase() === city.toLowerCase());
+  return { from, to, fromCode: codeFor(m[1], from), toCode: codeFor(m[2], to) };
 }
 async function expediaFlightsSearch(ctx, rt, dIso) {
   const from = rt.fromCode || IATA[rt.from.toLowerCase().trim()] || null;
@@ -16038,7 +16053,7 @@ async function etraveliBrandSearch(ctx, brand) {
   if (collected.length === 0) return [];
   return etraveliFlightsItems(collected, brand, ctx.source, rt, from, to, dep, searchPath);
 }
-var sjTokenCache, flightsWorker;
+var sjTokenCache, CITY_BY_CODE, CITY_SHORT, flightsWorker;
 var init_flights = __esm({
   "server/workers/verticals/flights.ts"() {
     init_verticalWorker();
@@ -16076,6 +16091,71 @@ var init_flights = __esm({
     init_fxRates();
     init_curlCffiFetch();
     sjTokenCache = /* @__PURE__ */ new Map();
+    CITY_BY_CODE = {
+      DEL: "Delhi",
+      BOM: "Mumbai",
+      BLR: "Bengaluru",
+      HYD: "Hyderabad",
+      MAA: "Chennai",
+      CCU: "Kolkata",
+      PNQ: "Pune",
+      AMD: "Ahmedabad",
+      JAI: "Jaipur",
+      GOI: "Goa",
+      LKO: "Lucknow",
+      NAG: "Nagpur",
+      IDR: "Indore",
+      STV: "Surat",
+      PAT: "Patna",
+      BHO: "Bhopal",
+      CJB: "Coimbatore",
+      COK: "Kochi",
+      GAU: "Guwahati",
+      IXC: "Chandigarh",
+      DED: "Dehradun",
+      ATQ: "Amritsar",
+      VNS: "Varanasi",
+      SXR: "Srinagar",
+      TRV: "Thiruvananthapuram",
+      VTZ: "Visakhapatnam",
+      IXM: "Madurai",
+      UDR: "Udaipur",
+      JDH: "Jodhpur",
+      IXR: "Ranchi",
+      RPR: "Raipur",
+      BBI: "Bhubaneswar",
+      IMF: "Imphal",
+      IXB: "Siliguri",
+      BDQ: "Vadodara",
+      RAJ: "Rajkot",
+      DXB: "Dubai",
+      SIN: "Singapore",
+      LHR: "London",
+      JFK: "New York",
+      BKK: "Bangkok",
+      KUL: "Kuala Lumpur",
+      DOH: "Doha",
+      AUH: "Abu Dhabi"
+    };
+    CITY_SHORT = {
+      mum: "Mumbai",
+      bombay: "Mumbai",
+      del: "Delhi",
+      ndls: "New Delhi",
+      blr: "Bengaluru",
+      bangalore: "Bengaluru",
+      hyd: "Hyderabad",
+      madras: "Chennai",
+      cal: "Kolkata",
+      calcutta: "Kolkata",
+      bom: "Mumbai",
+      pnq: "Pune",
+      amd: "Ahmedabad",
+      idr: "Indore",
+      bho: "Bhopal",
+      nag: "Nagpur",
+      goi: "Goa"
+    };
     flightsWorker = {
       vertical: "flights",
       tasks: [
@@ -33085,7 +33165,7 @@ function questionKeyOf(input) {
 var inflightPartials = /* @__PURE__ */ new Map();
 async function progressiveCatalogueResponse(vertical, inputQuery, offers, start, pending) {
   const anyOffers = offers;
-  if (String(vertical) === "flights") {
+  if (String(vertical) === "flights" && process.env.T1S_PRESENCE_CARDS === "1") {
     const presence = await buildFlightSellerPresence(inputQuery, anyOffers);
     if (presence.length) anyOffers.push(...withBrandImages(presence));
   }
@@ -33762,7 +33842,9 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
   }
   if (String(vertical) === "flights") {
     const honestEmpty = (outcome.failed || []).filter((f) => f.failureClass === "EMPTY_RESPONSE").map((f) => f.sourceId).filter((id) => !PRESENCE_SHOW_ON_EMPTY_IDS.has(id));
-    combined = [...combined, ...await buildFlightSellerPresence(parsed, combined, [...outcome.succeeded || [], ...honestEmpty])];
+    if (process.env.T1S_PRESENCE_CARDS === "1") {
+      combined = [...combined, ...await buildFlightSellerPresence(parsed, combined, [...outcome.succeeded || [], ...honestEmpty])];
+    }
     combined = await backfillFlightTimes(combined);
     const timed = hideFlightRowsWithoutTimes(combined);
     if (timed.dropped.length) {

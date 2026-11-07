@@ -277,7 +277,11 @@ async function progressiveCatalogueResponse(
   // Owner 22 Oct: the instant catalogue partial paints before live rows land —
   // gated-seller presence rows (Yatra/IndiGo/Akasa/Expedia) must appear here too,
   // not just in the finalized full response.
-  if (String(vertical) === 'flights') {
+  // OWNER 7 Nov (screenshot: flights "delhi -> mumbai" showed IndiGo/Expedia/BudgetAir cards with
+  // NO price while real fares were 3): the 3 Nov rule is absolute - NO PRICE, NO CARD. Unpriced
+  // seller-presence cards are OFF by default now (env T1S_PRESENCE_CARDS=1 re-enables them for a
+  // deliberate experiment); the module and its deeplinks stay, they just never count as results.
+  if (String(vertical) === 'flights' && process.env.T1S_PRESENCE_CARDS === '1') {
     const presence = await buildFlightSellerPresence(inputQuery, anyOffers);
     // The catalogue partial skips the full pipeline's image steps, so brand
     // logos are resolved here for the injected rows (cheap favicon chain).
@@ -1454,7 +1458,9 @@ async function finalizeLive(
       // captured", not "no service on this route" — their honest presence
       // card must survive (handled via showOnEmpty inside the builder).
       .filter((id: string) => !PRESENCE_SHOW_ON_EMPTY_IDS.has(id));
-    combined = [...combined, ...(await buildFlightSellerPresence(parsed, combined, [...(outcome.succeeded || []), ...honestEmpty]))];
+    if (process.env.T1S_PRESENCE_CARDS === '1') {
+      combined = [...combined, ...(await buildFlightSellerPresence(parsed, combined, [...(outcome.succeeded || []), ...honestEmpty]))];
+    }
 
     // 7.6 FLIGHT TIME BACKFILL + HONEST HIDE (owner 30 Oct: "flight mai time ni aa
     // raha uska time le kr aao kaise v agar phir v naa aaye tho usko hide kr do jo
