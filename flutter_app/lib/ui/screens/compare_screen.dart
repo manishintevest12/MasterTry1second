@@ -69,7 +69,11 @@ class _CompareScreenState extends State<CompareScreen> {
   /// non-forced fetch picks up the answer the server has since warmed.
   bool _settleDone = false;
   LiveResponse? _res;
-  int _visibleCount = 4; // Load More (owner 22 Oct): 4 groups first, +4 per tap
+  // OWNER 7 Nov ("jitne website ke results website pr aate hai utne app pr ni aate"): the
+  // app opened with only 4 result groups (4 cards) while the web lists the whole feed, so the
+  // app looked like it had half the results. It now opens with the full first screen of
+  // groups (12) and Load More adds 8 at a time; nothing else about grouping changed.
+  int _visibleCount = 12;
   /// The cache key of the response currently on screen; lets a background
   /// revalidation (stale TTL refresh) swap in newer prices without a spinner.
   String? _shownCacheKey;
@@ -347,7 +351,7 @@ class _CompareScreenState extends State<CompareScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _visibleCount = 4; // Load More: new search starts from the first 4 groups
+      _visibleCount = 12; // Load More: a new search opens on 12 groups (web parity)
     });
     _bgPoll?.cancel();
     try {
@@ -355,8 +359,17 @@ class _CompareScreenState extends State<CompareScreen> {
       // labels too — the server geocodes them city-biased instead of regex-
       // extracting the raw query ("Rajwada" alone geocoded to Nashik).
       final isCab = _meta.kind == SearchKind.cab;
+      // OWNER 7 Nov (issue 2: "future date choose karne par bhi aaj ka data"): the checkout /
+      // return date was NEVER sent to the API - live() has accepted `returnDate` all along, but
+      // this call only ever passed `depart`, so a 3-night hotel search reached the server as a
+      // 1-night stay (and a return flight as one-way). Hotels and flights now carry it; every
+      // other vertical keeps the single-date payload it had.
+      // flights (route) and hotels (hotel) are the only verticals with a return/check-out date in
+      // their picker; bus is a single-date route, so it must NOT receive a phantom return date.
+      final needsReturn = _meta.kind == SearchKind.hotel || _meta.kind == SearchKind.route;
       _res = await _state.live(_meta.id, q,
           depart: _iso(_date),
+          returnDate: needsReturn ? _iso(_checkOutDate) : null,
           force: force,
           from: isCab && _from.text.trim().isNotEmpty ? _from.text.trim() : null,
           to: isCab && _to.text.trim().isNotEmpty ? _to.text.trim() : null);
@@ -752,7 +765,7 @@ class _CompareScreenState extends State<CompareScreen> {
                       sort: _sort,
                       filterOpts: _filterOpts,
                       visibleCount: _visibleCount,
-                      onLoadMore: () => setState(() => _visibleCount += 4),
+                      onLoadMore: () => setState(() => _visibleCount += 8),
                     ).cards(bc)
                   : const <Widget>[];
 

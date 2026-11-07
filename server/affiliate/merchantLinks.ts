@@ -441,3 +441,33 @@ export function movieCityLink(merchant: string, ctx: MovieCtx = {}): string {
   if (v.includes('ticketnew')) return city ? `https://ticketnew.com/movies/${city}/cinemas` : 'https://www.ticketnew.com/';
   return '';
 }
+
+/**
+ * OWNER 7 Nov (issue 3: "clicking an item used to open the deep page, now it lands on a generic
+ * homepage"): for hotels/flights/bus the answer layer ALWAYS rebuilt the exit from the request
+ * dates, which threw away the deep URL the source itself published (a specific property page, a
+ * specific itinerary). This tells a genuinely DEEP merchant URL apart from the city/route LISTING
+ * we build ourselves, so the deep one can win and the listing stays the fallback.
+ */
+export function isDeepOfferUrl(vertical: string, url: string): boolean {
+  if (!url) return false;
+  let u: URL;
+  try { u = new URL(url); } catch { return false; }
+  const p = u.pathname.toLowerCase();
+  const q = u.search.toLowerCase();
+  const v = String(vertical || '').toLowerCase();
+  if (v === 'hotels' || v === 'hotel') {
+    if (/hotels-in-|search|listing/.test(p)) return false;           // city listing we build ourselves
+    if (/\/(hotel|hotels|property|stay)\/[^/]{3,}/.test(p)) return true;
+    return /(hotelid|hotel_id|propertyid|property_id)=/.test(q);
+  }
+  if (v === 'flights') {
+    if (/search|results|listing/.test(p)) return false;
+    return /(itinerary|booking|book|flight\/|pnr|fare)/.test(p) || /(itineraryid|bookingid|fare_id|itinerary_id)=/.test(q);
+  }
+  if (v === 'bus') {
+    if (/search|results|listing/.test(p)) return false;
+    return /(bus\/|booking|book|seat|ticket)/.test(p) || /(tripid|serviceid|trip_id|service_id)=/.test(q);
+  }
+  return /\/(p|product|dp|buy|item)\/[^/]{2,}/.test(p);
+}

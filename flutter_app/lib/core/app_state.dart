@@ -223,7 +223,11 @@ class AppState extends ChangeNotifier {
     final key = v == 'movies' ? 'movie' : v;
     final q = query.trim().isEmpty ? defaultQueryFor(key, city) : query.trim();
     lastQuery[key] = q; // sticky: this vertical reopens on its own last search
-    final cacheKey = '$key|$q|${depart ?? ''}';
+    // OWNER 7 Nov (issue 2): the cache key ignored the check-out/return date and the address, so
+    // changing only those two fields matched the OLD entry and the app repainted the previous
+    // stay/route instead of the one the user asked for. Every date and the location are part of the
+    // identity of an answer now.
+    final cacheKey = '$key|$q|${depart ?? ''}|${returnDate ?? ''}|${city.trim().toLowerCase()}|${pincode.trim()}';
     if (!force && cache[key] != null && cacheQuery[key] == cacheKey) {
       final hit = cache[key]!;
       final age = _nowMs - (cacheAt[key] ?? 0);

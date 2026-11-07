@@ -447,25 +447,30 @@ class _HeaderOverlay extends StatelessWidget {
               // clear the overlay. Still tall enough to mask the typical
               // ~50-56pt merchant menubar; taller menus (24 Oct complaint)
               // are masked by the strip + tab, not the full 68 anymore.
+              // OWNER 7 Nov ("redirection ke baad jo humara black header hai jo url hide
+              // karta hai uska breadth thora sa reduce krna"): 56 -> 44 with a tighter
+              // drag handle (margin 6 -> 4) and slightly smaller glyphs. It still masks the
+              // merchant's own menu bar (that was the whole point of the strip) but hands the
+              // page back ~18px of vertical space, so partner booking inputs sit higher.
               SizedBox(
-                height: 56,
+                height: 44,
                 child: Row(children: [
-                  const SizedBox(width: 14),
-                  const Icon(Icons.travel_explore, size: 20, color: Colors.white70),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
+                  const Icon(Icons.travel_explore, size: 18, color: Colors.white70),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
                     ),
                   ),
                   InkWell(
                     onTap: onClose,
                     child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Icon(Icons.close, size: 22, color: Colors.white70),
+                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      child: Icon(Icons.close, size: 20, color: Colors.white70),
                     ),
                   ),
                 ]),
@@ -476,7 +481,7 @@ class _HeaderOverlay extends StatelessWidget {
                 child: Container(
                   width: 36,
                   height: 4.5,
-                  margin: const EdgeInsets.only(bottom: 6),
+                  margin: const EdgeInsets.only(bottom: 4),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(999),

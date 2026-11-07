@@ -42,6 +42,7 @@ import {
 } from '../rewards/rewardsEngine';
 import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
+import { isDeepOfferUrl } from '../affiliate/merchantLinks';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback } from '../affiliate/deeplink';
 import { isCabAppScheme } from '../affiliate/cabLinks';
 import { createInterstitialPointer, isInAppWebView, adBlockHtml } from '../redirect/interstitial';
@@ -1219,7 +1220,12 @@ function offerToComparisonItem(o: any, reqTravel: { date?: string; return?: stri
   const rebuilt = dateSensitive && (reqTravel.date || reqTravel.route)
     ? merchantSearchFallback(String(o.vendor || o.seller || ''), String(o.title || ''), vertical, travelCtx)
     : '';
-  const rawDest = rebuilt || String(o.sellerUrl || '') || merchantSearchFallback(String(o.vendor || o.seller || ''), String(o.title || ''), vertical, travelCtx);
+  // OWNER 7 Nov (issue 3): a source that published a DEEP page for this exact row (a property page,
+  // an itinerary) must keep it - only a listing-shaped or missing URL is rebuilt from the request
+  // dates. Nothing else about the exit changes: the token, tracking and affiliate wrap are identical.
+  const ownUrl = String(o.sellerUrl || '');
+  const ownDeep = isDeepOfferUrl(vertical, ownUrl) ? ownUrl : '';
+  const rawDest = ownDeep || rebuilt || ownUrl || merchantSearchFallback(String(o.vendor || o.seller || ''), String(o.title || ''), vertical, travelCtx);
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || '') }) : '';
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || 'Verified source'));
   const attrs: Record<string, string> = o.attributes || {};

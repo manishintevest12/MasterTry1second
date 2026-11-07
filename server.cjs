@@ -30854,6 +30854,32 @@ function buildMerchantDeepLink(merchant, title, vertical, ctx = {}) {
   if (has("makemytrip")) return "https://www.makemytrip.com/";
   return "";
 }
+function isDeepOfferUrl(vertical, url) {
+  if (!url) return false;
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  const p = u.pathname.toLowerCase();
+  const q3 = u.search.toLowerCase();
+  const v = String(vertical || "").toLowerCase();
+  if (v === "hotels" || v === "hotel") {
+    if (/hotels-in-|search|listing/.test(p)) return false;
+    if (/\/(hotel|hotels|property|stay)\/[^/]{3,}/.test(p)) return true;
+    return /(hotelid|hotel_id|propertyid|property_id)=/.test(q3);
+  }
+  if (v === "flights") {
+    if (/search|results|listing/.test(p)) return false;
+    return /(itinerary|booking|book|flight\/|pnr|fare)/.test(p) || /(itineraryid|bookingid|fare_id|itinerary_id)=/.test(q3);
+  }
+  if (v === "bus") {
+    if (/search|results|listing/.test(p)) return false;
+    return /(bus\/|booking|book|seat|ticket)/.test(p) || /(tripid|serviceid|trip_id|service_id)=/.test(q3);
+  }
+  return /\/(p|product|dp|buy|item)\/[^/]{2,}/.test(p);
+}
 var IATA2, cityCode, slug2, e, linkMemo, LINK_MEMO_MAX, LINK_MEMO_TTL_MS;
 var init_merchantLinks = __esm({
   "server/affiliate/merchantLinks.ts"() {
@@ -44912,7 +44938,9 @@ function offerToComparisonItem(o, reqTravel = {}) {
   const vertical = String(o.vertical || "");
   const dateSensitive = vertical === "hotels" || vertical === "flights" || vertical === "bus";
   const rebuilt = dateSensitive && (reqTravel.date || reqTravel.route) ? merchantSearchFallback(String(o.vendor || o.seller || ""), String(o.title || ""), vertical, travelCtx) : "";
-  const rawDest = rebuilt || String(o.sellerUrl || "") || merchantSearchFallback(String(o.vendor || o.seller || ""), String(o.title || ""), vertical, travelCtx);
+  const ownUrl = String(o.sellerUrl || "");
+  const ownDeep = isDeepOfferUrl(vertical, ownUrl) ? ownUrl : "";
+  const rawDest = ownDeep || rebuilt || ownUrl || merchantSearchFallback(String(o.vendor || o.seller || ""), String(o.title || ""), vertical, travelCtx);
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || "") }) : "";
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || "Verified source"));
   const attrs = o.attributes || {};
@@ -45425,6 +45453,7 @@ var init_routes = __esm({
     init_rewardsEngine();
     init_affiliateNetwork();
     init_spendLens();
+    init_merchantLinks();
     init_deeplink();
     init_cabLinks();
     init_interstitial();
