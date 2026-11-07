@@ -37,6 +37,7 @@ class _ProductScreenState extends State<ProductScreen> {
   late Future<ProductPage> _future;
   late final TextEditingController _ctrl;
 
+
   @override
   void initState() {
     super.initState();
@@ -147,12 +148,87 @@ class _PageState extends State<_Page> {
   int _activeImg = 0;
   int _dealTab = 0; // 0 = Deal Scanner, 1 = Price Drop
   late final TextEditingController _alertCtrl;
+  /// OWNER 7 Nov: a SPONSORED card sits between the related rows (after 6 products). It is a real
+  /// partner deal from the deals registry for THIS vertical (ecommerce), minted by /api/ads as a
+  /// house slot whose link is already a masked /api/out pointer - relevant and monetised, and the
+  /// grid simply runs without one when no deal matches.
+  Map<String, dynamic>? _sponsor;
+  bool _sponsorAsked = false;
 
   @override
   void initState() {
     super.initState();
     final cur = widget.page.offers.firstOrNull?.price ?? 0;
     _alertCtrl = TextEditingController(text: cur > 0 ? (cur * 0.95).round().toString() : '');
+    _loadSponsor();
+  }
+
+  Future<void> _loadSponsor() async {
+    if (_sponsorAsked) return;
+    _sponsorAsked = true;
+    try {
+      final res = await AppState.instance.api.getJsonPublic('/api/ads?slot=vertical_ecommerce');
+      final slot = res['slot'];
+      if (!mounted || res['active'] != true || slot is! Map) return;
+      final deals = (slot['deals'] as List?) ?? const [];
+      if (deals.isEmpty) return;
+      final d = (deals.first as Map).cast<String, dynamic>();
+      final url = '${d['url'] ?? ''}';
+      final title = '${d['title'] ?? ''}';
+      if (!url.startsWith('/api/out') || title.isEmpty) return;
+      setState(() => _sponsor = d);
+    } catch (_) {
+      // No sponsor is a valid state: the related grid simply runs without one.
+    }
+  }
+
+  /// Sponsored partner card (real deal from the deals registry, masked /api/out link).
+  Widget _sponsorCard(BuildContext context) {
+    final sp = _sponsor!;
+    final merchant = '${sp['merchant'] ?? 'Partner'}';
+    final title = '${sp['title'] ?? ''}';
+    final discount = '${sp['discount'] ?? ''}';
+    final image = sp['image'] is String ? sp['image'] as String : null;
+    final url = '${sp['url'] ?? ''}';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: () => openDeal(url, sellerName: merchant),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: border(context)),
+          ),
+          child: Row(children: [
+            if (image != null && image.startsWith('http'))
+              NetImage(image, width: 56, height: 56, fit: BoxFit.contain, radius: 8, fallbackIcon: Icons.local_offer_outlined)
+            else
+              const Icon(Icons.local_offer_outlined, size: 28, color: T1SColors.red),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Text('SPONSORED', style: tx(context, 8.5, w: FontWeight.w900, color: muted(context), ls: 0.8)),
+                  const SizedBox(width: 6),
+                  Flexible(child: Text(merchant, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: tx(context, 9.5, w: FontWeight.w800, color: T1SColors.red))),
+                ]),
+                const SizedBox(height: 3),
+                Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 11, w: FontWeight.w800)),
+                if (discount.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(discount, style: tx(context, 9.5, w: FontWeight.w700, color: T1SColors.green)),
+                ],
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, size: 20, color: muted(context)),
+          ]),
+        ),
+      ),
+    );
   }
 
   @override
@@ -361,7 +437,7 @@ class _PageState extends State<_Page> {
         // OWNER 7 Nov ("related products sirf kuch hi dikhta hai ... neeche tak scroll krne pr
         // products aata rahe, atleast 6-7 rows tho aaye, abhi ek hi row aata hai"): this used to be
         // a single 118px HORIZONTAL strip, so only one row ever existed. It is now a vertical
-        // 3-up grid of every related product the answer carries (up to 30 = 10 rows), so scrolling
+        // 3-up grid of every related product the answer carries (up to 36 = 12 rows), so scrolling
         // the page keeps revealing real priced products instead of ending after one row.
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -369,7 +445,8 @@ class _PageState extends State<_Page> {
             for (var r0 = 0; r0 < page.related.length; r0 += 3)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
+                child: Column(children: [
+                  Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     for (var k = 0; k < 3; k++)
@@ -395,7 +472,12 @@ class _PageState extends State<_Page> {
                             : const SizedBox.shrink(),
                       ),
                   ],
-                ),
+                  ),
+                  // OWNER 7 Nov: "in between those rows after 6 product give a sponsored product
+                  // banner". The 6th product ends the 2nd row, so the sponsored card follows it,
+                  // inside the same scrolling flow and before the 3rd row.
+                  if (r0 == 3 && _sponsor != null) _sponsorCard(context),
+                ]),
               ),
           ]),
         ),

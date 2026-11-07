@@ -2525,14 +2525,15 @@ apiRouter.post('/product-page', async (req, res) => {
   // Related: other priced ecommerce results that are NOT this product (de-duplicated by title).
   const seen = new Set<string>(offers.map((r) => r.title.toLowerCase()));
   // OWNER 7 Nov ("related products sirf kuch hi dikhta hai, neeche tak scroll krne pr products
-  // aata rahe"): the strip was capped at 10 items, which the app rendered as ONE horizontal row.
-  // Every priced, de-duplicated ecommerce row that is not this product is returned now (up to 30),
-  // so the app can lay them out as a scrolling grid. Real prices only - nothing is invented.
+  // aata rahe"), then "INCREASE UPTO 12 ROW": the strip was capped at 10 items, which the app
+  // rendered as ONE horizontal row. Every priced, de-duplicated ecommerce row that is not this
+  // product is returned now (up to 36 = 12 rows of 3 in the app's grid), so scrolling keeps
+  // revealing real products. Real prices only - nothing is invented.
   const related = all
     .filter((x) => !isSameProduct(lensQuery, String(x.o.title || ''), matchMode))
     .map(toRow)
     .filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase()))
-    .slice(0, 30);
+    .slice(0, 36);
 
   // Real history: first same-product offer that carries a canonical entity id with recorded points.
   let history: Array<{ price: number; capturedAt: string }> = [];

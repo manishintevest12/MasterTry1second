@@ -46979,7 +46979,7 @@ var init_routes = __esm({
       }
       const cheapest = offers[0] || null;
       const seen = new Set(offers.map((r) => r.title.toLowerCase()));
-      const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 30);
+      const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 36);
       let history = [];
       let historyEntity = null;
       const historyLookup = (async () => {
