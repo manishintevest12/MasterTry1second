@@ -28,4 +28,27 @@ void main() {
     expect(src.contains('buyNowLabel'), isFalse);
     expect(src.contains('clickSellerButtonJs'), isFalse);
   });
+
+  _headerRemovalGuards();
+}
+
+/// OWNER 8 Nov ("redirection ke baad header or link ko hide krne ke liye jo black colour ka hai
+/// usko hata do flutter app se, wo search bar v partner ka hide kr de raha hai"): the dark
+/// #131725 overlay strip (merchant name + pull tab + link line) used to sit ON TOP of the partner
+/// page and hid its own logo/search bar. It must not come back, and the WebView must handle the
+/// status bar itself so nothing of ours covers the merchant header.
+void _headerRemovalGuards() {
+  test('the dark overlay header and its masking colours are gone', () {
+    final src = File('lib/ui/screens/in_app_browser_screen.dart').readAsStringSync();
+    expect(src.contains('_HeaderOverlay'), isFalse);
+    // The strip is identified by its masking container + widget, not by the dark tone, which the
+    // bottom toolbar legitimately still uses for its labels.
+    expect(src.contains('Full-width dark overlay header'), isFalse);
+    expect(src.contains('pull tab'), isFalse);
+  });
+
+  test('the webview is safe-area wrapped so the partner header is fully visible', () {
+    final src = File('lib/ui/screens/in_app_browser_screen.dart').readAsStringSync();
+    expect(src.contains('SafeArea(\n                bottom: false,\n                child: WebViewWidget('), isTrue);
+  });
 }

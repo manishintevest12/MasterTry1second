@@ -275,11 +275,19 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
         children: [
           if (_controller != null)
             Positioned.fill(
-              child: WebViewWidget(
-                controller: _controller!,
-                gestureRecognizers: {
-                  Factory<VerticalDragGestureRecognizer>(() => VerticalDragGestureRecognizer()),
-                },
+              // OWNER 8 Nov ("redirection ke baad header or link ko hide krne ke liye jo black
+              // colour ka hai usko hata do flutter app se, wo search bar v partner ka hide kr de
+              // raha hai"): the #131725 strip is GONE, so nothing of ours sits over the merchant
+              // page. The WebView handles the status bar itself (SafeArea top) so the partner's own
+              // logo/search bar is fully visible instead of being covered by our dark bar.
+              child: SafeArea(
+                bottom: false,
+                child: WebViewWidget(
+                  controller: _controller!,
+                  gestureRecognizers: {
+                    Factory<VerticalDragGestureRecognizer>(() => VerticalDragGestureRecognizer()),
+                  },
+                ),
               ),
             ),
           // Owner 2 Nov (approved): instead of a blank white screen while the
@@ -289,16 +297,6 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
             Positioned.fill(
               child: _OpeningCard(name: name, url: _currentUrl.isEmpty ? widget.url : _currentUrl),
             ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _HeaderOverlay(
-              name: name,
-              loading: _loading,
-              onClose: () => Navigator.of(context).pop(),
-            ),
-          ),
         ],
       ),
       bottomNavigationBar: Column(
@@ -410,92 +408,6 @@ class _BottomToolBar extends StatelessWidget {
             _btn(Icons.bar_chart_rounded, 'Price history', onPriceHistory, highlight: true),
             _btn(Icons.open_in_full, 'Expand', onExpand),
           ]),
-        ),
-      ),
-    );
-  }
-}
-
-
-/// Full-width dark overlay header (owner 23 Oct): the merchant name strip +
-/// white pull tab + load hairline, drawn ON TOP of the full-bleed WebView so
-/// the partner site's own menubar/logo stays hidden behind it.
-class _HeaderOverlay extends StatelessWidget {
-  const _HeaderOverlay({required this.name, required this.loading, required this.onClose});
-  final String name;
-  final bool loading;
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      ignoring: false,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF131725),
-          boxShadow: [BoxShadow(color: Color(0x44000000), blurRadius: 8, offset: Offset(0, 2))],
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Owner 25 Oct ("header thora sa chota kro — FROM ka address
-              // hide ho raha hai"): 68 was hiding Ola's route-input area
-              // below the fold; strip 68 -> 56 and the pull-tab spacing
-              // 10 -> 6 so the merchant page's own inputs (FROM/TO on Ola)
-              // clear the overlay. Still tall enough to mask the typical
-              // ~50-56pt merchant menubar; taller menus (24 Oct complaint)
-              // are masked by the strip + tab, not the full 68 anymore.
-              // OWNER 7 Nov ("redirection ke baad jo humara black header hai jo url hide
-              // karta hai uska breadth thora sa reduce krna"): 56 -> 44 with a tighter
-              // drag handle (margin 6 -> 4) and slightly smaller glyphs. It still masks the
-              // merchant's own menu bar (that was the whole point of the strip) but hands the
-              // page back ~18px of vertical space, so partner booking inputs sit higher.
-              SizedBox(
-                height: 44,
-                child: Row(children: [
-                  const SizedBox(width: 12),
-                  const Icon(Icons.travel_explore, size: 18, color: Colors.white70),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
-                    ),
-                  ),
-                  InkWell(
-                    onTap: onClose,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      child: Icon(Icons.close, size: 20, color: Colors.white70),
-                    ),
-                  ),
-                ]),
-              ),
-              // White tab handle centered under the dark strip (owner 23 Oct;
-              // margin trimmed 10 -> 6 with the shorter 25 Oct strip).
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4.5,
-                  margin: const EdgeInsets.only(bottom: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-              if (loading)
-                const LinearProgressIndicator(
-                  minHeight: 2.5,
-                  backgroundColor: Colors.transparent,
-                  valueColor: AlwaysStoppedAnimation(Color(0xFFE60000)),
-                ),
-            ],
-          ),
         ),
       ),
     );
