@@ -47006,30 +47006,53 @@ var init_routes = __esm({
       }
       const cheapest = offers[0] || null;
       const seen = new Set(offers.map((r) => r.title.toLowerCase()));
-      const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 36);
-      const needPhoto = related.filter((r) => !r.image).slice(0, 12);
+      const relatedPool = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 60);
+      const photoMemo = globalThis.__t1sPhotoMemo ??= /* @__PURE__ */ new Map();
+      const memoGet = (key) => {
+        const hit = photoMemo.get(key);
+        if (!hit) return void 0;
+        if (Date.now() - hit.at > 10 * 6e4) {
+          photoMemo.delete(key);
+          return void 0;
+        }
+        return hit.url;
+      };
+      const missingPhoto = relatedPool.filter((r) => !r.image);
+      for (const row of missingPhoto) {
+        const cached3 = memoGet(String(row.title || "").toLowerCase());
+        if (cached3) {
+          row.image = cached3;
+          row.images = [cached3, ...Array.isArray(row.images) ? row.images : []].slice(0, 8);
+        }
+      }
+      const needPhoto = missingPhoto.filter((r) => !r.image);
       if (needPhoto.length) {
-        const photoDeadline = Date.now() + 1200;
+        const photoDeadline = Date.now() + 3e3;
         const queue = [...needPhoto];
-        await Promise.all(Array.from({ length: 4 }, async () => {
+        await Promise.all(Array.from({ length: 8 }, async () => {
           while (queue.length && Date.now() < photoDeadline) {
             const row = queue.shift();
             if (!row) break;
             try {
               const url2 = await resolveCatalogueImage(String(row.title || ""), "ecommerce");
-              if (url2 && url2.startsWith("https://")) {
-                row.image = url2;
-                row.images = [url2, ...Array.isArray(row.images) ? row.images : []].slice(0, 8);
+              const clean4 = url2 && url2.startsWith("https://") ? url2 : null;
+              photoMemo.set(String(row.title || "").toLowerCase(), { url: clean4, at: Date.now() });
+              if (photoMemo.size > 800) photoMemo.delete(photoMemo.keys().next().value);
+              if (clean4) {
+                row.image = clean4;
+                row.images = [clean4, ...Array.isArray(row.images) ? row.images : []].slice(0, 8);
               }
             } catch {
             }
           }
         }));
         log.info("ProductPage", "Borrowed catalogue photos for related rows", {
+          pool: relatedPool.length,
           needed: needPhoto.length,
-          filled: needPhoto.filter((r) => r.image).length
+          filled: relatedPool.filter((r) => r.image).length
         });
       }
+      const related = relatedPool.filter((r) => Boolean(r.image)).slice(0, 36);
       let history = [];
       let historyEntity = null;
       const historyLookup = (async () => {

@@ -23,7 +23,20 @@ test('the app falls back to the seller logo when a related row has no photo', ()
 // fallback, so the server must send a real photo for related rows or those phones show grey cards.
 test('related rows without a photo borrow the same title photo from the catalogue', () => {
   const src = readFileSync(new URL('../server/api/routes.ts', import.meta.url), 'utf8');
-  assert.ok(src.includes('const needPhoto = related.filter((r) => !r.image)'), 'missing photos are detected');
+  assert.ok(src.includes('const missingPhoto = relatedPool.filter((r) => !r.image)'), 'missing photos are detected');
   assert.ok(src.includes("resolveCatalogueImage(String(row.title || ''), 'ecommerce')"), 'borrows by exact title');
   assert.ok(src.includes('photoDeadline'), 'borrow pass is deadline-bounded');
+});
+
+// OWNER 8 Nov ("only 12 images are coming, rest of the images are not coming in related products,
+// it is compulsory to have images there"): the borrow pass must cover EVERY row, the pool must be
+// wider than the visible grid so dropping an image-less row cannot shrink it, and no image-less row
+// may ever reach the app.
+test('every related row gets a photo and image-less rows never ship', () => {
+  const src = readFileSync(new URL('../server/api/routes.ts', import.meta.url), 'utf8');
+  assert.ok(!src.includes('filter((r) => !r.image).slice(0, 12)'), 'the 12-row photo cap is gone');
+  assert.ok(src.includes('.slice(0, 60)'), 'candidate pool is wider than the 36-row grid');
+  assert.ok(src.includes('const related = relatedPool.filter((r) => Boolean(r.image)).slice(0, 36)'),
+    'the grid carries only rows with a real photo');
+  assert.ok(src.includes('__t1sPhotoMemo'), 'resolved photos are memoised');
 });

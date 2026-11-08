@@ -2564,38 +2564,68 @@ apiRouter.post('/product-page', async (req, res) => {
   // rendered as ONE horizontal row. Every priced, de-duplicated ecommerce row that is not this
   // product is returned now (up to 36 = 12 rows of 3 in the app's grid), so scrolling keeps
   // revealing real products. Real prices only - nothing is invented.
-  const related = all
+  // OWNER 8 Nov ("only 12 images are coming, rest of the images are not coming in related products,
+  // it is compulsory to have images there"). MEASURED: the borrow pass below was capped at
+  // `.slice(0, 12)`, so on a 36-row grid every row after the 12th was left without a photo. Two
+  // changes fix that for good:
+  //   1. EVERY priced, de-duplicated candidate is a candidate for a photo (pool widened to 60 so a
+  //      row that still has no photo can be dropped without shrinking the visible grid).
+  //   2. The final grid carries ONLY rows that ended up with a real photo - an image-less card never
+  //      ships (owner: images are compulsory), and the grid still fills its 12 rows of 3 because the
+  //      pool is wider than 36.
+  const relatedPool = all
     .filter((x) => !isSameProduct(lensQuery, String(x.o.title || ''), matchMode))
     .map(toRow)
     .filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase()))
-    .slice(0, 36);
+    .slice(0, 60);
 
-  // OWNER 7 Nov ("purane wale app mai tho ni dikh raha usme fix kro"): an already-installed build has
-  // no logo fallback, so for those phones the SERVER has to send a real photo or the card stays grey.
-  // A related row whose own parser carried no photo now borrows the photo of the SAME product title
-  // already stored in the catalogue (identical name, real https URL - nothing is invented). Bounded to
-  // 12 lookups at concurrency 4 with a 1200ms deadline so the product page's deadline is untouched.
-  const needPhoto = related.filter((r) => !r.image).slice(0, 12);
+  // A related row whose own parser carried no photo borrows the photo of the SAME product title
+  // already stored in the catalogue (identical name, real https URL - nothing is invented). Resolved
+  // URLs are memoised for 10 minutes so repeat page views cost no queries. Concurrency 8 + a 3s
+  // deadline keeps the product page fast while covering every row.
+  const photoMemo: Map<string, { url: string | null; at: number }> =
+    ((globalThis as any).__t1sPhotoMemo ??= new Map());
+  const memoGet = (key: string): string | null | undefined => {
+    const hit = photoMemo.get(key);
+    if (!hit) return undefined;
+    if (Date.now() - hit.at > 10 * 60_000) { photoMemo.delete(key); return undefined; }
+    return hit.url;
+  };
+  const missingPhoto = relatedPool.filter((r) => !r.image);
+  for (const row of missingPhoto) {
+    const cached = memoGet(String(row.title || '').toLowerCase());
+    if (cached) {
+      row.image = cached;
+      row.images = [cached, ...(Array.isArray(row.images) ? row.images : [])].slice(0, 8);
+    }
+  }
+  const needPhoto = missingPhoto.filter((r) => !r.image);
   if (needPhoto.length) {
-    const photoDeadline = Date.now() + 1200;
+    const photoDeadline = Date.now() + 3000;
     const queue = [...needPhoto];
-    await Promise.all(Array.from({ length: 4 }, async () => {
+    await Promise.all(Array.from({ length: 8 }, async () => {
       while (queue.length && Date.now() < photoDeadline) {
         const row: any = queue.shift();
         if (!row) break;
         try {
           const url = await resolveCatalogueImage(String(row.title || ''), 'ecommerce');
-          if (url && url.startsWith('https://')) {
-            row.image = url;
-            row.images = [url, ...(Array.isArray(row.images) ? row.images : [])].slice(0, 8);
+          const clean = url && url.startsWith('https://') ? url : null;
+          photoMemo.set(String(row.title || '').toLowerCase(), { url: clean, at: Date.now() });
+          if (photoMemo.size > 800) photoMemo.delete(photoMemo.keys().next().value as string);
+          if (clean) {
+            row.image = clean;
+            row.images = [clean, ...(Array.isArray(row.images) ? row.images : [])].slice(0, 8);
           }
-        } catch { /* no photo available: the row keeps image: null */ }
+        } catch { /* no photo available: the row is dropped below */ }
       }
     }));
     log.info('ProductPage', 'Borrowed catalogue photos for related rows', {
-      needed: needPhoto.length, filled: needPhoto.filter((r) => r.image).length,
+      pool: relatedPool.length, needed: needPhoto.length,
+      filled: relatedPool.filter((r) => r.image).length,
     });
   }
+  // Images are compulsory: only rows that carry a real photo reach the grid.
+  const related = relatedPool.filter((r) => Boolean(r.image)).slice(0, 36);
 
   // Real history: first same-product offer that carries a canonical entity id with recorded points.
   let history: Array<{ price: number; capturedAt: string }> = [];
