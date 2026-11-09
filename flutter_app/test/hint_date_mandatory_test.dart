@@ -225,8 +225,14 @@ void main() {
         if (find.text(yesterday).evaluate().isNotEmpty) {
           await tester.tap(find.text(yesterday).first);
           await tester.pump();
-          // Header still shows today's date (selection unchanged).
-          expect(find.textContaining('-10-2026').evaluate().isNotEmpty, true);
+          // Header still shows today's date (selection unchanged). The stamp is derived from the real
+          // clock: this line used to hardcode '-10-2026', so the test started failing on 1 Nov 2026
+          // without any product change (owner run, 9 Nov).
+          // the modal header prints DD-MM-YYYY (_fmt in journey_date_picker_modal.dart)
+          final stamp = '${today.day.toString().padLeft(2, '0')}-'
+              '${today.month.toString().padLeft(2, '0')}-${today.year}';
+          expect(find.textContaining(stamp).evaluate().isNotEmpty, true,
+              reason: 'a past day must not move the header off $stamp');
         }
       }
     });

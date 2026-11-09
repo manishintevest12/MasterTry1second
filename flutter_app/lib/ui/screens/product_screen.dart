@@ -561,6 +561,68 @@ class _ShareButton extends StatelessWidget {
   }
 }
 
+/// Seller mark for a compare row (owner 9 Nov: on the app the Shopsy and JioMart rows painted the grey
+/// storefront placeholder while the site showed a real mark). The server already ships BOTH a
+/// `/api/logos/<key>` brand logo (which answers a real image for every known merchant - verified on
+/// production: shopsy 200, jiomart 200) and a product photo, but this row only ever read `image`, so a
+/// seller whose row carried no photo had nothing to draw. The mark now tries, in order: the brand logo,
+/// the row image, and finally the seller's initials - the same badge the site renders - so a seller is
+/// never a placeholder icon again.
+class _SellerMark extends StatelessWidget {
+  const _SellerMark({required this.offer});
+  final ProductOffer offer;
+
+  static String? _abs(String path) {
+    final p = path.trim();
+    if (p.isEmpty) return null;
+    if (p.startsWith('http')) return p;
+    final base = AppState.instance.api.baseUrl;
+    if (base.isEmpty) return null;
+    return p.startsWith('/') ? '$base$p' : '$base/$p';
+  }
+
+  static String _initials(String seller) {
+    final words = seller.replaceAll(RegExp(r'[^A-Za-z0-9 ]'), ' ').trim().split(RegExp(r'\s+'))
+      ..removeWhere((w) => w.isEmpty);
+    if (words.isEmpty) return '?';
+    if (words.length == 1) {
+      final w = words.first;
+      return w.substring(0, w.length >= 2 ? 2 : 1).toUpperCase();
+    }
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _abs(offer.sellerLogo) ?? _abs(offer.image ?? '');
+    Widget initials() => Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+            border: Border.all(color: border(context)),
+          ),
+          child: Text(
+            _initials(offer.seller),
+            style: tx(context, 10, w: FontWeight.w900, color: ink(context)),
+          ),
+        );
+    if (url == null) return initials();
+    return ClipOval(
+      child: Image.network(
+        url,
+        width: 34,
+        height: 34,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => initials(),
+        loadingBuilder: (c, child, progress) => progress == null ? child : initials(),
+      ),
+    );
+  }
+}
+
 /// One 'Compare' row: logo circle, seller, variant, price, Lowest/% costlier.
 class _CompareRow extends StatelessWidget {
   const _CompareRow({required this.offer, required this.lowest, required this.pctCostlier, this.onTap});
@@ -588,7 +650,7 @@ class _CompareRow extends StatelessWidget {
               color: isDark(context) ? T1SColors.slate800 : Colors.white,
               border: Border.all(color: border(context)),
             ),
-            child: ClipOval(child: NetImage(o.image, fit: BoxFit.contain, fallbackIcon: Icons.storefront_rounded)),
+            child: _SellerMark(offer: o),
           ),
           const SizedBox(width: 10),
           Expanded(

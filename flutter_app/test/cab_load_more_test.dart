@@ -110,16 +110,17 @@ void main() {
       skip: false, // re-testing: chain works with current code
       (tester) async {
     final state = AppState.instance;
-    // >4 groups happens when trip types differ: one-way + round-trip across
-    // the 3 classes = 6 groups. The pill must appear with remaining=2 and a
-    // tap reveals the remaining groups' COMPLETE sections.
+    // PAGE SIZE IS 12 GROUPS (owner 22 Oct web parity, compare_screen: 'a new search opens on 12
+    // groups'), so this test paginates a feed that actually exceeds one page: 3 classes x 5 trip
+    // types = 15 groups, leaving 3 for the pill. Before this the test assumed a 4-group first page
+    // and had been red since the 12-group change.
     final items = <cmp.CompareItem>[
-      _cabRow('ow-bike', 'Rapido', 'Bike Taxi', 80, trip: 'one-way'),
-      _cabRow('ow-auto', 'Ola', 'Auto', 150, trip: 'one-way'),
-      _cabRow('ow-cab', 'Uber', 'Sedan', 250, trip: 'one-way'),
-      _cabRow('rt-bike', 'Rapido', 'Bike Taxi', 160, trip: 'round-trip'),
-      _cabRow('rt-auto', 'Ola', 'Auto', 300, trip: 'round-trip'),
-      _cabRow('rt-cab', 'Uber', 'Sedan', 500, trip: 'round-trip'),
+      for (final trip in const ['one-way', 'round-trip', 'hourly', 'outstation', 'rental'])
+        _cabRow('bike-$trip', 'Rapido', 'Bike Taxi', 80, trip: trip),
+      for (final trip in const ['one-way', 'round-trip', 'hourly', 'outstation', 'rental'])
+        _cabRow('auto-$trip', 'Ola', 'Auto', 150, trip: trip),
+      for (final trip in const ['one-way', 'round-trip', 'hourly', 'outstation', 'rental'])
+        _cabRow('cab-$trip', 'Uber', 'Sedan', 250, trip: trip),
     ];
     state.api = _CabApi(items);
     state.tab = NavTab.compare;
@@ -145,8 +146,8 @@ void main() {
       pillFound = find.textContaining('Load More').evaluate().isNotEmpty;
     }
     expect(find.textContaining('Load More'), findsOneWidget,
-        reason: '6-group cab feed must paginate after the first 4 groups');
-    expect(find.textContaining('2 more deals'), findsOneWidget,
+        reason: 'a 15-group cab feed must paginate after the first 12 groups');
+    expect(find.textContaining('3 more deals'), findsOneWidget,
         reason: 'the pill must count remaining GROUPS, not section widgets');
 
     // One tap reveals the remaining 2 groups and the pill disappears.
