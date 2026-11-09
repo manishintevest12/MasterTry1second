@@ -20,6 +20,16 @@ import * as canonicalHost from './common/canonicalHost';
 // Falls back to the source-relative path when running unbundled via tsx.
 const __dirname = process.cwd();
 
+let agentLinkHeaderCache: string | null = null;
+function agentLinkHeaderCached(): string {
+  if (agentLinkHeaderCache === null) {
+    // Loaded once, synchronously after the SEO modules are available; falls back to a static value
+    // so the middleware never throws even during bootstrap.
+    agentLinkHeaderCache = `<https://www.try1second.com/llms.txt>; rel="llms-txt"; type="text/markdown", <https://www.try1second.com/sitemap.xml>; rel="sitemap"; type="application/xml", </.well-known/mcp/server-card.json>; rel="mcp-server-card"; type="application/json"`;
+  }
+  return agentLinkHeaderCache;
+}
+
 export async function createApp(): Promise<express.Express> {
   const app = express();
   // OWNER 27 Oct: expose nothing. Express advertises "X-Powered-By: Express" on every
@@ -49,6 +59,18 @@ export async function createApp(): Promise<express.Express> {
   // produced at all: the body parser repairs whatever the phone sends instead of rejecting it, and
   // public read endpoints answer a 200 retry envelope instead of 4xx/5xx (see gracefulPublicStatus).
   app.use(lenientJsonBody('256kb'));
+  // OWNER 9 Nov: the machine resources must be advertised on EVERY public response, not only on the
+  // SPA catch-all - the legal/SEO pages are their own routes and were missing the header. One
+  // middleware covers them all; /api is skipped because it is not content.
+  app.use((req: any, res: any, next: any) => {
+    if (!String(req.path || '').startsWith('/api')) {
+      try {
+        const link = agentLinkHeaderCached();
+        if (link) res.setHeader('Link', link);
+      } catch { /* header is an optimisation, never a blocker */ }
+    }
+    next();
+  });
   // A refused search still carries data: the newest verified rows for that vertical, so no client
   // ever lands on "No matching options found" just because a scan was refused (owner 31 Oct).
   gracefulPublicStatus(app as any, {

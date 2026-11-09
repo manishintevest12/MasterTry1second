@@ -81,3 +81,9 @@ test('every canonical vertical path from the address bar is a known page (no 404
     assert.equal(isKnownPath(p), true, `${p} must not answer 404`);
   }
 });
+
+test('the Link header is set by middleware, so legal/SEO pages carry it too', () => {
+  const src = readFileSync(new URL('../server/index.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('res.setHeader(\'Link\''), 'a global middleware sets Link');
+  assert.ok(src.includes("startsWith('/api')"), 'api responses are skipped');
+});

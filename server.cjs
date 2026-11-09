@@ -55478,6 +55478,13 @@ function canonicalWwwUrl(originalUrl) {
 
 // server/index.ts
 var __dirname2 = process.cwd();
+var agentLinkHeaderCache = null;
+function agentLinkHeaderCached() {
+  if (agentLinkHeaderCache === null) {
+    agentLinkHeaderCache = `<https://www.try1second.com/llms.txt>; rel="llms-txt"; type="text/markdown", <https://www.try1second.com/sitemap.xml>; rel="sitemap"; type="application/xml", </.well-known/mcp/server-card.json>; rel="mcp-server-card"; type="application/json"`;
+  }
+  return agentLinkHeaderCache;
+}
 async function createApp() {
   const app = (0, import_express5.default)();
   app.disable("x-powered-by");
@@ -55498,6 +55505,16 @@ async function createApp() {
     next();
   });
   app.use(lenientJsonBody("256kb"));
+  app.use((req, res, next) => {
+    if (!String(req.path || "").startsWith("/api")) {
+      try {
+        const link = agentLinkHeaderCached();
+        if (link) res.setHeader("Link", link);
+      } catch {
+      }
+    }
+    next();
+  });
   gracefulPublicStatus(app, {
     fallbackRows: (req) => {
       const body = req?.body && typeof req.body === "object" ? req.body : {};
