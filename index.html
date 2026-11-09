@@ -15,6 +15,11 @@
     <meta property="og:description" content="Instant price discovery across 10 verticals: flights, hotels, bus, ecommerce, 10-minute grocery, food delivery, movies, loans, insurance, and cabs with live scanner radar, AI insights, and Spin & Earn rewards." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- AGENT DISCOVERY (owner 9 Nov): advertise the machine index and the Markdown alternate from
+         every page's <head>, in addition to the Link response header the server sends. -->
+    <link rel="llms" type="text/plain" href="/llms.txt" />
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="Try1Second for agents" />
+    <link rel="mcp-server-card" type="application/json" href="/.well-known/mcp/server-card.json" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
@@ -124,5 +129,40 @@
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- WEBMCP (owner 9 Nov, "Site exposes WebMCP tools to in-browser agents"): when the browser ships
+         the Model Context Protocol API, register the price-search tool so an in-browser agent can call
+         it directly. Guarded and silent everywhere else - it never blocks or breaks the app. -->
+    <script>
+      (function () {
+        try {
+          var mc = navigator.modelContext || (navigator.modelcontext) || null;
+          if (!mc || typeof mc.registerTool !== 'function') return;
+          var base = 'https://www.try1second.com';
+          mc.registerTool({
+            name: 'search_prices',
+            description: 'Compare live prices on Try1Second across flights, hotels, bus, cabs, shopping, grocery, food, movies, loans and insurance. Returns real seller rows with price and outbound link.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: { type: 'string', description: 'What to price, e.g. "Indore to Delhi" or "iphone 16".' },
+                vertical: { type: 'string', enum: ['flights','hotels','bus','cab','ecommerce','grocery','food','movies','loans','insurance'] },
+                city: { type: 'string' },
+                depart: { type: 'string', description: 'YYYY-MM-DD for travel verticals.' }
+              },
+              required: ['query']
+            },
+            execute: function (args) {
+              var a = args || {};
+              var vertical = a.vertical || 'ecommerce';
+              var url = base + '/?vertical=' + encodeURIComponent(vertical) + '&q=' + encodeURIComponent(a.query || '') +
+                (a.city ? '&city=' + encodeURIComponent(a.city) : '') +
+                (a.depart ? '&date=' + encodeURIComponent(a.depart) : '');
+              try { window.location.assign(url); } catch (e) {}
+              return Promise.resolve({ ok: true, navigated: url, note: 'Search opened in the Try1Second app; rows load from live sellers.' });
+            }
+          });
+        } catch (e) { /* no WebMCP in this browser: nothing to do */ }
+      })();
+    </script>
   </body>
 </html>

@@ -10,6 +10,7 @@
  *     hydration (Googlebot and link previews read it; users get the app).
  */
 import { resolveSeoPage, listSeoPaths, SEO_HOST } from './data';
+import { SAME_AS, CONTACT_EMAIL } from './agentReady';
 
 const esc = (s: string) => s
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -23,7 +24,26 @@ function jsonLd(path: string): string[] {
     '@type': 'Organization',
     name: 'Try1Second',
     url: SEO_HOST,
-    logo: `${SEO_HOST}/logo-icon.webp`,
+    logo: {
+      '@type': 'ImageObject',
+      url: `${SEO_HOST}/logo-icon.webp`,
+      width: 512,
+      height: 512,
+    },
+    image: `${SEO_HOST}/logo-tagline.webp`,
+    // OWNER 9 Nov ("Entity is linked to external profiles via sameAs" / "Contact details are
+    // machine-readable"): the profiles we can actually verify plus the address the footer shows.
+    // No social account is invented - SAME_AS only ever holds URLs that answer today.
+    sameAs: SAME_AS,
+    email: CONTACT_EMAIL,
+    contactPoint: [{
+      '@type': 'ContactPoint',
+      contactType: 'customer support',
+      email: CONTACT_EMAIL,
+      url: `${SEO_HOST}/contact`,
+      availableLanguage: ['en', 'hi'],
+      areaServed: 'IN',
+    }],
     description: 'Independent metasearch engine comparing live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in India.',
   };
   blocks.push(JSON.stringify(org));

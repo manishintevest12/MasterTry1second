@@ -19,7 +19,13 @@ export function robotsText(): string {
     'User-agent: GPTBot',
     'Allow: /',
     '',
+    // OWNER 9 Nov ("Content Signals declared"): state plainly how this content may be used, so an
+    // agent does not have to guess. Search and reader-style answers are welcome; training on our
+    // copy is not. This is a declaration, not an enforcement mechanism.
+    'Content-Signal: search=yes, ai-input=yes, ai-train=no',
+    '',
     `Sitemap: ${SEO_HOST}/sitemap.xml`,
+    `# Machine index: ${SEO_HOST}/llms.txt`,
     '',
   ].join('\n');
 }

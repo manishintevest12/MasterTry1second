@@ -134,6 +134,15 @@ export async function createApp(): Promise<express.Express> {
   const { registerSeoRoutes } = await import('./seo/sitemap');
   registerSeoRoutes(app as any);
 
+  // AGENT SURFACE (owner 9 Nov, "make try1second.com more agent-ready"): /llms.txt + /llms-full.txt
+  // as real text files, the MCP Server Card at /.well-known/mcp/server-card.json, and a real JSON-RPC
+  // MCP endpoint at /mcp. Registered before express.static and the catch-all so none of them can ever
+  // fall through to the SPA shell (which is what made them read as "missing").
+  const { registerAgentFileRoutes } = await import('./seo/agentReady');
+  registerAgentFileRoutes(app as any);
+  const { registerMcpRoute } = await import('./seo/mcpEndpoint');
+  registerMcpRoute(app as any);
+
   // APP LINK VERIFICATION (owner 29 Oct): /.well-known/assetlinks.json (Android) and
   // /.well-known/apple-app-site-association (iOS) -- HTTPS, no redirect, application/json,
   // which is exactly what the OS verifiers demand before they hand a tapped link to the app
@@ -300,13 +309,46 @@ export async function createApp(): Promise<express.Express> {
     // title/description/canonical/JSON-LD + prerendered content in #root.
     const { enhanceHtml } = await import('./seo/render');
     const { snapshotForPath, renderSnapshotHtml, snapshotJsonLd } = await import('./seo/liveSnapshot');
+    const { isKnownPath, markdownForPath, agentLinkHeader, notFoundHtml, CONTACT_EMAIL } = await import('./seo/agentReady');
     const baseHtml = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
+    // Crawler/agent-visible site information, inside <noscript>: real links to the about, contact and
+    // legal pages plus a mailto, so an agent reading the HTML can confirm this is a real business even
+    // though the visible footer is drawn by React. A human never sees it.
+    const siteInfoBlock = `<nav aria-label="Site information">`
+      + `<a href="/about">About Try1Second</a> | <a href="/contact">Contact</a> | `
+      + `<a href="/terms">Terms</a> | <a href="/privacy-policy">Privacy policy</a> | `
+      + `<a href="/affiliate-disclosure">Affiliate disclosure</a> | <a href="/guides">Guides</a> | `
+      + `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> | <a href="/llms.txt">llms.txt</a> | `
+      + `<a href="/sitemap.xml">Sitemap</a></nav>`;
     app.get('*', async (req: Request, res: Response) => {
       res.setHeader('Cache-Control', 'no-store, must-revalidate');
+      // OWNER 9 Nov: advertise the machine resources on every response (RFC 8288), so an agent that
+      // only follows headers still finds llms.txt, the sitemap and the MCP server card.
+      res.setHeader('Link', agentLinkHeader());
       const acc = String(req.headers.accept || '');
-      const isAsset = /\.[a-z0-9]{2,5}$/i.test(req.path.replace(/\/$/, ''));
+      const cleanPath = req.path.replace(/\/+$/, '') || '/';
+      const isAsset = /\.[a-z0-9]{2,5}$/i.test(cleanPath);
+      if (isAsset) { res.sendFile(path.join(dist, 'index.html')); return; }
+      // Markdown for agents (owner 9 Nov, "Serves Markdown when an agent asks for it"): an Accept
+      // header that wants markdown and NOT html gets a real Markdown document instead of the React
+      // shell - far cheaper in tokens and it contains the page's own summary.
+      const wantsMarkdown = /text\/markdown|application\/x-markdown/i.test(acc) && !/text\/html/i.test(acc);
+      if (wantsMarkdown) {
+        if (!isKnownPath(cleanPath)) {
+          res.status(404).type('text/markdown; charset=utf-8').send(`# 404 — page not found\n\n\`${cleanPath}\` does not exist on Try1Second. Start at ${'https://www.try1second.com'}/llms.txt\n`);
+          return;
+        }
+        res.type('text/markdown; charset=utf-8').send(markdownForPath(cleanPath));
+        return;
+      }
       const wantsShell = acc === '' || acc.includes('text/html') || acc.includes('*/*');
-      if (isAsset || !wantsShell) { res.sendFile(path.join(dist, 'index.html')); return; }
+      if (!wantsShell) { res.sendFile(path.join(dist, 'index.html')); return; }
+      // OWNER 9 Nov ("Missing pages return a real 404"): a URL we do not serve answers 404 with a
+      // small honest page, never the 200 shell - agents treat 200 as "this page exists".
+      if (!isKnownPath(cleanPath)) {
+        res.status(404).type('text/html; charset=utf-8').send(notFoundHtml(cleanPath));
+        return;
+      }
       let html = enhanceHtml(baseHtml, req.path);
       // INDEXABLE RESULTS (owner 28 Oct): real cached prices in the first HTML byte, so
       // crawlers get a price list. OWNER 29 Oct: that block was ALSO visible to users,
@@ -315,13 +357,14 @@ export async function createApp(): Promise<express.Express> {
       // do, ye sab humne kabhi manga hi nahi"). It is now inside <noscript>: a crawler /
       // no-JS client still reads the verified prices, a real visitor never sees a stray
       // list under the app, and the JSON-LD offers below carry the same prices either way.
+      let snapshotBlock = '';
       try {
         const snap = await snapshotForPath(req.path);
-        const block = renderSnapshotHtml(snap);
-        if (block) html = html.replace('</body>', `<noscript>${block}</noscript></body>`);
+        snapshotBlock = renderSnapshotHtml(snap) || '';
         const ld = snapshotJsonLd(snap, req.path);
         if (ld) html = html.replace('</head>', `<script type="application/ld+json">${ld}</script>\n</head>`);
       } catch { /* snapshot is an optimisation; the shell still serves */ }
+      html = html.replace('</body>', `<noscript>${siteInfoBlock}${snapshotBlock}</noscript></body>`);
       res.send(html);
     });
   } else if (settings.isProduction) {

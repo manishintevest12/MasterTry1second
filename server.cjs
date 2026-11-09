@@ -603,8 +603,8 @@ async function withLock(name, fn, opts = {}) {
   const r = await getRedis();
   if (r) {
     const token = import_crypto.default.randomUUID();
-    const ok2 = await r.set(`lock:${name}`, token, "PX", opts.ttlMs ?? 3e4, "NX");
-    if (!ok2) return null;
+    const ok3 = await r.set(`lock:${name}`, token, "PX", opts.ttlMs ?? 3e4, "NX");
+    if (!ok3) return null;
     locks.add(name);
     try {
       return await fn();
@@ -5572,7 +5572,7 @@ function parseExpediaGroup(body, source, site, checkin, checkout, fx) {
     return [];
   }
   const listings = d?.data?.propertySearch?.propertySearchListings || [];
-  const origin = `https://www.${site}`;
+  const origin2 = `https://www.${site}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -5585,7 +5585,7 @@ function parseExpediaGroup(body, source, site, checkin, checkout, fx) {
     seen.add(name);
     const img = String(L?.mediaSection?.gallery?.media?.[0]?.media?.url || "").replace(/^http:/, "https:");
     const rel = String(L?.cardLink?.resource?.relativePath || "");
-    const url = rel ? `${origin}${rel.startsWith("/") ? rel : `/${rel}`}` : origin;
+    const url = rel ? `${origin2}${rel.startsWith("/") ? rel : `/${rel}`}` : origin2;
     const sellerUrl = `${url}${url.includes("?") ? "&" : "?"}chkin=${checkin}&chkout=${checkout}`;
     let finalPrice = price2, finalCurrency = currency;
     let note = `Nightly rate observed on ${site} live listing API, ${today2}`;
@@ -7604,8 +7604,8 @@ function stayDates(q3) {
   return { checkin: fmt(base), checkout: fmt(end) };
 }
 async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkout) {
-  const origin = `https://www.${site}`;
-  const srpUrl = `${origin}/Hotel-Search?destination=${encodeURIComponent(`${city}, India`)}&d1=${checkin}&d2=${checkout}&rooms=1`;
+  const origin2 = `https://www.${site}`;
+  const srpUrl = `${origin2}/Hotel-Search?destination=${encodeURIComponent(`${city}, India`)}&d1=${checkin}&d2=${checkout}&rooms=1`;
   let cookies;
   const primeLadder = [impersonate, impersonate === "chrome" ? "safari17_0" : "chrome"];
   let primed = null;
@@ -7636,7 +7636,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
       } }
     }
   });
-  const r = await cffiFetch(`${origin}/graphql`, {
+  const r = await cffiFetch(`${origin2}/graphql`, {
     method: "POST",
     impersonate,
     timeoutMs: 45e3,
@@ -7645,7 +7645,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
     headers: {
       "Content-Type": "application/json",
       Accept: "*/*",
-      Origin: origin,
+      Origin: origin2,
       Referer: srpUrl,
       "client-info": `shopping-pwa,eb187b18bd35573abd2de93e9fd6a422a6206cfe,${site === "hotels.com" ? "us-west-2" : "us-east-1"}`,
       "x-page-id": "page.Hotel-Search,H,20"
@@ -7653,7 +7653,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   });
   if (r.status === 429) {
     await new Promise((res) => setTimeout(res, 1800));
-    const again = await cffiFetch(`${origin}/graphql`, {
+    const again = await cffiFetch(`${origin2}/graphql`, {
       method: "POST",
       impersonate: primeLadder[primeLadder.length - 1],
       timeoutMs: 45e3,
@@ -7662,7 +7662,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
       headers: {
         "Content-Type": "application/json",
         Accept: "*/*",
-        Origin: origin,
+        Origin: origin2,
         Referer: srpUrl,
         "client-info": `shopping-pwa,eb187b18bd35573abd2de93e9fd6a422a6206cfe,${site === "hotels.com" ? "us-west-2" : "us-east-1"}`,
         "x-page-id": "page.Hotel-Search,H,20"
@@ -10994,11 +10994,11 @@ function aixLowFaresHeaders() {
     Referer: "https://www.airindiaexpress.com/"
   };
 }
-function aixLowFaresBody(origin, destination, startDate, endDate) {
+function aixLowFaresBody(origin2, destination, startDate, endDate) {
   return JSON.stringify({
     startDate,
     endDate,
-    origin,
+    origin: origin2,
     destination,
     currencyCode: "INR",
     includeTaxesAndFees: true,
@@ -11098,12 +11098,12 @@ function aixTripStatusHeaders() {
     Referer: "https://www.airindiaexpress.com/flight-status"
   };
 }
-function aixTripStatusBody(origin, destination, beginDate) {
+function aixTripStatusBody(origin2, destination, beginDate) {
   return JSON.stringify({
     beginDate,
     identifier: "",
     carrierCode: "IX",
-    originStations: [origin],
+    originStations: [origin2],
     destinationStations: [destination]
   });
 }
@@ -11226,19 +11226,19 @@ function spiceJetTokenHeaders() {
     cookie: "WZRK_G=5e7907422c4f40edb3a313c5a70eedd2"
   };
 }
-function spiceJetLowFareBody(origin, destination, centerDate) {
+function spiceJetLowFareBody(origin2, destination, centerDate) {
   return JSON.stringify({
     pax: { journeyClass: "ff", adult: 1, child: 0, infant: 0, srCitizen: 0 },
     codes: { currency: "INR" },
-    origin,
+    origin: origin2,
     destination,
     centerDate
   });
 }
-function spiceJetAvailabilityBody(origin, destination, onWardDate) {
+function spiceJetAvailabilityBody(origin2, destination, onWardDate) {
   return JSON.stringify({
     destinationStationCode: destination,
-    originStationCode: origin,
+    originStationCode: origin2,
     onWardDate,
     currency: "INR",
     pax: { journeyClass: "ff", adult: 1, child: 0, infant: 0, srCitizen: 0 }
@@ -11369,11 +11369,11 @@ function airIndiaFaresHeaders() {
     "Accept-Language": "en-US,en;q=0.9"
   };
 }
-function airIndiaFaresBody(origin, destination, departureDate) {
+function airIndiaFaresBody(origin2, destination, departureDate) {
   return JSON.stringify({
     classType: "ECONOMY",
     concessionType: null,
-    itinerary: { origin, destination, departureDate, returnDate: null, originCountryCode: "IN" },
+    itinerary: { origin: origin2, destination, departureDate, returnDate: null, originCountryCode: "IN" },
     tripInfo: { duration: null, range: 60, durationFlexibility: null }
   });
 }
@@ -11461,8 +11461,8 @@ function airIndiaSchedHeaders() {
     Referer: "https://www.airindia.com/in/en/book/flight-schedule.html"
   };
 }
-function airIndiaSchedQuery(origin, destination, departureDate) {
-  return `origin=${origin}&destination=${destination}&departureDate=${departureDate}`;
+function airIndiaSchedQuery(origin2, destination, departureDate) {
+  return `origin=${origin2}&destination=${destination}&departureDate=${departureDate}`;
 }
 function airIndiaSchedSignature(jwt, qs) {
   const parts = String(jwt || "").split(".");
@@ -11579,11 +11579,11 @@ var init_airIndiaSchedule = __esm({
 });
 
 // server/workers/parsers/allianceAir.ts
-function allianceAirSearchBody(origin, destination, depIso) {
+function allianceAirSearchBody(origin2, destination, depIso) {
   const m = depIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const ddmm = m ? `${m[3]}/${m[2]}/${m[1]}` : depIso;
   return new URLSearchParams({
-    org: origin,
+    org: origin2,
     des: destination,
     dep_date: ddmm,
     ret_date: "",
@@ -29696,9 +29696,9 @@ var init_orchestrator = __esm({
 // server/search/sellerMemory.ts
 function routeKeyOf(parts) {
   const q3 = clean3(parts.query).replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
-  const origin = clean3(parts.origin);
+  const origin2 = clean3(parts.origin);
   const destination = clean3(parts.destination);
-  const corridor = origin && destination ? `${origin}>${destination}` : q3;
+  const corridor = origin2 && destination ? `${origin2}>${destination}` : q3;
   return [corridor, clean3(parts.city), clean3(parts.pincode)].filter(Boolean).join("|").slice(0, 240) || "global";
 }
 function dateKeyOf(depart, ret) {
@@ -30247,17 +30247,17 @@ function pickCommonsLogoHit(titles, institution) {
     const file = String(raw || "").replace(/^File:/i, "");
     if (!/logo|\.svg$/i.test(file)) continue;
     const have = new Set(normTokens(file));
-    let ok2 = true;
+    let ok3 = true;
     for (const w of want) if (!have.has(w)) {
-      ok2 = false;
+      ok3 = false;
       break;
     }
-    if (!ok2) continue;
+    if (!ok3) continue;
     for (const t of have) if (OTHER_BANK_TOKENS.has(t) && !want.has(t)) {
-      ok2 = false;
+      ok3 = false;
       break;
     }
-    if (!ok2) continue;
+    if (!ok3) continue;
     return file;
   }
   return null;
@@ -35806,7 +35806,7 @@ function routeFloorMatches(rawQuery, offer) {
   const parens = /\([^)]*\)/g;
   const tokens3 = (side) => side.replace(parens, " ").replace(/[^a-z\s]/g, " ").split(/\s+/).filter((t) => t.length >= 3 && !["the", "and"].includes(t));
   const dest = tokens3(sides[sides.length - 1]);
-  const origin = sides.length > 2 ? tokens3(sides[1]) : tokens3(sides[0]);
+  const origin2 = sides.length > 2 ? tokens3(sides[1]) : tokens3(sides[0]);
   if (!dest.length) return true;
   const attrs = offer.attributes || {};
   const sideText = (t) => t.toLowerCase().replace(parens, " ");
@@ -35814,7 +35814,7 @@ function routeFloorMatches(rawQuery, offer) {
     const s = sideText(rowSide);
     return toks2.some((t) => new RegExp(`\\b${t}\\b`).test(s));
   };
-  const matches = (declared2) => hits(declared2.destSide, dest) && (!origin.length || hits(declared2.originSide, origin));
+  const matches = (declared2) => hits(declared2.destSide, dest) && (!origin2.length || hits(declared2.originSide, origin2));
   const routeFields = [offer.travel?.route, typeof attrs.route === "string" ? attrs.route : ""].map((f) => String(f || "").trim()).filter(Boolean);
   for (const f of routeFields) {
     const d = declaredRouteSides(f);
@@ -39782,7 +39782,7 @@ function merchantLogoCandidates(row) {
 async function logoAnswers(url) {
   const hit = logoCache.get(url);
   if (hit && Date.now() - hit.at < LOGO_TTL_MS) return hit.ok;
-  let ok2 = false;
+  let ok3 = false;
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 3500);
@@ -39790,12 +39790,12 @@ async function logoAnswers(url) {
     clearTimeout(t);
     const ct = String(res.headers.get("content-type") || "");
     const len = Number(res.headers.get("content-length") || 0);
-    ok2 = res.status === 200 && ct.startsWith("image/") && (len === 0 || len > 400);
+    ok3 = res.status === 200 && ct.startsWith("image/") && (len === 0 || len > 400);
   } catch {
-    ok2 = false;
+    ok3 = false;
   }
-  logoCache.set(url, { at: Date.now(), ok: ok2 });
-  return ok2;
+  logoCache.set(url, { at: Date.now(), ok: ok3 });
+  return ok3;
 }
 function uploadKeyOf(name) {
   return String(name || "").toLowerCase().replace(/\.(com|in|co\.in)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ")[0] || "";
@@ -43690,7 +43690,7 @@ async function keepWarmDestinations() {
   await warmRows(slice, "DestWarm");
 }
 async function warmRows(rows, tag) {
-  let ok2 = 0;
+  let ok3 = 0;
   for (const r of rows) {
     try {
       const res = await runSearchPolled({
@@ -43699,14 +43699,14 @@ async function warmRows(rows, tag) {
         pincode: r.pincode ? String(r.pincode) : void 0,
         city: r.city ? String(r.city) : void 0
       }, 2e4);
-      ok2 += 1;
+      ok3 += 1;
       log.info(tag, "Warmed", { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
     } catch (e2) {
       log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e2?.message || e2).slice(0, 120) });
     }
     await new Promise((r2) => setImmediate(r2));
   }
-  log.info(tag, `Warmer finished: ${ok2}/${rows.length} queries warmed`);
+  log.info(tag, `Warmer finished: ${ok3}/${rows.length} queries warmed`);
   await releaseWarmLease();
 }
 async function bootWarm() {
@@ -44666,7 +44666,7 @@ async function tableColumns(store6, table) {
   }
 }
 async function importRows(store6, table, cols, rows) {
-  let ok2 = 0;
+  let ok3 = 0;
   let skipped = 0;
   const chunk = 100;
   for (let i = 0; i < rows.length; i += chunk) {
@@ -44688,7 +44688,7 @@ async function importRows(store6, table, cols, rows) {
         `INSERT IGNORE INTO \`${table}\` (${useCols.map((c) => `\`${c}\``).join(",")}) VALUES ${placeholders}`,
         params
       );
-      ok2 += typeof r.affectedRows === "number" ? r.affectedRows : batch.length;
+      ok3 += typeof r.affectedRows === "number" ? r.affectedRows : batch.length;
     } catch {
       for (const r of batch) {
         try {
@@ -44701,14 +44701,14 @@ async function importRows(store6, table, cols, rows) {
             `INSERT IGNORE INTO \`${table}\` (${rc.map((c) => `\`${c}\``).join(",")}) VALUES (${rc.map(() => "?").join(",")})`,
             rc.map((c) => typeof r[c] === "object" && r[c] !== null ? JSON.stringify(r[c]) : r[c])
           );
-          ok2 += typeof rr.affectedRows === "number" ? rr.affectedRows : 1;
+          ok3 += typeof rr.affectedRows === "number" ? rr.affectedRows : 1;
         } catch {
           skipped++;
         }
       }
     }
   }
-  return { ok: ok2, skipped };
+  return { ok: ok3, skipped };
 }
 async function importFileStoreIntoMysql() {
   const store6 = getStore();
@@ -44732,8 +44732,8 @@ async function importFileStoreIntoMysql() {
         log.warn("FileImport", `Skipping '${table}' (${data[table].length} rows) \u2014 no such MySQL table`);
         continue;
       }
-      const { ok: ok2, skipped } = await importRows(store6, table, cols, data[table]);
-      log.info("FileImport", `'${table}': imported ${ok2}, skipped ${skipped} of ${data[table].length}`);
+      const { ok: ok3, skipped } = await importRows(store6, table, cols, data[table]);
+      log.info("FileImport", `'${table}': imported ${ok3}, skipped ${skipped} of ${data[table].length}`);
     }
     const done = import_path8.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
     import_fs8.default.renameSync(lock, done);
@@ -47156,8 +47156,8 @@ var init_routes = __esm({
     });
     apiRouter.delete("/alerts/:id", authMiddleware, requireAuth, async (req, res) => {
       const user = req.user;
-      const ok2 = await deleteAlert(Number(user.id), Number(req.params.id));
-      res.status(ok2 ? 200 : 404).json({ success: ok2 });
+      const ok3 = await deleteAlert(Number(user.id), Number(req.params.id));
+      res.status(ok3 ? 200 : 404).json({ success: ok3 });
     });
     apiRouter.get("/spend", authMiddleware, requireAuth, async (req, res) => {
       const user = req.user;
@@ -47180,8 +47180,8 @@ var init_routes = __esm({
     });
     apiRouter.delete("/spend/:id", authMiddleware, requireAuth, async (req, res) => {
       const user = req.user;
-      const ok2 = await deleteSpendEntry(Number(user.id), Number(req.params.id));
-      if (!ok2) return res.status(404).json({ success: false });
+      const ok3 = await deleteSpendEntry(Number(user.id), Number(req.params.id));
+      if (!ok3) return res.status(404).json({ success: false });
       res.json({ success: true, ...await spendSummary(Number(user.id)) });
     });
     apiRouter.get("/notifications", authMiddleware, async (req, res) => {
@@ -49464,8 +49464,8 @@ async function runProbe2(targetId, name, vertical, probe) {
     r = await httpGet(probe.url);
   }
   const latency = httpGet.lastMs || null;
-  const ok2 = r.status === 200;
-  if (ok2 && probe.parser) {
+  const ok3 = r.status === 200;
+  if (ok3 && probe.parser) {
     try {
       let items = [];
       if (probe.parser === "amazonIn") items = parseAmazonIn(r.body, SRC, probe.url);
@@ -49507,7 +49507,7 @@ async function runProbe2(targetId, name, vertical, probe) {
   if (r.status >= 500) {
     return { ...base, status: "TEMPORARILY_UNAVAILABLE", failure_category: "SERVER_ERROR", http_status: r.status, bytes: r.bytes, latency_ms: latency, items_extracted: 0, fields_verified: null, evidence: `HTTP ${r.status} from origin`, next_action: "Retry later" };
   }
-  if (ok2) {
+  if (ok3) {
     if (r.bytes < 15e4 && JS_SHELL_RE.test(r.body)) {
       return { ...base, status: "LIVE_TEST_FAILED", failure_category: "JS_SHELL_NO_DATA", http_status: 200, bytes: r.bytes, latency_ms: latency, items_extracted: 0, fields_verified: null, evidence: `HTTP 200 but client-rendered shell (${r.bytes}B) \u2014 no data in plain HTML`, next_action: "Playwright render fallback or partner API" };
     }
@@ -49964,11 +49964,11 @@ async function upsertDays(rows) {
   }
   return rows.length;
 }
-async function logSync(kind, ok2, rowsSeen, message) {
+async function logSync(kind, ok3, rowsSeen, message) {
   await ensureTables();
   await getStore().execute(
     "INSERT INTO adsense_sync_log (kind, ok, rows_seen, message) VALUES (?,?,?,?)",
-    [kind, ok2 ? 1 : 0, rowsSeen, String(message || "").slice(0, 400)]
+    [kind, ok3 ? 1 : 0, rowsSeen, String(message || "").slice(0, 400)]
   ).catch(() => {
   });
 }
@@ -50429,8 +50429,8 @@ var init_adminRoutes = __esm({
       res.json({ success: true, fulfilments: rows });
     });
     adminRouter.post("/fulfilments/:id/status", async (req, res) => {
-      const ok2 = await updateFulfilmentStatus(Number(req.params.id), String(req.body.status || ""));
-      if (!ok2) return res.status(400).json({ success: false, error: "Invalid status or record" });
+      const ok3 = await updateFulfilmentStatus(Number(req.params.id), String(req.body.status || ""));
+      if (!ok3) return res.status(400).json({ success: false, error: "Invalid status or record" });
       audit(req, "fulfilment.status", req.params.id, { status: req.body.status });
       res.json({ success: true });
     });
@@ -50616,8 +50616,8 @@ var init_adminRoutes = __esm({
     });
     adminRouter.delete("/notifications/:id", async (req, res) => {
       try {
-        const ok2 = await deactivateNotification(Number(req.params.id));
-        if (!ok2) return res.status(404).json({ success: false, error: "Notification not found" });
+        const ok3 = await deactivateNotification(Number(req.params.id));
+        if (!ok3) return res.status(404).json({ success: false, error: "Notification not found" });
         audit(req, "notification.delete", req.params.id);
         res.json({ success: true });
       } catch (e2) {
@@ -53894,7 +53894,13 @@ function robotsText() {
     "User-agent: GPTBot",
     "Allow: /",
     "",
+    // OWNER 9 Nov ("Content Signals declared"): state plainly how this content may be used, so an
+    // agent does not have to guess. Search and reader-style answers are welcome; training on our
+    // copy is not. This is a declaration, not an enforcement mechanism.
+    "Content-Signal: search=yes, ai-input=yes, ai-train=no",
+    "",
     `Sitemap: ${SEO_HOST}/sitemap.xml`,
+    `# Machine index: ${SEO_HOST}/llms.txt`,
     ""
   ].join("\n");
 }
@@ -54033,250 +54039,6 @@ var init_sitemap = __esm({
   }
 });
 
-// server/common/singleton.ts
-var singleton_exports = {};
-__export(singleton_exports, {
-  acquireSingletonLock: () => acquireSingletonLock,
-  runSingleton: () => runSingleton
-});
-async function mysqlLock(name) {
-  let conn = null;
-  try {
-    conn = await import_promise3.default.createConnection(settings.mysqlUrl);
-    const [rows] = await conn.query(
-      "SELECT COALESCE(GET_LOCK(?, 0), 0) AS releasable",
-      [`try1second_${name}`]
-    );
-    if (Number(rows?.[0]?.releasable) !== 1) {
-      await conn.end();
-      return "other";
-    }
-    const holder = conn;
-    holder.on("error", () => void 0);
-    const hb = setInterval(() => {
-      holder.ping().catch(() => void 0);
-      holder.query("SELECT IS_USED_LOCK(?) AS holderId", [`try1second_${name}`]).then(([r]) => {
-        const mine = Number(r?.[0]?.holderId) !== 0 && holder.threadId != null && Number(r?.[0]?.holderId) === holder.threadId;
-        if (!mine) {
-          log.error("Singleton", `BACKGROUND LOCK LOST (try1second_${name}) \u2014 another app instance may now duplicate background work`, { pid: process.pid });
-        }
-      }).catch(() => void 0);
-    }, 6e4);
-    hb.unref?.();
-    return "held";
-  } catch {
-    try {
-      await conn?.end();
-    } catch {
-    }
-    return "error";
-  }
-}
-function fileLock(name) {
-  const file = import_node_path9.default.join(dataDir, `singleton-${name}.lock`);
-  try {
-    const st = import_node_fs9.default.statSync(file);
-    if (Date.now() - st.mtimeMs < STALE_MS) return false;
-    import_node_fs9.default.unlinkSync(file);
-  } catch {
-  }
-  try {
-    import_node_fs9.default.mkdirSync(dataDir, { recursive: true });
-    const fd = import_node_fs9.default.openSync(file, "wx");
-    import_node_fs9.default.writeSync(fd, String(process.pid));
-    import_node_fs9.default.closeSync(fd);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function acquireSingletonLock(name) {
-  if (settings.mysqlUrl) {
-    const r = await mysqlLock(name);
-    if (r === "held") {
-      log.info("Bootstrap", `Background singleton acquired via MySQL GET_LOCK (pid ${process.pid})`);
-      return true;
-    }
-    if (r === "other") return false;
-    log.warn("Bootstrap", `MySQL lock unavailable \u2014 falling back to file lock (pid ${process.pid})`);
-  }
-  const ok2 = fileLock(name);
-  if (ok2) log.info("Bootstrap", `Background singleton acquired via file lock (pid ${process.pid})`);
-  return ok2;
-}
-async function runSingleton(name, fn) {
-  const held = await acquireSingletonLock(name);
-  if (!held) {
-    log.info("Bootstrap", `Background duties deferred \u2014 another app instance already runs "${name}"`);
-    return false;
-  }
-  await fn();
-  return true;
-}
-var import_node_fs9, import_node_path9, import_promise3, STALE_MS;
-var init_singleton = __esm({
-  "server/common/singleton.ts"() {
-    import_node_fs9 = __toESM(require("node:fs"), 1);
-    import_node_path9 = __toESM(require("node:path"), 1);
-    import_promise3 = __toESM(require("mysql2/promise"), 1);
-    init_settings();
-    init_logger();
-    STALE_MS = 10 * 6e4;
-  }
-});
-
-// server/seo/guidePages.ts
-var guidePages_exports = {};
-__export(guidePages_exports, {
-  GUIDE_SLUGS: () => GUIDE_SLUGS2,
-  renderGuidePage: () => renderGuidePage,
-  renderGuidesIndex: () => renderGuidesIndex
-});
-function blocksHtml(g) {
-  return g.blocks.map((b) => {
-    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${esc4(i)}</li>`).join("")}</ul>`;
-    if (b.t === "p") return `<p>${esc4(b.x)}</p>`;
-    return `<${b.t}>${esc4(b.x)}</${b.t}>`;
-  }).join("\n");
-}
-function faqJsonLd(g) {
-  const qa = g.blocks.filter((b) => b.t === "h2" && b.x.includes("?"));
-  if (!qa.length) return "";
-  const entries2 = qa.map((q3) => {
-    const src2 = g.blocks[g.blocks.indexOf(q3) + 1];
-    const answer = src2 ? src2.t === "p" ? src2.x : src2.t === "ul" ? src2.items.join(" ") : g.description : g.description;
-    return {
-      "@type": "Question",
-      name: q3.x,
-      acceptedAnswer: { "@type": "Answer", text: answer }
-    };
-  });
-  return `<script type="application/ld+json">${JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: entries2
-  })}</script>
-`;
-}
-function articleJsonLd(g, origin) {
-  return `<script type="application/ld+json">${JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "Article",
-    headline: g.headline,
-    description: g.description,
-    dateModified: g.updated,
-    datePublished: g.updated,
-    inLanguage: "en-IN",
-    mainEntityOfPage: `${origin}/guides/${g.slug}`,
-    author: { "@type": "Organization", name: "Try1Second" },
-    publisher: { "@type": "Organization", name: "Try1Second", url: origin }
-  })}</script>
-`;
-}
-function renderGuidePage(slug5, origin) {
-  const g = GUIDE_BY_SLUG[slug5];
-  if (!g) return void 0;
-  const canonical = `${origin}/guides/${slug5}`;
-  const related = GUIDES.filter((x) => x.slug !== slug5).slice(0, 3);
-  const verticalLinks = g.verticals.map((v) => `<a class="cta" href="/${v}">Compare ${esc4(v)} prices</a>`).join(" ");
-  return `${head2(g.title, g.description, canonical, articleJsonLd(g, origin) + faqJsonLd(g))}
-<body>
-${nav()}
-<main>
-<h1>${esc4(g.title)}</h1>
-<p class="meta">Try1Second editorial \xB7 Updated ${esc4(g.updated)} \xB7 ${g.verticals.length} vertical${g.verticals.length > 1 ? "s" : ""} covered</p>
-<p class="lede">${esc4(g.headline)} \u2014 ${esc4(g.description)}</p>
-${blocksHtml(g)}
-<p>${verticalLinks}</p>
-<h2>More buying guides</h2>
-${related.map(
-    (r) => `<div class="card"><h3><a href="/guides/${r.slug}">${esc4(r.title)}</a></h3><p>${esc4(r.description)}</p></div>`
-  ).join("")}
-</main>
-${footer()}
-</body>
-</html>`;
-}
-function renderGuidesIndex(origin) {
-  const canonical = `${origin}/guides`;
-  return `${head2(
-    "Buying Guides: What Comparison Prices Leave Out \u2014 Try1Second",
-    "Practical guides to Indian price comparison: flight fare rules, hotel charges, cab surge, quick-commerce fees, food delivery costs and cinema ticket fees.",
-    canonical
-  )}
-<body>
-${nav()}
-<main>
-<h1>Buying guides</h1>
-<p class="meta">Try1Second editorial \xB7 ${GUIDES.length} guides \xB7 Updated ${GUIDES[0]?.updated || ""}</p>
-<p class="lede">Every guide explains how a price is built, which fees the headline number leaves out, and what to check before you pay. We write these from the mechanics of each marketplace, not from sponsored placements.</p>
-${GUIDES.map(
-    (g) => `<div class="card"><h3><a href="/guides/${g.slug}">${esc4(g.title)}</a></h3><p>${esc4(g.description)}</p></div>`
-  ).join("\n")}
-</main>
-${footer()}
-</body>
-</html>`;
-}
-var esc4, STYLE2, head2, nav, footer, GUIDE_SLUGS2;
-var init_guidePages = __esm({
-  "server/seo/guidePages.ts"() {
-    init_guides();
-    esc4 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    STYLE2 = `
-:root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
-*{box-sizing:border-box}
-body{margin:0;background:#fff;color:var(--ink);font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-header{border-bottom:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-header a.brand{font-weight:800;text-decoration:none;color:var(--ink);font-size:17px}
-header a.brand span{color:var(--brand)}
-header .spacer{flex:1}
-header nav a{color:var(--muted);text-decoration:none;font-size:14px;margin-left:14px;white-space:nowrap}
-header nav a:hover{color:var(--brand)}
-main{max-width:780px;margin:0 auto;padding:28px 20px 56px}
-h1{font-size:27px;line-height:1.25;margin:0 0 6px}
-h2{font-size:19px;margin:28px 0 8px}
-p{margin:12px 0;color:#1f2937}
-ul{margin:10px 0 18px;padding-left:22px}
-li{margin:7px 0;color:#1f2937}
-.meta{color:var(--muted);font-size:13px;margin:0 0 18px}
-.lede{font-size:17px;color:#111827;margin:0 0 20px}
-.cta{display:inline-block;margin:6px 0 4px;background:var(--brand);color:#fff;text-decoration:none;font-weight:700;padding:10px 16px;border-radius:10px}
-.card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
-.card h3{margin:0 0 4px;font-size:16px}
-.card a{color:var(--brand);text-decoration:none;font-weight:600}
-.card p{margin:4px 0 0;font-size:14px;color:var(--muted)}
-footer{border-top:1px solid var(--line);padding:18px 20px 34px;color:var(--muted);font-size:13px;text-align:center}
-footer a{color:var(--muted);text-decoration:none;margin:0 6px}
-`;
-    head2 = (title, description, canonical, extra = "") => `<!doctype html>
-<html lang="en-IN">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc4(title)}</title>
-<meta name="description" content="${esc4(description)}" />
-<link rel="canonical" href="${esc4(canonical)}" />
-<meta name="robots" content="index,follow,max-image-preview:large" />
-<meta property="og:type" content="article" />
-<meta property="og:title" content="${esc4(title)}" />
-<meta property="og:description" content="${esc4(description)}" />
-<meta property="og:url" content="${esc4(canonical)}" />
-<style>${STYLE2}</style>
-${extra}</head>`;
-    nav = () => `<header>
-  <a class="brand" href="/">Try1<span>Second</span></a>
-  <span class="spacer"></span>
-  <nav><a href="/">Compare prices</a><a href="/guides">Guides</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
-</header>`;
-    footer = () => `<footer>
-  <p><a href="/guides">All guides</a><a href="/about">About</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/affiliate-disclosure">Affiliate disclosure</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></p>
-  <p>Try1Second is a metasearch engine. We compare prices; the purchase and its terms belong to the partner you choose.</p>
-</footer>`;
-    GUIDE_SLUGS2 = GUIDES.map((g) => g.slug);
-  }
-});
-
 // server/seo/legalContent.ts
 var LEGAL_PAGES, LEGAL_SLUGS;
 var init_legalContent = __esm({
@@ -54387,7 +54149,7 @@ __export(legalPages_exports, {
   LEGAL_ALIASES: () => LEGAL_ALIASES,
   renderLegalPage: () => renderLegalPage
 });
-function blocksHtml2(page) {
+function blocksHtml(page) {
   const out = [];
   let inList = false;
   const closeList = () => {
@@ -54403,39 +54165,39 @@ function blocksHtml2(page) {
         out.push("<ul>");
         inList = true;
       }
-      out.push(`<li>${esc5(b.x)}</li>`);
+      out.push(`<li>${esc4(b.x)}</li>`);
       continue;
     }
     closeList();
-    if (b.t === "p") out.push(`<p>${esc5(b.x)}</p>`);
+    if (b.t === "p") out.push(`<p>${esc4(b.x)}</p>`);
     else {
       if (!seenFirstHeading) {
-        out.push(`<h1>${esc5(b.x)}</h1>`);
+        out.push(`<h1>${esc4(b.x)}</h1>`);
         seenFirstHeading = true;
-      } else out.push(`<h2>${esc5(b.x)}</h2>`);
+      } else out.push(`<h2>${esc4(b.x)}</h2>`);
     }
   }
   closeList();
   return out.join("\n");
 }
-function renderLegalPage(slug5, origin) {
+function renderLegalPage(slug5, origin2) {
   const page = LEGAL_PAGES[slug5];
   if (!page) return void 0;
-  const canonical = `${origin}/${slug5}`;
+  const canonical = `${origin2}/${slug5}`;
   const others = LEGAL_SLUGS.filter((s) => s !== slug5).map((s) => `<a href="/${s}">${NAV_LABEL[s] || s}</a>`).join(" \xB7 ");
   return `<!doctype html>
 <html lang="en-IN">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc5(page.title)}</title>
-<meta name="description" content="${esc5(page.description)}" />
-<link rel="canonical" href="${esc5(canonical)}" />
+<title>${esc4(page.title)}</title>
+<meta name="description" content="${esc4(page.description)}" />
+<link rel="canonical" href="${esc4(canonical)}" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="${esc5(page.title)}" />
-<meta property="og:description" content="${esc5(page.description)}" />
-<meta property="og:url" content="${esc5(canonical)}" />
+<meta property="og:title" content="${esc4(page.title)}" />
+<meta property="og:description" content="${esc4(page.description)}" />
+<meta property="og:url" content="${esc4(canonical)}" />
 <style>
 :root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
 *{box-sizing:border-box}
@@ -54467,7 +54229,7 @@ footer a:hover{color:var(--brand)}
 </header>
 <main>
 <p class="updated">Last updated: November 2026 \xB7 Try1Second is an Indian metasearch engine, not a merchant.</p>
-${blocksHtml2(page)}
+${blocksHtml(page)}
 </main>
 <footer>
   <p>${others}</p>
@@ -54476,11 +54238,11 @@ ${blocksHtml2(page)}
 </body>
 </html>`;
 }
-var esc5, NAV_LABEL, LEGAL_ALIASES;
+var esc4, NAV_LABEL, LEGAL_ALIASES;
 var init_legalPages = __esm({
   "server/seo/legalPages.ts"() {
     init_legalContent();
-    esc5 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc4 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     NAV_LABEL = {
       about: "About",
       "privacy-policy": "Privacy",
@@ -54505,6 +54267,674 @@ var init_legalPages = __esm({
   }
 });
 
+// server/seo/agentReady.ts
+var agentReady_exports = {};
+__export(agentReady_exports, {
+  BRAND: () => BRAND,
+  CONTACT_EMAIL: () => CONTACT_EMAIL,
+  MCP_TOOLS: () => MCP_TOOLS,
+  SAME_AS: () => SAME_AS,
+  SUMMARY: () => SUMMARY,
+  agentLinkHeader: () => agentLinkHeader,
+  isKnownPath: () => isKnownPath,
+  llmsFullText: () => llmsFullText,
+  llmsText: () => llmsText,
+  markdownForPath: () => markdownForPath,
+  notFoundHtml: () => notFoundHtml,
+  registerAgentFileRoutes: () => registerAgentFileRoutes,
+  serverCard: () => serverCard
+});
+function knownPaths() {
+  if (knownCache && Date.now() - knownCache.at < 5 * 6e4) return knownCache.set;
+  const set = /* @__PURE__ */ new Set([...APP_PATHS, ...Object.keys(LEGAL_ALIASES)]);
+  try {
+    for (const p of listSeoPaths()) set.add(String(p).replace(/\/+$/, "") || "/");
+  } catch {
+  }
+  knownCache = { set, at: Date.now() };
+  return set;
+}
+function isKnownPath(path18) {
+  const clean4 = String(path18 || "/").split("?")[0].replace(/\/+$/, "") || "/";
+  if (clean4 === "/") return true;
+  if (clean4 === "/llms.txt" || clean4 === "/llms-full.txt" || clean4 === "/mcp") return true;
+  if (clean4.startsWith("/.well-known/")) return true;
+  if (knownPaths().has(clean4)) return true;
+  return APP_PREFIXES.some((p) => clean4.startsWith(p));
+}
+function origin(path18) {
+  const clean4 = String(path18 || "/").split("?")[0].replace(/\/+$/, "");
+  return `${SEO_HOST}${clean4 || "/"}`;
+}
+function keyPages() {
+  const rows = [
+    { path: "/", title: "Home", note: "search box, all ten verticals, live price feed" },
+    { path: "/about", title: "About Try1Second", note: "who runs the site and how the comparison works" },
+    { path: "/contact", title: "Contact", note: `email ${CONTACT_EMAIL}` },
+    { path: "/privacy-policy", title: "Privacy policy", note: "what we store and why" },
+    { path: "/terms", title: "Terms of use", note: "the rules of using the site" },
+    { path: "/affiliate-disclosure", title: "Affiliate disclosure", note: "how Try1Second earns money" }
+  ];
+  for (const g of GUIDES) rows.push({ path: `/guides/${g.slug}`, title: g.title, note: g.description });
+  return rows;
+}
+function llmsText() {
+  const lines = [];
+  lines.push(`# ${BRAND}`);
+  lines.push("");
+  lines.push(`> ${SUMMARY}`);
+  lines.push("");
+  lines.push("## How to use this site");
+  lines.push("");
+  lines.push("- Every page is public and needs no login. Read the HTML, or ask for `text/markdown` in the Accept header.");
+  lines.push(`- A plain-text index lives at ${SEO_HOST}/llms.txt and a fuller one at ${SEO_HOST}/llms-full.txt`);
+  lines.push(`- The sitemap is ${SEO_HOST}/sitemap.xml; crawling rules are in ${SEO_HOST}/robots.txt`);
+  lines.push("- Agent tools (search live prices) are described by the MCP Server Card at /.well-known/mcp/server-card.json and served over JSON-RPC at /mcp");
+  lines.push("- Try1Second does not sell goods. It compares prices and links out to the seller, so a purchase always happens on the seller site.");
+  lines.push("");
+  lines.push("## Key pages");
+  lines.push("");
+  for (const p of keyPages()) lines.push(`- [${p.title}](${origin(p.path)}): ${p.note}`);
+  lines.push("");
+  lines.push("## Verticals");
+  lines.push("");
+  lines.push("- [Flights](https://www.try1second.com/flights): airline and OTA fares with dates, stops and duration");
+  lines.push("- [Hotels](https://www.try1second.com/hotels): nightly rates across OTAs for a city and date");
+  lines.push("- [Bus](https://www.try1second.com/bus): intercity bus seats and fares");
+  lines.push("- [Cabs](https://www.try1second.com/cab): point-to-point cab estimates");
+  lines.push("- [Shopping](https://www.try1second.com/ecommerce): product prices across marketplaces");
+  lines.push("- [Grocery](https://www.try1second.com/grocery): 10-minute delivery baskets");
+  lines.push("- [Food delivery](https://www.try1second.com/food): menu prices and delivery fees");
+  lines.push("- [Movies](https://www.try1second.com/movies): showtimes and ticket prices");
+  lines.push("- [Loans](https://www.try1second.com/loans), [Insurance](https://www.try1second.com/insurance), [Credit cards](https://www.try1second.com/credit-cards), [Accounts](https://www.try1second.com/accounts): published rates and fees");
+  lines.push("");
+  lines.push("## Contact");
+  lines.push("");
+  lines.push(`- Email: ${CONTACT_EMAIL}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function llmsFullText() {
+  const lines = [llmsText(), "## All indexable pages", ""];
+  let paths = [];
+  try {
+    paths = listSeoPaths();
+  } catch {
+    paths = ["/"];
+  }
+  for (const p of paths) lines.push(`- [${p}](${origin(p)}): ${resolveSeoPage(p)?.title || p}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function markdownForPath(path18) {
+  const clean4 = String(path18 || "/").split("?")[0].replace(/\/+$/, "") || "/";
+  const page = resolveSeoPage(clean4);
+  const title = page?.title || (clean4 === "/" ? `${BRAND} \u2014 one second price comparison` : clean4);
+  const description = page?.description || SUMMARY;
+  const lines = [];
+  lines.push(`# ${title}`);
+  lines.push("");
+  lines.push(`> ${description}`);
+  lines.push("");
+  lines.push(`Canonical: ${origin(clean4)}`);
+  lines.push("");
+  if (clean4 === "/") {
+    lines.push("## What this site does");
+    lines.push("");
+    lines.push(SUMMARY);
+    lines.push("");
+    lines.push("## Tools for agents");
+    lines.push("");
+    lines.push("- `search_prices` over MCP: POST /mcp with `tools/call` -> live rows for a query and vertical.");
+    lines.push(`- Human pages: ${SEO_HOST}/about, ${SEO_HOST}/contact, ${SEO_HOST}/guides`);
+    lines.push("");
+  }
+  const crumbs = page?.breadcrumbs || [];
+  if (crumbs.length > 1) {
+    lines.push("## Path");
+    lines.push("");
+    lines.push(crumbs.map((b) => `[${b.name}](${origin(b.path)})`).join(" / "));
+    lines.push("");
+  }
+  if (page?.faqs?.length) {
+    lines.push("## Questions");
+    lines.push("");
+    for (const f of page.faqs) {
+      lines.push(`### ${f.q}`);
+      lines.push("");
+      lines.push(f.a);
+      lines.push("");
+    }
+  }
+  lines.push("## Site");
+  lines.push("");
+  lines.push(`- [Home](${SEO_HOST}/)`);
+  lines.push(`- [About](${SEO_HOST}/about)`);
+  lines.push(`- [Contact](${SEO_HOST}/contact) (${CONTACT_EMAIL})`);
+  lines.push(`- [Terms](${SEO_HOST}/terms) \xB7 [Privacy](${SEO_HOST}/privacy-policy)`);
+  lines.push("");
+  return lines.join("\n");
+}
+function agentLinkHeader() {
+  return [
+    `<${SEO_HOST}/llms.txt>; rel="llms-txt"; type="text/markdown"`,
+    `<${SEO_HOST}/llms.txt>; rel="alternate"; type="text/markdown"`,
+    `<${SEO_HOST}/sitemap.xml>; rel="sitemap"; type="application/xml"`,
+    `</.well-known/mcp/server-card.json>; rel="mcp-server-card"; type="application/json"`
+  ].join(", ");
+}
+function serverCard() {
+  return {
+    name: "try1second",
+    displayName: "Try1Second Price Search",
+    version: "1.0.0",
+    description: `${BRAND} live price comparison. ${SUMMARY}`,
+    homepage: SEO_HOST,
+    endpoint: `${SEO_HOST}/mcp`,
+    transport: { type: "http", url: `${SEO_HOST}/mcp`, protocolVersion: "2025-06-18" },
+    capabilities: { tools: { listChanged: false } },
+    tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
+    contact: { email: CONTACT_EMAIL, url: `${SEO_HOST}/contact` },
+    documentation: `${SEO_HOST}/llms.txt`
+  };
+}
+function notFoundHtml(path18) {
+  const safe = String(path18 || "/").replace(/[<>&"]/g, "");
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>404 \u2014 page not found \xB7 ${BRAND}</title>
+<meta name="description" content="That page does not exist on Try1Second. Start from the homepage or the sitemap." />
+<meta name="robots" content="noindex,follow" />
+<link rel="canonical" href="${SEO_HOST}/" />
+<style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:56px 20px;color:#131725;background:#fff;line-height:1.55}main{max-width:640px;margin:0 auto}h1{font-size:28px;margin:0 0 8px}p{color:#475069}a{color:#c10007}ul{padding-left:20px}</style>
+</head><body><main>
+<h1>Page not found</h1>
+<p><code>${safe}</code> does not exist on ${BRAND}. Nothing was charged, nothing was lost \u2014 the page simply is not here.</p>
+<ul>
+<li><a href="/">Homepage \u2014 search every vertical</a></li>
+<li><a href="/sitemap.xml">Sitemap</a></li>
+<li><a href="/llms.txt">llms.txt \u2014 machine index</a></li>
+<li><a href="/about">About</a> \xB7 <a href="/contact">Contact</a> \xB7 <a href="/terms">Terms</a></li>
+</ul>
+<p>Looking for a price? Try the <a href="/">search box</a>, or email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
+</main></body></html>`;
+}
+function registerAgentFileRoutes(app) {
+  app.get("/llms.txt", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Link", agentLinkHeader());
+    res.send(llmsText());
+  });
+  app.get("/llms-full.txt", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Link", agentLinkHeader());
+    res.send(llmsFullText());
+  });
+  app.get("/.well-known/mcp/server-card.json", (_req, res) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.json(serverCard());
+  });
+}
+var CONTACT_EMAIL, SAME_AS, BRAND, SUMMARY, APP_PATHS, APP_PREFIXES, knownCache, MCP_TOOLS;
+var init_agentReady = __esm({
+  "server/seo/agentReady.ts"() {
+    init_data();
+    init_guides();
+    init_legalPages();
+    CONTACT_EMAIL = "info@try1second.com";
+    SAME_AS = [
+      "https://github.com/manishintevest12/MasterTry1second"
+    ];
+    BRAND = "Try1Second";
+    SUMMARY = "Try1Second is an independent metasearch engine that compares live prices in one second across flights, hotels, bus tickets, online shopping, 10-minute grocery, food delivery, movie tickets, cabs, loans, insurance, credit cards and bank accounts in India. No bookings are taken here: every price links out to the seller it came from.";
+    APP_PATHS = /* @__PURE__ */ new Set([
+      "/",
+      "/admin",
+      "/merchant",
+      "/login",
+      "/signup",
+      "/app",
+      "/compare",
+      "/search",
+      "/flights",
+      "/hotels",
+      "/bus",
+      "/cab",
+      "/cabs",
+      "/ecommerce",
+      "/products",
+      "/grocery",
+      "/food",
+      "/movies",
+      "/loans",
+      "/insurance",
+      "/credit-cards",
+      "/accounts",
+      "/rewards",
+      "/ai-insights",
+      "/quick-apps",
+      "/partner",
+      "/partners",
+      "/extension"
+    ]);
+    APP_PREFIXES = ["/product/", "/guides/", "/blog/", "/app/", "/r/"];
+    knownCache = null;
+    MCP_TOOLS = [
+      {
+        name: "search_prices",
+        description: "Compare live prices on Try1Second for a natural-language query. Returns real seller rows with price, seller and outbound link for the chosen vertical.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: 'What to price, e.g. "Indore to Delhi", "iphone 16", "pizza in Indore".' },
+            vertical: {
+              type: "string",
+              description: "flights | hotels | bus | cab | ecommerce | grocery | food | movies | loans | insurance"
+            },
+            city: { type: "string", description: "City for local verticals (default Indore)." },
+            pincode: { type: "string", description: "Pincode for grocery/food accuracy." },
+            depart: { type: "string", description: "Travel date YYYY-MM-DD for flights/hotels/bus." }
+          },
+          required: ["query"]
+        }
+      }
+    ];
+  }
+});
+
+// server/seo/mcpEndpoint.ts
+var mcpEndpoint_exports = {};
+__export(mcpEndpoint_exports, {
+  registerMcpRoute: () => registerMcpRoute
+});
+function ok2(id, result) {
+  return { jsonrpc: "2.0", id: id ?? null, result };
+}
+function fail(id, code, message) {
+  return { jsonrpc: "2.0", id: id ?? null, error: { code, message } };
+}
+async function searchPrices(args) {
+  const query = String(args?.query || "").trim();
+  if (!query) throw new Error("query is required");
+  const rawVertical = String(args?.vertical || "ecommerce").toLowerCase();
+  const vertical = rawVertical === "cabs" ? "cab" : rawVertical;
+  if (!PRICE_VERTICALS.has(rawVertical)) {
+    throw new Error(`Unsupported vertical "${rawVertical}". Use one of: ${[...PRICE_VERTICALS].join(", ")}`);
+  }
+  const depart = /^\d{4}-\d{2}-\d{2}$/.test(String(args?.depart || "")) ? String(args.depart) : void 0;
+  const input = {
+    query,
+    vertical,
+    city: String(args?.city || "Indore"),
+    pincode: String(args?.pincode || "452001"),
+    ...depart ? { travelDates: { depart } } : {}
+  };
+  const res = await awaitSettledAnswer(input, 9e3);
+  const rows = Array.isArray(res?.results) ? res.results : [];
+  const compact = rows.slice(0, 12).map((r) => ({
+    title: String(r?.title || "").slice(0, 140),
+    seller: String(r?.seller || r?.provider || (Array.isArray(r?.sellers) ? r.sellers[0]?.name : "") || ""),
+    price: Number(r?.primaryPrice || r?.prices && r.prices.effectivePrice || 0) || 0,
+    link: String(r?.sellers?.[0]?.url || r?.goUrl || "")
+  })).filter((r) => r.title);
+  return {
+    vertical,
+    query,
+    city: input.city,
+    ...depart ? { depart } : {},
+    count: compact.length,
+    rows: compact,
+    note: compact.length ? "Live rows from the same pipeline the website uses. Prices are the seller\u2019s own." : 'No priced rows were available from live sources for this query just now. Try a fuller query (e.g. "Indore to Delhi") or another vertical.'
+  };
+}
+async function callTool(name, args) {
+  if (name === "search_prices") {
+    try {
+      const payload = await searchPrices(args || {});
+      return { content: [{ type: "text", text: JSON.stringify(payload) }] };
+    } catch (e2) {
+      return { content: [{ type: "text", text: `search_prices failed: ${e2?.message || "unknown error"}` }], isError: true };
+    }
+  }
+  return { content: [{ type: "text", text: `Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(", ")}` }], isError: true };
+}
+function registerMcpRoute(app) {
+  app.post("/mcp", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    const body = req.body;
+    const batch = Array.isArray(body);
+    const messages = batch ? body : [body];
+    const handle = async (msg) => {
+      const id = msg?.id;
+      const method = String(msg?.method || "");
+      if (id === void 0 && method.startsWith("notifications/")) return null;
+      if (method === "initialize") {
+        return ok2(id, {
+          protocolVersion: PROTOCOL_VERSION,
+          capabilities: { tools: { listChanged: false } },
+          serverInfo: { name: "try1second", version: "1.0.0", title: "Try1Second Price Search" },
+          instructions: `${SUMMARY} Use search_prices with a vertical (flights|hotels|bus|cab|ecommerce|grocery|food|movies|loans|insurance). Contact: ${CONTACT_EMAIL}. Docs: ${SEO_HOST}/llms.txt`
+        });
+      }
+      if (method === "ping") return ok2(id, {});
+      if (method === "tools/list") {
+        return ok2(id, { tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })) });
+      }
+      if (method === "tools/call") {
+        const name = String(msg?.params?.name || "");
+        const args = msg?.params?.arguments || {};
+        return ok2(id, await callTool(name, args));
+      }
+      if (method === "resources/list") return ok2(id, { resources: [] });
+      if (method === "prompts/list") return ok2(id, { prompts: [] });
+      return fail(id, -32601, `Method not found: ${method}`);
+    };
+    try {
+      if (batch) {
+        const out = [];
+        for (const m of messages) {
+          const r = await handle(m);
+          if (r) out.push(r);
+        }
+        res.status(200).json(out);
+        return;
+      }
+      const single = await handle(messages[0] || {});
+      if (single === null) {
+        res.status(202).end();
+        return;
+      }
+      res.status(200).json(single);
+    } catch (e2) {
+      res.status(200).json(fail(messages[0]?.id ?? null, -32603, e2?.message || "internal error"));
+    }
+  });
+  app.get("/mcp", (_req, res) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.json({
+      mcp: true,
+      protocolVersion: PROTOCOL_VERSION,
+      endpoint: `${SEO_HOST}/mcp`,
+      method: "POST JSON-RPC 2.0 (initialize, tools/list, tools/call)",
+      tools: MCP_TOOLS.map((t) => t.name),
+      card: `${SEO_HOST}/.well-known/mcp/server-card.json`
+    });
+  });
+}
+var PROTOCOL_VERSION, PRICE_VERTICALS;
+var init_mcpEndpoint = __esm({
+  "server/seo/mcpEndpoint.ts"() {
+    init_searchOrchestrator();
+    init_agentReady();
+    init_data();
+    PROTOCOL_VERSION = "2025-06-18";
+    PRICE_VERTICALS = /* @__PURE__ */ new Set([
+      "flights",
+      "hotels",
+      "bus",
+      "cab",
+      "cabs",
+      "ecommerce",
+      "grocery",
+      "food",
+      "movies",
+      "loans",
+      "insurance"
+    ]);
+  }
+});
+
+// server/common/singleton.ts
+var singleton_exports = {};
+__export(singleton_exports, {
+  acquireSingletonLock: () => acquireSingletonLock,
+  runSingleton: () => runSingleton
+});
+async function mysqlLock(name) {
+  let conn = null;
+  try {
+    conn = await import_promise3.default.createConnection(settings.mysqlUrl);
+    const [rows] = await conn.query(
+      "SELECT COALESCE(GET_LOCK(?, 0), 0) AS releasable",
+      [`try1second_${name}`]
+    );
+    if (Number(rows?.[0]?.releasable) !== 1) {
+      await conn.end();
+      return "other";
+    }
+    const holder = conn;
+    holder.on("error", () => void 0);
+    const hb = setInterval(() => {
+      holder.ping().catch(() => void 0);
+      holder.query("SELECT IS_USED_LOCK(?) AS holderId", [`try1second_${name}`]).then(([r]) => {
+        const mine = Number(r?.[0]?.holderId) !== 0 && holder.threadId != null && Number(r?.[0]?.holderId) === holder.threadId;
+        if (!mine) {
+          log.error("Singleton", `BACKGROUND LOCK LOST (try1second_${name}) \u2014 another app instance may now duplicate background work`, { pid: process.pid });
+        }
+      }).catch(() => void 0);
+    }, 6e4);
+    hb.unref?.();
+    return "held";
+  } catch {
+    try {
+      await conn?.end();
+    } catch {
+    }
+    return "error";
+  }
+}
+function fileLock(name) {
+  const file = import_node_path9.default.join(dataDir, `singleton-${name}.lock`);
+  try {
+    const st = import_node_fs9.default.statSync(file);
+    if (Date.now() - st.mtimeMs < STALE_MS) return false;
+    import_node_fs9.default.unlinkSync(file);
+  } catch {
+  }
+  try {
+    import_node_fs9.default.mkdirSync(dataDir, { recursive: true });
+    const fd = import_node_fs9.default.openSync(file, "wx");
+    import_node_fs9.default.writeSync(fd, String(process.pid));
+    import_node_fs9.default.closeSync(fd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function acquireSingletonLock(name) {
+  if (settings.mysqlUrl) {
+    const r = await mysqlLock(name);
+    if (r === "held") {
+      log.info("Bootstrap", `Background singleton acquired via MySQL GET_LOCK (pid ${process.pid})`);
+      return true;
+    }
+    if (r === "other") return false;
+    log.warn("Bootstrap", `MySQL lock unavailable \u2014 falling back to file lock (pid ${process.pid})`);
+  }
+  const ok3 = fileLock(name);
+  if (ok3) log.info("Bootstrap", `Background singleton acquired via file lock (pid ${process.pid})`);
+  return ok3;
+}
+async function runSingleton(name, fn) {
+  const held = await acquireSingletonLock(name);
+  if (!held) {
+    log.info("Bootstrap", `Background duties deferred \u2014 another app instance already runs "${name}"`);
+    return false;
+  }
+  await fn();
+  return true;
+}
+var import_node_fs9, import_node_path9, import_promise3, STALE_MS;
+var init_singleton = __esm({
+  "server/common/singleton.ts"() {
+    import_node_fs9 = __toESM(require("node:fs"), 1);
+    import_node_path9 = __toESM(require("node:path"), 1);
+    import_promise3 = __toESM(require("mysql2/promise"), 1);
+    init_settings();
+    init_logger();
+    STALE_MS = 10 * 6e4;
+  }
+});
+
+// server/seo/guidePages.ts
+var guidePages_exports = {};
+__export(guidePages_exports, {
+  GUIDE_SLUGS: () => GUIDE_SLUGS2,
+  renderGuidePage: () => renderGuidePage,
+  renderGuidesIndex: () => renderGuidesIndex
+});
+function blocksHtml2(g) {
+  return g.blocks.map((b) => {
+    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${esc5(i)}</li>`).join("")}</ul>`;
+    if (b.t === "p") return `<p>${esc5(b.x)}</p>`;
+    return `<${b.t}>${esc5(b.x)}</${b.t}>`;
+  }).join("\n");
+}
+function faqJsonLd(g) {
+  const qa = g.blocks.filter((b) => b.t === "h2" && b.x.includes("?"));
+  if (!qa.length) return "";
+  const entries2 = qa.map((q3) => {
+    const src2 = g.blocks[g.blocks.indexOf(q3) + 1];
+    const answer = src2 ? src2.t === "p" ? src2.x : src2.t === "ul" ? src2.items.join(" ") : g.description : g.description;
+    return {
+      "@type": "Question",
+      name: q3.x,
+      acceptedAnswer: { "@type": "Answer", text: answer }
+    };
+  });
+  return `<script type="application/ld+json">${JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: entries2
+  })}</script>
+`;
+}
+function articleJsonLd(g, origin2) {
+  return `<script type="application/ld+json">${JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: g.headline,
+    description: g.description,
+    dateModified: g.updated,
+    datePublished: g.updated,
+    inLanguage: "en-IN",
+    mainEntityOfPage: `${origin2}/guides/${g.slug}`,
+    author: { "@type": "Organization", name: "Try1Second" },
+    publisher: { "@type": "Organization", name: "Try1Second", url: origin2 }
+  })}</script>
+`;
+}
+function renderGuidePage(slug5, origin2) {
+  const g = GUIDE_BY_SLUG[slug5];
+  if (!g) return void 0;
+  const canonical = `${origin2}/guides/${slug5}`;
+  const related = GUIDES.filter((x) => x.slug !== slug5).slice(0, 3);
+  const verticalLinks = g.verticals.map((v) => `<a class="cta" href="/${v}">Compare ${esc5(v)} prices</a>`).join(" ");
+  return `${head2(g.title, g.description, canonical, articleJsonLd(g, origin2) + faqJsonLd(g))}
+<body>
+${nav()}
+<main>
+<h1>${esc5(g.title)}</h1>
+<p class="meta">Try1Second editorial \xB7 Updated ${esc5(g.updated)} \xB7 ${g.verticals.length} vertical${g.verticals.length > 1 ? "s" : ""} covered</p>
+<p class="lede">${esc5(g.headline)} \u2014 ${esc5(g.description)}</p>
+${blocksHtml2(g)}
+<p>${verticalLinks}</p>
+<h2>More buying guides</h2>
+${related.map(
+    (r) => `<div class="card"><h3><a href="/guides/${r.slug}">${esc5(r.title)}</a></h3><p>${esc5(r.description)}</p></div>`
+  ).join("")}
+</main>
+${footer()}
+</body>
+</html>`;
+}
+function renderGuidesIndex(origin2) {
+  const canonical = `${origin2}/guides`;
+  return `${head2(
+    "Buying Guides: What Comparison Prices Leave Out \u2014 Try1Second",
+    "Practical guides to Indian price comparison: flight fare rules, hotel charges, cab surge, quick-commerce fees, food delivery costs and cinema ticket fees.",
+    canonical
+  )}
+<body>
+${nav()}
+<main>
+<h1>Buying guides</h1>
+<p class="meta">Try1Second editorial \xB7 ${GUIDES.length} guides \xB7 Updated ${GUIDES[0]?.updated || ""}</p>
+<p class="lede">Every guide explains how a price is built, which fees the headline number leaves out, and what to check before you pay. We write these from the mechanics of each marketplace, not from sponsored placements.</p>
+${GUIDES.map(
+    (g) => `<div class="card"><h3><a href="/guides/${g.slug}">${esc5(g.title)}</a></h3><p>${esc5(g.description)}</p></div>`
+  ).join("\n")}
+</main>
+${footer()}
+</body>
+</html>`;
+}
+var esc5, STYLE2, head2, nav, footer, GUIDE_SLUGS2;
+var init_guidePages = __esm({
+  "server/seo/guidePages.ts"() {
+    init_guides();
+    esc5 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    STYLE2 = `
+:root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:var(--ink);font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+header{border-bottom:1px solid var(--line);padding:14px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header a.brand{font-weight:800;text-decoration:none;color:var(--ink);font-size:17px}
+header a.brand span{color:var(--brand)}
+header .spacer{flex:1}
+header nav a{color:var(--muted);text-decoration:none;font-size:14px;margin-left:14px;white-space:nowrap}
+header nav a:hover{color:var(--brand)}
+main{max-width:780px;margin:0 auto;padding:28px 20px 56px}
+h1{font-size:27px;line-height:1.25;margin:0 0 6px}
+h2{font-size:19px;margin:28px 0 8px}
+p{margin:12px 0;color:#1f2937}
+ul{margin:10px 0 18px;padding-left:22px}
+li{margin:7px 0;color:#1f2937}
+.meta{color:var(--muted);font-size:13px;margin:0 0 18px}
+.lede{font-size:17px;color:#111827;margin:0 0 20px}
+.cta{display:inline-block;margin:6px 0 4px;background:var(--brand);color:#fff;text-decoration:none;font-weight:700;padding:10px 16px;border-radius:10px}
+.card{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+.card h3{margin:0 0 4px;font-size:16px}
+.card a{color:var(--brand);text-decoration:none;font-weight:600}
+.card p{margin:4px 0 0;font-size:14px;color:var(--muted)}
+footer{border-top:1px solid var(--line);padding:18px 20px 34px;color:var(--muted);font-size:13px;text-align:center}
+footer a{color:var(--muted);text-decoration:none;margin:0 6px}
+`;
+    head2 = (title, description, canonical, extra = "") => `<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc5(title)}</title>
+<meta name="description" content="${esc5(description)}" />
+<link rel="canonical" href="${esc5(canonical)}" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="${esc5(title)}" />
+<meta property="og:description" content="${esc5(description)}" />
+<meta property="og:url" content="${esc5(canonical)}" />
+<style>${STYLE2}</style>
+${extra}</head>`;
+    nav = () => `<header>
+  <a class="brand" href="/">Try1<span>Second</span></a>
+  <span class="spacer"></span>
+  <nav><a href="/">Compare prices</a><a href="/guides">Guides</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
+</header>`;
+    footer = () => `<footer>
+  <p><a href="/guides">All guides</a><a href="/about">About</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/affiliate-disclosure">Affiliate disclosure</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></p>
+  <p>Try1Second is a metasearch engine. We compare prices; the purchase and its terms belong to the partner you choose.</p>
+</footer>`;
+    GUIDE_SLUGS2 = GUIDES.map((g) => g.slug);
+  }
+});
+
 // server/seo/render.ts
 var render_exports = {};
 __export(render_exports, {
@@ -54519,7 +54949,26 @@ function jsonLd(path18) {
     "@type": "Organization",
     name: "Try1Second",
     url: SEO_HOST,
-    logo: `${SEO_HOST}/logo-icon.webp`,
+    logo: {
+      "@type": "ImageObject",
+      url: `${SEO_HOST}/logo-icon.webp`,
+      width: 512,
+      height: 512
+    },
+    image: `${SEO_HOST}/logo-tagline.webp`,
+    // OWNER 9 Nov ("Entity is linked to external profiles via sameAs" / "Contact details are
+    // machine-readable"): the profiles we can actually verify plus the address the footer shows.
+    // No social account is invented - SAME_AS only ever holds URLs that answer today.
+    sameAs: SAME_AS,
+    email: CONTACT_EMAIL,
+    contactPoint: [{
+      "@type": "ContactPoint",
+      contactType: "customer support",
+      email: CONTACT_EMAIL,
+      url: `${SEO_HOST}/contact`,
+      availableLanguage: ["en", "hi"],
+      areaServed: "IN"
+    }],
     description: "Independent metasearch engine comparing live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in India."
   };
   blocks.push(JSON.stringify(org));
@@ -54673,6 +55122,7 @@ var esc6, DEFAULT_TITLE, DEFAULT_DESC;
 var init_render = __esm({
   "server/seo/render.ts"() {
     init_data();
+    init_agentReady();
     esc6 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     DEFAULT_TITLE = "Try1Second \u2014 One Second Is All It Takes to Find the Lowest Price";
     DEFAULT_DESC = "Compare live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in one second.";
@@ -55100,6 +55550,10 @@ async function createApp() {
   app.use("/api/v1", affiliateRouter2);
   const { registerSeoRoutes: registerSeoRoutes2 } = await Promise.resolve().then(() => (init_sitemap(), sitemap_exports));
   registerSeoRoutes2(app);
+  const { registerAgentFileRoutes: registerAgentFileRoutes2 } = await Promise.resolve().then(() => (init_agentReady(), agentReady_exports));
+  registerAgentFileRoutes2(app);
+  const { registerMcpRoute: registerMcpRoute2 } = await Promise.resolve().then(() => (init_mcpEndpoint(), mcpEndpoint_exports));
+  registerMcpRoute2(app);
   await bootstrapBackend2();
   if (settings3.env !== "test") {
     const { runSingleton: runSingleton2 } = await Promise.resolve().then(() => (init_singleton(), singleton_exports));
@@ -55204,26 +55658,51 @@ async function createApp() {
     }));
     const { enhanceHtml: enhanceHtml2 } = await Promise.resolve().then(() => (init_render(), render_exports));
     const { snapshotForPath: snapshotForPath2, renderSnapshotHtml: renderSnapshotHtml2, snapshotJsonLd: snapshotJsonLd2 } = await Promise.resolve().then(() => (init_liveSnapshot(), liveSnapshot_exports));
+    const { isKnownPath: isKnownPath2, markdownForPath: markdownForPath2, agentLinkHeader: agentLinkHeader2, notFoundHtml: notFoundHtml2, CONTACT_EMAIL: CONTACT_EMAIL2 } = await Promise.resolve().then(() => (init_agentReady(), agentReady_exports));
     const baseHtml = import_fs9.default.readFileSync(import_path9.default.join(dist, "index.html"), "utf8");
+    const siteInfoBlock = `<nav aria-label="Site information"><a href="/about">About Try1Second</a> | <a href="/contact">Contact</a> | <a href="/terms">Terms</a> | <a href="/privacy-policy">Privacy policy</a> | <a href="/affiliate-disclosure">Affiliate disclosure</a> | <a href="/guides">Guides</a> | <a href="mailto:${CONTACT_EMAIL2}">${CONTACT_EMAIL2}</a> | <a href="/llms.txt">llms.txt</a> | <a href="/sitemap.xml">Sitemap</a></nav>`;
     app.get("*", async (req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
+      res.setHeader("Link", agentLinkHeader2());
       const acc = String(req.headers.accept || "");
-      const isAsset = /\.[a-z0-9]{2,5}$/i.test(req.path.replace(/\/$/, ""));
-      const wantsShell = acc === "" || acc.includes("text/html") || acc.includes("*/*");
-      if (isAsset || !wantsShell) {
+      const cleanPath = req.path.replace(/\/+$/, "") || "/";
+      const isAsset = /\.[a-z0-9]{2,5}$/i.test(cleanPath);
+      if (isAsset) {
         res.sendFile(import_path9.default.join(dist, "index.html"));
         return;
       }
+      const wantsMarkdown = /text\/markdown|application\/x-markdown/i.test(acc) && !/text\/html/i.test(acc);
+      if (wantsMarkdown) {
+        if (!isKnownPath2(cleanPath)) {
+          res.status(404).type("text/markdown; charset=utf-8").send(`# 404 \u2014 page not found
+
+\`${cleanPath}\` does not exist on Try1Second. Start at ${"https://www.try1second.com"}/llms.txt
+`);
+          return;
+        }
+        res.type("text/markdown; charset=utf-8").send(markdownForPath2(cleanPath));
+        return;
+      }
+      const wantsShell = acc === "" || acc.includes("text/html") || acc.includes("*/*");
+      if (!wantsShell) {
+        res.sendFile(import_path9.default.join(dist, "index.html"));
+        return;
+      }
+      if (!isKnownPath2(cleanPath)) {
+        res.status(404).type("text/html; charset=utf-8").send(notFoundHtml2(cleanPath));
+        return;
+      }
       let html = enhanceHtml2(baseHtml, req.path);
+      let snapshotBlock = "";
       try {
         const snap = await snapshotForPath2(req.path);
-        const block = renderSnapshotHtml2(snap);
-        if (block) html = html.replace("</body>", `<noscript>${block}</noscript></body>`);
+        snapshotBlock = renderSnapshotHtml2(snap) || "";
         const ld = snapshotJsonLd2(snap, req.path);
         if (ld) html = html.replace("</head>", `<script type="application/ld+json">${ld}</script>
 </head>`);
       } catch {
       }
+      html = html.replace("</body>", `<noscript>${siteInfoBlock}${snapshotBlock}</noscript></body>`);
       res.send(html);
     });
   } else if (settings3.isProduction) {
