@@ -98,6 +98,9 @@ class AppState extends ChangeNotifier {
   int spinsAvailable = 0;
 
   /// Last live result per vertical, so tabs reopen instantly (website keeps `items`).
+  /// Picked travel dates per `vertical|query` so a background/app-reopen trigger cannot drop them.
+  final Map<String, List<String?>> _travelMemo = {};
+
   final Map<String, LiveResponse> cache = {};
   final Map<String, String> cacheQuery = {};
   /// Epoch ms when each vertical's cached response was fetched (TTL checks).
@@ -223,6 +226,21 @@ class AppState extends ChangeNotifier {
     final key = v == 'movies' ? 'movie' : v;
     final q = query.trim().isEmpty ? defaultQueryFor(key, city) : query.trim();
     lastQuery[key] = q; // sticky: this vertical reopens on its own last search
+    // OWNER 9 Nov (same bug as the website): the picked date was only sent from the search press,
+    // and every other trigger (tab switch, app reopen, retry, a revalidation) called live() with no
+    // depart/return. Those calls carried an EMPTY date in the cache key, so they never matched the
+    // dated answer and the server - having no date to honour - could answer with today's rows.
+    // The picked dates are now remembered per `vertical|query` and reused by any call that omits them.
+    final memoKey = '$key|${q.toLowerCase()}';
+    if (depart != null && depart.isNotEmpty) {
+      _travelMemo[memoKey] = <String?>[depart, returnDate];
+    } else {
+      final memo = _travelMemo[memoKey];
+      if (memo != null && memo[0] != null && memo[0]!.isNotEmpty) {
+        depart = memo[0];
+        returnDate ??= memo[1];
+      }
+    }
     // OWNER 7 Nov (issue 2): the cache key ignored the check-out/return date and the address, so
     // changing only those two fields matched the OLD entry and the app repainted the previous
     // stay/route instead of the one the user asked for. Every date and the location are part of the

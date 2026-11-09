@@ -1043,7 +1043,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setVerticalQueries((prev) => (prev[vertical] === targetQuery ? prev : { ...prev, [vertical]: targetQuery }));
     const dateSensitive = ['hotels', 'flights', 'bus', 'cab', 'movies'].includes(vertical);
     const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
-    const travel = overrideTravel?.depart ? overrideTravel : { depart: todayIso };
+    // OWNER 9 Nov (screenshot: picker showed 27-11-2026 but every card read 2026-11-09):
+    // the date the user picked was only sent on the header's Search press. Every OTHER trigger of
+    // this same function - the [vertical, city, pincode] effect, "Refresh prices", the results
+    // panel retry, a late-row watch - passed no dates at all and fell back to TODAY, so a correct
+    // 27 Nov answer was replaced by today's rows seconds later. The picked dates are now REMEMBERED
+    // per query and reused by any trigger that does not carry its own dates.
+    const travelKey = `${vertical}|${String(targetQuery).trim().toLowerCase()}`;
+    if (overrideTravel?.depart) travelByQueryRef.current[travelKey] = overrideTravel;
+    const rememberedTravel = travelByQueryRef.current[travelKey];
+    const travel = overrideTravel?.depart
+      ? overrideTravel
+      : (rememberedTravel?.depart ? rememberedTravel : { depart: todayIso });
     // Any new search (city, query, dates, vertical) raises the progress panel immediately.
     // OWNER 2 Nov flicker fix: a pendingRefresh RE-POLL of the search that is already on screen
     // is the same chain, not a new search. Raising the panel for it re-took the feed from the rows
@@ -1213,6 +1224,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // The server answers from its warmed cache, so this is cheap. Real results only, never mock data.
   // It never touches isScrapingLive/sourcesReport of the active tab and never overwrites a vertical
   // the user already searched (or that already has rows).
+  // Picked travel dates per `vertical|query`, so a background re-trigger can never reset them to today.
+  const travelByQueryRef = useRef<Record<string, { depart?: string; return?: string }>>({});
   const prefetchedKeyRef = useRef<string>('');
   useEffect(() => {
     const city = userLocation.city || 'Indore';
