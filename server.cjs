@@ -44941,6 +44941,7 @@ var routes_exports = {};
 __export(routes_exports, {
   apiRouter: () => apiRouter,
   bootstrapBackend: () => bootstrapBackend,
+  offerToComparisonItem: () => offerToComparisonItem,
   quickAppsPartnerFirst: () => quickAppsPartnerFirst
 });
 function deployedCommit() {
@@ -45211,11 +45212,13 @@ function assistantExitUrl(o, travel) {
   return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || "") }) : "";
 }
 function offerToComparisonItem(o, reqTravel = {}) {
-  const price2 = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
-  const list = Number(o.prices?.listPrice ?? 0) || 0;
+  const price2 = Number(
+    o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? o.primaryPrice ?? o.primary_price ?? o.effectivePrice ?? o.effective_price ?? o.mandatoryTotal ?? o.mandatory_total ?? o.price ?? o.fare ?? 0
+  ) || 0;
+  const list = Number(o.prices?.listPrice ?? o.originalPrice ?? o.original_price ?? 0) || 0;
   const travelCtx = {
     route: o.travel?.route || reqTravel.route,
-    date: reqTravel.date || o.travel?.date,
+    date: reqTravel.date || o.travel?.date || String(o.specs?.date || o.specs?.Date || ""),
     return: reqTravel.return,
     city: reqTravel.city || o.travel?.city
   };
@@ -45229,7 +45232,14 @@ function offerToComparisonItem(o, reqTravel = {}) {
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || "Verified source"));
   const attrs = o.attributes || {};
   const specs = {};
+  if (o.specs && typeof o.specs === "object") {
+    for (const [k, v] of Object.entries(o.specs)) specs[String(k).toLowerCase()] = String(v);
+  }
   for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, " ")] = String(v);
+  if (!specs["travel date"] && !specs["date"] && travelCtx.date) {
+    specs["travel date"] = String(travelCtx.date);
+    specs["departure date"] = String(travelCtx.date);
+  }
   const brandName2 = o.brand ? String(o.brand).toLowerCase().trim() : "";
   const sellerNames = [o.seller, o.vendor].map((v) => v ? String(v).toLowerCase().trim() : "").filter(Boolean);
   const brandIsSeller = brandName2 && sellerNames.includes(brandName2);

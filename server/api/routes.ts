@@ -1245,9 +1245,23 @@ function assistantExitUrl(o: any, travel: { date?: string; return?: string; city
   return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || '') }) : '';
 }
 
-function offerToComparisonItem(o: any, reqTravel: { date?: string; return?: string; city?: string; route?: string } = {}) {
-  const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
-  const list = Number(o.prices?.listPrice ?? 0) || 0;
+export function offerToComparisonItem(o: any, reqTravel: { date?: string; return?: string; city?: string; route?: string } = {}) {
+  // OWNER 9 Nov ("abhi no matching option found aane lga ... whole system is setup properly"):
+  // on a COLD sweep the app answered "No matching options found" with 0 priced cards while
+  // /api/search for the same minute answered 181 priced rows. Cause: a worker row is shaped
+  // { title, brand, price, currency, seller, travel, attributes } - its money lives on `price` -
+  // while this mapper read ONLY prices.effectivePrice/mandatoryTotal. So every row that came
+  // straight from a worker in the first answer mapped to primaryPrice 0 and, once mapped, lost the
+  // day it was for (the specs bag is built from attributes, and travel.date was not consulted).
+  // The client then suppresses price-less cards ("No Price, No Card") and the feed looked empty
+  // until the warm cache landed. Money and day are now read from every published shape, so a cold
+  // answer is as priced and dated as the warm one.
+  const price = Number(
+    o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice
+    ?? o.primaryPrice ?? o.primary_price ?? o.effectivePrice ?? o.effective_price
+    ?? o.mandatoryTotal ?? o.mandatory_total ?? o.price ?? o.fare ?? 0,
+  ) || 0;
+  const list = Number(o.prices?.listPrice ?? o.originalPrice ?? o.original_price ?? 0) || 0;
   // Module 4: masking pointer — affiliate tokens are built server-side at click
   // time and NEVER appear in API responses or the page source.
   // Owner 24 Oct (payment-page deeplinks): rows without a product URL fall back
@@ -1260,7 +1274,7 @@ function offerToComparisonItem(o: any, reqTravel: { date?: string; return?: stri
   // request's own dates; the stored URL is only kept when the request names no dates.
   const travelCtx = {
     route: o.travel?.route || reqTravel.route,
-    date: reqTravel.date || o.travel?.date,
+    date: reqTravel.date || o.travel?.date || String(o.specs?.date || o.specs?.Date || ''),
     return: reqTravel.return,
     city: reqTravel.city || o.travel?.city,
   };
@@ -1279,7 +1293,17 @@ function offerToComparisonItem(o: any, reqTravel: { date?: string; return?: stri
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || 'Verified source'));
   const attrs: Record<string, string> = o.attributes || {};
   const specs: Record<string, string> = {};
+  // A row that is ALREADY answer-shaped carries its own display bag; keep it (it holds the day,
+  // the times and the seller's notes) instead of throwing it away.
+  if (o.specs && typeof o.specs === 'object') {
+    for (const [k, v] of Object.entries(o.specs)) specs[String(k).toLowerCase()] = String(v);
+  }
   for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, ' ')] = String(v);
+  // The journey day must survive the mapping even when the row published it only as travel.date.
+  if (!specs['travel date'] && !specs['date'] && travelCtx.date) {
+    specs['travel date'] = String(travelCtx.date);
+    specs['departure date'] = String(travelCtx.date);
+  }
   // Owner 17 Oct: flight cards must show the OPERATING AIRLINE name alongside the
   // selling website (Ixigo/Yatra/EMT...). Airline lives on the offer's brand field.
   const brandName = o.brand ? String(o.brand).toLowerCase().trim() : '';
