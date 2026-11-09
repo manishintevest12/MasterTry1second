@@ -46267,18 +46267,41 @@ var init_routes = __esm({
     _lastEmergencyWarmAt = 0;
     apiRouter.get("/version", async (_req, res) => {
       let bundle = null;
+      let html = null;
       try {
-        const html = await (0, import_promises2.readFile)((0, import_node_path8.join)(process.cwd(), "dist/index.html"), "utf8");
+        html = await (0, import_promises2.readFile)((0, import_node_path8.join)(process.cwd(), "dist/index.html"), "utf8");
         bundle = (html.match(/assets\/index-[A-Za-z0-9_-]+\.js/) || [null])[0];
       } catch {
         bundle = null;
+      }
+      let assetsOnDisk = 0;
+      let missing = [];
+      try {
+        assetsOnDisk = (await (0, import_promises2.readdir)((0, import_node_path8.join)(process.cwd(), "dist/assets"))).length;
+      } catch {
+        assetsOnDisk = 0;
+      }
+      if (html) {
+        const refs = [...html.matchAll(/\/assets\/([A-Za-z0-9_.-]+\.(?:js|css))/g)].map((m) => m[1]);
+        const onDisk = /* @__PURE__ */ new Set();
+        try {
+          for (const f of await (0, import_promises2.readdir)((0, import_node_path8.join)(process.cwd(), "dist/assets"))) onDisk.add(f);
+        } catch {
+        }
+        missing = [...new Set(refs)].filter((f) => !onDisk.has(f));
       }
       res.json({
         ok: true,
         bundle,
         startedAt: startedAtIso,
         uptimeSec: Math.round(process.uptime()),
-        node: process.version
+        node: process.version,
+        dist: {
+          assetsOnDisk,
+          referencedAssetsMissing: missing.slice(0, 8),
+          healthy: assetsOnDisk > 0 && missing.length === 0,
+          remedy: assetsOnDisk === 0 || missing.length ? "run `npm run build` on the host, then restart Node" : void 0
+        }
       });
     });
     apiRouter.get("/admin/load/health", authMiddleware, requireAdmin, async (_req, res) => {
@@ -55748,7 +55771,59 @@ async function createApp() {
       res.send(html);
     });
   }
+  const publicDir = import_path9.default.join(process.cwd(), "public");
+  if (import_fs9.default.existsSync(publicDir)) {
+    app.use(import_express5.default.static(publicDir, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (/\.(webp|png|jpe?g|svg|ico|woff2?|ttf)$/i.test(filePath)) {
+          res.setHeader("Cache-Control", "public, max-age=2592000, stale-while-revalidate=604800");
+        } else if (filePath.endsWith("ads.txt")) {
+          res.setHeader("Cache-Control", "public, max-age=3600");
+        }
+      }
+    }));
+  }
   if (import_fs9.default.existsSync(dist)) {
+    let assetFiles = function() {
+      if (Date.now() - assetScan.at < 3e4) return assetScan.files;
+      try {
+        assetScan = { at: Date.now(), files: import_fs9.default.readdirSync(assetDir) };
+      } catch {
+        assetScan = { at: Date.now(), files: [] };
+      }
+      return assetScan.files;
+    }, healAssetRefs = function(html) {
+      const files = assetFiles();
+      if (!files.length) {
+        if (Date.now() - lastIntegrityWarn > 6e4) {
+          lastIntegrityWarn = Date.now();
+          log3.error("Bootstrap", "dist/assets is EMPTY - the page cannot hydrate. Run `npm run build` on the host, then restart Node", {
+            dist
+          });
+        }
+        return html;
+      }
+      const missing = [];
+      const healed = html.replace(/\/assets\/([A-Za-z0-9_]+)[-.]([A-Za-z0-9_-]+)\.(js|css)/g, (m, logical, hash, ext) => {
+        const exact = `${logical}-${hash}.${ext}`;
+        if (files.includes(exact)) return m;
+        const cand = files.filter((f) => f.startsWith(`${logical}-`) && f.endsWith(`.${ext}`));
+        if (cand.length === 1) return `/assets/${cand[0]}`;
+        const newest = cand.sort().pop();
+        if (newest) return `/assets/${newest}`;
+        missing.push(exact);
+        return m;
+      });
+      if (missing.length && Date.now() - lastIntegrityWarn > 6e4) {
+        lastIntegrityWarn = Date.now();
+        log3.error("Bootstrap", "dist/index.html references files that do not exist - run `npm run build` on the host", {
+          missing: missing.slice(0, 6),
+          available: files.length
+        });
+      }
+      return healed;
+    };
     app.use(import_express5.default.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
       // hashed /assets/* files are immutable and safe to cache for a year.
@@ -55766,7 +55841,11 @@ async function createApp() {
     const { enhanceHtml: enhanceHtml2 } = await Promise.resolve().then(() => (init_render(), render_exports));
     const { snapshotForPath: snapshotForPath2, renderSnapshotHtml: renderSnapshotHtml2, snapshotJsonLd: snapshotJsonLd2 } = await Promise.resolve().then(() => (init_liveSnapshot(), liveSnapshot_exports));
     const { isKnownPath: isKnownPath2, markdownForPath: markdownForPath2, agentLinkHeader: agentLinkHeader2, notFoundHtml: notFoundHtml2, CONTACT_EMAIL: CONTACT_EMAIL2 } = await Promise.resolve().then(() => (init_agentReady(), agentReady_exports));
-    const baseHtml = import_fs9.default.readFileSync(import_path9.default.join(dist, "index.html"), "utf8");
+    let baseHtml = import_fs9.default.readFileSync(import_path9.default.join(dist, "index.html"), "utf8");
+    const assetDir = import_path9.default.join(dist, "assets");
+    let assetScan = { at: 0, files: [] };
+    let lastIntegrityWarn = 0;
+    baseHtml = healAssetRefs(baseHtml);
     const siteInfoBlock = `<nav aria-label="Site information"><a href="/about">About Try1Second</a> | <a href="/contact">Contact</a> | <a href="/terms">Terms</a> | <a href="/privacy-policy">Privacy policy</a> | <a href="/affiliate-disclosure">Affiliate disclosure</a> | <a href="/guides">Guides</a> | <a href="mailto:${CONTACT_EMAIL2}">${CONTACT_EMAIL2}</a> | <a href="/llms.txt">llms.txt</a> | <a href="/sitemap.xml">Sitemap</a></nav>`;
     const shellCache = /* @__PURE__ */ new Map();
     const SHELL_TTL_MS = Number(process.env.T1S_SHELL_CACHE_MS || 6e4);

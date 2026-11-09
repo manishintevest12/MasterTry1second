@@ -315,6 +315,25 @@ export async function createApp(): Promise<express.Express> {
     });
   }
 
+  // OWNER 9 Nov: production answered 404 for /favicon.ico, /favicon-16.png, /apple-touch-icon.png and
+  // every /assets/*.js - the deploy's dist/ was incomplete (index.html present, assets missing) so the
+  // HTML loaded but nothing could hydrate. Two defences now:
+  //   a) public/ is served alongside dist/, so icons/ads.txt/banners survive an incomplete dist copy;
+  //   b) the shell heals stale asset references (below) and the build refuses to finish half-built.
+  const publicDir = path.join(process.cwd(), 'public');
+  if (fs.existsSync(publicDir)) {
+    app.use(express.static(publicDir, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (/\.(webp|png|jpe?g|svg|ico|woff2?|ttf)$/i.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=604800');
+        } else if (filePath.endsWith('ads.txt')) {
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+        }
+      },
+    }));
+  }
+
   if (fs.existsSync(dist)) {
     app.use(express.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
@@ -339,7 +358,62 @@ export async function createApp(): Promise<express.Express> {
     const { enhanceHtml } = await import('./seo/render');
     const { snapshotForPath, renderSnapshotHtml, snapshotJsonLd } = await import('./seo/liveSnapshot');
     const { isKnownPath, markdownForPath, agentLinkHeader, notFoundHtml, CONTACT_EMAIL } = await import('./seo/agentReady');
-    const baseHtml = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
+    let baseHtml = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
+
+    /**
+     * SELF-HEALING SHELL (owner 9 Nov). A deploy can leave dist/index.html pointing at hashed files that
+     * no longer exist (measured in production: index-DMosdBwh.js, index-B_WEV_f-.css, icons-*.js and
+     * rolldown-runtime-*.js all 404 while the HTML itself answered 200 - the page painted its skeleton
+     * and then froze, exactly the "assets stuck" symptom). Before the shell is cached or sent, every
+     * /assets/<name>-<hash>.<ext> reference is checked against what is actually on disk: a stale name is
+     * rewritten to the current file with the same logical name, and anything genuinely absent is logged
+     * once a minute with the exact remedy instead of silently 404-ing in the browser.
+     */
+    const assetDir = path.join(dist, 'assets');
+    let assetScan = { at: 0, files: [] as string[] };
+    function assetFiles(): string[] {
+      if (Date.now() - assetScan.at < 30_000) return assetScan.files;
+      try {
+        assetScan = { at: Date.now(), files: fs.readdirSync(assetDir) };
+      } catch {
+        assetScan = { at: Date.now(), files: [] };
+      }
+      return assetScan.files;
+    }
+    let lastIntegrityWarn = 0;
+    function healAssetRefs(html: string): string {
+      const files = assetFiles();
+      if (!files.length) {
+        if (Date.now() - lastIntegrityWarn > 60_000) {
+          lastIntegrityWarn = Date.now();
+          log.error('Bootstrap', 'dist/assets is EMPTY - the page cannot hydrate. Run `npm run build` on the host, then restart Node', {
+            dist,
+          });
+        }
+        return html;
+      }
+      const missing: string[] = [];
+      const healed = html.replace(/\/assets\/([A-Za-z0-9_]+)[-.]([A-Za-z0-9_-]+)\.(js|css)/g, (m, logical, hash, ext) => {
+        const exact = `${logical}-${hash}.${ext}`;
+        if (files.includes(exact)) return m;
+        // Same logical chunk, different build hash: point at the file that is really there.
+        const cand = files.filter((f) => f.startsWith(`${logical}-`) && f.endsWith(`.${ext}`));
+        if (cand.length === 1) return `/assets/${cand[0]}`;
+        const newest = cand.sort().pop();
+        if (newest) return `/assets/${newest}`;
+        missing.push(exact);
+        return m;
+      });
+      if (missing.length && Date.now() - lastIntegrityWarn > 60_000) {
+        lastIntegrityWarn = Date.now();
+        log.error('Bootstrap', 'dist/index.html references files that do not exist - run `npm run build` on the host', {
+          missing: missing.slice(0, 6),
+          available: files.length,
+        });
+      }
+      return healed;
+    }
+    baseHtml = healAssetRefs(baseHtml);
     // Crawler/agent-visible site information, inside <noscript>: real links to the about, contact and
     // legal pages plus a mailto, so an agent reading the HTML can confirm this is a real business even
     // though the visible footer is drawn by React. A human never sees it.

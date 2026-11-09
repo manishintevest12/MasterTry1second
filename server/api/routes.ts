@@ -3,7 +3,7 @@
  * Legacy-compatible endpoints (/api/scrape/live, /api/scan/url, /api/catalogue,
  * /api/provenance) now run through the real orchestrator — fabricated deals are gone.
  */
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Router } from 'express';
 import type { Request, Response } from 'express';
@@ -1466,11 +1466,28 @@ let _lastEmergencyWarmAt = 0;
 // started - compare `bundle` with the script tag in the page source after a restart.
 apiRouter.get('/version', async (_req, res) => {
   let bundle: string | null = null;
+  let html: string | null = null;
   try {
-    const html = await readFile(join(process.cwd(), 'dist/index.html'), 'utf8');
+    html = await readFile(join(process.cwd(), 'dist/index.html'), 'utf8');
     bundle = (html.match(/assets\/index-[A-Za-z0-9_-]+\.js/) || [null])[0];
   } catch {
     bundle = null;
+  }
+  // OWNER 9 Nov: production reported bundle:null while still serving HTML, which told nobody anything.
+  // The probe now says exactly what is wrong with dist/ (empty assets dir, stale references, missing
+  // icons) so "assets stuck, page frozen" is one curl away from a diagnosis instead of a guess.
+  let assetsOnDisk = 0;
+  let missing: string[] = [];
+  try {
+    assetsOnDisk = (await readdir(join(process.cwd(), 'dist/assets'))).length;
+  } catch { assetsOnDisk = 0; }
+  if (html) {
+    const refs = [...html.matchAll(/\/assets\/([A-Za-z0-9_.-]+\.(?:js|css))/g)].map((m) => m[1]);
+    const onDisk = new Set<string>();
+    try {
+      for (const f of await readdir(join(process.cwd(), 'dist/assets'))) onDisk.add(f);
+    } catch { /* handled by assetsOnDisk === 0 */ }
+    missing = [...new Set(refs)].filter((f) => !onDisk.has(f));
   }
   res.json({
     ok: true,
@@ -1478,6 +1495,14 @@ apiRouter.get('/version', async (_req, res) => {
     startedAt: startedAtIso,
     uptimeSec: Math.round(process.uptime()),
     node: process.version,
+    dist: {
+      assetsOnDisk,
+      referencedAssetsMissing: missing.slice(0, 8),
+      healthy: assetsOnDisk > 0 && missing.length === 0,
+      remedy: assetsOnDisk === 0 || missing.length
+        ? 'run `npm run build` on the host, then restart Node'
+        : undefined,
+    },
   });
 });
 

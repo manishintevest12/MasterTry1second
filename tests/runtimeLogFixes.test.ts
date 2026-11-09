@@ -81,3 +81,31 @@ test('neither the server nor .htaccess may redirect the apex to www', () => {
   assert.ok(!/RewriteRule[^\n]*https:\/\/www\.try1second\.com[^\n]*\[R=30[12]/i.test(ht), '.htaccess does not force www');
   assert.ok(/RewriteCond %\{HTTPS\} off/.test(ht), 'http->https upgrade is per-host only');
 });
+
+// OWNER 9 Nov: production served dist/index.html that pointed at hashed files which were gone
+// (/assets/index-DMosdBwh.js, index-B_WEV_f-.css, icons-*.js, rolldown-runtime-*.js all 404), so the page
+// painted and froze. These pin the three defences: the build refuses an inconsistent dist, the server
+// heals stale references, and public/ is served even if the dist copy is incomplete.
+test('the build refuses to finish with an inconsistent dist', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.ok(pkg.scripts.build.trim().endsWith('node scripts/verify-dist.mjs'), 'verify-dist runs last');
+  const script = readFileSync(new URL('../scripts/verify-dist.mjs', import.meta.url), 'utf8');
+  assert.ok(script.includes('dist/assets is empty'));
+  assert.ok(script.includes('index.html references'), 'checks every hashed reference');
+  assert.ok(script.includes('process.exit(1)'), 'fails the build');
+});
+
+test('the shell self-heals stale asset references and public/ is served too', () => {
+  const src = readFileSync(new URL('../server/index.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('function healAssetRefs'), 'healer exists');
+  assert.ok(src.includes('baseHtml = healAssetRefs(baseHtml)'), 'it runs before caching/serving');
+  assert.ok(src.includes("path.join(process.cwd(), 'public')"), 'public/ static is mounted');
+  assert.ok(src.includes('dist/assets is EMPTY'), 'an empty assets dir is logged loudly');
+});
+
+test('/api/version reports dist integrity instead of a bare null bundle', () => {
+  const src = readFileSync(new URL('../server/api/routes.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('assetsOnDisk'));
+  assert.ok(src.includes('referencedAssetsMissing'));
+  assert.ok(src.includes('run `npm run build` on the host'));
+});
