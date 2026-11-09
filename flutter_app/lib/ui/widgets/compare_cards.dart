@@ -503,6 +503,30 @@ void _openRedirect(
 // Travel card (flights / bus / cab) — compact row card with cab support
 // ---------------------------------------------------------------------------
 
+
+/// OWNER 9 Nov ("flights and bus mai card ke andar date show ka v option do jiss se maalum
+/// chale ki iss date ka ye results hai"): the journey date printed ON the card.
+///
+/// Every travels seller publishes the day it priced somewhere in its specs, but under a
+/// different name - the answer pipeline normalises them to "Date" for bus/AbhiBus rows and
+/// "departure date" / "journey date" for others, and some rows carry the clock inside the
+/// value ("2026-11-24 07:15"). Only a real yyyy-mm-dd is accepted, so a card never prints a
+/// guessed date; when the row has none the label is empty and nothing is rendered.
+const _monthShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+String journeyDateLabel(CompareItem it) {
+  for (final key in const ['date', 'journey date', 'departure date', 'travel date', 'check in', 'checkin', 'show date']) {
+    final v = it.spec(key);
+    if (v.isEmpty) continue;
+    final m = RegExp(r'(\d{4})-(\d{2})-(\d{2})').firstMatch(v);
+    if (m == null) continue;
+    final d = DateTime.tryParse('${m.group(1)}-${m.group(2)}-${m.group(3)}');
+    if (d == null) continue;
+    return '${d.day} ${_monthShort[d.month - 1]} ${d.year}';
+  }
+  return '';
+}
+
 class TravelTile extends StatelessWidget {
   const TravelTile({super.key, required this.g, required this.meta});
   final OfferGroup g;
@@ -560,7 +584,10 @@ class TravelTile extends StatelessWidget {
     final isFlight = meta.id == 'flights' || it.vertical == 'flights';
     final stripOn = isFlight &&
         (it.spec('flight number').isNotEmpty || depTime.isNotEmpty);
+    // The day this fare answers, printed first so it is the first thing read on the card.
+    final dateLabel = (isFlight || meta.id == 'bus' || it.vertical == 'bus') ? journeyDateLabel(it) : '';
     final specs = [
+      if (dateLabel.isNotEmpty) 'Date: $dateLabel',
       if (airline.isNotEmpty) airline,
       if (!stripOn && it.spec('flight number').isNotEmpty) it.spec('flight number'),
       if (!stripOn && durMin > 0) durMin < 60 ? '$durMin m' : '${durMin ~/ 60}h ${durMin % 60}m',
