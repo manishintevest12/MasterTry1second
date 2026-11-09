@@ -24,6 +24,7 @@
  * the bundle entirely, scripts/regen_rapido_thiqa.py regenerates the asset.
  */
 import { createHash, randomUUID } from 'crypto';
+import { log } from '../../common/logger';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -98,6 +99,18 @@ export function resetRapidoThiqaForTests(): void {
   sigCfg = null;
 }
 
+/**
+ * The SDK's own logger, redacted (owner 9 Nov). Coordinates, prices and addresses never reach stdout:
+ * digits are masked and the line is truncated, and nothing is written at all unless someone explicitly
+ * asks for T1S_THIQA_DEBUG=1. Keeps production logs one-JSON-object-per-line.
+ */
+function thiqaLogSink(...args: unknown[]): void {
+  if (!process.env.T1S_THIQA_DEBUG) return;
+  const text = args.map((a) => (typeof a === 'string' ? a : '')).join(' ').replace(/\d+(?:\.\d+)?/g, '#');
+  if (!text.trim()) return;
+  log.debug('RapidoThiqa', text.slice(0, 160));
+}
+
 async function initThiqa(): Promise<ThiqaModule | null> {
   if (thiqaMod) return thiqaMod;
   if (Date.now() < thiqaBrokenUntil) return null;
@@ -122,9 +135,22 @@ async function initThiqa(): Promise<ThiqaModule | null> {
       .replace(/\bexport\s+/g, '')
       .replace(/import\.meta/g, META)
       .replace(/window\.location\.hostname/g, `'m.rapido.bike'`);
+    // OWNER 9 Nov (runtime log): the Kotlin/WASM bridge maps kermit + kotlin.io.println onto
+    // console.log, so every fare request printed a raw line such as
+    //   "Requesting Thiqa with data: {"pickupLocation":{...,"address":"Rajwada Indore"},...}"
+    // straight to stdout. That broke the one-JSON-object-per-line log contract (a scraper could not
+    // parse those lines) and leaked the rider's pickup/drop coordinates and street addresses into the
+    // host's log file. Every console call the SDK makes now goes to a redacting sink: silent by
+    // default, and even with T1S_THIQA_DEBUG=1 only a coordinate-free, 160-char note is kept.
+    const THIQA_SINK = '__t1sThiqaSink';
+    glue = glue
+      .replace(/console\.log\(/g, `${THIQA_SINK}(`)
+      .replace(/console\.info\(/g, `${THIQA_SINK}(`)
+      .replace(/console\.warn\(/g, `${THIQA_SINK}(`)
+      .replace(/console\.error\(/g, `${THIQA_SINK}(`);
     const fakeFetch = (): Promise<Response> =>
       Promise.resolve(new Response(wasm, { status: 200, headers: { 'Content-Type': 'application/wasm' } }));
-    const instantiate = new Function('fetch', `${glue}\nreturn instantiate;`)(fakeFetch) as
+    const instantiate = new Function('fetch', THIQA_SINK, `${glue}\nreturn instantiate;`)(fakeFetch, thiqaLogSink) as
       (imports: Record<string, unknown>) => Promise<{ exports: { getThiqa: ThiqaModule['getThiqa'] } }>;
     const mod = await instantiate({ '@js-joda/core': {} }); // js-joda is imported but unused by getThiqa (verified)
     if (typeof mod?.exports?.getThiqa !== 'function') throw new Error('thiqa wasm did not export getThiqa');

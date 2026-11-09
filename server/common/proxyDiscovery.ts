@@ -66,6 +66,8 @@ export interface DiscoveryReport {
   dropped: number;
   storedIn: string;
   durationMs: number;
+  /** Set when the run was skipped by the zero-pass backoff instead of probing again. */
+  skipped?: string;
 }
 
 const POOL_FILE = path.join(process.cwd(), 'data', 'proxy-pool.json');
@@ -90,6 +92,40 @@ export const GATED_POOL_FILE = process.env.T1S_GATED_POOL_FILE || path.join(proc
  * Akamai Bot Manager (measured: 412 ISP/ASN exits -> 0 pass on IndiGo's API), which is why the
  * gate probe below is the only thing that decides what gets stored.
  */
+/**
+ * OWNER 9 Nov (runtime log): `proxy-list-download HTTP 502` appeared 14 times in one hour, every cycle
+ * re-fetching a list that is simply gone, and `probed 60, passed 0` repeated all day - each pass costs
+ * 60 outbound probes for zero exits. A dead source is now remembered and skipped with an exponential
+ * cooldown (5m, 10m, 20m, cap 60m); one warning is logged when a source enters cooldown, then silence.
+ * A source that answers again is immediately back in rotation.
+ */
+const sourceHealth = new Map<string, { fails: number; skipUntil: number }>();
+function sourceCooling(name: string): boolean {
+  const h = sourceHealth.get(name);
+  return Boolean(h && h.skipUntil > Date.now());
+}
+function noteSourceFail(name: string): void {
+  const h = sourceHealth.get(name) || { fails: 0, skipUntil: 0 };
+  h.fails += 1;
+  h.skipUntil = Date.now() + Math.min(60 * 60_000, 5 * 60_000 * 2 ** (h.fails - 1));
+  sourceHealth.set(name, h);
+  if (h.fails === 1) log.warn('ProxyDiscovery', `${name} in cooldown after a failed fetch (retry in 5m)`);
+}
+function noteSourceOk(name: string): void {
+  if (sourceHealth.delete(name)) log.info('ProxyDiscovery', `${name} recovered, back in rotation`);
+}
+
+/**
+ * Zero-pass backoff: while no candidate passes the gate probe, hammering the same free lists every
+ * cycle only burns CPU. Consecutive empty runs widen the gap (2m, 4m, 8m ... cap 30m) and shrink the
+ * sample; one pass resets both. An explicit admin run (target or force) is never blocked.
+ */
+let zeroPassStreak = 0;
+let discoveryNotBefore = 0;
+export function discoveryBackoffState(): { streak: number; nextAllowedAt: number } {
+  return { streak: zeroPassStreak, nextAllowedAt: discoveryNotBefore };
+}
+
 const SOURCES: Array<{ name: string; url: string }> = [
   // open-source GitHub list projects (raw text)
   { name: 'proxifly-github', url: 'https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/all/data.txt' },
@@ -119,6 +155,8 @@ function normalizeProxy(raw: string): string {
 }
 
 async function fetchList(source: { name: string; url: string }): Promise<ProxyCandidate[]> {
+  if (sourceCooling(source.name)) return [];
+  // Client errors other than 408/429 mean the endpoint is gone for good, not "busy".
   try {
     // Owner 1 Nov: "koi third party tool ka use kar ke nahi" — the list pages are read by
     // OUR OWN scraper (curl_cffi via cffiFetch), the same path that reads partner sites,
@@ -129,9 +167,17 @@ async function fetchList(source: { name: string; url: string }): Promise<ProxyCa
       headers: { Accept: 'text/plain,text/html,*/*' },
     });
     if (r.status !== 200) {
-      log.warn('ProxyDiscovery', `${source.name} HTTP ${r.status}`);
+      // A 4xx other than a throttling code is a permanent answer - drop the list for an hour at once
+      // instead of retrying a URL that will never come back.
+      if (r.status >= 400 && r.status < 500 && r.status !== 408 && r.status !== 429) {
+        sourceHealth.set(source.name, { fails: 99, skipUntil: Date.now() + 60 * 60_000 });
+        log.warn('ProxyDiscovery', `${source.name} HTTP ${r.status} - dropped from rotation for 1h`);
+        return [];
+      }
+      noteSourceFail(source.name);
       return [];
     }
+    noteSourceOk(source.name);
     const text = r.body;
     const out: ProxyCandidate[] = [];
     // Accepts "ip:port", "http://ip:port" and JSON-ish payloads alike.
@@ -141,7 +187,8 @@ async function fetchList(source: { name: string; url: string }): Promise<ProxyCa
     }
     return out;
   } catch (e: any) {
-    log.warn('ProxyDiscovery', `${source.name} unreachable: ${String(e?.message || e).slice(0, 80)}`);
+    noteSourceFail(source.name);
+    log.debug('ProxyDiscovery', `${source.name} unreachable: ${String(e?.message || e).slice(0, 80)}`);
     return [];
   }
 }
@@ -188,7 +235,28 @@ export async function runProxyDiscovery(opts: { limit?: number; concurrency?: nu
   const startedAt = new Date();
   const target = opts.target;
   const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
-  const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
+  // OWNER 9 Nov: while the pool keeps coming back empty, the same 60 probes run every cycle for
+  // nothing. Respect the backoff unless this is an explicit (admin / gate-heal) run, and shrink the
+  // sample while we are in a zero-pass streak.
+  const explicit = Boolean(target || opts.limit || (opts as any).force);
+  if (!explicit && Date.now() < discoveryNotBefore) {
+    return {
+      startedAt: startedAt.toISOString(),
+      finishedAt: new Date().toISOString(),
+      budgetMs: budget,
+      found: 0,
+      probed: 0,
+      passed: 0,
+      persistedToDb: false,
+      kept: [],
+      dropped: 0,
+      storedIn: opts.poolFile || POOL_FILE,
+      durationMs: 0,
+      skipped: `zero-pass backoff: ${zeroPassStreak} empty runs, next attempt at ${new Date(discoveryNotBefore).toISOString()}`,
+    } as DiscoveryReport;
+  }
+  const zeroPassMode = zeroPassStreak >= 2;
+  const limit = Math.min(Math.max(opts.limit ?? (zeroPassMode ? 20 : 60), 1), 200);
   const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
 
   const lists = await Promise.all(SOURCES.map(fetchList));
@@ -244,7 +312,17 @@ export async function runProxyDiscovery(opts: { limit?: number; concurrency?: nu
     storedIn: poolFile,
     durationMs: Date.now() - startedAt.getTime(),
   };
-  log.info('ProxyDiscovery', `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
+  if (report.passed > 0) {
+    if (zeroPassStreak) log.info('ProxyDiscovery', `pool recovered after ${zeroPassStreak} empty run(s)`);
+    zeroPassStreak = 0;
+    discoveryNotBefore = 0;
+    log.info('ProxyDiscovery', `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
+  } else {
+    zeroPassStreak += 1;
+    discoveryNotBefore = Date.now() + Math.min(30 * 60_000, 2 * 60_000 * 2 ** (zeroPassStreak - 1));
+    // One quiet line per run (not one per source), so the log stays readable during a dry spell.
+    log.info('ProxyDiscovery', `probed ${report.probed}, passed 0 under ${budget}ms - backing off ${Math.round((discoveryNotBefore - Date.now()) / 60_000)}m (streak ${zeroPassStreak})`);
+  }
   return report;
 }
 

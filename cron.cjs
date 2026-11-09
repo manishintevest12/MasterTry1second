@@ -1905,6 +1905,20 @@ var init_seatLink = __esm({
 });
 
 // server/common/proxyDiscovery.ts
+function sourceCooling(name) {
+  const h = sourceHealth.get(name);
+  return Boolean(h && h.skipUntil > Date.now());
+}
+function noteSourceFail(name) {
+  const h = sourceHealth.get(name) || { fails: 0, skipUntil: 0 };
+  h.fails += 1;
+  h.skipUntil = Date.now() + Math.min(60 * 6e4, 5 * 6e4 * 2 ** (h.fails - 1));
+  sourceHealth.set(name, h);
+  if (h.fails === 1) log.warn("ProxyDiscovery", `${name} in cooldown after a failed fetch (retry in 5m)`);
+}
+function noteSourceOk(name) {
+  if (sourceHealth.delete(name)) log.info("ProxyDiscovery", `${name} recovered, back in rotation`);
+}
 function proxyLatencyBudget() {
   return Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
 }
@@ -1916,6 +1930,7 @@ function normalizeProxy(raw) {
   return "";
 }
 async function fetchList(source) {
+  if (sourceCooling(source.name)) return [];
   try {
     const r = await cffiFetch(source.url, {
       impersonate: "chrome",
@@ -1923,9 +1938,15 @@ async function fetchList(source) {
       headers: { Accept: "text/plain,text/html,*/*" }
     });
     if (r.status !== 200) {
-      log.warn("ProxyDiscovery", `${source.name} HTTP ${r.status}`);
+      if (r.status >= 400 && r.status < 500 && r.status !== 408 && r.status !== 429) {
+        sourceHealth.set(source.name, { fails: 99, skipUntil: Date.now() + 60 * 6e4 });
+        log.warn("ProxyDiscovery", `${source.name} HTTP ${r.status} - dropped from rotation for 1h`);
+        return [];
+      }
+      noteSourceFail(source.name);
       return [];
     }
+    noteSourceOk(source.name);
     const text = r.body;
     const out = [];
     for (const m of text.matchAll(/(?:(?:https?|socks[45]):\/\/)?(\d{1,3}(?:\.\d{1,3}){3}:\d{2,5})/g)) {
@@ -1934,7 +1955,8 @@ async function fetchList(source) {
     }
     return out;
   } catch (e) {
-    log.warn("ProxyDiscovery", `${source.name} unreachable: ${String(e?.message || e).slice(0, 80)}`);
+    noteSourceFail(source.name);
+    log.debug("ProxyDiscovery", `${source.name} unreachable: ${String(e?.message || e).slice(0, 80)}`);
     return [];
   }
 }
@@ -1972,7 +1994,25 @@ async function runProxyDiscovery(opts = {}) {
   const startedAt = /* @__PURE__ */ new Date();
   const target = opts.target;
   const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
-  const limit = Math.min(Math.max(opts.limit ?? 60, 1), 200);
+  const explicit = Boolean(target || opts.limit || opts.force);
+  if (!explicit && Date.now() < discoveryNotBefore) {
+    return {
+      startedAt: startedAt.toISOString(),
+      finishedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      budgetMs: budget,
+      found: 0,
+      probed: 0,
+      passed: 0,
+      persistedToDb: false,
+      kept: [],
+      dropped: 0,
+      storedIn: opts.poolFile || POOL_FILE,
+      durationMs: 0,
+      skipped: `zero-pass backoff: ${zeroPassStreak} empty runs, next attempt at ${new Date(discoveryNotBefore).toISOString()}`
+    };
+  }
+  const zeroPassMode = zeroPassStreak >= 2;
+  const limit = Math.min(Math.max(opts.limit ?? (zeroPassMode ? 20 : 60), 1), 200);
   const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
   const lists = await Promise.all(SOURCES.map(fetchList));
   const seen = /* @__PURE__ */ new Set();
@@ -2024,7 +2064,16 @@ async function runProxyDiscovery(opts = {}) {
     storedIn: poolFile,
     durationMs: Date.now() - startedAt.getTime()
   };
-  log.info("ProxyDiscovery", `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
+  if (report.passed > 0) {
+    if (zeroPassStreak) log.info("ProxyDiscovery", `pool recovered after ${zeroPassStreak} empty run(s)`);
+    zeroPassStreak = 0;
+    discoveryNotBefore = 0;
+    log.info("ProxyDiscovery", `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
+  } else {
+    zeroPassStreak += 1;
+    discoveryNotBefore = Date.now() + Math.min(30 * 6e4, 2 * 6e4 * 2 ** (zeroPassStreak - 1));
+    log.info("ProxyDiscovery", `probed ${report.probed}, passed 0 under ${budget}ms - backing off ${Math.round((discoveryNotBefore - Date.now()) / 6e4)}m (streak ${zeroPassStreak})`);
+  }
   return report;
 }
 async function ensureProxyTable() {
@@ -2072,7 +2121,7 @@ async function storeValidatedProxies(rows, sourceOf) {
     return false;
   }
 }
-var import_fs4, import_path4, POOL_FILE, GATED_POOL_FILE, SOURCES, PROBE_TARGET;
+var import_fs4, import_path4, POOL_FILE, GATED_POOL_FILE, sourceHealth, zeroPassStreak, discoveryNotBefore, SOURCES, PROBE_TARGET;
 var init_proxyDiscovery = __esm({
   "server/common/proxyDiscovery.ts"() {
     import_fs4 = __toESM(require("fs"), 1);
@@ -2082,6 +2131,9 @@ var init_proxyDiscovery = __esm({
     init_logger();
     POOL_FILE = import_path4.default.join(process.cwd(), "data", "proxy-pool.json");
     GATED_POOL_FILE = process.env.T1S_GATED_POOL_FILE || import_path4.default.join(process.cwd(), "data", "proxy-pool-gated.json");
+    sourceHealth = /* @__PURE__ */ new Map();
+    zeroPassStreak = 0;
+    discoveryNotBefore = 0;
     SOURCES = [
       // open-source GitHub list projects (raw text)
       { name: "proxifly-github", url: "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/all/data.txt" },
@@ -19542,6 +19594,12 @@ async function rapidoSignatureConfig(fetchText) {
   sigCfg = { sKey: RAPIDO_SIG_SKEY_DEFAULT, sequence: RAPIDO_SIG_SEQ_DEFAULT, at: Date.now() };
   return sigCfg;
 }
+function thiqaLogSink(...args) {
+  if (!process.env.T1S_THIQA_DEBUG) return;
+  const text = args.map((a) => typeof a === "string" ? a : "").join(" ").replace(/\d+(?:\.\d+)?/g, "#");
+  if (!text.trim()) return;
+  log.debug("RapidoThiqa", text.slice(0, 160));
+}
 async function initThiqa() {
   if (thiqaMod) return thiqaMod;
   if (Date.now() < thiqaBrokenUntil) return null;
@@ -19558,9 +19616,11 @@ async function initThiqa() {
     const wasmFileUrl = `file://${wasmPath}`;
     const META = `{url:'file://${import_path5.default.join(dir, "harness.js")}',resolve:function(p){return '${wasmFileUrl}'}}`;
     let glue = RAPIDO_THIQA_GLUE.replace(/\bexport\s+/g, "").replace(/import\.meta/g, META).replace(/window\.location\.hostname/g, `'m.rapido.bike'`);
+    const THIQA_SINK = "__t1sThiqaSink";
+    glue = glue.replace(/console\.log\(/g, `${THIQA_SINK}(`).replace(/console\.info\(/g, `${THIQA_SINK}(`).replace(/console\.warn\(/g, `${THIQA_SINK}(`).replace(/console\.error\(/g, `${THIQA_SINK}(`);
     const fakeFetch = () => Promise.resolve(new Response(wasm, { status: 200, headers: { "Content-Type": "application/wasm" } }));
-    const instantiate = new Function("fetch", `${glue}
-return instantiate;`)(fakeFetch);
+    const instantiate = new Function("fetch", THIQA_SINK, `${glue}
+return instantiate;`)(fakeFetch, thiqaLogSink);
     const mod = await instantiate({ "@js-joda/core": {} });
     if (typeof mod?.exports?.getThiqa !== "function") throw new Error("thiqa wasm did not export getThiqa");
     thiqaMod = {
@@ -19825,6 +19885,7 @@ var import_crypto12, import_fs5, import_os, import_path5, M_RAPIDO, FARE_URL, SE
 var init_rapidoFares = __esm({
   "server/workers/parsers/rapidoFares.ts"() {
     import_crypto12 = require("crypto");
+    init_logger();
     import_fs5 = __toESM(require("fs"), 1);
     import_os = __toESM(require("os"), 1);
     import_path5 = __toESM(require("path"), 1);
