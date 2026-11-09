@@ -72,3 +72,12 @@ test('every response advertises llms.txt and the MCP card via Link', () => {
   assert.ok(l.includes('rel="mcp-server-card"'));
   assert.ok(l.includes('rel="sitemap"'));
 });
+
+test('every canonical vertical path from the address bar is a known page (no 404 for the app)', () => {
+  const src = readFileSync(new URL('../src/utils/verticalRoutes.ts', import.meta.url), 'utf8');
+  const paths = [...src.matchAll(/'(\/[a-z0-9-]+)'/g)].map((m) => m[1]);
+  assert.ok(paths.length >= 12, 'read the vertical route map');
+  for (const p of new Set(paths)) {
+    assert.equal(isKnownPath(p), true, `${p} must not answer 404`);
+  }
+});

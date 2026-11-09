@@ -38,8 +38,11 @@ export const SUMMARY =
 const APP_PATHS = new Set([
   '/', '/admin', '/merchant', '/login', '/signup', '/app', '/compare', '/search',
   '/flights', '/hotels', '/bus', '/cab', '/cabs', '/ecommerce', '/products', '/grocery',
-  '/food', '/movies', '/loans', '/insurance', '/credit-cards', '/accounts', '/rewards',
-  '/ai-insights', '/quick-apps', '/partner', '/partners', '/extension',
+  '/food', '/movies', '/loans', '/insurance', '/credit-cards', '/accounts', '/bank-accounts',
+  '/banking', '/rewards', '/ai-insights', '/quick-apps', '/partner', '/partners', '/extension',
+  // src/utils/verticalRoutes.ts writes these as the canonical address-bar paths; the 404 rule must
+  // never swallow one of them (measured against the map, not guessed).
+  '/merchantinstab2b',
 ]);
 const APP_PREFIXES = ['/product/', '/guides/', '/blog/', '/app/', '/r/'];
 

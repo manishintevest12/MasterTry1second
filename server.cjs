@@ -54515,12 +54515,17 @@ var init_agentReady = __esm({
       "/insurance",
       "/credit-cards",
       "/accounts",
+      "/bank-accounts",
+      "/banking",
       "/rewards",
       "/ai-insights",
       "/quick-apps",
       "/partner",
       "/partners",
-      "/extension"
+      "/extension",
+      // src/utils/verticalRoutes.ts writes these as the canonical address-bar paths; the 404 rule must
+      // never swallow one of them (measured against the map, not guessed).
+      "/merchantinstab2b"
     ]);
     APP_PREFIXES = ["/product/", "/guides/", "/blog/", "/app/", "/r/"];
     knownCache = null;
