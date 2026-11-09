@@ -1148,7 +1148,12 @@ apiRouter.post('/search', async (req, res) => {
   // request (`settle: true`, the app sends it on user presses). The wait joins the SAME in-flight
   // pipeline (awaitSettledAnswer never starts a second scrape), is capped well under the proxy wall,
   // and any failure falls straight through to the normal snapshot so this can never hang a search.
-  if (req.body?.settle === true && response && (response as any).pendingRefresh) {
+  // OWNER 9 Nov ("future date ka results ni aata"): measured on production, the FIRST cold search for a
+  // fresh (vertical, city, date) answered 0 rows in 79-169ms with sourcesAttempted 0 - an empty floor that
+  // a second attempt would have filled. An EMPTY answer now always waits on the same in-flight pipeline
+  // (never a second scrape), whether or not the client asked to settle and whatever pendingRefresh says.
+  const emptyFirstAnswer = Boolean(response) && ((response as any).results || []).length === 0;
+  if ((req.body?.settle === true && response && (response as any).pendingRefresh) || emptyFirstAnswer) {
     const settleMs = Math.max(3000, Math.min(Number(req.body.settleMs) || 22000, 24000));
     try {
       const settled = await Promise.race([

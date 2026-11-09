@@ -46310,7 +46310,8 @@ var init_routes = __esm({
         for (const o of response.results) vc[String(o.vendor || o.seller || "?")] = (vc[String(o.vendor || o.seller || "?")] || 0) + 1;
         console.error(JSON.stringify({ dbg: "runSearch raw", n: response.results.length, vendors: vc, vertical: String(input.vertical || "") }));
       }
-      if (req.body?.settle === true && response && response.pendingRefresh) {
+      const emptyFirstAnswer = Boolean(response) && (response.results || []).length === 0;
+      if (req.body?.settle === true && response && response.pendingRefresh || emptyFirstAnswer) {
         const settleMs = Math.max(3e3, Math.min(Number(req.body.settleMs) || 22e3, 24e3));
         try {
           const settled = await Promise.race([

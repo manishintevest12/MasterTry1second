@@ -59,3 +59,9 @@ test('the live answer really applies the route gate and the first-answer wait', 
   assert.ok(src.includes('awaitSettledAnswer(input, budget)'));
   assert.ok(src.includes('first answer waited for the live pipeline'));
 });
+
+test('an EMPTY answer on /api/search also waits (first cold search for a fresh city+date)', () => {
+  const src = readFileSync(new URL('../server/api/routes.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('const emptyFirstAnswer = Boolean(response)'));
+  assert.ok(/emptyFirstAnswer\) \{/.test(src), 'the wait runs for an empty first answer even without settle:true');
+});
