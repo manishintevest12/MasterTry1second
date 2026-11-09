@@ -141,57 +141,43 @@ export function qualifiesForNewTabAd(info: {
   return true;
 }
 
-export const useNewTabAd = (): void => {
+/**
+ * OWNER 9 Nov, second round ("popunder hata do aisa lg raha hai jaise malware hai iski jagah smartlink
+ * rkho"): the previous version opened a background ad tab on the user's first ordinary click anywhere
+ * on the page - no popunder script, but from the user's side that IS a popunder: they tap Flights and an
+ * ad tab appears behind them. That automatic trigger is now REMOVED. Nothing in this file listens to
+ * clicks any more; the smartlink is only ever opened by the labelled link below, when the user chooses
+ * to tap it. So: no global listener, no background tab on navigation, no ad on a merchant exit.
+ */
+export const SponsoredSmartlink = ({ label = 'Sponsored offer' }: { label?: string }) => {
+  const [show, setShow] = useState(false);
   useEffect(() => {
-    // OWNER 9 Nov: "popunder ko aisa fix kro ki wo new window mai khule, tab pr ni ... user ko humesa
-    // apna site dikhe jb tk ki wo khud ni jata". The network popunder (abscloud Popunder_1) is GONE
-    // from this file: its script binds the first document click and navigates the CURRENT tab, which
-    // is exactly what took the user off the site. Nothing we cannot control loads on our pages now.
-    // This hook is the only ad mechanism: one background tab per session, opened on the user's own
-    // click, never touching the tab they are on.
-    let shown = false;
-    try { shown = sessionStorage.getItem(NEWTAB_AD_FLAG) === '1'; } catch { /* private mode */ }
-
-    const onClick = (ev: MouseEvent) => {
-      const target = ev.target as HTMLElement | null;
-      const anchor = target?.closest?.('a') as HTMLAnchorElement | null;
-      const exitMarker = Boolean(target?.closest?.('[data-t1s-exit="1"]'));
-      const ok = qualifiesForNewTabAd({
-        href: anchor?.getAttribute('href') || '',
-        hasExitMarker: exitMarker,
-        isAppWebView: isAppWebView(),
-        pathname: window.location.pathname,
-        alreadyShown: shown,
-        modifiedClick: ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey,
-      });
-      if (!ok) return;
-      shown = true;
-      try { sessionStorage.setItem(NEWTAB_AD_FLAG, '1'); } catch { /* private mode */ }
-      // Background tab/window: the current tab keeps its navigation, so the user stays on our site.
-      // window.open without a features string asks the browser for a BACKGROUND tab (no focus steal);
-      // 'noopener' semantics are applied by hand so the ad can never reach back into this page.
-      let opened: Window | null = null;
-      try { opened = window.open(SMARTLINK_URL, '_blank'); } catch { opened = null; }
-      if (opened) { try { opened.opener = null; } catch { /* cross-origin */ } }
-      else {
-        // Popup blocked: fall back to a real anchor click, which browsers allow inside a gesture and
-        // which still honours target=_blank (the current page is never replaced).
-        try {
-          const a = document.createElement('a');
-          a.href = SMARTLINK_URL;
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          a.style.display = 'none';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        } catch { /* blocked */ }
-      }
-      document.removeEventListener('click', onClick, true);
-    };
-    document.addEventListener('click', onClick, true);
-    return () => document.removeEventListener('click', onClick, true);
+    // Same rules as every other ad surface: never inside the app's in-app browser (Play policy for a
+    // webpage rendered in a webview), never on /admin or /api.
+    const p = window.location.pathname || '/';
+    if (isAppWebView()) return;
+    if (/^\/(api|functions)\b/.test(p) || p.includes('/admin')) return;
+    setShow(true);
   }, []);
+  if (!show) return null;
+  return (
+    <a
+      href={SMARTLINK_URL}
+      target="_blank"
+      rel="sponsored noopener noreferrer"
+      data-t1s-ad="smartlink"
+      onClick={() => { try { sessionStorage.setItem(NEWTAB_AD_FLAG, '1'); } catch { /* private mode */ } }}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px',
+        borderRadius: 999, border: '1px solid rgba(0,0,0,0.12)', background: 'transparent',
+        fontSize: 11, fontWeight: 600, color: 'inherit', textDecoration: 'none', opacity: 0.75,
+      }}
+      title="Opens a partner offer in a new tab"
+    >
+      <span style={{ fontSize: 9, letterSpacing: 0.6, textTransform: 'uppercase', opacity: 0.7 }}>Ad</span>
+      {label}
+    </a>
+  );
 };
 
 /** Kept for the server side of the app hand-off (see /api/ads smartlink provider). */

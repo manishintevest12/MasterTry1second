@@ -6,7 +6,7 @@
 import React, { Suspense } from 'react';
 import { lazyWithRetry } from './lib/lazyWithRetry';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
-import { useNewTabAd } from './components/NetworkAdTags';
+import { SponsoredSmartlink } from './components/NetworkAdTags';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { VerticalNav } from './components/VerticalNav';
@@ -114,6 +114,12 @@ const MainContent: React.FC = () => {
       {/* Direct & Affiliate Metasearch Partners Section (Above Footer) */}
       {!isFullDashboard && <AffiliatePartnersSection />}
 
+      {/* Labelled partner link (owner 9 Nov: no popunder, no background tabs on a click) */}
+      {!isFullDashboard && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 12px' }}>
+          <SponsoredSmartlink />
+        </div>
+      )}
       {/* Comprehensive Footer with About Us, Privacy Policy, Terms, etc. */}
       {!isFullDashboard && <Footer />}
 
@@ -126,7 +132,6 @@ const MainContent: React.FC = () => {
 export default function App() {
   // WEBSITE ad tags (owner 3 Nov): Popunder_1, once per session, idle-loaded, never on /admin.
   // Owner 3 Nov: the vertical must open in THIS tab and the ad must wait in another one.
-  useNewTabAd();
   return (
     <AppProvider>
       {/* OWNER 31 Oct: a failed chunk/render must never leave a blank white page. */}

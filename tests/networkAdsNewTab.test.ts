@@ -38,13 +38,21 @@ test('the network popunder is gone from the web bundle source', async () => {
   assert.equal(/Popunder_1|useSitePopunder|POPUNDER_SCRIPT|VITE_T1S_POPUNDER/.test(src), false, 'no popunder loader');
   const app = fs.readFileSync('src/App.tsx', 'utf8');
   assert.equal(/useSitePopunder/.test(app), false, 'the popunder hook is not mounted');
-  assert.equal(/useNewTabAd\s*\(/.test(app), true, 'the controlled new-tab ad is mounted');
+  assert.equal(/<SponsoredSmartlink/.test(app), true, 'the labelled partner link is mounted');
+  assert.equal(/useNewTabAd\s*\(/.test(app), false, 'no automatic ad trigger is mounted any more');
 });
 
-test('the only ad hop opens a BACKGROUND tab and never navigates the current one', async () => {
+// OWNER 9 Nov, second round ("popunder hata do aisa lg raha hai jaise malware hai iski jagah smartlink
+// rkho"): the background tab fired on the user's FIRST ORDINARY CLICK, which is a popunder from the
+// user's side. That trigger is deleted; the smartlink is a labelled <a> the user taps.
+test('the smartlink is a labelled link, not a click listener that fires on any click', async () => {
   const fs = await import('node:fs');
   const src = fs.readFileSync('src/components/NetworkAdTags.tsx', 'utf8');
-  assert.match(src, /window\.open\(SMARTLINK_URL, '_blank'\)/, 'opens in a new tab/window');
-  assert.equal(/window\.location\s*=|location\.href\s*=/.test(src), false, 'never touches our own URL');
-  assert.equal(/preventDefault\(/.test(src), false, 'never swallows the click it rides on');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.equal(/document\.addEventListener\('click'/.test(code), false, 'no global click hook');
+  assert.equal(/window\.open\(/.test(code), false, 'nothing opens a window behind the user');
+  assert.equal(/window\.location\s*=|location\.href\s*=/.test(code), false, 'never touches our own URL');
+  assert.match(code, /target="_blank"/, 'the user tap opens a new tab');
+  assert.match(code, /rel="sponsored noopener noreferrer"/, 'labelled sponsored, opener severed');
+  assert.equal(/preventDefault\(/.test(code), false, 'never swallows a click');
 });
