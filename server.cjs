@@ -377,7 +377,7 @@ function persistSoon() {
   }, 250);
 }
 function recordSourcePrices(vertical, query, offers) {
-  const store6 = load();
+  const store7 = load();
   const perSource = /* @__PURE__ */ new Map();
   for (const o of offers || []) {
     const sid = String(o.sourceId || "");
@@ -388,14 +388,14 @@ function recordSourcePrices(vertical, query, offers) {
   }
   const now = Date.now();
   for (const [sid, price2] of perSource) {
-    store6[`${vertical}|${sid}`] = { price: Math.round(price2 * 100) / 100, query: String(query || "").slice(0, 80), at: now };
+    store7[`${vertical}|${sid}`] = { price: Math.round(price2 * 100) / 100, query: String(query || "").slice(0, 80), at: now };
   }
   if (perSource.size) persistSoon();
 }
 function enrichFailedWithLastPrice(vertical, failed) {
-  const store6 = load();
+  const store7 = load();
   return (failed || []).map((f) => {
-    const e2 = store6[`${vertical}|${f.sourceId}`];
+    const e2 = store7[`${vertical}|${f.sourceId}`];
     return e2 ? { ...f, lastPrice: { ...e2 } } : f;
   });
 }
@@ -1576,8 +1576,8 @@ function markDisabled(sourceId) {
 async function persist(h) {
   try {
     const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const store6 = getStore3();
-    await store6.execute(
+    const store7 = getStore3();
+    await store7.execute(
       `INSERT INTO source_health (source_id, state, consecutive_failures, last_success_at, last_failure_at, last_failure_class, circuit_open_until, total_attempts, total_successes, avg_latency_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE state=VALUES(state), consecutive_failures=VALUES(consecutive_failures), last_success_at=VALUES(last_success_at), last_failure_at=VALUES(last_failure_at), last_failure_class=VALUES(last_failure_class), circuit_open_until=VALUES(circuit_open_until), total_attempts=VALUES(total_attempts), total_successes=VALUES(total_successes), avg_latency_ms=VALUES(avg_latency_ms)`,
@@ -2862,8 +2862,8 @@ async function runProxyDiscovery(opts = {}) {
 }
 async function ensureProxyTable() {
   try {
-    const store6 = getStore();
-    await store6.execute(
+    const store7 = getStore();
+    await store7.execute(
       `CREATE TABLE IF NOT EXISTS proxy_pool (
          id INT AUTO_INCREMENT PRIMARY KEY,
          url VARCHAR(255) NOT NULL,
@@ -2889,9 +2889,9 @@ async function storeValidatedProxies(rows, sourceOf) {
   if (!rows.length) return false;
   if (!await ensureProxyTable()) return false;
   try {
-    const store6 = getStore();
+    const store7 = getStore();
     for (const r of rows) {
-      await store6.execute(
+      await store7.execute(
         `INSERT INTO proxy_pool (url, source, latency_ms, ok_count, last_checked_at)
          VALUES (?, ?, ?, 1, NOW())
          ON DUPLICATE KEY UPDATE latency_ms = VALUES(latency_ms), ok_count = ok_count + 1,
@@ -2909,8 +2909,8 @@ async function listStoredProxies() {
   const budget = proxyLatencyBudget();
   if (await ensureProxyTable()) {
     try {
-      const store6 = getStore();
-      const rows = await store6.query(
+      const store7 = getStore();
+      const rows = await store7.query(
         `SELECT url, source, latency_ms, ok_count, fail_count, enabled, last_error, last_checked_at
          FROM proxy_pool ORDER BY enabled DESC, latency_ms ASC LIMIT 200`
       );
@@ -25249,22 +25249,22 @@ async function collectCandidates(spec) {
   return { bundles, candidates, notes };
 }
 async function saveEndpointOverride(sourceId, key, value, evidenceUrl, bundleUrl) {
-  const store6 = getStore();
+  const store7 = getStore();
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
-  const upd = await store6.execute(
+  const upd = await store7.execute(
     "UPDATE source_endpoint_overrides SET value = ?, evidence_url = ?, bundle_url = ?, healed_at = ? WHERE source_id = ? AND rule_key = ?",
     [value.slice(0, 500), evidenceUrl.slice(0, 500), bundleUrl.slice(0, 500), now, sourceId, key]
   );
   if (!upd.affectedRows) {
-    await store6.execute(
+    await store7.execute(
       "INSERT INTO source_endpoint_overrides (source_id, rule_key, value, evidence_url, bundle_url, healed_at) VALUES (?, ?, ?, ?, ?, ?)",
       [sourceId, key, value.slice(0, 500), evidenceUrl.slice(0, 500), bundleUrl.slice(0, 500), now]
     );
   }
 }
 async function getEndpointOverrides(sourceId) {
-  const store6 = getStore();
-  const rows = await store6.query(
+  const store7 = getStore();
+  const rows = await store7.query(
     "SELECT rule_key, value, healed_at, bundle_url FROM source_endpoint_overrides WHERE source_id = ?",
     [sourceId]
   );
@@ -28845,8 +28845,8 @@ function getSource(id) {
 async function loadSourcesFromDb() {
   try {
     const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const store6 = getStore3();
-    const rows = await store6.query("SELECT id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency FROM source_adapters");
+    const store7 = getStore3();
+    const rows = await store7.query("SELECT id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency FROM source_adapters");
     for (const row of rows) {
       const existing = sources.find((s) => s.id === row.id);
       if (!existing) continue;
@@ -28862,7 +28862,7 @@ async function loadSourcesFromDb() {
       if (row.rate_limit_pm) existing.rateLimit.maxRequestsPerMinute = Number(row.rate_limit_pm);
       if (row.max_concurrency) existing.rateLimit.maxConcurrency = Number(row.max_concurrency);
     }
-    return { loaded: rows.length, dbKind: store6.kind };
+    return { loaded: rows.length, dbKind: store7.kind };
   } catch {
     return { loaded: 0, dbKind: "none" };
   }
@@ -28874,8 +28874,8 @@ function updateSource(id, patch) {
   void (async () => {
     try {
       const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const store6 = getStore3();
-      await store6.execute(
+      const store7 = getStore3();
+      await store7.execute(
         `INSERT INTO source_adapters (id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE enabled=VALUES(enabled), priority=VALUES(priority), config=VALUES(config), rate_limit_pm=VALUES(rate_limit_pm), max_concurrency=VALUES(max_concurrency)`,
@@ -29790,8 +29790,8 @@ function sellerKeyOf(offer) {
 }
 async function ensureSellerMemorySchema() {
   if (schemaReady) return;
-  const store6 = getStore();
-  await store6.execute(`
+  const store7 = getStore();
+  await store7.execute(`
     CREATE TABLE IF NOT EXISTS seller_memory (
       id BIGINT AUTO_INCREMENT PRIMARY KEY,
       vertical VARCHAR(32) NOT NULL,
@@ -29821,11 +29821,11 @@ async function saveSellerMemory(key, offers) {
       bySeller.set(seller, list);
     }
     if (!bySeller.size) return 0;
-    const store6 = getStore();
+    const store7 = getStore();
     for (const [seller, rows] of bySeller) {
       const json = JSON.stringify(rows);
       if (json.length > 4e6) continue;
-      await store6.execute(
+      await store7.execute(
         `INSERT INTO seller_memory (vertical, route_key, date_key, seller, source_id, rows_json, row_count, fetched_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE source_id = VALUES(source_id), rows_json = VALUES(rows_json),
@@ -29841,14 +29841,14 @@ async function saveSellerMemory(key, offers) {
 async function loadSellerMemory(key, staleAfterMs) {
   try {
     await ensureSellerMemorySchema();
-    const store6 = getStore();
+    const store7 = getStore();
     const params = [key.vertical, key.routeKey, key.dateKey];
     let sql = `SELECT seller, source_id, rows_json, fetched_at FROM seller_memory WHERE vertical = ? AND route_key = ? AND date_key = ?`;
     if (staleAfterMs && staleAfterMs > 0) {
       sql += ` AND fetched_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)`;
       params.push(Math.floor(staleAfterMs / 1e3));
     }
-    const rows = await store6.query(sql, params);
+    const rows = await store7.query(sql, params);
     return (rows || []).map((r) => {
       let parsed = [];
       try {
@@ -31183,13 +31183,13 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
     return { trackingUrl: targetUrl, network: "already_tracked", matchedProfile: "already_tracked" };
   }
   const domain = safeDomain(targetUrl);
-  const store6 = getStore();
+  const store7 = getStore();
   try {
     const slug5 = (opts.companySlug || "").toLowerCase().slice(0, 64);
     const labels = domain.split(".").filter(Boolean);
     const parent2 = labels.length >= 2 ? labels.slice(-2).join(".") : domain;
     const parent3 = labels.length >= 3 ? labels.slice(-3).join(".") : domain;
-    const rows = await store6.query(
+    const rows = await store7.query(
       `SELECT network, campaign_key, template, subid_param, extra_params, monetization, affiliate_id FROM affiliate_configs
        WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
        ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`,
@@ -31209,7 +31209,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const amz = amazonAssociatesUrl(targetUrl);
   if (amz) return { trackingUrl: amz, network: "amazon-associates", matchedProfile: "amazon_associates" };
   try {
-    const rows = await store6.query(
+    const rows = await store7.query(
       `SELECT network_id, deep_link_template, campaign_id, sub_id FROM affiliate_links
        WHERE vendor_domain = ? LIMIT 1`,
       [domain]
@@ -31248,8 +31248,8 @@ function parseJsonObj(v) {
 async function recordPointerClick(dest, offerId, network) {
   const clickId = import_crypto23.default.randomUUID();
   try {
-    const store6 = getStore();
-    await store6.execute(
+    const store7 = getStore();
+    await store7.execute(
       `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
        VALUES (?, ?, ?, ?, ?, NULL)`,
       [offerId ? Number(String(offerId).match(/\d+/)?.[0]) || null : null, network || "direct", safeDomain(dest), dest.slice(0, 2e3), clickId]
@@ -31342,15 +31342,15 @@ function iso(d) {
   return d ? new Date(d).toISOString().slice(0, 19).replace("T", " ") : null;
 }
 async function upsertOffers(offers) {
-  const store6 = getStore();
+  const store7 = getStore();
   let n = 0;
   for (const o of offers) {
-    const existing = await store6.query(
+    const existing = await store7.query(
       "SELECT id FROM affiliate_offers WHERE network_source = ? AND network_offer_id = ?",
       [o.network_source, o.network_offer_id]
     );
     if (existing.length > 0) {
-      await store6.execute(
+      await store7.execute(
         `UPDATE affiliate_offers SET title = ?, description = ?, coupon_code = ?, discount_value = ?, discount_type = ?,
          affiliate_url = ?, original_url = ?, categories = ?, starts_at = ?, expires_at = ?, status = ?, merchant_logo = ?, commission_note = ?, last_seen_at = NOW()
          WHERE network_source = ? AND network_offer_id = ?`,
@@ -31373,7 +31373,7 @@ async function upsertOffers(offers) {
         ])
       );
     } else {
-      await store6.execute(
+      await store7.execute(
         `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         sanitizeBindParams([
           o.network_source,
@@ -31400,8 +31400,8 @@ async function upsertOffers(offers) {
   return n;
 }
 async function expirePastOffers() {
-  const store6 = getStore();
-  const r = await store6.execute(
+  const store7 = getStore();
+  const r = await store7.execute(
     `UPDATE affiliate_offers SET status = 'expired' WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < NOW()`,
     []
   );
@@ -31445,7 +31445,7 @@ function dedupBestOffers(rows) {
   return Array.from(best.values());
 }
 async function listOffers(q3) {
-  const store6 = getStore();
+  const store7 = getStore();
   const where = ["status = 'active'"];
   const params = [];
   if (q3.source) {
@@ -31475,7 +31475,7 @@ async function listOffers(q3) {
   const sql = `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
                discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, created_at, updated_at
                FROM affiliate_offers WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ${pool2} OFFSET ${offset}`;
-  const rows = await store6.query(sql, params);
+  const rows = await store7.query(sql, params);
   return dedupBestOffers(rows).slice(0, limit);
 }
 var COLS, NETWORK_BASE;
@@ -31596,20 +31596,20 @@ function toPublicDeal(r) {
 async function ensureDealsSchema() {
   if (schemaChecked) return;
   schemaChecked = true;
-  const store6 = getStore();
+  const store7 = getStore();
   try {
-    if (store6.kind === "mysql") {
+    if (store7.kind === "mysql") {
       try {
-        await store6.execute("ALTER TABLE deals ADD COLUMN vertical VARCHAR(40) DEFAULT NULL AFTER kind");
+        await store7.execute("ALTER TABLE deals ADD COLUMN vertical VARCHAR(40) DEFAULT NULL AFTER kind");
       } catch {
       }
     }
-    const rows = await store6.query("SELECT id, merchant_key, vertical FROM deals");
+    const rows = await store7.query("SELECT id, merchant_key, vertical FROM deals");
     for (const r of rows) {
       if (!r.vertical || r.vertical === "") {
         const v = MERCHANT_VERTICAL[r.merchant_key];
         if (v) {
-          await store6.execute("UPDATE deals SET vertical = ? WHERE id = ?", [v, Number(r.id)]);
+          await store7.execute("UPDATE deals SET vertical = ? WHERE id = ?", [v, Number(r.id)]);
         }
       }
     }
@@ -31747,22 +31747,22 @@ async function saveDeal(i) {
   const v = validateDeal(i);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
-  const store6 = getStore();
+  const store7 = getStore();
   const vals = [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, "admin"];
   if (i.id) {
-    const ex = await store6.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
+    const ex = await store7.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
     if (!ex.length) return { ok: false, error: "Deal not found" };
-    await store6.execute(
+    await store7.execute(
       "UPDATE deals SET merchant_key=?, merchant_name=?, kind=?, vertical=?, title=?, description=?, code=?, discount_text=?, min_order=?, terms=?, dest_url=?, valid_till=?, sort_weight=?, is_active=?, source=? WHERE id=?",
       [...vals, Number(i.id)]
     );
     return { ok: true, id: Number(i.id) };
   }
-  await store6.execute(
+  await store7.execute(
     "INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     vals
   );
-  const row = await store6.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
+  const row = await store7.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
   return { ok: true, id: row[0] ? Number(row[0].id) : void 0 };
 }
 async function deleteDeal(id) {
@@ -32689,10 +32689,10 @@ __export(prune_exports, {
   startCatalogueRetention: () => startCatalogueRetention
 });
 async function batchedDelete(sql, params) {
-  const store6 = getStore();
+  const store7 = getStore();
   let total = 0;
   for (let i = 0; i < MAX_BATCHES; i++) {
-    const res = await store6.execute(`${sql} LIMIT ${BATCH}`, params);
+    const res = await store7.execute(`${sql} LIMIT ${BATCH}`, params);
     const n = res.affectedRows || 0;
     total += n;
     if (n < BATCH) break;
@@ -32701,8 +32701,8 @@ async function batchedDelete(sql, params) {
   return total;
 }
 async function pruneCatalogue(scale = 1) {
-  const store6 = getStore();
-  if (store6.kind !== "mysql") return 0;
+  const store7 = getStore();
+  if (store7.kind !== "mysql") return 0;
   let removed = 0;
   const steps = [
     ["offers", "DELETE FROM offers WHERE fetched_at < ?", [daysAgo(RETENTION.offersDays, scale)]],
@@ -32743,11 +32743,11 @@ async function pruneCatalogue(scale = 1) {
   return removed;
 }
 async function compactCatalogue() {
-  const store6 = getStore();
-  if (store6.kind !== "mysql") return;
+  const store7 = getStore();
+  if (store7.kind !== "mysql") return;
   for (const table of ["offers", "source_evidence", "price_history", "source_health", "affiliate_offers", "deals"]) {
     try {
-      await store6.query(`OPTIMIZE TABLE ${table}`);
+      await store7.query(`OPTIMIZE TABLE ${table}`);
       log.info("Prune", `Compacted ${table}`);
     } catch (e2) {
       log.warn("Prune", `${table} compaction skipped`, { error: String(e2?.message || e2).slice(0, 140) });
@@ -32755,10 +32755,10 @@ async function compactCatalogue() {
   }
 }
 async function databaseSizeMb() {
-  const store6 = getStore();
-  if (store6.kind !== "mysql") return 0;
+  const store7 = getStore();
+  if (store7.kind !== "mysql") return 0;
   try {
-    const rows = await store6.query(
+    const rows = await store7.query(
       `SELECT COALESCE(SUM(data_length + index_length) / 1048576, 0) AS mb
          FROM information_schema.tables WHERE table_schema = DATABASE()`
     );
@@ -32769,10 +32769,10 @@ async function databaseSizeMb() {
   }
 }
 async function compactLargestTable() {
-  const store6 = getStore();
-  if (store6.kind !== "mysql") return null;
+  const store7 = getStore();
+  if (store7.kind !== "mysql") return null;
   try {
-    const rows = await store6.query(
+    const rows = await store7.query(
       `SELECT table_name AS tbl, (data_length + index_length) / 1048576 AS mb
          FROM information_schema.tables
         WHERE table_schema = DATABASE()
@@ -32783,7 +32783,7 @@ async function compactLargestTable() {
     );
     const first = Array.isArray(rows) ? rows[0] : rows?.[0];
     if (!first?.tbl) return null;
-    await store6.query(`OPTIMIZE TABLE \`${first.tbl}\``);
+    await store7.query(`OPTIMIZE TABLE \`${first.tbl}\``);
     log.info("Prune", `Compacted ${first.tbl} (${Number(first.mb ?? 0).toFixed(0)} MB)`);
     return String(first.tbl);
   } catch (e2) {
@@ -32802,13 +32802,13 @@ function notifyWriteDenied(err) {
     "Hostinger DB size cap engaged: INSERT/UPDATE denied (read-only). Auto-shrink started \u2014 writes resume automatically once the host re-checks size. Optional accelerant: OPTIMIZE TABLE on offers/source_evidence/price_history in phpMyAdmin."
   );
   void (async () => {
-    const store6 = getStore();
+    const store7 = getStore();
     try {
-      if (store6.kind === "mysql") {
+      if (store7.kind === "mysql") {
         await pruneCatalogue(0.5);
         for (const table of COMPACTABLE) {
           try {
-            await store6.query(`OPTIMIZE TABLE \`${table}\``);
+            await store7.query(`OPTIMIZE TABLE \`${table}\``);
             log.info("Prune", `Emergency compaction done: ${table}`);
           } catch {
           }
@@ -32921,9 +32921,9 @@ function tokenOverlap(a, b) {
   return ta.size === 0 ? 0 : inter / ta.size;
 }
 async function resolveCanonicalEntity(offer) {
-  const store6 = getStore();
+  const store7 = getStore();
   try {
-    const rows = await store6.query(
+    const rows = await store7.query(
       "SELECT id, name, brand FROM canonical_entities WHERE vertical = ? ORDER BY id DESC LIMIT 500",
       [offer.vertical]
     );
@@ -32940,7 +32940,7 @@ async function resolveCanonicalEntity(offer) {
         matchEvidence: `deterministic score ${best.score.toFixed(2)}`
       };
     }
-    const res = await store6.execute(
+    const res = await store7.execute(
       "INSERT INTO canonical_entities (vertical, name, brand) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
       [offer.vertical, offer.title.slice(0, 500), offer.brand || null]
     );
@@ -34485,9 +34485,9 @@ __export(catalogueService_exports, {
   updateVolatileFields: () => updateVolatileFields
 });
 async function persistOffer(offer, raw, source) {
-  const store6 = getStore();
+  const store7 = getStore();
   try {
-    const res = await store6.execute(
+    const res = await store7.execute(
       `INSERT INTO offers (
          canonical_entity_id, vertical, title, brand, identifiers, attributes, vendor, seller, seller_url,
          location_pincode, location_city, list_price, mandatory_total, effective_price, verified_savings,
@@ -34527,7 +34527,7 @@ async function persistOffer(offer, raw, source) {
     );
     const evidence = buildEvidence(offer, raw);
     try {
-      await store6.execute(
+      await store7.execute(
         `INSERT INTO source_evidence (offer_id, source_id, source_method, source_url, source_reference, fetched_at, extracted_fields, evidence_hash)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -34551,9 +34551,9 @@ async function persistOffer(offer, raw, source) {
   }
 }
 async function recordPriceSnapshot(offer, rowId) {
-  const store6 = getStore();
+  const store7 = getStore();
   try {
-    await store6.execute(
+    await store7.execute(
       `INSERT INTO price_history (offer_id, canonical_entity_id, mandatory_total, effective_price, currency, source_id, freshness_status)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -34570,7 +34570,7 @@ async function recordPriceSnapshot(offer, rowId) {
   }
 }
 async function findCatalogueOffers(vertical, opts = {}) {
-  const store6 = getStore();
+  const store7 = getStore();
   try {
     const params = [vertical];
     let where = "vertical = ? AND validation_status != ?";
@@ -34588,7 +34588,7 @@ async function findCatalogueOffers(vertical, opts = {}) {
       params.push(`%${t}%`);
     }
     params.push(opts.limit ?? 50);
-    return await store6.query(
+    return await store7.query(
       `SELECT id, vertical, title, vendor, seller, location_pincode, location_city, mandatory_total, effective_price,
               currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id,
               seller_url, brand, attributes
@@ -34601,10 +34601,10 @@ async function findCatalogueOffers(vertical, opts = {}) {
   }
 }
 async function refreshCandidates(opts) {
-  const store6 = getStore();
-  if (store6.kind !== "mysql") return [];
+  const store7 = getStore();
+  if (store7.kind !== "mysql") return [];
   try {
-    return await store6.query(
+    return await store7.query(
       `SELECT o.id, o.vertical, o.title, o.vendor, o.seller, o.mandatory_total, o.effective_price, o.currency,
               o.availability, o.freshness_status, o.validation_status, o.fetched_at, o.source_id, o.canonical_entity_id
        FROM offers o
@@ -34625,9 +34625,9 @@ async function refreshCandidates(opts) {
   }
 }
 async function updateVolatileFields(rowId, patch) {
-  const store6 = getStore();
+  const store7 = getStore();
   try {
-    await store6.execute(
+    await store7.execute(
       `UPDATE offers SET mandatory_total = ?, effective_price = ?, availability = ?, freshness_status = ?, validated_at = ?, expires_at = ?, fetched_at = NOW() WHERE id = ?`,
       [
         patch.mandatoryTotal ?? null,
@@ -34644,9 +34644,9 @@ async function updateVolatileFields(rowId, patch) {
   }
 }
 async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
-  const store6 = getStore();
+  const store7 = getStore();
   try {
-    return await store6.query(
+    return await store7.query(
       `SELECT effective_price, captured_at FROM price_history WHERE canonical_entity_id = ? ORDER BY captured_at DESC LIMIT ?`,
       [canonicalEntityId, limit]
     );
@@ -34655,17 +34655,17 @@ async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
   }
 }
 async function purgePhotolessHotelOffers() {
-  const store6 = getStore();
+  const store7 = getStore();
   try {
-    await store6.execute(PURGE_BAD_HOTEL_ART_SQL);
+    await store7.execute(PURGE_BAD_HOTEL_ART_SQL);
   } catch (e2) {
     log.debug("Catalogue", "Hotel art hygiene skipped", { error: String(e2).slice(0, 100) });
   }
 }
 async function purgeStaleBankingOffers() {
-  const store6 = getStore();
+  const store7 = getStore();
   try {
-    await store6.execute(
+    await store7.execute(
       `DELETE FROM offers WHERE vertical = 'banking' AND (attributes IS NULL OR attributes NOT LIKE '%"account_type"%')`
     );
   } catch (e2) {
@@ -35481,8 +35481,8 @@ async function resolveRedirect(dest, opts = {}) {
     }
   }
   try {
-    const store6 = getStore();
-    await store6.execute(
+    const store7 = getStore();
+    await store7.execute(
       `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [opts.offerId ? extractNumericId(opts.offerId) : null, network || "direct", safeDomain2(dest), dest, clickId, opts.userId || null]
@@ -35676,7 +35676,7 @@ async function saveManualFinanceOffer(input) {
   const v = validateFinanceOffer(input);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
-  const store6 = getStore();
+  const store7 = getStore();
   const attributes = JSON.stringify({
     manual: 1,
     rate_label: c.rate_label,
@@ -35693,9 +35693,9 @@ async function saveManualFinanceOffer(input) {
     ...c.rate_label ? { unit: c.rate_label } : {}
   });
   if (c.id) {
-    const ex = await store6.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [c.id, SOURCE_ID]).catch(() => []);
+    const ex = await store7.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [c.id, SOURCE_ID]).catch(() => []);
     if (!ex.length) return { ok: false, error: "That entry does not exist (or is not a manual finance entry)" };
-    await store6.execute(
+    await store7.execute(
       `UPDATE offers SET vertical=?, title=?, seller=?, seller_url=?, effective_price=?, attributes=?,
          location_city=?, freshness_status=?, validation_status='VALID', fetched_at=NOW()
        WHERE id=? AND source_id=?`,
@@ -35704,7 +35704,7 @@ async function saveManualFinanceOffer(input) {
     await log2(c.id, c.vertical, "update", c.actor, c);
     return { ok: true, id: c.id };
   }
-  const res = await store6.execute(
+  const res = await store7.execute(
     `INSERT INTO offers (vertical, title, vendor, seller, seller_url, effective_price, attributes,
         location_city, currency, availability, match_state, freshness_status, validation_status, confidence,
         source_id, source_method, source_url, fetched_at, validated_at)
@@ -35716,10 +35716,10 @@ async function saveManualFinanceOffer(input) {
   return { ok: true, id };
 }
 async function deleteManualFinanceOffer(id, actor) {
-  const store6 = getStore();
-  const rows = await store6.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [Number(id), SOURCE_ID]).catch(() => []);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [Number(id), SOURCE_ID]).catch(() => []);
   if (!rows.length) return { ok: false, error: "Entry not found" };
-  await store6.execute(`UPDATE offers SET freshness_status='INVALID', updated_at=NOW() WHERE id = ? AND source_id = ?`, [Number(id), SOURCE_ID]);
+  await store7.execute(`UPDATE offers SET freshness_status='INVALID', updated_at=NOW() WHERE id = ? AND source_id = ?`, [Number(id), SOURCE_ID]);
   await log2(Number(id), rows[0].vertical, "delete", actor || null, rows[0]);
   return { ok: true };
 }
@@ -37327,6 +37327,41 @@ var init_moviesPriceFill = __esm({
   }
 });
 
+// server/api/readPathCache.ts
+function cachedRead(key, ttlMs, loader, opts = {}) {
+  const now = Date.now();
+  const hit = store4.get(key);
+  const fresh = !!hit && now - hit.at < ttlMs;
+  if (fresh) return Promise.resolve(hit.value);
+  const running2 = inflight3.get(key);
+  if (running2) return running2;
+  const maxStale = opts.maxStaleMs ?? 6 * 60 * 6e4;
+  const usableStale = !!hit && now - hit.at < maxStale;
+  const run = loader().then((value) => {
+    store4.set(key, { at: Date.now(), value });
+    return value;
+  }).finally(() => {
+    inflight3.delete(key);
+  });
+  if (usableStale && opts.refreshInBackground !== false) {
+    run.catch(() => {
+    });
+    return Promise.resolve(hit.value);
+  }
+  inflight3.set(key, run);
+  return run.catch((e2) => {
+    if (usableStale) return hit.value;
+    throw e2;
+  });
+}
+var store4, inflight3;
+var init_readPathCache = __esm({
+  "server/api/readPathCache.ts"() {
+    store4 = /* @__PURE__ */ new Map();
+    inflight3 = /* @__PURE__ */ new Map();
+  }
+});
+
 // server/movies/freshMovieLink.ts
 function movieShowDate(now = /* @__PURE__ */ new Date()) {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
@@ -38337,24 +38372,24 @@ function verifyPassword(password, stored2) {
 }
 async function registerUser(email, password, displayName) {
   if (!email || !password || password.length < 8) return { ok: false, error: "Email and a password of at least 8 characters are required" };
-  const store6 = getStore();
-  const existing = await store6.query("SELECT id FROM users WHERE email = ?", [email.toLowerCase()]);
+  const store7 = getStore();
+  const existing = await store7.query("SELECT id FROM users WHERE email = ?", [email.toLowerCase()]);
   if (existing.length > 0) return { ok: false, error: "An account with this email already exists" };
   const role = settings.adminEmails.includes(email.toLowerCase()) ? "admin" : "user";
-  const res = await store6.execute(
+  const res = await store7.execute(
     "INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
     [email.toLowerCase(), hashPassword(password), displayName || null, role]
   );
   return { ok: true, userId: res.insertId || void 0 };
 }
 async function loginUser(email, password) {
-  const store6 = getStore();
-  const rows = await store6.query("SELECT id, email, password_hash, display_name, role FROM users WHERE email = ?", [email.toLowerCase()]);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT id, email, password_hash, display_name, role FROM users WHERE email = ?", [email.toLowerCase()]);
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
   const token = import_crypto25.default.randomBytes(32).toString("hex");
-  await store6.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+  await store7.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
     new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
@@ -38367,13 +38402,13 @@ async function loginUser(email, password) {
 }
 async function userForToken(token) {
   if (!token) return null;
-  const store6 = getStore();
-  const sess = await store6.query(`SELECT user_id, expires_at FROM sessions WHERE id = ?`, [token]);
+  const store7 = getStore();
+  const sess = await store7.query(`SELECT user_id, expires_at FROM sessions WHERE id = ?`, [token]);
   if (sess.length === 0) return null;
   const exp = String(sess[0].expires_at || "").replace("T", " ").slice(0, 19);
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
   if (!exp || exp <= now) return null;
-  const rows = await store6.query(`SELECT id, email, display_name, role FROM users WHERE id = ?`, [Number(sess[0].user_id)]);
+  const rows = await store7.query(`SELECT id, email, display_name, role FROM users WHERE id = ?`, [Number(sess[0].user_id)]);
   if (rows.length === 0) return null;
   const r = rows[0];
   return { id: Number(r.id), email: r.email, role: r.role, displayName: r.display_name || void 0 };
@@ -38424,7 +38459,7 @@ function firstHttps(doc) {
 async function resolveCatalogueImage(query, vertical, opts = {}) {
   const tokens3 = imageTokens(query);
   if (!tokens3.length) return null;
-  const store6 = getStore();
+  const store7 = getStore();
   const params = [vertical];
   let where = `vertical = ? AND attributes IS NOT NULL AND attributes LIKE '%image%'`;
   for (const t of tokens3) {
@@ -38432,7 +38467,7 @@ async function resolveCatalogueImage(query, vertical, opts = {}) {
     params.push(`%${t.replace(/[%_]/g, "")}%`);
   }
   try {
-    const rows = await store6.query(
+    const rows = await store7.query(
       `SELECT title, attributes FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT 40`,
       params
     );
@@ -38541,26 +38576,26 @@ function nowIso2() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
 }
 async function isEligibleAdmin(email) {
-  const store6 = getStore();
+  const store7 = getStore();
   if (settings.adminEmails.includes(email)) return true;
-  const rows = await store6.query("SELECT role FROM users WHERE email = ?", [email]);
+  const rows = await store7.query("SELECT role FROM users WHERE email = ?", [email]);
   return rows.length > 0 && rows[0].role === "admin";
 }
 async function requestAdminOtp(email) {
   const clean4 = String(email || "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean4)) return { ok: false, sent: false, error: "A valid email address is required" };
-  const store6 = getStore();
-  const recent = await store6.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean4]);
+  const store7 = getStore();
+  const recent = await store7.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean4]);
   const now = Date.now();
   const hourAgo = now - 60 * 60 * 1e3;
   const lastHour = recent.filter((r) => parseDbUtc(r.created_at) > hourAgo);
   if (lastHour.length >= HOURLY_CAP) return { ok: false, sent: false, error: "Too many codes requested. Try again later." };
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
-  await store6.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+  await store7.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
   const code = String(import_crypto26.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
-  await store6.execute(
+  await store7.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
     [clean4, hashOtp(code), expiresAt, 0, nowIso2()]
   );
@@ -38581,7 +38616,7 @@ async function requestAdminOtp(email) {
     `Your Try1Second admin login code: ${code} (expires in 10 minutes)`
   );
   if (!mail.ok) {
-    await store6.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+    await store7.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     log.warn("Otp", `OTP email delivery failed for admin: ${mail.error}`);
     return { ok: false, sent: false, error: "Could not send the login code right now. Please try again later.", deliveryError: mail.error };
   }
@@ -38592,24 +38627,24 @@ async function verifyAdminOtp(email, code) {
   const clean4 = String(email || "").trim().toLowerCase();
   const otp = String(code || "").replace(/\D/g, "");
   if (!clean4 || otp.length !== 6) return { ok: false, error: "Enter the 6-digit code sent to your email" };
-  const store6 = getStore();
-  const rows = await store6.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean4]);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean4]);
   if (rows.length === 0) return { ok: false, error: "No active code. Request a new one." };
   const row = rows[rows.length - 1];
   if (Number(row.attempts || 0) >= MAX_VERIFY_ATTEMPTS) {
-    await store6.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+    await store7.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     return { ok: false, error: "Too many incorrect attempts. Request a new code." };
   }
   const exp = parseDbUtc(row.expires_at);
   if (!Number.isFinite(exp) || exp < Date.now()) {
-    await store6.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+    await store7.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     return { ok: false, error: "Code expired. Request a new one." };
   }
   if (!verifyOtpHash(otp, row.code_hash)) {
-    await store6.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?", [row.id]);
+    await store7.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?", [row.id]);
     return { ok: false, error: "Incorrect code" };
   }
-  await store6.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
+  await store7.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
   const eligible = await isEligibleAdmin(clean4);
   if (!eligible) return { ok: false, error: "Invalid code" };
   log.info("Otp", `Admin OTP verified for ${clean4}`);
@@ -38779,8 +38814,8 @@ async function withUserLock(userId, fn) {
 }
 async function registerReferral(referrerId, refereeId) {
   if (referrerId === refereeId) return { ok: false, error: "Cannot refer yourself" };
-  const store6 = getStore();
-  return store6.transaction(async (tx) => {
+  const store7 = getStore();
+  return store7.transaction(async (tx) => {
     const existing = await tx.query("SELECT id FROM referrals WHERE referee_id = ?", [refereeId]);
     if (existing.length > 0) return { ok: false, error: "This user was already referred" };
     const res = await tx.execute("INSERT INTO referrals (referrer_id, referee_id, status) VALUES (?, ?, ?)", [referrerId, refereeId, "pending"]);
@@ -38798,13 +38833,13 @@ async function registerReferral(referrerId, refereeId) {
   });
 }
 async function validPointBalance(userId) {
-  const store6 = getStore();
-  const rows = await store6.query("SELECT points FROM referral_point_events WHERE user_id = ?", [userId]);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT points FROM referral_point_events WHERE user_id = ?", [userId]);
   return rows.reduce((sum, r) => sum + Number(r.points || 0), 0);
 }
 async function claimSpinEligibility(userId) {
-  const store6 = getStore();
-  return withUserLock(userId, () => store6.transaction(async (tx) => {
+  const store7 = getStore();
+  return withUserLock(userId, () => store7.transaction(async (tx) => {
     const rows = await tx.query("SELECT points FROM referral_point_events WHERE user_id = ?", [userId]);
     const points = rows.reduce((sum, r) => sum + Number(r.points || 0), 0);
     const consumed = await consumedPoints(userId, tx);
@@ -38821,22 +38856,22 @@ async function consumedPoints(userId, tx) {
   return rows.length * POINTS_PER_SPIN_ELIGIBILITY;
 }
 async function eligibleSpinCount(userId) {
-  const store6 = getStore();
-  const rows = await store6.query(
+  const store7 = getStore();
+  const rows = await store7.query(
     "SELECT id FROM spin_eligibilities WHERE user_id = ? AND consumed_at IS NULL",
     [userId]
   );
   return rows.length;
 }
 async function executeSpin(userId, idempotencyKey) {
-  const store6 = getStore();
+  const store7 = getStore();
   const key = idempotencyKey || import_crypto28.default.randomUUID();
-  const prior = await store6.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
+  const prior = await store7.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
     return { status: "DUPLICATE", spinId: Number(prior[0].id), prize };
   }
-  return withUserLock(userId, () => store6.transaction(async (tx) => {
+  return withUserLock(userId, () => store7.transaction(async (tx) => {
     const elig = await tx.query(
       "SELECT id FROM spin_eligibilities WHERE user_id = ? AND consumed_at IS NULL ORDER BY id LIMIT 1",
       [userId]
@@ -38915,12 +38950,12 @@ async function submitFulfilmentDetails(userId, spinId, contact) {
   if (!contact.name?.trim() || !/^\+?\d[\d\s-]{7,14}$/.test(contact.phone || "")) {
     return { ok: false, error: "Valid name and phone are required for prize fulfilment" };
   }
-  const store6 = getStore();
-  const rows = await store6.query("SELECT id, user_id FROM spins WHERE id = ?", [spinId]);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT id, user_id FROM spins WHERE id = ?", [spinId]);
   if (rows.length === 0) return { ok: false, error: "Spin not found" };
   if (Number(rows[0].user_id) !== userId) return { ok: false, error: "This spin belongs to another user" };
   try {
-    const res = await store6.execute(
+    const res = await store7.execute(
       `UPDATE fulfilment_records SET contact_name = ?, contact_phone = ?, contact_location = ?, status = ?
        WHERE spin_id = ? AND user_id = ?`,
       [contact.name.trim().slice(0, 160), contact.phone.trim().slice(0, 30), (contact.location || "").trim().slice(0, 500), "CONTACT_REQUIRED", spinId, userId]
@@ -38946,8 +38981,8 @@ async function updateFulfilmentStatus(recordId, status) {
   return res.affectedRows > 0;
 }
 async function ensureReferralCode(userId) {
-  const store6 = getStore();
-  const rows = await store6.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
   const existing = rows[0]?.referral_code ? String(rows[0].referral_code) : "";
   if (existing) return existing;
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -38955,9 +38990,9 @@ async function ensureReferralCode(userId) {
     const bytes = import_crypto28.default.randomBytes(6);
     for (let i = 0; i < 6; i++) code += REF_CODE_ALPHABET[bytes[i] % REF_CODE_ALPHABET.length];
     try {
-      const res = await store6.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
+      const res = await store7.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
       if (res.affectedRows > 0) return code;
-      const again = await store6.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
+      const again = await store7.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
       if (again[0]?.referral_code) return String(again[0].referral_code);
     } catch (e2) {
       if (!/uq_referral_code|Duplicate/i.test(String(e2?.message || ""))) throw e2;
@@ -38968,8 +39003,8 @@ async function ensureReferralCode(userId) {
 async function applyReferralCode(refereeId, rawCode) {
   const code = String(rawCode || "").trim().toUpperCase();
   if (!code) return { ok: false, error: "Enter a referral code" };
-  const store6 = getStore();
-  const rows = await store6.query("SELECT id FROM users WHERE referral_code = ?", [code]);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT id FROM users WHERE referral_code = ?", [code]);
   if (!rows.length) return { ok: false, error: "That referral code is not valid" };
   const referrerId = Number(rows[0].id);
   const r = await registerReferral(referrerId, refereeId);
@@ -38977,13 +39012,13 @@ async function applyReferralCode(refereeId, rawCode) {
   return { ok: true, awarded: r.awarded, referrerCode: code };
 }
 async function referralStats(userId) {
-  const store6 = getStore();
-  const referred = await store6.query("SELECT COUNT(*) c FROM referrals WHERE referrer_id = ? AND status = 'valid'", [userId]);
-  const by = await store6.query("SELECT referrer_id FROM referrals WHERE referee_id = ? LIMIT 1", [userId]);
+  const store7 = getStore();
+  const referred = await store7.query("SELECT COUNT(*) c FROM referrals WHERE referrer_id = ? AND status = 'valid'", [userId]);
+  const by = await store7.query("SELECT referrer_id FROM referrals WHERE referee_id = ? LIMIT 1", [userId]);
   let referredByCode = null;
   const referrerId = by[0]?.referrer_id ? Number(by[0].referrer_id) : 0;
   if (referrerId) {
-    const u = await store6.query("SELECT referral_code FROM users WHERE id = ?", [referrerId]);
+    const u = await store7.query("SELECT referral_code FROM users WHERE id = ?", [referrerId]);
     referredByCode = u[0]?.referral_code ? String(u[0].referral_code) : null;
   }
   return { referredCount: Number(referred[0]?.c || 0), referredByCode };
@@ -39016,8 +39051,8 @@ function validateEntry(i) {
 async function addSpendEntry(i) {
   const v = validateEntry(i);
   if (!v.ok) return v;
-  const store6 = getStore();
-  const res = await store6.execute(
+  const store7 = getStore();
+  const res = await store7.execute(
     `INSERT INTO spend_entries (user_id, merchant, amount, item_title, vertical, entry_date, source, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -39031,12 +39066,12 @@ async function addSpendEntry(i) {
       1
     ]
   );
-  const rows = await store6.query("SELECT id FROM spend_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1", [i.userId]);
+  const rows = await store7.query("SELECT id FROM spend_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1", [i.userId]);
   return { ok: true, id: Number(res?.insertId ?? rows[0]?.id) };
 }
 async function listSpendEntries(userId) {
-  const store6 = getStore();
-  const rows = (await store6.query(
+  const store7 = getStore();
+  const rows = (await store7.query(
     "SELECT id, merchant, amount, item_title, vertical, entry_date, source, is_active, created_at FROM spend_entries WHERE user_id = ?",
     [userId]
   )).filter(isActive);
@@ -39053,10 +39088,10 @@ async function listSpendEntries(userId) {
   }));
 }
 async function deleteSpendEntry(userId, id) {
-  const store6 = getStore();
-  const mine = await store6.query("SELECT id FROM spend_entries WHERE user_id = ?", [userId]);
+  const store7 = getStore();
+  const mine = await store7.query("SELECT id FROM spend_entries WHERE user_id = ?", [userId]);
   if (!mine.some((r) => Number(r.id) === Number(id))) return false;
-  await store6.execute("UPDATE spend_entries SET is_active = ? WHERE id = ?", [0, Number(id)]);
+  await store7.execute("UPDATE spend_entries SET is_active = ? WHERE id = ?", [0, Number(id)]);
   return true;
 }
 function summarizeSpend(entries2) {
@@ -39123,7 +39158,7 @@ __export(placements_exports, {
   upsertTopPick: () => upsertTopPick
 });
 async function listTopPicks(vertical, includeInactive = false) {
-  const store6 = getStore();
+  const store7 = getStore();
   const params = [];
   let where = "";
   if (!includeInactive) {
@@ -39133,7 +39168,7 @@ async function listTopPicks(vertical, includeInactive = false) {
     where += where ? " AND vertical = ?" : " WHERE vertical = ?";
     params.push(vert(vertical));
   }
-  const rows = await store6.query(
+  const rows = await store7.query(
     `SELECT * FROM top_picks${where} ORDER BY position ASC, id ASC LIMIT 50`,
     params
   );
@@ -39158,7 +39193,7 @@ async function upsertTopPick(input) {
   const check = validateDestination(destination, { allowEmbeddedRedirect: true });
   if (!check.valid) return { ok: false, error: `Destination rejected: ${check.reason}` };
   const rating = Math.max(0, Math.min(5, Number(input.rating ?? 0)));
-  const store6 = getStore();
+  const store7 = getStore();
   const perks = JSON.stringify((input.perks || []).map((p) => String(p).slice(0, 120)).slice(0, 6));
   const values = [
     vertical,
@@ -39179,7 +39214,7 @@ async function upsertTopPick(input) {
     input.is_active === false ? 0 : 1
   ];
   if (input.id) {
-    await store6.execute(
+    await store7.execute(
       `UPDATE top_picks SET vertical=?, partner_name=?, partner_code=?, badge_text=?, headline=?, offer_text=?,
        price_badge=?, perks=?, cta_text=?, destination_url=?, image_url=?, logo_bg=?, logo_text=?,
        rating=?, position=?, is_active=? WHERE id=?`,
@@ -39188,7 +39223,7 @@ async function upsertTopPick(input) {
     purgeSectionCache("rewards:");
     return { ok: true, id: input.id };
   }
-  const result = await store6.execute(
+  const result = await store7.execute(
     `INSERT INTO top_picks (vertical, partner_name, partner_code, badge_text, headline, offer_text,
      price_badge, perks, cta_text, destination_url, image_url, logo_bg, logo_text, rating, position, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -39221,15 +39256,15 @@ async function upsertAdSlot(input) {
     const slot2 = str(input.adsense_slot, 60);
     if (!/^ca-pub-[0-9]{10,}$/.test(client || "")) return { ok: false, error: "AdSense client must look like ca-pub-XXXXXXXXXXXXXXXX" };
     if (!/^[0-9]{6,20}$/.test(slot2 || "")) return { ok: false, error: "AdSense slot id must be numeric" };
-    const store7 = getStore();
-    const existing2 = await store7.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+    const store8 = getStore();
+    const existing2 = await store8.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
     if (existing2.length) {
-      await store7.execute(
+      await store8.execute(
         "UPDATE ad_slots SET provider=?, adsense_client=?, adsense_slot=?, custom_html=NULL, is_active=? WHERE slot_key=?",
         ["adsense", client, slot2, input.is_active === false ? 0 : 1, slot_key]
       );
     } else {
-      await store7.execute(
+      await store8.execute(
         "INSERT INTO ad_slots (slot_key, provider, adsense_client, adsense_slot, is_active) VALUES (?, ?, ?, ?, ?)",
         [slot_key, "adsense", client, slot2, input.is_active === false ? 0 : 1]
       );
@@ -39238,15 +39273,15 @@ async function upsertAdSlot(input) {
   }
   const html = String(input.custom_html || "").slice(0, 8e3);
   if (!html.trim()) return { ok: false, error: "Custom HTML is required for the custom_html provider" };
-  const store6 = getStore();
-  const existing = await store6.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+  const store7 = getStore();
+  const existing = await store7.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
   if (existing.length) {
-    await store6.execute(
+    await store7.execute(
       "UPDATE ad_slots SET provider=?, custom_html=?, adsense_client=NULL, adsense_slot=NULL, is_active=? WHERE slot_key=?",
       ["custom_html", html, input.is_active === false ? 0 : 1, slot_key]
     );
   } else {
-    await store6.execute(
+    await store7.execute(
       "INSERT INTO ad_slots (slot_key, provider, custom_html, is_active) VALUES (?, ?, ?, ?)",
       [slot_key, "custom_html", html, input.is_active === false ? 0 : 1]
     );
@@ -39889,17 +39924,17 @@ function resolveMerchantCrispLogo(rawName) {
   const c = load8();
   const hit = c[key];
   if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS2)) return Promise.resolve(hit.url);
-  const running2 = inflight3.get(key);
+  const running2 = inflight4.get(key);
   if (running2) return running2;
   const p = lookup3(name).catch(() => null).then((url) => {
     c[key] = { url, at: Date.now() };
     persist4();
     return url;
-  }).finally(() => inflight3.delete(key));
-  inflight3.set(key, p);
+  }).finally(() => inflight4.delete(key));
+  inflight4.set(key, p);
   return p;
 }
-var import_node_fs7, import_node_path7, UA5, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
+var import_node_fs7, import_node_path7, UA5, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight4, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
 var init_merchantCrispLogo = __esm({
   "server/pipeline/merchantCrispLogo.ts"() {
     import_node_fs7 = __toESM(require("node:fs"), 1);
@@ -39909,7 +39944,7 @@ var init_merchantCrispLogo = __esm({
     MISS_TTL_MS2 = 7 * 864e5;
     FETCH_TIMEOUT_MS3 = 4e3;
     cache8 = null;
-    inflight3 = /* @__PURE__ */ new Map();
+    inflight4 = /* @__PURE__ */ new Map();
     saveTimer3 = null;
     MERCHANT_ALIAS = {
       "ajio gram": "Ajio",
@@ -40136,10 +40171,10 @@ async function fetchVerticalOffers(vertical, limit) {
   const key = `${vertical}|${limit}`;
   const hit = poolCache.get(key);
   if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.rows;
-  const store6 = getStore();
+  const store7 = getStore();
   let rows = [];
   try {
-    rows = await store6.query(
+    rows = await store7.query(
       `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
               list_price, mandatory_total, effective_price, validation_status, fetched_at
        FROM offers WHERE vertical = ? ORDER BY fetched_at DESC LIMIT ${Math.max(limit, 500)}`,
@@ -40166,7 +40201,7 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
   const cacheKey = `${vertical}|byCity|${cities.length}|${perCityLimit}`;
   const hit = cityPoolCache.get(cacheKey);
   if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.map;
-  const store6 = getStore();
+  const store7 = getStore();
   const perCitySql = (like) => `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
               list_price, mandatory_total, effective_price, validation_status, fetched_at
        FROM offers WHERE vertical = ? AND (${like}) ORDER BY fetched_at DESC LIMIT ${perCityLimit}`;
@@ -40177,7 +40212,7 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
       const params = [vertical];
       for (const k of c.keys) params.push(`%${k}%`, `%${k}%`);
       try {
-        return [c.name, (await store6.query(perCitySql(like), params)).slice(0, perCityLimit)];
+        return [c.name, (await store7.query(perCitySql(like), params)).slice(0, perCityLimit)];
       } catch (e2) {
         log.debug("Showcase", "per-city pool query failed", { vertical, city: c.name, error: String(e2).slice(0, 100) });
         return [c.name, []];
@@ -40199,9 +40234,9 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
   return map;
 }
 async function fetchAffiliateRows(limit) {
-  const store6 = getStore();
+  const store7 = getStore();
   try {
-    const rows = await store6.query(
+    const rows = await store7.query(
       `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
               discount_value, discount_type, affiliate_url, original_url, categories, commission_note, last_seen_at
        FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
@@ -40732,10 +40767,10 @@ var init_liveAnswerMemo = __esm({
 // server/api/liveReplay.ts
 function readLiveReplay(key) {
   if (replayTtlMs() <= 0 || !key) return null;
-  const hit = store4.get(key);
+  const hit = store5.get(key);
   if (!hit) return null;
   if (Date.now() - hit.at > replayTtlMs()) {
-    store4.delete(key);
+    store5.delete(key);
     return null;
   }
   replays += 1;
@@ -40744,18 +40779,18 @@ function readLiveReplay(key) {
 function writeLiveReplay(key, payload) {
   if (replayTtlMs() <= 0 || !key) return false;
   if (!payload || !Array.isArray(payload.results) || payload.results.length === 0) return false;
-  if (store4.size >= MAX_ENTRIES3) {
-    const oldest = [...store4.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, Math.ceil(MAX_ENTRIES3 / 4));
-    for (const [k] of oldest) store4.delete(k);
+  if (store5.size >= MAX_ENTRIES3) {
+    const oldest = [...store5.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, Math.ceil(MAX_ENTRIES3 / 4));
+    for (const [k] of oldest) store5.delete(k);
   }
-  store4.set(key, { at: Date.now(), payload });
+  store5.set(key, { at: Date.now(), payload });
   stored += 1;
   return true;
 }
 function liveReplayStats() {
-  return { replays, stored, windowMs: replayTtlMs(), entries: store4.size };
+  return { replays, stored, windowMs: replayTtlMs(), entries: store5.size };
 }
-var MAX_ENTRIES3, replayTtlMs, store4, replays, stored;
+var MAX_ENTRIES3, replayTtlMs, store5, replays, stored;
 var init_liveReplay = __esm({
   "server/api/liveReplay.ts"() {
     MAX_ENTRIES3 = Math.max(10, Number(process.env.T1S_LIVE_REPLAY_MAX) || 400);
@@ -40765,7 +40800,7 @@ var init_liveReplay = __esm({
       const n = Number(raw);
       return Number.isFinite(n) && n >= 0 ? n : 600;
     };
-    store4 = /* @__PURE__ */ new Map();
+    store5 = /* @__PURE__ */ new Map();
     replays = 0;
     stored = 0;
   }
@@ -41657,20 +41692,20 @@ var init_assistantAnswer = __esm({
 // server/lens/assistantThread.ts
 function readSubject(sessionId) {
   if (!sessionId) return null;
-  const slot2 = store5.get(sessionId);
+  const slot2 = store6.get(sessionId);
   if (!slot2) return null;
   if (Date.now() - slot2.touchedAt > TTL_MS3) {
-    store5.delete(sessionId);
+    store6.delete(sessionId);
     return null;
   }
   return slot2.subject;
 }
 function writeSubject(sessionId, subject) {
   if (!sessionId) return;
-  store5.set(sessionId, { subject: { ...subject, at: Date.now() }, touchedAt: Date.now() });
-  if (store5.size <= MAX_SESSIONS) return;
-  const oldest = [...store5.entries()].sort((a, b) => a[1].touchedAt - b[1].touchedAt).slice(0, store5.size - MAX_SESSIONS);
-  for (const [key] of oldest) store5.delete(key);
+  store6.set(sessionId, { subject: { ...subject, at: Date.now() }, touchedAt: Date.now() });
+  if (store6.size <= MAX_SESSIONS) return;
+  const oldest = [...store6.entries()].sort((a, b) => a[1].touchedAt - b[1].touchedAt).slice(0, store6.size - MAX_SESSIONS);
+  for (const [key] of oldest) store6.delete(key);
 }
 function tokens2(text) {
   return String(text || "").toLowerCase().replace(SITE_NAMES, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
@@ -41737,12 +41772,12 @@ function subjectFromAnswer(vertical, query, rows, ctx = {}) {
     at: Date.now()
   };
 }
-var TTL_MS3, MAX_SESSIONS, store5, SITE_NAMES, FOLLOW_VOCAB, ASK_MORE, ASK_WHY_ONLY, ASK_CHEAPER, ASK_DETAIL, ASK_REPEAT, inr;
+var TTL_MS3, MAX_SESSIONS, store6, SITE_NAMES, FOLLOW_VOCAB, ASK_MORE, ASK_WHY_ONLY, ASK_CHEAPER, ASK_DETAIL, ASK_REPEAT, inr;
 var init_assistantThread = __esm({
   "server/lens/assistantThread.ts"() {
     TTL_MS3 = 60 * 6e4;
     MAX_SESSIONS = 2e3;
-    store5 = /* @__PURE__ */ new Map();
+    store6 = /* @__PURE__ */ new Map();
     SITE_NAMES = /\b(blinkit|zepto|instamart|swiggy\s*instamart|bigbasket|big\s*basket|jiomart|jio\s*mart|dmart|d\s*mart|dunzo|flipkart\s*minutes|flipkart|amazon|ajio|myntra|shopsy|nykaa|tatacliq|tata\s*cliq|croma|reliance\s*digital|snapdeal|paytm\s*mall|swiggy|zomato|dominos|domino'?s|eatsure|faasos|behrouz|ola\s*dash|uber\s*eats|makemytrip|goibibo|yatra|cleartrip|ixigo|easemytrip|ease\s*my\s*trip|agoda|booking|oyo|expedia|hotels\.com|redbus|abhibus|ola|uber|rapido)\b/gi;
     FOLLOW_VOCAB = /* @__PURE__ */ new Set([
       "aur",
@@ -42007,8 +42042,8 @@ function memoryKey(k) {
   return [norm7(k.vertical), norm7(k.query), norm7(k.city), norm7(k.depart || "")].join("|");
 }
 async function ensureSearchMemoryTable() {
-  const store6 = getStore();
-  await store6.execute(
+  const store7 = getStore();
+  await store7.execute(
     `CREATE TABLE IF NOT EXISTS ${TABLE} (
        mem_key VARCHAR(191) PRIMARY KEY,
        vertical VARCHAR(32) NOT NULL,
@@ -42645,18 +42680,18 @@ async function pushPublicKey() {
   return ensureVapid();
 }
 async function upsertSubscription(input) {
-  const store6 = getStore();
-  const existing = await store6.query("SELECT id FROM push_subscriptions WHERE endpoint_hash = ?", [input.hash]);
+  const store7 = getStore();
+  const existing = await store7.query("SELECT id FROM push_subscriptions WHERE endpoint_hash = ?", [input.hash]);
   if (existing.length) {
     const id = Number(existing[0].id);
-    await store6.execute(
+    await store7.execute(
       `UPDATE push_subscriptions SET user_id = COALESCE(?, user_id), p256dh = COALESCE(?, p256dh),
          auth = COALESCE(?, auth), ua = COALESCE(?, ua), is_active = 1, fail_count = 0 WHERE id = ?`,
       [input.userId ?? null, input.p256dh ?? null, input.auth ?? null, input.ua ?? null, id]
     );
     return id;
   }
-  const r = await store6.execute(
+  const r = await store7.execute(
     `INSERT INTO push_subscriptions (user_id, kind, endpoint, endpoint_hash, p256dh, auth, ua, is_active, fail_count)
      VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)`,
     [input.userId ?? null, input.kind, input.endpoint, input.hash, input.p256dh ?? null, input.auth ?? null, input.ua ?? null]
@@ -42698,8 +42733,8 @@ async function removeSubscription(rawEndpoint) {
   const endpoint = clip3(rawEndpoint, 2e3);
   if (!endpoint) return 0;
   const hashes = [sha256(endpoint), sha256(`fcm:${endpoint}`)];
-  const store6 = getStore();
-  const r = await store6.execute(
+  const store7 = getStore();
+  const r = await store7.execute(
     `UPDATE push_subscriptions SET is_active = 0 WHERE endpoint_hash IN (?, ?) AND is_active = 1`,
     hashes
   );
@@ -42721,17 +42756,17 @@ function buildPushBody(payload) {
   return JSON.stringify({ ...JSON.parse(body), image: null });
 }
 async function sendOne(row, payload) {
-  const store6 = getStore();
+  const store7 = getStore();
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
   if (row.kind === "fcm") {
     const r = await sendFcm(row, payload);
     if (r === "ok") {
-      await store6.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
+      await store7.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
     } else if (r === "gone") {
-      await store6.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
+      await store7.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
     } else if (r === "failed") {
       const fails = Number(row.fail_count || 0) + 1;
-      await store6.execute(
+      await store7.execute(
         "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
         [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
       );
@@ -42744,16 +42779,16 @@ async function sendOne(row, payload) {
       { endpoint: row.endpoint, keys: { p256dh: String(row.p256dh || ""), auth: String(row.auth || "") } },
       body
     );
-    await store6.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
+    await store7.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
     return "ok";
   } catch (e2) {
     const code = Number(e2?.statusCode || 0);
     if (code === 404 || code === 410) {
-      await store6.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
+      await store7.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
       return "gone";
     }
     const fails = Number(row.fail_count || 0) + 1;
-    await store6.execute(
+    await store7.execute(
       "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
       [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
     );
@@ -42819,9 +42854,9 @@ function pushNotificationRow(n) {
   }).catch(() => null);
 }
 async function pushStats() {
-  const store6 = getStore();
+  const store7 = getStore();
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1e3).toISOString().slice(0, 19).replace("T", " ");
-  const rows = await store6.query("SELECT kind, is_active, last_ok_at FROM push_subscriptions").catch(() => []);
+  const rows = await store7.query("SELECT kind, is_active, last_ok_at FROM push_subscriptions").catch(() => []);
   let web = 0;
   let android = 0;
   let inactive = 0;
@@ -42883,8 +42918,8 @@ function validateNotification(i) {
 async function createNotification(i) {
   const v = validateNotification(i);
   if (!v.ok) return v;
-  const store6 = getStore();
-  const res = await store6.execute(
+  const store7 = getStore();
+  const res = await store7.execute(
     `INSERT INTO notifications (user_id, kind, title, body, image, cta_url, search_query, product_title, price_now, price_prev, target_price, seller, is_active, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -42904,7 +42939,7 @@ async function createNotification(i) {
       (i.createdBy || "system").slice(0, 190)
     ]
   );
-  const rows = await store6.query("SELECT id FROM notifications");
+  const rows = await store7.query("SELECT id FROM notifications");
   const id = Number(res?.insertId ?? rows[rows.length - 1]?.id ?? 0);
   log.info("Notifications", `Created ${i.kind} notification ${id}${i.userId ? ` for user ${i.userId}` : " (broadcast)"}`);
   pushNotificationRow({
@@ -42949,17 +42984,17 @@ async function listAllNotifications(limit = 100) {
   return getStore().query("SELECT * FROM notifications ORDER BY id DESC LIMIT ?", [limit]).catch(() => []);
 }
 async function deactivateNotification(id) {
-  const store6 = getStore();
-  const rows = await store6.query("SELECT id FROM notifications WHERE id = ?", [Number(id)]);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT id FROM notifications WHERE id = ?", [Number(id)]);
   if (!rows.length) return false;
-  await store6.execute("UPDATE notifications SET is_active = ? WHERE id = ?", [0, Number(id)]);
+  await store7.execute("UPDATE notifications SET is_active = ? WHERE id = ?", [0, Number(id)]);
   return true;
 }
 async function userNotifications(userId, limit = 50) {
-  const store6 = getStore();
-  const rows = await store6.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
   const reads = new Set(
-    (await store6.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
+    (await store7.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
   );
   const visible = rows.filter((r) => r.user_id == null || Number(r.user_id) === Number(userId)).sort((a, b) => Number(b.id) - Number(a.id)).slice(0, limit).map((r) => ({
     id: Number(r.id),
@@ -42997,22 +43032,22 @@ async function broadcastNotifications(limit = 50) {
   }));
 }
 async function markRead(userId, notificationId) {
-  const store6 = getStore();
-  const exists = await store6.query("SELECT notification_id FROM notification_reads WHERE notification_id = ? AND user_id = ?", [Number(notificationId), Number(userId)]);
+  const store7 = getStore();
+  const exists = await store7.query("SELECT notification_id FROM notification_reads WHERE notification_id = ? AND user_id = ?", [Number(notificationId), Number(userId)]);
   if (exists.length) return;
-  await store6.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(notificationId), Number(userId)]);
+  await store7.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(notificationId), Number(userId)]);
 }
 async function markAllRead(userId) {
-  const store6 = getStore();
-  const rows = await store6.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  const store7 = getStore();
+  const rows = await store7.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
   const visible = rows.filter((r) => r.user_id == null || Number(r.user_id) === Number(userId));
   const reads = new Set(
-    (await store6.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
+    (await store7.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
   );
   let n = 0;
   for (const r of visible) {
     if (!reads.has(Number(r.id))) {
-      await store6.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(r.id), Number(userId)]);
+      await store7.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(r.id), Number(userId)]);
       n++;
     }
   }
@@ -43057,18 +43092,18 @@ function validateAlert(i) {
 async function createAlert(i) {
   const v = validateAlert(i);
   if (!v.ok) return v;
-  const store6 = getStore();
-  const mine = (await store6.query("SELECT id, search_query, is_active FROM price_alerts WHERE user_id = ?", [i.userId])).filter(isActive2);
+  const store7 = getStore();
+  const mine = (await store7.query("SELECT id, search_query, is_active FROM price_alerts WHERE user_id = ?", [i.userId])).filter(isActive2);
   if (mine.length >= 50) return { ok: false, error: "You have reached the 50 active alert limit." };
   const dup = mine.find((r) => String(r.search_query).toLowerCase() === i.searchQuery.trim().toLowerCase());
   if (dup) {
-    await store6.execute(
+    await store7.execute(
       "UPDATE price_alerts SET target_price=?, price_at_set=?, notified_at=?, email=? WHERE id=?",
       [Math.round(i.targetPrice), i.priceAtSet ?? null, null, i.email, Number(dup.id)]
     );
     return { ok: true, id: Number(dup.id) };
   }
-  const res = await store6.execute(
+  const res = await store7.execute(
     `INSERT INTO price_alerts (user_id, email, product_title, search_query, source_url, image, target_price, price_at_set, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -43083,7 +43118,7 @@ async function createAlert(i) {
       1
     ]
   );
-  const rows = await store6.query("SELECT id FROM price_alerts WHERE user_id = ?", [i.userId]);
+  const rows = await store7.query("SELECT id FROM price_alerts WHERE user_id = ?", [i.userId]);
   return { ok: true, id: Number(res?.insertId ?? rows[rows.length - 1]?.id) };
 }
 async function listAlerts(userId) {
@@ -43116,13 +43151,13 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 async function checkAlertsOnce(findLivePrice, baseUrl) {
-  const store6 = getStore();
-  const all = (await store6.query("SELECT * FROM price_alerts WHERE id > ?", [0])).filter((a) => isActive2(a) && !a.notified_at);
+  const store7 = getStore();
+  const all = (await store7.query("SELECT * FROM price_alerts WHERE id > ?", [0])).filter((a) => isActive2(a) && !a.notified_at);
   let notified = 0;
   for (const a of all.slice(0, 40)) {
     try {
       const live = await findLivePrice(String(a.search_query), String(a.product_title));
-      await store6.execute(
+      await store7.execute(
         "UPDATE price_alerts SET last_price=?, last_checked_at=? WHERE id=?",
         [live?.price ?? null, (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]
       );
@@ -43131,7 +43166,7 @@ async function checkAlertsOnce(findLivePrice, baseUrl) {
         const m = alertEmail(a, live.price, live.seller, live.url.startsWith("http") ? live.url : baseUrl + live.url);
         const sent = await sendEmail(String(a.email), m.subject, m.html);
         if (!sent.ok) log.warn("PriceAlerts", `E-mail not sent for alert ${a.id}: ${sent.error} (in-app notification still created)`);
-        await store6.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
+        await store7.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
         notified++;
       }
     } catch (e2) {
@@ -43887,8 +43922,8 @@ async function catalogueCities(max = 10) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   try {
-    const store6 = getStore();
-    const rows = await store6.query(
+    const store7 = getStore();
+    const rows = await store7.query(
       `SELECT city, MAX(pincode) AS pincode, COUNT(*) AS n
        FROM searches
        WHERE created_at > (NOW() - INTERVAL 7 DAY) AND city IS NOT NULL AND city <> ''
@@ -44009,8 +44044,8 @@ async function bootWarm() {
     if (!await mayWarm("BootWarm")) return;
     await purgeStaleBankingOffers();
     await purgePhotolessHotelOffers();
-    const store6 = getStore();
-    const rows = await store6.query(
+    const store7 = getStore();
+    const rows = await store7.query(
       `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city
        FROM searches WHERE created_at > (NOW() - INTERVAL 7 DAY)
        GROUP BY raw_query, v, pincode, city
@@ -44045,8 +44080,8 @@ async function keepWarmDefaults() {
   await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS, ...catalogue], "KeepWarm");
 }
 async function warmPass(limit, verticalFilter, forceSeed) {
-  const store6 = getStore();
-  const rows = await store6.query(
+  const store7 = getStore();
+  const rows = await store7.query(
     `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
      FROM searches
      WHERE created_at > (NOW() - INTERVAL 7 DAY)
@@ -44410,19 +44445,19 @@ async function approvePartnerFromLead(lead) {
   if (!website) return { ok: false, error: "Inquiry has no website to link" };
   if (!/^https?:\/\//i.test(website)) website = `https://${website}`;
   const category = bucketCategory(String(lead.category || ""));
-  const store6 = getStore();
-  const existing = await store6.query("SELECT * FROM approved_partners WHERE website_url = ? LIMIT 1", [website]);
+  const store7 = getStore();
+  const existing = await store7.query("SELECT * FROM approved_partners WHERE website_url = ? LIMIT 1", [website]);
   if (existing?.length) {
-    await store6.execute("UPDATE approved_partners SET status = ? WHERE id = ?", ["active", existing[0].id]);
+    await store7.execute("UPDATE approved_partners SET status = ? WHERE id = ?", ["active", existing[0].id]);
     return { ok: true, partner: rowToPartner({ ...existing[0], status: "active" }) };
   }
-  const ins = await store6.execute(
+  const ins = await store7.execute(
     `INSERT INTO approved_partners (name, website_url, category, email, phone, badge, status, source_lead_id)
      VALUES (?, ?, ?, ?, ?, 'Verified Partner', 'active', ?)`,
     [name, website, category, lead.email || null, lead.phone || null, lead.leadId]
   );
   const id = Number(ins?.insertId ?? 0);
-  const rows = id ? await store6.query("SELECT * FROM approved_partners WHERE id = ?", [id]) : [];
+  const rows = id ? await store7.query("SELECT * FROM approved_partners WHERE id = ?", [id]) : [];
   return { ok: true, partner: rowToPartner(rows?.[0] || { id }) };
 }
 async function listPartners(activeOnly = true) {
@@ -44631,12 +44666,12 @@ async function upsertAppLink(input) {
   if (!v.ok) return { ok: false, error: v.error };
   const version = String(input.version ?? "").trim().slice(0, 30) || null;
   const active2 = input.is_active === false ? 0 : 1;
-  const store6 = getStore();
-  const existing = await store6.query("SELECT id FROM app_links WHERE link_key = ?", [key]);
+  const store7 = getStore();
+  const existing = await store7.query("SELECT id FROM app_links WHERE link_key = ?", [key]);
   if (existing.length) {
-    await store6.execute("UPDATE app_links SET url=?, version=?, is_active=? WHERE link_key=?", [v.url, version, active2, key]);
+    await store7.execute("UPDATE app_links SET url=?, version=?, is_active=? WHERE link_key=?", [v.url, version, active2, key]);
   } else {
-    await store6.execute("INSERT INTO app_links (link_key, url, version, is_active) VALUES (?, ?, ?, ?)", [key, v.url, version, active2]);
+    await store7.execute("INSERT INTO app_links (link_key, url, version, is_active) VALUES (?, ?, ?, ?)", [key, v.url, version, active2]);
   }
   return { ok: true };
 }
@@ -44951,16 +44986,16 @@ var fileImport_exports = {};
 __export(fileImport_exports, {
   importFileStoreIntoMysql: () => importFileStoreIntoMysql
 });
-async function tableColumns(store6, table) {
+async function tableColumns(store7, table) {
   try {
-    const rows = await store6.query(`DESCRIBE \`${table}\``);
+    const rows = await store7.query(`DESCRIBE \`${table}\``);
     if (!Array.isArray(rows) || rows.length === 0) return null;
     return rows.map((r) => String(r.Field));
   } catch {
     return null;
   }
 }
-async function importRows(store6, table, cols, rows) {
+async function importRows(store7, table, cols, rows) {
   let ok3 = 0;
   let skipped = 0;
   const chunk = 100;
@@ -44979,7 +45014,7 @@ async function importRows(store6, table, cols, rows) {
       params.push(typeof v === "object" && v !== null ? JSON.stringify(v) : v);
     }
     try {
-      const r = await store6.execute(
+      const r = await store7.execute(
         `INSERT IGNORE INTO \`${table}\` (${useCols.map((c) => `\`${c}\``).join(",")}) VALUES ${placeholders}`,
         params
       );
@@ -44992,7 +45027,7 @@ async function importRows(store6, table, cols, rows) {
             skipped++;
             continue;
           }
-          const rr = await store6.execute(
+          const rr = await store7.execute(
             `INSERT IGNORE INTO \`${table}\` (${rc.map((c) => `\`${c}\``).join(",")}) VALUES (${rc.map(() => "?").join(",")})`,
             rc.map((c) => typeof r[c] === "object" && r[c] !== null ? JSON.stringify(r[c]) : r[c])
           );
@@ -45006,8 +45041,8 @@ async function importRows(store6, table, cols, rows) {
   return { ok: ok3, skipped };
 }
 async function importFileStoreIntoMysql() {
-  const store6 = getStore();
-  if (store6.kind !== "mysql") return;
+  const store7 = getStore();
+  if (store7.kind !== "mysql") return;
   const src2 = import_path8.default.join(dataDir, "devstore.json");
   const lock = import_path8.default.join(dataDir, LOCK);
   if (!import_fs8.default.existsSync(src2) && !import_fs8.default.existsSync(lock)) return;
@@ -45022,12 +45057,12 @@ async function importFileStoreIntoMysql() {
     });
     log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs8.default.existsSync(lock) && claimed})`);
     for (const table of tables) {
-      const cols = await tableColumns(store6, table);
+      const cols = await tableColumns(store7, table);
       if (!cols) {
         log.warn("FileImport", `Skipping '${table}' (${data[table].length} rows) \u2014 no such MySQL table`);
         continue;
       }
-      const { ok: ok3, skipped } = await importRows(store6, table, cols, data[table]);
+      const { ok: ok3, skipped } = await importRows(store7, table, cols, data[table]);
       log.info("FileImport", `'${table}': imported ${ok3}, skipped ${skipped} of ${data[table].length}`);
     }
     const done = import_path8.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
@@ -45066,6 +45101,36 @@ function deployedCommit() {
     return require("fs").readFileSync(ref, "utf8").trim().slice(0, 7);
   } catch {
     return process.env.BUILD_COMMIT || "unknown";
+  }
+}
+async function fetchUpcomingMovies(city, cacheKey) {
+  {
+    const fetchJson = async (url) => {
+      const r2 = await cffiFetch(url, { impersonate: "safari", timeoutMs: 15e3, headers: { Accept: "application/json" } });
+      if (r2.status !== 200) throw new Error(`HTTP ${r2.status}`);
+      return JSON.parse(r2.body || "{}");
+    };
+    const region = await resolveBmsRegion(city || void 0, fetchJson);
+    let r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: "safari", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
+    if (r.status !== 200) r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: "chrome", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
+    if (r.status !== 200) throw new Error(`BookMyShow upcoming HTTP ${r.status}`);
+    const parsed = parseUpcomingCards(JSON.parse(r.body || "{}"), region);
+    const movies = parsed.map((m) => ({
+      title: m.title,
+      genres: m.genres,
+      likes: m.likes,
+      releaseDate: m.releaseDate,
+      // exactly what BMS prints on the poster overlay; null when BMS does not show one
+      poster: m.poster,
+      pageUrl: m.pageUrl,
+      eventCode: m.eventCode,
+      trailerUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(m.title + " official trailer")}`,
+      // merchant redirect policy: every exit routes through /api/out via a masking pointer
+      goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) })
+    }));
+    if (movies.length) upcomingCache2.set(cacheKey, { at: Date.now(), movies });
+    if (!movies.length) throw new Error("BookMyShow returned no upcoming cards");
+    return movies;
   }
 }
 function domainHost(url) {
@@ -45756,20 +45821,20 @@ function leadRateOk(ip) {
   return true;
 }
 async function signInGoogleUser(claims) {
-  const store6 = getStore();
-  let rows = await store6.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+  const store7 = getStore();
+  let rows = await store7.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   if (rows.length === 0) {
-    await store6.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
+    await store7.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
       claims.email,
       claims.displayName || null,
       "user",
       claims.uid
     ]);
-    rows = await store6.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+    rows = await store7.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   }
   const row = rows[0];
   const token = import_crypto31.default.randomBytes(32).toString("hex");
-  await store6.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+  await store7.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
     new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
@@ -45853,6 +45918,7 @@ var init_routes = __esm({
     init_searchOrchestrator();
     init_liveSearchGate();
     init_moviesPriceFill();
+    init_readPathCache();
     init_accountTypeGate();
     init_proxyRotator();
     init_proxyDiscovery();
@@ -45953,14 +46019,14 @@ var init_routes = __esm({
         res.setHeader("Cache-Control", "no-store");
         return res.json({ status: "online" });
       }
-      const store6 = getStore();
+      const store7 = getStore();
       const missing = assertProductionReadiness();
       res.json({
         status: "online",
         commit: deployedCommit(),
         nodeUptimeSec: Math.round(process.uptime()),
         engine: "Try1Second Independent Metasearch Engine v1.0",
-        dataSource: store6.kind === "mysql" ? "mysql" : "file-fallback (set MYSQL_URL for production)",
+        dataSource: store7.kind === "mysql" ? "mysql" : "file-fallback (set MYSQL_URL for production)",
         l2Cache: settings.redisUrl ? "redis" : settings.redisRestUrl ? "redis-rest (Upstash HTTPS)" : "disabled (set REDIS_URL or UPSTASH_REDIS_REST_URL/TOKEN)",
         searchApi: settings.searchApi.enabled ? "optional-adapter-enabled" : "optional-adapter-disabled",
         productionWarnings: missing,
@@ -46138,31 +46204,11 @@ var init_routes = __esm({
       const hit = upcomingCache2.get(cacheKey);
       if (hit && Date.now() - hit.at < 30 * 6e4) return res.json({ movies: hit.movies });
       try {
-        const fetchJson = async (url) => {
-          const r2 = await cffiFetch(url, { impersonate: "safari", timeoutMs: 15e3, headers: { Accept: "application/json" } });
-          if (r2.status !== 200) throw new Error(`HTTP ${r2.status}`);
-          return JSON.parse(r2.body || "{}");
-        };
-        const region = await resolveBmsRegion(city || void 0, fetchJson);
-        let r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: "safari", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
-        if (r.status !== 200) r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: "chrome", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
-        if (r.status !== 200) return res.json({ movies: [], error: `BookMyShow upcoming HTTP ${r.status}` });
-        const parsed = parseUpcomingCards(JSON.parse(r.body || "{}"), region);
-        const movies = parsed.map((m) => ({
-          title: m.title,
-          genres: m.genres,
-          likes: m.likes,
-          releaseDate: m.releaseDate,
-          // exactly what BMS prints on the poster overlay; null when BMS does not show one
-          poster: m.poster,
-          pageUrl: m.pageUrl,
-          eventCode: m.eventCode,
-          trailerUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(m.title + " official trailer")}`,
-          // merchant redirect policy: every exit routes through /api/out via a masking pointer
-          goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) })
-        }));
-        if (movies.length) upcomingCache2.set(cacheKey, { at: Date.now(), movies });
-        return res.json({ movies });
+        const moviesOut = await cachedRead(`movies:upcoming:${cacheKey}`, 10 * 6e4, async () => {
+          const cold = await fetchUpcomingMovies(city, cacheKey);
+          return cold;
+        }, { maxStaleMs: 24 * 60 * 6e4 });
+        return res.json({ movies: moviesOut });
       } catch (e2) {
         return res.json({ movies: [], error: String(e2?.message || e2).slice(0, 120) });
       }
@@ -46800,7 +46846,7 @@ var init_routes = __esm({
       } catch {
       }
       if (!response) {
-        res.status(503).json({ ok: false, error: "search unavailable", results: [] });
+        res.json({ ok: true, results: [], pendingRefresh: true, degraded: true });
         return;
       }
       if (String(response.state?.servedFrom || "") !== "cache") {
@@ -47592,15 +47638,21 @@ var init_routes = __esm({
       res.json({ success: true, ...await spendSummary(Number(user.id)) });
     });
     apiRouter.get("/notifications", authMiddleware, async (req, res) => {
+      const user = req.user;
+      const key = user ? `notifications:user:${Number(user.id)}` : "notifications:anon";
       try {
-        const user = req.user;
-        if (user) {
-          const { items, unread } = await userNotifications(Number(user.id));
-          return res.json({ success: true, signedIn: true, items, unread });
-        }
-        res.json({ success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 });
+        const body = await cachedRead(key, 15e3, async () => {
+          if (user) {
+            const { items, unread } = await userNotifications(Number(user.id));
+            return { success: true, signedIn: true, items, unread };
+          }
+          return { success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 };
+        }, { maxStaleMs: 24 * 60 * 6e4 });
+        res.setHeader("Cache-Control", "private, max-age=15");
+        res.json(body);
       } catch (e2) {
-        res.status(500).json({ success: false, error: e2?.message || "Could not load notifications" });
+        res.setHeader("Cache-Control", "no-store");
+        res.json({ success: true, signedIn: !!user, items: [], unread: 0, degraded: true });
       }
     });
     apiRouter.get("/push/key", async (_req, res) => {
@@ -48114,28 +48166,28 @@ var init_routes = __esm({
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1e3).toISOString().slice(0, 19).replace("T", " ");
         const sinceDay = new Date(Date.now() - days * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
         const vert2 = String(req.query.vertical || "").trim();
-        const store6 = getStore();
-        const searches = vert2 ? await store6.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ? AND (vertical = ? OR detected_vertical = ?)`, [since, vert2, vert2]) : await store6.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ?`, [since]);
-        const leads = vert2 ? await store6.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ?`, [since, vert2]) : await store6.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?`, [since]);
-        const leadsApproved = vert2 ? await store6.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ? AND status IN ('contacted','approved')`, [since, vert2]) : await store6.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND status IN ('contacted','approved')`, [since]);
-        const clicks = await store6.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ?`, [since]);
-        const clicksToday = await store6.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE DATE(created_at) >= ?`, [sinceDay]);
-        const clicksByDay = await store6.query(
+        const store7 = getStore();
+        const searches = vert2 ? await store7.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ? AND (vertical = ? OR detected_vertical = ?)`, [since, vert2, vert2]) : await store7.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ?`, [since]);
+        const leads = vert2 ? await store7.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ?`, [since, vert2]) : await store7.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?`, [since]);
+        const leadsApproved = vert2 ? await store7.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ? AND status IN ('contacted','approved')`, [since, vert2]) : await store7.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND status IN ('contacted','approved')`, [since]);
+        const clicks = await store7.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ?`, [since]);
+        const clicksToday = await store7.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE DATE(created_at) >= ?`, [sinceDay]);
+        const clicksByDay = await store7.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
-        const topDomains = await store6.query(
+        const topDomains = await store7.query(
           `SELECT vendor_domain AS domain, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY n DESC LIMIT 15`,
           [since]
         );
-        const recentClicks = await store6.query(
+        const recentClicks = await store7.query(
           `SELECT c.vendor_domain AS domain, c.network_id AS network, c.created_at AS at,
               o.merchant_name AS merchant, o.title AS offer
        FROM affiliate_clicks c LEFT JOIN affiliate_offers o ON o.id = c.offer_id
        WHERE c.created_at >= ? ORDER BY c.id DESC LIMIT 200`,
           [since]
         );
-        const conversions = await store6.query(
+        const conversions = await store7.query(
           `SELECT v.network_id AS network, v.order_value AS value, v.commission AS commission, v.created_at AS at,
               c.vendor_domain AS domain
        FROM affiliate_conversions v LEFT JOIN affiliate_clicks c ON c.click_id = v.click_id
@@ -48434,21 +48486,21 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       const r = await verifyAdminOtp(String(req.body.email || ""), String(req.body.code || ""));
       if (!r.ok) return res.status(401).json({ success: false, error: r.error });
       const email = r.email;
-      const store6 = getStore();
-      let rows = await store6.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
+      const store7 = getStore();
+      let rows = await store7.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
-        await store6.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
+        await store7.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
           `otp-only$${import_crypto31.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
-        rows = await store6.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
+        rows = await store7.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
       const token = import_crypto31.default.randomBytes(32).toString("hex");
-      await store6.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+      await store7.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
         new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
@@ -48631,16 +48683,16 @@ async function saveProfile(i) {
   const v = validateProfile(i);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
-  const store6 = getStore();
-  const ex = await store6.query("SELECT id FROM affiliate_configs WHERE slug = ?", [c.slug]);
+  const store7 = getStore();
+  const ex = await store7.query("SELECT id FROM affiliate_configs WHERE slug = ?", [c.slug]);
   const cols = [c.company_domain, c.network, c.affiliate_id, c.monetization, c.campaign_key, c.template, c.subid_param, c.active];
   if (ex.length) {
-    await store6.execute(
+    await store7.execute(
       "UPDATE affiliate_configs SET company_domain=?, network=?, affiliate_id=?, monetization=?, campaign_key=?, template=?, subid_param=?, active=? WHERE slug=?",
       [...cols, c.slug]
     );
   } else {
-    await store6.execute(
+    await store7.execute(
       "INSERT INTO affiliate_configs (slug, company_domain, network, affiliate_id, monetization, campaign_key, template, subid_param, active) VALUES (?,?,?,?,?,?,?,?,?)",
       [c.slug, ...cols]
     );
@@ -48979,11 +49031,11 @@ async function syncAutoDeals() {
     { provider: "tatacliq", run: () => acquireTatacliqDeals() },
     { provider: "amazon", run: () => acquireAmazonDeals() }
   ];
-  const store6 = getStore();
+  const store7 = getStore();
   const now = /* @__PURE__ */ new Date();
   const outcomes = [];
   try {
-    await store6.execute(`DELETE FROM deals WHERE source='auto' AND (title LIKE '%<%' OR title LIKE '%class=%')`);
+    await store7.execute(`DELETE FROM deals WHERE source='auto' AND (title LIKE '%<%' OR title LIKE '%class=%')`);
   } catch {
   }
   for (const p of providers) {
@@ -48993,14 +49045,14 @@ async function syncAutoDeals() {
       for (const d of deals) {
         const c = cleanDeal(d);
         if (!c.title || /<|class=|&#/.test(c.title)) continue;
-        const ex = await store6.query("SELECT id FROM deals WHERE dedupe_key = ?", [c.dedupe_key]);
+        const ex = await store7.query("SELECT id FROM deals WHERE dedupe_key = ?", [c.dedupe_key]);
         if (ex.length) {
-          await store6.execute(
+          await store7.execute(
             "UPDATE deals SET merchant_name=?, kind=?, vertical=?, title=?, description=?, discount_text=?, terms=?, dest_url=?, sort_weight=?, is_active=?, last_seen_at=? WHERE id=?",
             [c.merchant_name, c.kind, c.vertical, c.title, c.description, c.discount_text, c.terms, c.dest_url, c.sort_weight, 1, now, ex[0].id]
           );
         } else {
-          await store6.execute(
+          await store7.execute(
             `INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source, dedupe_key, image_url, last_seen_at)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, c.source, c.dedupe_key, c.image_url, now]
@@ -49015,12 +49067,12 @@ async function syncAutoDeals() {
     }
   }
   try {
-    const rows = await store6.query(`SELECT id, last_seen_at FROM deals WHERE source = 'auto' AND is_active = 1`);
+    const rows = await store7.query(`SELECT id, last_seen_at FROM deals WHERE source = 'auto' AND is_active = 1`);
     const cutoff = Date.now() - 3 * 864e5;
     for (const r of rows) {
       const seen = Date.parse(String(r.last_seen_at || "").replace(" ", "T"));
       if (Number.isFinite(seen) && seen < cutoff) {
-        await store6.execute("UPDATE deals SET is_active = ? WHERE id = ?", [0, Number(r.id)]);
+        await store7.execute("UPDATE deals SET is_active = ? WHERE id = ?", [0, Number(r.id)]);
       }
     }
   } catch {
@@ -49083,8 +49135,8 @@ function parsePsiResponse(json, strategy) {
 }
 async function ensureTable3() {
   if (ensured6) return;
-  const store6 = await getStore();
-  await store6.execute(`CREATE TABLE IF NOT EXISTS speed_scores (
+  const store7 = await getStore();
+  await store7.execute(`CREATE TABLE IF NOT EXISTS speed_scores (
     id INT AUTO_INCREMENT PRIMARY KEY,
     strategy VARCHAR(10) NOT NULL,
     score INT DEFAULT NULL,
@@ -49100,8 +49152,8 @@ async function ensureTable3() {
 }
 async function ensureQuotaTable() {
   if (quotaEnsured) return;
-  const store6 = await getStore();
-  await store6.execute(`CREATE TABLE IF NOT EXISTS speed_quota_state (
+  const store7 = await getStore();
+  await store7.execute(`CREATE TABLE IF NOT EXISTS speed_quota_state (
     strategy VARCHAR(10) NOT NULL PRIMARY KEY,
     blocked_until TIMESTAMP NULL,
     last_error VARCHAR(500) NULL,
@@ -49140,14 +49192,14 @@ async function lastGood(strategy) {
 }
 async function latestScores() {
   await ensureTable3();
-  const store6 = await getStore();
+  const store7 = await getStore();
   const out = [];
   for (const strategy of STRATEGIES) {
     const good = await lastGood(strategy);
     const block = await quotaBlock(strategy);
     if (good) {
       const score = rowToScore(good);
-      const newest = await store6.query("SELECT scanned_at, error FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]).catch(() => []);
+      const newest = await store7.query("SELECT scanned_at, error FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]).catch(() => []);
       const laterFailure = newest?.[0] && (!good.scanned_at || new Date(newest[0].scanned_at).getTime() > new Date(good.scanned_at).getTime());
       out.push({
         ...score,
@@ -49188,15 +49240,15 @@ function rowToScore(r) {
 }
 async function scoreHistory(strategy, limit = 20) {
   await ensureTable3();
-  const store6 = await getStore();
+  const store7 = await getStore();
   const lim = Math.min(Math.max(Number(limit) || 20, 1), 50);
-  const rows = await store6.query(`SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT ${lim}`, [String(strategy).slice(0, 10)]);
+  const rows = await store7.query(`SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT ${lim}`, [String(strategy).slice(0, 10)]);
   return rows.map(rowToScore);
 }
 async function persistScore(s) {
   await ensureTable3();
-  const store6 = await getStore();
-  await store6.execute(
+  const store7 = await getStore();
+  await store7.execute(
     "INSERT INTO speed_scores (strategy, score, lcp_ms, tbt_ms, cls, url, error, scanned_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [s.strategy, s.score, s.lcp_ms, s.tbt_ms, s.cls, s.url.slice(0, 500), s.error ? String(s.error).slice(0, 500) : null, s.scanned_at]
   );
@@ -49204,10 +49256,10 @@ async function persistScore(s) {
 }
 async function pruneScoreHistory(strategy) {
   await ensureTable3();
-  const store6 = await getStore();
-  const rows = await store6.query("SELECT id FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 200", [String(strategy).slice(0, 10)]);
+  const store7 = await getStore();
+  const rows = await store7.query("SELECT id FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 200", [String(strategy).slice(0, 10)]);
   const drop = rows.slice(MAX_ROWS_PER_STRATEGY).map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
-  for (const id of drop) await store6.execute("DELETE FROM speed_scores WHERE id = ?", [id]);
+  for (const id of drop) await store7.execute("DELETE FROM speed_scores WHERE id = ?", [id]);
 }
 async function fetchWithTimeout2(url) {
   const ctrl = new AbortController();
@@ -49222,10 +49274,10 @@ async function fetchWithTimeout2(url) {
 async function runSpeedTest(siteUrl, opts = {}) {
   const url = String(siteUrl || "https://www.try1second.com").trim().slice(0, 300);
   await ensureTable3();
-  const store6 = await getStore();
+  const store7 = await getStore();
   const now = Date.now();
   const gaps = await Promise.all(STRATEGIES.map(async (strategy) => {
-    const last = await store6.query("SELECT scanned_at FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
+    const last = await store7.query("SELECT scanned_at FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
     if (!last.length || !last[0].scanned_at) return 0;
     const ts = new Date(last[0].scanned_at).getTime();
     return Number.isFinite(ts) ? now - ts : 0;
@@ -49240,7 +49292,7 @@ async function runSpeedTest(siteUrl, opts = {}) {
       return { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: block.last_error, quota_blocked: true, quota_reset_at: block.blocked_until, note: cachedNote };
     }
     if (gaps[i] !== 0 && gaps[i] < MIN_RUN_GAP_MS) {
-      const existing = await store6.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
+      const existing = await store7.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
       if (existing.length) return { ...rowToScore(existing[0]), cached: true };
     }
     try {
@@ -49957,10 +50009,10 @@ async function runAcceptanceTests() {
   return rows;
 }
 async function persistAcceptance(rows) {
-  const store6 = getStore();
-  await store6.execute("DELETE FROM source_acceptance_tests");
+  const store7 = getStore();
+  await store7.execute("DELETE FROM source_acceptance_tests");
   for (const r of rows) {
-    await store6.execute(
+    await store7.execute(
       `INSERT INTO source_acceptance_tests (source_id, source_name, vertical, capability, status, failure_category, http_status, bytes, latency_ms, items_extracted, fields_verified, evidence, next_action) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [r.source_id, r.source_name, r.vertical, r.capability, r.status, r.failure_category, r.http_status, r.bytes, r.latency_ms, r.items_extracted, r.fields_verified, r.evidence, r.next_action]
     );
@@ -50098,7 +50150,7 @@ function ratio(n, d) {
   return { numerator: n, denominator: d, percentage: d === 0 ? null : Math.round(n / d * 1e3) / 10 };
 }
 async function buildCoverageReport(windowHours = 24) {
-  const store6 = getStore();
+  const store7 = getStore();
   const since = new Date(Date.now() - windowHours * 3600 * 1e3).toISOString().slice(0, 19).replace("T", " ");
   let searches = [];
   let offerRows = [];
@@ -50106,7 +50158,7 @@ async function buildCoverageReport(windowHours = 24) {
   let affiliateClicks = 0;
   let affiliateConversions = 0;
   try {
-    searches = await store6.query(
+    searches = await store7.query(
       `SELECT id, served_from, results_count, latency_ms, created_at FROM searches WHERE created_at >= ? ORDER BY created_at DESC`,
       [since]
     );
@@ -50114,23 +50166,23 @@ async function buildCoverageReport(windowHours = 24) {
     searches = [];
   }
   try {
-    offerRows = await store6.query(
+    offerRows = await store7.query(
       `SELECT freshness_status, validation_status, availability, vertical FROM offers`
     );
   } catch {
     offerRows = [];
   }
   try {
-    healthRows = await store6.query(
+    healthRows = await store7.query(
       `SELECT source_id, state, total_attempts, total_successes, avg_latency_ms FROM source_health`
     );
   } catch {
     healthRows = [];
   }
   try {
-    const c = await store6.query(`SELECT id FROM affiliate_clicks`);
+    const c = await store7.query(`SELECT id FROM affiliate_clicks`);
     affiliateClicks = c.length;
-    const v = await store6.query(`SELECT id FROM affiliate_conversions`);
+    const v = await store7.query(`SELECT id FROM affiliate_conversions`);
     affiliateConversions = v.length;
   } catch {
   }
@@ -50813,10 +50865,10 @@ var init_adminRoutes = __esm({
       res.json({ success: true, verticals: verticalStatusReport() });
     });
     adminRouter.get("/coverage", async (_req, res) => {
-      const store6 = getStore();
+      const store7 = getStore();
       let searchStats = null;
       try {
-        const rows = await store6.query(
+        const rows = await store7.query(
           `SELECT served_from, COUNT(*) AS c FROM searches GROUP BY served_from`
         );
         searchStats = rows;
@@ -50846,13 +50898,13 @@ var init_adminRoutes = __esm({
       if (!name || typeof quantity !== "number" || quantity < 0) {
         return res.status(400).json({ success: false, error: "name and non-negative quantity are required" });
       }
-      const store6 = getStore();
+      const store7 = getStore();
       try {
-        const prize = await store6.execute(
+        const prize = await store7.execute(
           "INSERT INTO prizes (name, description, weight, active) VALUES (?, ?, ?, 1)",
           [String(name).slice(0, 255), description ? String(description).slice(0, 500) : null, Number(weight) || 1]
         );
-        await store6.execute("INSERT INTO prize_inventory (prize_id, quantity) VALUES (?, ?)", [prize.insertId, quantity]);
+        await store7.execute("INSERT INTO prize_inventory (prize_id, quantity) VALUES (?, ?)", [prize.insertId, quantity]);
         audit(req, "prize.create", String(name), { weight, quantity });
         res.json({ success: true, prizeId: prize.insertId });
       } catch (e2) {
@@ -50862,12 +50914,12 @@ var init_adminRoutes = __esm({
     adminRouter.post("/prizes/:id/inventory", async (req, res) => {
       const delta = Number(req.body.delta || 0);
       if (!Number.isFinite(delta)) return res.status(400).json({ success: false, error: "delta must be a number" });
-      const store6 = getStore();
-      const rows = await store6.query("SELECT quantity FROM prize_inventory WHERE prize_id = ?", [Number(req.params.id)]);
+      const store7 = getStore();
+      const rows = await store7.query("SELECT quantity FROM prize_inventory WHERE prize_id = ?", [Number(req.params.id)]);
       if (rows.length === 0) return res.status(404).json({ success: false, error: "Prize inventory not found" });
       const current = Number(rows[0].quantity);
       if (current + delta < 0) return res.status(400).json({ success: false, error: "Inventory cannot become negative" });
-      await store6.execute("UPDATE prize_inventory SET quantity = quantity + ? WHERE prize_id = ?", [delta, Number(req.params.id)]);
+      await store7.execute("UPDATE prize_inventory SET quantity = quantity + ? WHERE prize_id = ?", [delta, Number(req.params.id)]);
       audit(req, "prize.inventory", req.params.id, { delta });
       res.json({ success: true, quantity: current + delta });
     });
@@ -51110,10 +51162,10 @@ var init_adminRoutes = __esm({
         const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
         const { linkinrCampaignList: linkinrCampaignList2, linkinrStats: linkinrStats2 } = await Promise.resolve().then(() => (init_linkinr(), linkinr_exports));
         const { ekaroStats: ekaroStats2 } = await Promise.resolve().then(() => (init_ekaro(), ekaro_exports));
-        const store6 = getStore();
+        const store7 = getStore();
         let capturedLinks = [];
         try {
-          capturedLinks = await store6.query(
+          capturedLinks = await store7.query(
             `SELECT network_source AS network, vendor_domain AS domain, deep_link_template AS template, campaign_id AS campaign
          FROM affiliate_links ORDER BY vendor_domain ASC LIMIT 500`
           );
@@ -51825,7 +51877,7 @@ var init_adminRoutes = __esm({
     sqlDate = (daysAgo2) => new Date(Date.now() - daysAgo2 * 864e5).toISOString().slice(0, 19).replace("T", " ");
     adminRouter.get("/affiliate/clicks", async (req, res) => {
       try {
-        const store6 = getStore();
+        const store7 = getStore();
         const vendor = String(req.query.vendor || "").trim();
         const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
         const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 500));
@@ -51836,20 +51888,20 @@ var init_adminRoutes = __esm({
           where += " AND vendor_domain LIKE ?";
           params.push(`%${vendor}%`);
         }
-        const clicks = await store6.query(
+        const clicks = await store7.query(
           `SELECT id, offer_id, network_id, vendor_domain, destination_url, click_id, created_at
        FROM affiliate_clicks ${where} ORDER BY id DESC LIMIT ${limit}`,
           params
         );
-        const byNetwork = await store6.query(
+        const byNetwork = await store7.query(
           `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`,
           [since]
         );
-        const byVendor = await store6.query(
+        const byVendor = await store7.query(
           `SELECT vendor_domain, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY count DESC LIMIT 20`,
           [since]
         );
-        const daily = await store6.query(
+        const daily = await store7.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
@@ -51861,10 +51913,10 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/monetization/gaps", async (req, res) => {
       try {
-        const store6 = getStore();
+        const store7 = getStore();
         const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
         const since = sqlDate(days);
-        const rows = await store6.query(
+        const rows = await store7.query(
           `SELECT vendor_domain,
               COUNT(*) AS clicks,
               SUM(CASE WHEN network_id IS NULL OR network_id = 'direct' THEN 1 ELSE 0 END) AS direct_clicks,
@@ -51910,8 +51962,8 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/affiliate/conversions", async (_req, res) => {
       try {
-        const store6 = getStore();
-        const conversions = await store6.query(
+        const store7 = getStore();
+        const conversions = await store7.query(
           `SELECT v.id, v.click_id, v.network_id, v.order_value, v.commission, v.confirmed_at, v.source_report, v.created_at, k.vendor_domain
        FROM affiliate_conversions v LEFT JOIN affiliate_clicks k ON k.click_id = v.click_id
        ORDER BY v.id DESC LIMIT 200`
@@ -51923,31 +51975,31 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/traffic/real", async (req, res) => {
       try {
-        const store6 = getStore();
+        const store7 = getStore();
         const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
         const since = sqlDate(days);
-        const dailySearches = await store6.query(
+        const dailySearches = await store7.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS count, AVG(latency_ms) AS avg_latency_ms, SUM(results_count > 0) AS with_results
        FROM searches WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
-        const byVertical = await store6.query(
+        const byVertical = await store7.query(
           `SELECT COALESCE(NULLIF(vertical, ''), 'unknown') AS vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY vertical ORDER BY count DESC`,
           [since]
         );
-        const topQueries = await store6.query(
+        const topQueries = await store7.query(
           `SELECT raw_query, vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY raw_query, vertical ORDER BY count DESC LIMIT 20`,
           [since]
         );
-        const dailyClicks = await store6.query(
+        const dailyClicks = await store7.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
-        const clicksByNetwork = await store6.query(
+        const clicksByNetwork = await store7.query(
           `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`,
           [since]
         );
-        const totals = await store6.query(
+        const totals = await store7.query(
           `SELECT
          SUM(created_at >= ?) AS searches_window,
          SUM(created_at >= ? AND results_count > 0) AS searches_with_results
@@ -51975,11 +52027,11 @@ var init_adminRoutes = __esm({
       try {
         const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
         const { linkinrStats: linkinrStats2 } = await Promise.resolve().then(() => (init_linkinr(), linkinr_exports));
-        const store6 = getStore();
-        const dbMode = store6.kind === "mysql" ? "mysql" : "file-fallback";
+        const store7 = getStore();
+        const dbMode = store7.kind === "mysql" ? "mysql" : "file-fallback";
         let links = [];
         try {
-          links = await store6.query(`SELECT network_source, COUNT(*) AS count FROM affiliate_links GROUP BY network_source`);
+          links = await store7.query(`SELECT network_source, COUNT(*) AS count FROM affiliate_links GROUP BY network_source`);
         } catch {
           links = [];
         }
@@ -52355,12 +52407,12 @@ function startWorkers() {
   }, settings.worker.refreshIntervalSec * 1e3);
   const retryTimer = setInterval(async () => {
     try {
-      const store6 = getStore();
-      const dead = await store6.query(
+      const store7 = getStore();
+      const dead = await store7.query(
         `SELECT id FROM source_jobs WHERE status = 'failed' AND attempts < 3 ORDER BY created_at ASC LIMIT 10`
       );
       for (const job of dead) {
-        await store6.execute("UPDATE source_jobs SET status = ? WHERE id = ?", ["queued", job.id]);
+        await store7.execute("UPDATE source_jobs SET status = ? WHERE id = ?", ["queued", job.id]);
       }
       if (dead.length > 0) log.info("Worker", `Requeued ${dead.length} recoverable source jobs`);
     } catch {
@@ -52914,8 +52966,8 @@ function startAffiliateWatchdog(intervalMs = 30 * 60 * 1e3) {
   const t = setInterval(async () => {
     try {
       const { listOffers: listOffers2 } = await Promise.resolve().then(() => (init_store(), store_exports));
-      const store6 = (await Promise.resolve().then(() => (init_db(), db_exports))).getStore();
-      const rows = await store6.query("SELECT id FROM affiliate_offers WHERE status = 'active' LIMIT 1", []);
+      const store7 = (await Promise.resolve().then(() => (init_db(), db_exports))).getStore();
+      const rows = await store7.query("SELECT id FROM affiliate_offers WHERE status = 'active' LIMIT 1", []);
       const fresh = await listOffers2({ limit: 1 });
       if (rows.length === 0 && fresh.length === 0) {
         const { registeredProviders: rp } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));

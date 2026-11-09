@@ -12,6 +12,7 @@ import { normalizeVerticalId } from '../search/verticalAlias';
 import { awaitSettledAnswer, runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
 import { fillMoviePricesFromBand } from '../search/moviesPriceFill';
+import { cachedRead } from './readPathCache';
 import { enforceAccountKind, requestedAccountKind } from '../search/accountTypeGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
 import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
@@ -372,11 +373,28 @@ apiRouter.get('/bus/stops', async (req, res) => {
 // Trailer = YouTube search deeplink (real link, never a fabricated stream URL).
 const upcomingCache = new Map<string, { at: number; movies: any[] }>();
 apiRouter.get('/movies/upcoming', async (req, res) => {
+  // OWNER 9 Nov (429 on this rail in the 4xx analytics): a burst of concurrent misses used to fan out
+  // into N BookMyShow fetches, and an edge/rate answer surfaced to the browser as a red 429. The rail is
+  // now single-flight with stale-while-revalidate, and it answers 200 with its last good catalogue
+  // instead of an error the user can see.
   const city = String(req.query.city || '').slice(0, 60).trim();
   const cacheKey = (city || 'default').toLowerCase();
   const hit = upcomingCache.get(cacheKey);
   if (hit && Date.now() - hit.at < 30 * 60_000) return res.json({ movies: hit.movies });
   try {
+    const moviesOut = await cachedRead(`movies:upcoming:${cacheKey}`, 10 * 60_000, async () => {
+      const cold = await fetchUpcomingMovies(city, cacheKey);
+      return cold;
+    }, { maxStaleMs: 24 * 60 * 60_000 });
+    return res.json({ movies: moviesOut });
+  } catch (e: any) {
+    return res.json({ movies: [], error: String(e?.message || e).slice(0, 120) });
+  }
+});
+
+/** The BookMyShow upcoming sweep for one city, kept as its own function so the read cache can single-flight it. */
+async function fetchUpcomingMovies(city: string, cacheKey: string): Promise<any[]> {
+  {
     const fetchJson = async (url: string) => {
       const r = await cffiFetch(url, { impersonate: 'safari', timeoutMs: 15_000, headers: { Accept: 'application/json' } });
       if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
@@ -386,7 +404,7 @@ apiRouter.get('/movies/upcoming', async (req, res) => {
     // Akamai occasionally 403s a fresh request (edge jitter): one honest retry, then report.
     let r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: 'safari', timeoutMs: 15_000, headers: bmsDiscoverHeaders(region) });
     if (r.status !== 200) r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: 'chrome', timeoutMs: 15_000, headers: bmsDiscoverHeaders(region) });
-    if (r.status !== 200) return res.json({ movies: [], error: `BookMyShow upcoming HTTP ${r.status}` });
+    if (r.status !== 200) throw new Error(`BookMyShow upcoming HTTP ${r.status}`);
     const parsed = parseUpcomingCards(JSON.parse(r.body || '{}'), region);
     const movies = parsed.map((m) => ({
       title: m.title,
@@ -401,11 +419,10 @@ apiRouter.get('/movies/upcoming', async (req, res) => {
       goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) }),
     }));
     if (movies.length) upcomingCache.set(cacheKey, { at: Date.now(), movies });
-    return res.json({ movies });
-  } catch (e: any) {
-    return res.json({ movies: [], error: String(e?.message || e).slice(0, 120) });
+    if (!movies.length) throw new Error('BookMyShow returned no upcoming cards');
+    return movies;
   }
-});
+}
 
 // ---- Currently showing (owner 31 Oct: homepage "Currently Showing" section) ----
 // BookMyShow's own NOW-SHOWING discovery for the visitor's region, parsed with the same
@@ -1852,7 +1869,10 @@ apiRouter.post('/scrape/live', async (req, res) => {
       }
     }
   } catch { /* the wait is an improvement, never a blocker */ }
-  if (!response) { res.status(503).json({ ok: false, error: 'search unavailable', results: [] }); return; }
+  // OWNER 9 Nov (503 in the 5xx analytics): a momentarily missing answer is not an outage. Answer 200
+  // with an honest empty envelope (pendingRefresh true) so the client retries quietly instead of logging
+  // a server error the owner sees in analytics.
+  if (!response) { res.json({ ok: true, results: [], pendingRefresh: true, degraded: true }); return; }
 
   // SELF-HEAL SAFETY NET (owner 23 Oct — "loader ke 3-2-1 hone pr bhi results
   // bahut late"): a search that did NOT come from the warm cache means the
@@ -2922,15 +2942,24 @@ apiRouter.delete('/spend/:id', authMiddleware, requireAuth, async (req, res) => 
 // Anonymous visitors see admin broadcasts; signed-in users additionally get their
 // own auto price-drop notifications with per-user read state.
 apiRouter.get('/notifications', authMiddleware, async (req, res) => {
+  // OWNER 9 Nov (429 storm on this rail): a badge poll must never cost a burst and must never answer a
+  // red error. 15s micro-cache per user, single-flight, and the last good copy instead of a 500.
+  const user = (req as any).user;
+  const key = user ? `notifications:user:${Number(user.id)}` : 'notifications:anon';
   try {
-    const user = (req as any).user;
-    if (user) {
-      const { items, unread } = await userNotifications(Number(user.id));
-      return res.json({ success: true, signedIn: true, items, unread });
-    }
-    res.json({ success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 });
+    const body = await cachedRead(key, 15_000, async () => {
+      if (user) {
+        const { items, unread } = await userNotifications(Number(user.id));
+        return { success: true, signedIn: true, items, unread };
+      }
+      return { success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 };
+    }, { maxStaleMs: 24 * 60 * 60_000 });
+    res.setHeader('Cache-Control', 'private, max-age=15');
+    res.json(body);
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e?.message || 'Could not load notifications' });
+    // Cold failure: an empty rail, 200. The badge shows nothing rather than the client logging a 5xx.
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, signedIn: !!user, items: [], unread: 0, degraded: true });
   }
 });
 
