@@ -33,6 +33,13 @@ const run = async () => {
     // Same for the crawlable legal/support pages (server/seo/legalPages.ts, pinned by
     // tests/legalPages.test.ts) - they are real HTML, just not SeoPage records.
     if (['/about', '/contact', '/privacy', '/privacy-policy', '/terms', '/faq', '/affiliate-disclosure'].includes(p)) continue;
+    // Same again for the answer layer (server/seo/answerPages.ts, pinned by tests/seoAnswerPages.test.ts):
+    // /answers, /best/<vertical> and /best/<vertical>/<state> are rendered by their own router.
+    if (p === '/answers' || p === '/best' || p.startsWith('/best/')) {
+      const { resolveAnswerPage } = await import('../server/seo/answerPages');
+      assert.ok(resolveAnswerPage(p), `answer URL ${p} must render a page`);
+      continue;
+    }
     const page = resolveSeoPage(p);
     assert.ok(page, `sitemap URL ${p} has no SEO page`);
     assert.ok(page.title.length > 10 && page.title.length <= 65 + 30, `title sane at ${p}`);

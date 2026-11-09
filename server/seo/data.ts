@@ -16,6 +16,7 @@
 export const SEO_HOST = 'https://www.try1second.com';
 
 import { GUIDE_SLUGS } from './guides';
+import { ANSWER_STATES } from './answerStates';
 
 export interface SeoFaq { q: string; a: string }
 export interface SeoPage {
@@ -340,6 +341,12 @@ const titleCase = (s: string) => s.replace(/(^|\s|-)\w/g, (m) => m.toUpperCase()
 const cityName = (slug: string) => CITIES.find((c) => c.slug === slug)?.name || titleCase(slug.replace(/-/g, ' '));
 const cityList = () => CITIES.slice(0, 8).map((c) => c.name).join(', ');
 
+/** Read-only view of the vertical corpus for the answer-page layer (server/seo/answerPages.ts).
+ *  Kept as a function so the array itself stays private to this module. */
+export function seoVerticals(): { slug: string; label: string; title: string; description: string; h1: string; intro: string[]; faqs: SeoFaq[] }[] {
+  return VERTICALS.map((v) => ({ slug: v.slug, label: v.label, title: v.title, description: v.description, h1: v.h1, intro: v.intro, faqs: v.faqs }));
+}
+
 function verticalBySlug(slug: string): VerticalMeta | undefined {
   return VERTICALS.find((v) => v.slug === slug.replace(/\/$/, ''));
 }
@@ -367,6 +374,12 @@ export function listSeoPaths(): string[] {
     '/contact',
     '/guides',
   ];
+  // Answer pages: /answers + /best/<vertical> + /best/<vertical>/<state> (28 states + 8 UTs).
+  paths.push('/answers');
+  for (const v of VERTICALS) {
+    paths.push(`/best/${v.slug}`);
+    for (const st of ANSWER_STATES) paths.push(`/best/${v.slug}/${st.slug}`);
+  }
   for (const v of VERTICALS) {
     paths.push(`/${v.slug}`);
     if (v.id === 'hotels' || v.id === 'grocery' || v.id === 'food' || v.id === 'movie' || v.id === 'cab') {

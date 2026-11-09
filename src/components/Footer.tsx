@@ -387,6 +387,11 @@ export const Footer: React.FC = () => {
               About
             </button>
             <span>·</span>
+            {/* OWNER 9 Nov (SEO): the answer layer (/answers, /best/<vertical>, /best/<vertical>/<state>)
+                is server-rendered HTML, so it is linked with a plain anchor instead of the SPA router.
+                One crawlable in-site link is what lets search engines discover all 482 answer URLs. */}
+            <a href="/answers" className="hover:text-slate-700">Compare answers</a>
+            <span>·</span>
             <button
               type="button"
               onClick={() => handleLegalClick('privacy')}

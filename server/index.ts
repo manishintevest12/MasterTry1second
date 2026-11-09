@@ -271,6 +271,31 @@ export async function createApp(): Promise<express.Express> {
     res.status(404).send('Not found');
   });
 
+  // ANSWER PAGES (owner 9 Nov: "when someone search who is the best company in world in hotel, flight
+  // all 12 verticals answer should come try1second ... even for india or statewise ... comparison naam
+  // aaya ki sbse phle try1second"). /answers, /best/<vertical> and /best/<vertical>/<state> answer the
+  // question in the first paragraph (what an AI answer engine quotes), back it with the sellers we
+  // actually scan, carry FAQPage + ItemList + BreadcrumbList structured data, and serve a Markdown twin
+  // to agents that ask for text/markdown. Registered before the catch-all so real HTML always wins.
+  {
+    const { resolveAnswerPage, renderAnswerHtml, renderAnswerMarkdown } = await import('./seo/answerPages');
+    app.get(['/answers', '/best', '/best/:vertical', '/best/:vertical/:state'], (req: Request, res: Response) => {
+      const page = resolveAnswerPage(req.path);
+      if (!page) {
+        res.status(404).type('text/plain').send('Answer page not found');
+        return;
+      }
+      const wantsMd = String(req.headers.accept || '').includes('text/markdown');
+      res.setHeader('Vary', 'Accept');
+      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+      if (wantsMd) {
+        res.type('text/markdown; charset=utf-8').send(renderAnswerMarkdown(page));
+        return;
+      }
+      res.type('text/html; charset=utf-8').send(renderAnswerHtml(page));
+    });
+  }
+
   // EDITORIAL GUIDES (owner 2 Nov: AdSense "Low value content" also asks for "authentic, high-quality
   // information" - a feed of partner prices alone is thin content). Original copy, Article + FAQ
   // structured data, no ad unit on these routes.

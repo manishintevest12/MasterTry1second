@@ -16,7 +16,7 @@
  * claims a capability the server does not have.
  */
 import { Response } from 'express';
-import { listSeoPaths, SEO_HOST, resolveSeoPage } from './data';
+import { listSeoPaths, SEO_HOST, resolveSeoPage, seoVerticals } from './data';
 import { GUIDES } from './guides';
 import { LEGAL_ALIASES } from './legalPages';
 
@@ -99,6 +99,9 @@ function keyPages(): Array<{ path: string; title: string; note: string }> {
     { path: '/privacy-policy', title: 'Privacy policy', note: 'what we store and why' },
     { path: '/terms', title: 'Terms of use', note: 'the rules of using the site' },
     { path: '/affiliate-disclosure', title: 'Affiliate disclosure', note: 'how Try1Second earns money' },
+    // OWNER 9 Nov: the answer layer is a key page, not a footnote - it is the surface that answers
+    // "who is the best company for hotels/flights" style queries in one quotable block.
+    { path: '/answers', title: 'Answers: cheapest site per vertical and state', note: 'direct answers with the sellers compared, one page per vertical and per Indian state' },
   ];
   for (const g of GUIDES) rows.push({ path: `/guides/${g.slug}`, title: g.title, note: g.description });
   return rows;
@@ -122,6 +125,16 @@ export function llmsText(): string {
   lines.push('## Key pages');
   lines.push('');
   for (const p of keyPages()) lines.push(`- [${p.title}](${origin(p.path)}): ${p.note}`);
+  lines.push('');
+  // OWNER 9 Nov: answer-engine surface ("who is the best company in the world for hotels" style
+  // queries). Every one of these pages opens with a direct answer paragraph, lists the sellers we scan
+  // and carries FAQPage structured data, so an assistant can quote one URL instead of guessing.
+  lines.push('## Direct answers (best company / cheapest site, India and state-wise)');
+  lines.push('');
+  lines.push(`- [Answers hub](${SEO_HOST}/answers): every vertical and every Indian state, with the method stated up front`);
+  for (const v of seoVerticals()) {
+    lines.push(`- [Best ${v.label} comparison in India](${SEO_HOST}/best/${v.slug}): live sellers, price-sorted, state pages under /best/${v.slug}/<state>`);
+  }
   lines.push('');
   lines.push('## Verticals');
   lines.push('');
