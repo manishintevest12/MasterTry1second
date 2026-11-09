@@ -53706,7 +53706,8 @@ function resolveSeoPage(path18) {
         { label: "All flight routes", href: "/flights" },
         ...FLIGHT_ROUTES.filter(([a, b]) => a === m[1] || b === m[2]).slice(0, 5).map(([a, b]) => ({ label: `${cityName(a)} to ${cityName(b)} flights`, href: `/flights/${routeSlug(a, b, "flights")}` })),
         { label: `${A} hotels`, href: `/hotels/${m[1]}` },
-        { label: `${A} cabs`, href: `/cabs/${m[1]}` }
+        { label: `${A} cabs`, href: `/cabs/${m[1]}` },
+        { label: "Best flight comparison in India", href: "/best/flights" }
       ]
     };
   }
@@ -53765,6 +53766,11 @@ function resolveSeoPage(path18) {
       links: [
         { label: `${vmeta.label} home`, href: `/${head3}` },
         ...others.map((x) => ({ label: `${vmeta.label} in ${x.name}`, href: `/${head3}/${x.slug}` })),
+        // Link UP to the state answer page and the vertical answer hub (see stateForCity). Without this a
+        // city page only pointed sideways at other cities, so the /best pages got no link equity from
+        // sites' strongest existing pages.
+        ...stateForCity(c) ? [{ label: `Best ${vmeta.label.toLowerCase()} in ${stateForCity(c).name}`, href: `/best/${head3}/${stateForCity(c).slug}` }] : [],
+        { label: `Best ${vmeta.label.toLowerCase()} in India`, href: `/best/${head3}` },
         ...head3 === "hotels" ? [{ label: `${c} flights search`, href: "/flights" }] : []
       ]
     };
@@ -53806,6 +53812,13 @@ function resolveSeoPage(path18) {
   }
   return null;
 }
+function stateForCity(name) {
+  const want = name.trim().toLowerCase();
+  for (const st of ANSWER_STATES) {
+    if (st.cities.some((c) => c.trim().toLowerCase() === want)) return { name: st.name, slug: st.slug };
+  }
+  return null;
+}
 function seoLinksFor(verticalPath) {
   const head3 = verticalPath.split("/").filter(Boolean)[0];
   const links = [];
@@ -53815,6 +53828,12 @@ function seoLinksFor(verticalPath) {
     for (const [a, b] of BUS_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} buses`, href: `/bus/${routeSlug(a, b, "bus")}` });
   } else if (["hotels", "cabs", "grocery", "food", "movies"].includes(head3)) {
     for (const c of CITIES.slice(0, 8)) links.push({ label: `${cityName(c.slug)}`, href: `/${head3}/${c.slug}` });
+  }
+  const segs = verticalPath.split("/").filter(Boolean);
+  if (segs.length === 2) {
+    const st = stateForCity(cityName(segs[1]));
+    if (st) links.push({ label: `Best ${head3.replace(/-/g, " ")} in ${st.name}`, href: `/best/${head3}/${st.slug}` });
+    links.push({ label: `Best ${head3.replace(/-/g, " ")} in India`, href: `/best/${head3}` });
   }
   return links;
 }

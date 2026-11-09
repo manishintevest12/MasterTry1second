@@ -583,6 +583,7 @@ export function resolveSeoPage(path: string): SeoPage | null {
         ...FLIGHT_ROUTES.filter(([a, b]) => a === m[1] || b === m[2]).slice(0, 5).map(([a, b]) => ({ label: `${cityName(a)} to ${cityName(b)} flights`, href: `/flights/${routeSlug(a, b, 'flights')}` })),
         { label: `${A} hotels`, href: `/hotels/${m[1]}` },
         { label: `${A} cabs`, href: `/cabs/${m[1]}` },
+        { label: 'Best flight comparison in India', href: '/best/flights' },
       ],
     };
   }
@@ -641,6 +642,11 @@ export function resolveSeoPage(path: string): SeoPage | null {
       links: [
         { label: `${vmeta.label} home`, href: `/${head}` },
         ...others.map((x) => ({ label: `${vmeta.label} in ${x.name}`, href: `/${head}/${x.slug}` })),
+        // Link UP to the state answer page and the vertical answer hub (see stateForCity). Without this a
+        // city page only pointed sideways at other cities, so the /best pages got no link equity from
+        // sites' strongest existing pages.
+        ...(stateForCity(c) ? [{ label: `Best ${vmeta.label.toLowerCase()} in ${stateForCity(c)!.name}`, href: `/best/${head}/${stateForCity(c)!.slug}` }] : []),
+        { label: `Best ${vmeta.label.toLowerCase()} in India`, href: `/best/${head}` },
         ...(head === 'hotels' ? [{ label: `${c} flights search`, href: '/flights' }] : []),
       ],
     };
@@ -687,6 +693,22 @@ export function resolveSeoPage(path: string): SeoPage | null {
   return null;
 }
 
+/**
+ * Which state a city page belongs to, so /hotels/kolkata can link /best/hotels/west-bengal.
+ * OWNER 9 Nov: "kaise improve kre ki top results mai aaye". The answer pages already link DOWN to the
+ * city pages, but a city page had no link UP to its state page, so the 482 new answer URLs were only
+ * reachable through /answers and the footer. Search engines weight a link by the page it comes from, so
+ * every indexed city page now passes relevance to its state answer page, and the two blocks reinforce
+ * the same topic in both directions.
+ */
+function stateForCity(name: string): { name: string; slug: string } | null {
+  const want = name.trim().toLowerCase();
+  for (const st of ANSWER_STATES) {
+    if (st.cities.some((c) => c.trim().toLowerCase() === want)) return { name: st.name, slug: st.slug };
+  }
+  return null;
+}
+
 function seoLinksFor(verticalPath: string): { label: string; href: string }[] {
   const head = verticalPath.split('/').filter(Boolean)[0];
   const links: { label: string; href: string }[] = [];
@@ -696,6 +718,14 @@ function seoLinksFor(verticalPath: string): { label: string; href: string }[] {
     for (const [a, b] of BUS_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} buses`, href: `/bus/${routeSlug(a, b, 'bus')}` });
   } else if (['hotels', 'cabs', 'grocery', 'food', 'movies'].includes(head)) {
     for (const c of CITIES.slice(0, 8)) links.push({ label: `${cityName(c.slug)}`, href: `/${head}/${c.slug}` });
+  }
+  // City page -> its state answer page (and the vertical hub), so the new /best pages collect an
+  // internal link from every indexed city page instead of waiting for a fresh crawl.
+  const segs = verticalPath.split('/').filter(Boolean);
+  if (segs.length === 2) {
+    const st = stateForCity(cityName(segs[1]));
+    if (st) links.push({ label: `Best ${head.replace(/-/g, ' ')} in ${st.name}`, href: `/best/${head}/${st.slug}` });
+    links.push({ label: `Best ${head.replace(/-/g, ' ')} in India`, href: `/best/${head}` });
   }
   return links;
 }

@@ -76,3 +76,30 @@ test('guides link into the answer layer so it is one hop from indexed content', 
     assert.ok(html && html.includes('href="/answers"'), `${slug} must link /answers`);
   }
 });
+
+test('every indexed city page links UP to its state answer page (crawl + relevance both ways)', async () => {
+  const { ANSWER_STATES } = await import('../server/seo/answerStates');
+  const cases: Array<[string, string]> = [
+    ['/hotels/kolkata', 'west-bengal'],
+    ['/grocery/hyderabad', 'telangana'],
+    ['/cabs/patna', 'bihar'],
+  ];
+  for (const [path, stateSlug] of cases) {
+    const page = resolveSeoPage(path as any);
+    assert.ok(page, `${path} must resolve`);
+    const hrefs = (page!.links || []).map((l) => l.href);
+    const vertical = path.split('/')[1];
+    assert.ok(hrefs.includes(`/best/${vertical}/${stateSlug}`), `${path} must link /best/${vertical}/${stateSlug} (got ${hrefs.join(',')})`);
+    assert.ok(hrefs.includes(`/best/${vertical}`), `${path} must link the /best/${vertical} hub`);
+    // the state must really contain that city, so the link is not invented
+    const st = ANSWER_STATES.find((x) => x.slug === stateSlug)!;
+    const city = path.split('/')[2];
+    assert.ok(st.cities.some((c) => c.toLowerCase().replace(/\s+/g, '-') === city), `${city} must be listed in ${st.name}`);
+  }
+});
+
+test('route pages link the vertical answer hub', () => {
+  const flight = resolveSeoPage('/flights/indore-to-delhi-flights' as any);
+  assert.ok(flight, 'flight route page must resolve');
+  assert.ok((flight!.links || []).some((l) => l.href === '/best/flights'), 'flight route must link /best/flights');
+});
