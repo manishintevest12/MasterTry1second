@@ -201,6 +201,18 @@ const handleSelectJourneyDate = (formattedDate: string) => {
     if (/savings|current|demat|trading/i.test(bank)) return bank;
     return bank ? `${bank} ${t} account` : `${t} account`;
   };
+  // OWNER 9 Nov ("loan, credit card, insurance, account mai filters, compare apr, quick picks ya view
+  // quotes kaam ni kr rha"): the finance surfaces had buttons that only typed into the search box. A
+  // filter/CTA that types but never fetches looks broken - the box changes and nothing happens. Every
+  // one of them now runs the same live search the Search button runs, so a tap always produces rows and
+  // the pill/AI filter then narrows them.
+  const financeBaseQuery = (): string => {
+    if (vertical === 'loans') return loanType.split('(')[0].trim();
+    if (vertical === 'insurance') return insuranceType.includes('Car') ? 'Car' : 'Health';
+    if (vertical === 'account') return accountSearchQuery();
+    if (vertical === 'creditcards') return (searchQuery || 'best credit card').trim();
+    return (searchQuery || '').trim();
+  };
 
   // 9b. Cab
   const [cabDrop, setCabDrop] = useState<string>('DLF Cyber City, Gurugram (122002)');
@@ -1431,6 +1443,7 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   onClick={() => {
                     setLoanType(t);
                     setSearchQuery(t.split('(')[0].trim());
+                    triggerLiveLocationScrape(t.split('(')[0].trim());
                   }}
                   className={`px-3 py-1 rounded-lg font-bold text-xs transition-colors ${
                     loanType === t ? 'bg-amber-400 text-slate-950' : 'bg-white/10 hover:bg-white/20 text-white'
@@ -1519,7 +1532,11 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSearchQuery(loanType.split('(')[0].trim())}
+                  onClick={() => {
+                    const q = loanType.split('(')[0].trim();
+                    setSearchQuery(q);
+                    triggerLiveLocationScrape(q);
+                  }}
                   className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-lg transition-colors cursor-pointer"
                 >
                   Compare APR
@@ -1581,7 +1598,9 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   value={insuranceType}
                   onChange={(e) => {
                     setInsuranceType(e.target.value);
-                    setSearchQuery(e.target.value.includes('Car') ? 'Car' : 'Health');
+                    const q = e.target.value.includes('Car') ? 'Car' : 'Health';
+                    setSearchQuery(q);
+                    triggerLiveLocationScrape(q);
                   }}
                   className="w-full bg-transparent focus:outline-hidden font-bold text-slate-900 cursor-pointer text-xs truncate"
                 >
@@ -1613,7 +1632,11 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <div className="md:col-span-2">
                 <button
                   type="button"
-                  onClick={() => setSearchQuery(insuranceType.includes('Car') ? 'Car' : 'Health')}
+                  onClick={() => {
+                    const q = insuranceType.includes('Car') ? 'Car' : 'Health';
+                    setSearchQuery(q);
+                    triggerLiveLocationScrape(q);
+                  }}
                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors shadow-md cursor-pointer"
                 >
                   View Quotes
@@ -1761,7 +1784,15 @@ const handleSelectJourneyDate = (formattedDate: string) => {
             <button
               key={i}
               type="button"
-              onClick={() => applySmartFilter(queryPrompt)}
+              onClick={() => {
+                applySmartFilter(queryPrompt);
+                // The pill narrows what is on screen; on the finance verticals the feed is often still
+                // empty at that moment (no search run yet), so also start the live search for that
+                // vertical - otherwise the tap changes a label and shows nothing.
+                if (['loans', 'insurance', 'creditcards', 'account'].includes(vertical)) {
+                  triggerLiveLocationScrape(financeBaseQuery());
+                }
+              }}
               className={`px-3 py-1 rounded-full border transition-colors shrink-0 cursor-pointer ${
                 smartFilterText === queryPrompt
                   ? 'bg-red-50 border-red-300 text-red-700 font-bold'

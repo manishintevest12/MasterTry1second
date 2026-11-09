@@ -58,6 +58,31 @@ function banksFor(plan: ReturnType<typeof queryPlan>, universe: string[], map: (
 
 const nameMatches = (name: string, tokens: string[]) => !tokens.length || tokens.every((t) => name.toLowerCase().includes(t));
 
+/**
+ * OWNER 9 Nov ("credit card mai quick picks kaam ni kr rha"): the quick picks are descriptive sentences
+ * - "Premium Metal Cards (Atlas, Infinia)", "HDFC Credit Cards (Millennia, Regalia, Infinia)",
+ * "Best Cashback Cards (Amazon, Flipkart, Myntra)". queryPlan turns each into long tokens
+ * (premium/metal/atlas/infinia) and the old code kept only issuer pages whose URL slug contained EVERY
+ * token - no slug ever does, so the tap crawled nothing and the feed answered zero rows. The pick has to
+ * narrow, and when the strict reading matches nothing it must widen instead of returning nothing:
+ *   1. slug contains all tokens  -> 2. slug contains any token  -> 3. the unfiltered universe.
+ * Nothing is invented by widening: the same real catalogue is crawled and the INTENT still filters cards.
+ */
+export function pickTargets<T extends { u: string }>(targets: T[], tokens: string[]): T[] {
+  if (!tokens.length || !targets.length) return targets;
+  const slug = (t: T) => t.u.split('/').filter(Boolean).pop()!.replace(/-/g, ' ').toLowerCase();
+  const all = targets.filter((t) => nameMatches(slug(t), tokens));
+  if (all.length) return all;
+  const any = targets.filter((t) => tokens.some((tok) => slug(t).includes(tok)));
+  return any.length ? any : targets;
+}
+
+/** Several intent words ("travel ... lounge") map to the SAME predicate, so requiring every intent to
+ *  hold is how a reasonable pick like "Travel Cards with Airport Lounge Access" ended up empty. Any
+ *  matched intent is enough; with no intent nothing is filtered. */
+const intentOk = (hay: string, intents: Array<{ test: (t: string) => boolean }>) =>
+  !intents.length || intents.some((i) => i.test(hay));
+
 async function pool<T, R>(items: T[], size: number, fn: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = [];
   for (let i = 0; i < items.length; i += size) out.push(...(await Promise.all(items.slice(i, i + size).map(fn))));
@@ -76,7 +101,7 @@ async function ciTask(ctx: WorkerTaskContext) {
   if (indexes.every((i) => i.status !== 200)) throw new AcquisitionError('SERVER_ERROR', `CardInsider issuer pages HTTP ${indexes.map((i) => i.status).join('/')}`);
   // Name filter on the URL slug first (cheap), then fetch only the cards that can match.
   let targets = indexes.flatMap((i) => i.links.map((u) => ({ b: i.b, u })));
-  if (plan.tokens.length) targets = targets.filter((t) => nameMatches(t.u.split('/').filter(Boolean).pop()!.replace(/-/g, ' '), plan.tokens));
+  targets = pickTargets(targets, plan.tokens);
   targets = targets.slice(0, plan.intents.length ? 90 : MAX_CARDS + 10);
   if (!targets.length) throw new AcquisitionError('EMPTY_RESPONSE', 'CardInsider lists no card matching this search');
   const pages = await pool(targets, 8, async (t) => {
@@ -92,7 +117,7 @@ async function ciTask(ctx: WorkerTaskContext) {
     if (!c) continue;
     if (plan.intents.length) {
       const hay = `${c.name} ${c.bestFor || ''} ${c.rewardRate || ''} ${c.domesticLounge || ''} ${c.intlLounge || ''} ${c.joiningFee || ''} ${c.annualFee || ''} ${c.fuelWaiver || ''}`;
-      if (!plan.intents.every((i) => i.test(hay))) continue;
+      if (!intentOk(hay, plan.intents)) continue;
     }
     const item = cardToRawItem(c, ctx.source, t.b, r.body);
     // Apply deeplink = the issuing bank's own card page when it can be resolved (never guessed).
@@ -115,7 +140,7 @@ async function pbTask(ctx: WorkerTaskContext) {
   });
   let targets = indexes.flatMap((i) => i.links.map((u) => ({ b: i.b, u })));
   if (!targets.length) throw new AcquisitionError(indexes.some((i) => i.status === 403) ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE', `Paisabazaar issuer pages gave no card links (HTTP ${indexes.map((i) => i.status).join('/')})`);
-  if (plan.tokens.length) targets = targets.filter((t) => nameMatches(t.u.split('/').filter(Boolean).pop()!.replace(/-/g, ' '), plan.tokens));
+  targets = pickTargets(targets, plan.tokens);
   targets = targets.slice(0, plan.intents.length ? 60 : 30);
   const pages = await pool(targets, 6, async (t) => {
     try { return { t, r: await cffiFetch(t.u, { impersonate: 'chrome', timeoutMs: 15_000 }) }; } catch { return { t, r: null as any }; }
@@ -125,7 +150,7 @@ async function pbTask(ctx: WorkerTaskContext) {
     if (!r || r.status !== 200) continue;
     const c = parsePaisabazaarCard(r.body, t.u);
     if (!c) continue;
-    if (plan.intents.length && !plan.intents.every((i) => i.test(`${c.name} ${c.joiningFee || ''} ${c.annualFee || ''}`))) continue;
+    if (!intentOk(`${c.name} ${c.joiningFee || ''} ${c.annualFee || ''}`, plan.intents)) continue;
     const ciSlug = PB_TO_CI[t.b] || t.b;
     const item = pbToRawItem(c, ctx.source, ciSlug, r.body);
     const official = await resolveBankCardUrl(ciSlug, c.name);

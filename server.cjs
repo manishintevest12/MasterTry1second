@@ -28220,6 +28220,14 @@ function banksFor(plan, universe, map = (s) => s) {
   const wanted = plan.banks.map((b) => universe.find((u) => map(u) === b) || b).filter((b) => universe.includes(b));
   return wanted.length ? wanted : universe.slice(0, 6);
 }
+function pickTargets(targets, tokens3) {
+  if (!tokens3.length || !targets.length) return targets;
+  const slug5 = (t) => t.u.split("/").filter(Boolean).pop().replace(/-/g, " ").toLowerCase();
+  const all = targets.filter((t) => nameMatches(slug5(t), tokens3));
+  if (all.length) return all;
+  const any = targets.filter((t) => tokens3.some((tok) => slug5(t).includes(tok)));
+  return any.length ? any : targets;
+}
 async function pool(items, size, fn) {
   const out = [];
   for (let i = 0; i < items.length; i += size) out.push(...await Promise.all(items.slice(i, i + size).map(fn)));
@@ -28234,7 +28242,7 @@ async function ciTask(ctx) {
   });
   if (indexes.every((i) => i.status !== 200)) throw new AcquisitionError("SERVER_ERROR", `CardInsider issuer pages HTTP ${indexes.map((i) => i.status).join("/")}`);
   let targets = indexes.flatMap((i) => i.links.map((u) => ({ b: i.b, u })));
-  if (plan.tokens.length) targets = targets.filter((t) => nameMatches(t.u.split("/").filter(Boolean).pop().replace(/-/g, " "), plan.tokens));
+  targets = pickTargets(targets, plan.tokens);
   targets = targets.slice(0, plan.intents.length ? 90 : MAX_CARDS + 10);
   if (!targets.length) throw new AcquisitionError("EMPTY_RESPONSE", "CardInsider lists no card matching this search");
   const pages = await pool(targets, 8, async (t) => {
@@ -28252,7 +28260,7 @@ async function ciTask(ctx) {
     if (!c) continue;
     if (plan.intents.length) {
       const hay = `${c.name} ${c.bestFor || ""} ${c.rewardRate || ""} ${c.domesticLounge || ""} ${c.intlLounge || ""} ${c.joiningFee || ""} ${c.annualFee || ""} ${c.fuelWaiver || ""}`;
-      if (!plan.intents.every((i) => i.test(hay))) continue;
+      if (!intentOk(hay, plan.intents)) continue;
     }
     const item = cardToRawItem(c, ctx.source, t.b, r.body);
     const official = await resolveBankCardUrl(t.b, c.name);
@@ -28275,7 +28283,7 @@ async function pbTask(ctx) {
   });
   let targets = indexes.flatMap((i) => i.links.map((u) => ({ b: i.b, u })));
   if (!targets.length) throw new AcquisitionError(indexes.some((i) => i.status === 403) ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", `Paisabazaar issuer pages gave no card links (HTTP ${indexes.map((i) => i.status).join("/")})`);
-  if (plan.tokens.length) targets = targets.filter((t) => nameMatches(t.u.split("/").filter(Boolean).pop().replace(/-/g, " "), plan.tokens));
+  targets = pickTargets(targets, plan.tokens);
   targets = targets.slice(0, plan.intents.length ? 60 : 30);
   const pages = await pool(targets, 6, async (t) => {
     try {
@@ -28289,7 +28297,7 @@ async function pbTask(ctx) {
     if (!r || r.status !== 200) continue;
     const c = parsePaisabazaarCard(r.body, t.u);
     if (!c) continue;
-    if (plan.intents.length && !plan.intents.every((i) => i.test(`${c.name} ${c.joiningFee || ""} ${c.annualFee || ""}`))) continue;
+    if (!intentOk(`${c.name} ${c.joiningFee || ""} ${c.annualFee || ""}`, plan.intents)) continue;
     const ciSlug = PB_TO_CI[t.b] || t.b;
     const item = pbToRawItem(c, ctx.source, ciSlug, r.body);
     const official = await resolveBankCardUrl(ciSlug, c.name);
@@ -28303,7 +28311,7 @@ async function pbTask(ctx) {
   if (!out.length) throw new AcquisitionError("EMPTY_RESPONSE", "No Paisabazaar card page matched this search");
   return out;
 }
-var CI_BANKS, PB_BANKS, PB_TO_CI, BANK_ALIASES, INTENTS, STOP, nameMatches, MAX_CARDS, creditCardsWorker;
+var CI_BANKS, PB_BANKS, PB_TO_CI, BANK_ALIASES, INTENTS, STOP, nameMatches, intentOk, MAX_CARDS, creditCardsWorker;
 var init_creditcards = __esm({
   "server/workers/verticals/creditcards.ts"() {
     init_verticalWorker();
@@ -28341,6 +28349,7 @@ var init_creditcards = __esm({
     ];
     STOP = /* @__PURE__ */ new Set(["credit", "card", "cards", "best", "top", "compare", "comparison", "india", "bank", "for", "with", "the", "and", "in", "a", "of", "to", "me", "my", "cc", "free", "lifetime", "travel", "cashback", "cash", "back", "fuel", "shopping", "online", "dining", "rupay", "lounge"]);
     nameMatches = (name, tokens3) => !tokens3.length || tokens3.every((t) => name.toLowerCase().includes(t));
+    intentOk = (hay, intents) => !intents.length || intents.some((i) => i.test(hay));
     MAX_CARDS = 40;
     creditCardsWorker = {
       vertical: "creditcards",
