@@ -23,10 +23,8 @@ import { useEffect, useRef, useState } from 'react';
 
 const NATIVE_SCRIPT = 'https://bauval.org/21/70c58edbc3f67ad3fb38bfec9b066a6c';
 const NATIVE_CONTAINER_ID = 'container-70c58edbc3f67ad3fb38bfec9b066a6c';
-const POPUNDER_SCRIPT = 'https://abscloud.org/1/30630f41e5b1ff848ce9427d16ad34e1';
 export const SMARTLINK_URL = 'https://araplhn.org/4/d507e5d07b8864a761b95b057aaea9a8';
 
-const POPUNDER_FLAG = 't1s_popunder_1';
 let nativeSlotTaken = false;
 
 /**
@@ -104,37 +102,6 @@ export const NativeBannerSlot: React.FC<{ className?: string }> = ({ className }
 };
 
 /**
- * Popunder_1 (abscloud.org) - DISABLED BY DEFAULT.
- *
- * Owner 3 Nov, after living with it: "jb kissi v vertical pr click krta hoon tho popunder phle khulta
- * hai phir wapas uss vertical pr click krna prta hai". That is exactly what a network popunder does:
- * its script binds the FIRST document click and takes the current tab to the ad, so the navigation
- * the user asked for (the vertical) never happens and they have to click again.
- *
- * We keep the loader behind NEXT_PUBLIC_T1S_POPUNDER=1 for anyone who later accepts that behaviour,
- * but the default is OFF and the new-tab ad below is the one that runs. Two ad mechanisms must never
- * both fire, so enabling this disables the new-tab one.
- */
-export const useSitePopunder = (): void => {
-  useEffect(() => {
-    if (String(import.meta.env.VITE_T1S_POPUNDER ?? '0') !== '1') return;
-    if (!adSafePath()) return;
-    try {
-      if (sessionStorage.getItem(POPUNDER_FLAG) === '1') return;
-      sessionStorage.setItem(POPUNDER_FLAG, '1');
-    } catch {
-      // private mode: fall through and load once for this page view
-    }
-    const arm = () => injectScriptOnce('t1s-popunder-1', POPUNDER_SCRIPT, true);
-    const timer = setTimeout(() => {
-      if ('requestIdleCallback' in window) (window as any).requestIdleCallback(arm, { timeout: 4000 });
-      else arm();
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, []);
-};
-
-/**
  * Controlled "ad in the other tab" (owner's own words: "mera vertical khule aur mai rahu v ussi
  * screen pr aur add dusre tab mai aaye jb mai uss app pr jau tb wo muje mile").
  *
@@ -176,7 +143,12 @@ export function qualifiesForNewTabAd(info: {
 
 export const useNewTabAd = (): void => {
   useEffect(() => {
-    if (String(import.meta.env.VITE_T1S_POPUNDER ?? '0') === '1') return; // one ad mechanism only
+    // OWNER 9 Nov: "popunder ko aisa fix kro ki wo new window mai khule, tab pr ni ... user ko humesa
+    // apna site dikhe jb tk ki wo khud ni jata". The network popunder (abscloud Popunder_1) is GONE
+    // from this file: its script binds the first document click and navigates the CURRENT tab, which
+    // is exactly what took the user off the site. Nothing we cannot control loads on our pages now.
+    // This hook is the only ad mechanism: one background tab per session, opened on the user's own
+    // click, never touching the tab they are on.
     let shown = false;
     try { shown = sessionStorage.getItem(NEWTAB_AD_FLAG) === '1'; } catch { /* private mode */ }
 
@@ -195,8 +167,26 @@ export const useNewTabAd = (): void => {
       if (!ok) return;
       shown = true;
       try { sessionStorage.setItem(NEWTAB_AD_FLAG, '1'); } catch { /* private mode */ }
-      // Background tab: the current one keeps its navigation, so the vertical still opens.
-      try { window.open(SMARTLINK_URL, '_blank', 'noopener,noreferrer'); } catch { /* blocked */ }
+      // Background tab/window: the current tab keeps its navigation, so the user stays on our site.
+      // window.open without a features string asks the browser for a BACKGROUND tab (no focus steal);
+      // 'noopener' semantics are applied by hand so the ad can never reach back into this page.
+      let opened: Window | null = null;
+      try { opened = window.open(SMARTLINK_URL, '_blank'); } catch { opened = null; }
+      if (opened) { try { opened.opener = null; } catch { /* cross-origin */ } }
+      else {
+        // Popup blocked: fall back to a real anchor click, which browsers allow inside a gesture and
+        // which still honours target=_blank (the current page is never replaced).
+        try {
+          const a = document.createElement('a');
+          a.href = SMARTLINK_URL;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        } catch { /* blocked */ }
+      }
       document.removeEventListener('click', onClick, true);
     };
     document.addEventListener('click', onClick, true);

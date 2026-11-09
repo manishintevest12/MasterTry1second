@@ -6,7 +6,7 @@
 import React, { Suspense } from 'react';
 import { lazyWithRetry } from './lib/lazyWithRetry';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
-import { useNewTabAd, useSitePopunder } from './components/NetworkAdTags';
+import { useNewTabAd } from './components/NetworkAdTags';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { VerticalNav } from './components/VerticalNav';
@@ -125,7 +125,6 @@ const MainContent: React.FC = () => {
 
 export default function App() {
   // WEBSITE ad tags (owner 3 Nov): Popunder_1, once per session, idle-loaded, never on /admin.
-  useSitePopunder();
   // Owner 3 Nov: the vertical must open in THIS tab and the ad must wait in another one.
   useNewTabAd();
   return (
