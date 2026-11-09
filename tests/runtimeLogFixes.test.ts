@@ -69,3 +69,15 @@ test('AdSense is injected after first paint, not in the critical head', () => {
   assert.ok(html.includes('requestIdleCallback(loadAds'), 'after idle');
   assert.ok(html.includes("rel=\"preconnect\" href=\"https://pagead2.googlesyndication.com\""), 'warm connection ready');
 });
+
+// OWNER 9 Nov: after Force WWW is switched off at the host, nothing in this repo may re-introduce the
+// second hop. The app must serve whatever host it is given (canonical stays www), and .htaccess may only
+// upgrade http->https on the SAME host.
+test('neither the server nor .htaccess may redirect the apex to www', () => {
+  const server = readFileSync(new URL('../server/index.ts', import.meta.url), 'utf8');
+  assert.ok(!/redirect\(\\s*[`'"]https:\/\/www\.try1second/.test(server), 'no host redirect in the server');
+  assert.ok(!/status\(301\)[\s\S]{0,120}www\.try1second\.com/.test(server), 'no 301 to www');
+  const ht = readFileSync(new URL('../.htaccess', import.meta.url), 'utf8');
+  assert.ok(!/RewriteRule[^\n]*https:\/\/www\.try1second\.com[^\n]*\[R=30[12]/i.test(ht), '.htaccess does not force www');
+  assert.ok(/RewriteCond %\{HTTPS\} off/.test(ht), 'http->https upgrade is per-host only');
+});
