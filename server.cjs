@@ -55969,6 +55969,26 @@ async function createApp() {
     let lastIntegrityWarn = 0;
     baseHtml = healAssetRefs(baseHtml);
     const siteInfoBlock = `<nav aria-label="Site information"><a href="/about">About Try1Second</a> | <a href="/contact">Contact</a> | <a href="/terms">Terms</a> | <a href="/privacy-policy">Privacy policy</a> | <a href="/affiliate-disclosure">Affiliate disclosure</a> | <a href="/guides">Guides</a> | <a href="mailto:${CONTACT_EMAIL2}">${CONTACT_EMAIL2}</a> | <a href="/llms.txt">llms.txt</a> | <a href="/sitemap.xml">Sitemap</a></nav>`;
+    const BUNDLE_WATCH_SCRIPT = `<script>(function(){
+  try{
+    var here=(document.currentScript&&0)||0;
+    var mine=null;
+    var ss=document.querySelectorAll('script[src*="/assets/index-"]');
+    for(var i=0;i<ss.length;i++){var m=/(assets/index-[A-Za-z0-9_-]+.js)/.exec(ss[i].getAttribute('src')||'');if(m){mine=m[1];break;}}
+    if(!mine) return;
+    var key='t1s_bundle_reload_';
+    var probe=function(){
+      fetch('/api/version',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+        var theirs=d&&d.bundle; if(!theirs||theirs===mine) return;
+        if(sessionStorage.getItem(key+theirs)==='1') return;
+        sessionStorage.setItem(key+theirs,'1');
+        location.reload();
+      }).catch(function(){});
+    };
+    var t=setTimeout(probe,4000);
+    document.addEventListener('visibilitychange',function(){if(!document.hidden){clearTimeout(t);probe();}});
+  }catch(e){}
+})();</script>`;
     const shellCache = /* @__PURE__ */ new Map();
     const SHELL_TTL_MS = Number(process.env.T1S_SHELL_CACHE_MS || 6e4);
     const SHELL_MAX = 300;
@@ -56023,7 +56043,7 @@ async function createApp() {
 </head>`);
       } catch {
       }
-      html = html.replace("</body>", `<noscript>${siteInfoBlock}${snapshotBlock}</noscript></body>`);
+      html = html.replace("</body>", `<noscript>${siteInfoBlock}${snapshotBlock}</noscript>${BUNDLE_WATCH_SCRIPT}</body>`);
       if (SHELL_TTL_MS > 0) {
         if (shellCache.size >= SHELL_MAX) {
           const oldest = [...shellCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];

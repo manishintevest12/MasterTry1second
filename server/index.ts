@@ -428,6 +428,35 @@ export async function createApp(): Promise<express.Express> {
     // response said no-store so no browser or edge could reuse it. The finished shell is now memoised
     // per path for 60 seconds (LRU cap 300) and served with a short, revalidating cache: the price
     // snapshot inside it is the same one a crawler sees and it is refreshed on the next miss.
+    /**
+     * OWNER 9 Nov, four reports in one evening of "results are still 09 Nov": an OPEN TAB keeps the
+     * JavaScript it loaded, so every deploy since the fix still rendered the old feed logic - the
+     * server was already answering the requested date. This watcher makes an open tab notice that the
+     * server has a newer bundle and reload itself ONCE, so a stale tab can never outlive a deploy.
+     * It compares the bundle named in this document with /api/version, is keyed by the new bundle in
+     * sessionStorage so it cannot loop, and does nothing if the probe fails.
+     */
+    const BUNDLE_WATCH_SCRIPT = `<script>(function(){
+  try{
+    var here=(document.currentScript&&0)||0;
+    var mine=null;
+    var ss=document.querySelectorAll('script[src*="/assets/index-"]');
+    for(var i=0;i<ss.length;i++){var m=/(assets\/index-[A-Za-z0-9_-]+\.js)/.exec(ss[i].getAttribute('src')||'');if(m){mine=m[1];break;}}
+    if(!mine) return;
+    var key='t1s_bundle_reload_';
+    var probe=function(){
+      fetch('/api/version',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+        var theirs=d&&d.bundle; if(!theirs||theirs===mine) return;
+        if(sessionStorage.getItem(key+theirs)==='1') return;
+        sessionStorage.setItem(key+theirs,'1');
+        location.reload();
+      }).catch(function(){});
+    };
+    var t=setTimeout(probe,4000);
+    document.addEventListener('visibilitychange',function(){if(!document.hidden){clearTimeout(t);probe();}});
+  }catch(e){}
+})();</script>`;
+
     const shellCache = new Map<string, { html: string; at: number }>();
     const SHELL_TTL_MS = Number(process.env.T1S_SHELL_CACHE_MS || 60_000);
     const SHELL_MAX = 300;
@@ -487,7 +516,7 @@ export async function createApp(): Promise<express.Express> {
         const ld = snapshotJsonLd(snap, req.path);
         if (ld) html = html.replace('</head>', `<script type="application/ld+json">${ld}</script>\n</head>`);
       } catch { /* snapshot is an optimisation; the shell still serves */ }
-      html = html.replace('</body>', `<noscript>${siteInfoBlock}${snapshotBlock}</noscript></body>`);
+      html = html.replace('</body>', `<noscript>${siteInfoBlock}${snapshotBlock}</noscript>${BUNDLE_WATCH_SCRIPT}</body>`);
       if (SHELL_TTL_MS > 0) {
         if (shellCache.size >= SHELL_MAX) {
           const oldest = [...shellCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
