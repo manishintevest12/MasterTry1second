@@ -55755,6 +55755,9 @@ async function createApp() {
       index: false,
       // '/' falls through to the SEO-enhanced catch-all below
       setHeaders: (res, filePath) => {
+        if (/\.(webp|png|jpe?g|svg|ico|woff2?|ttf)$/i.test(filePath)) {
+          res.setHeader("Cache-Control", "public, max-age=2592000, stale-while-revalidate=604800");
+        }
         if (filePath.endsWith("index.html")) res.setHeader("Cache-Control", "no-store, must-revalidate");
         else if (filePath.endsWith("sw.js")) res.setHeader("Cache-Control", "no-store, must-revalidate");
         else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
@@ -55765,8 +55768,12 @@ async function createApp() {
     const { isKnownPath: isKnownPath2, markdownForPath: markdownForPath2, agentLinkHeader: agentLinkHeader2, notFoundHtml: notFoundHtml2, CONTACT_EMAIL: CONTACT_EMAIL2 } = await Promise.resolve().then(() => (init_agentReady(), agentReady_exports));
     const baseHtml = import_fs9.default.readFileSync(import_path9.default.join(dist, "index.html"), "utf8");
     const siteInfoBlock = `<nav aria-label="Site information"><a href="/about">About Try1Second</a> | <a href="/contact">Contact</a> | <a href="/terms">Terms</a> | <a href="/privacy-policy">Privacy policy</a> | <a href="/affiliate-disclosure">Affiliate disclosure</a> | <a href="/guides">Guides</a> | <a href="mailto:${CONTACT_EMAIL2}">${CONTACT_EMAIL2}</a> | <a href="/llms.txt">llms.txt</a> | <a href="/sitemap.xml">Sitemap</a></nav>`;
+    const shellCache = /* @__PURE__ */ new Map();
+    const SHELL_TTL_MS = Number(process.env.T1S_SHELL_CACHE_MS || 6e4);
+    const SHELL_MAX = 300;
     app.get("*", async (req, res) => {
-      res.setHeader("Cache-Control", "no-store, must-revalidate");
+      res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+      res.setHeader("Vary", "Accept");
       res.setHeader("Link", agentLinkHeader2());
       const acc = String(req.headers.accept || "");
       const cleanPath = req.path.replace(/\/+$/, "") || "/";
@@ -55796,6 +55803,13 @@ async function createApp() {
         res.status(404).type("text/html; charset=utf-8").send(notFoundHtml2(cleanPath));
         return;
       }
+      const cacheKey = cleanPath;
+      const cachedShell = SHELL_TTL_MS > 0 ? shellCache.get(cacheKey) : void 0;
+      if (cachedShell && Date.now() - cachedShell.at < SHELL_TTL_MS) {
+        res.setHeader("X-T1S-Shell", "hit");
+        res.send(cachedShell.html);
+        return;
+      }
       let html = enhanceHtml2(baseHtml, req.path);
       let snapshotBlock = "";
       try {
@@ -55807,6 +55821,14 @@ async function createApp() {
       } catch {
       }
       html = html.replace("</body>", `<noscript>${siteInfoBlock}${snapshotBlock}</noscript></body>`);
+      if (SHELL_TTL_MS > 0) {
+        if (shellCache.size >= SHELL_MAX) {
+          const oldest = [...shellCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+          if (oldest) shellCache.delete(oldest[0]);
+        }
+        shellCache.set(cacheKey, { html, at: Date.now() });
+        res.setHeader("X-T1S-Shell", "miss");
+      }
       res.send(html);
     });
   } else if (settings3.isProduction) {

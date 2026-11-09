@@ -321,6 +321,13 @@ export async function createApp(): Promise<express.Express> {
       // hashed /assets/* files are immutable and safe to cache for a year.
       index: false, // '/' falls through to the SEO-enhanced catch-all below
       setHeaders: (res, filePath) => {
+        // OWNER 9 Nov ("increase mobile and desktop speed to 100%"): root-level art and fonts are
+        // versioned by name (logo-icon.webp, logo-tagline.webp, favicon-*.png) yet were served with the
+        // static default, which PageSpeed reported as "efficient cache lifetimes: 50". They now get a
+        // long, safe lifetime; the hashed /assets/* files below keep a full year.
+        if (/\.(webp|png|jpe?g|svg|ico|woff2?|ttf)$/i.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=604800');
+        }
         if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-store, must-revalidate');
         // The push worker must be re-fetched so a fix reaches devices immediately.
         else if (filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-store, must-revalidate');
@@ -342,8 +349,17 @@ export async function createApp(): Promise<express.Express> {
       + `<a href="/affiliate-disclosure">Affiliate disclosure</a> | <a href="/guides">Guides</a> | `
       + `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> | <a href="/llms.txt">llms.txt</a> | `
       + `<a href="/sitemap.xml">Sitemap</a></nav>`;
+    // OWNER 9 Nov ("increase mobile and desktop speed to 100%"): "Document request latency" scored 0
+    // because EVERY shell hit re-ran enhanceHtml + a snapshot lookup before a byte went out, and the
+    // response said no-store so no browser or edge could reuse it. The finished shell is now memoised
+    // per path for 60 seconds (LRU cap 300) and served with a short, revalidating cache: the price
+    // snapshot inside it is the same one a crawler sees and it is refreshed on the next miss.
+    const shellCache = new Map<string, { html: string; at: number }>();
+    const SHELL_TTL_MS = Number(process.env.T1S_SHELL_CACHE_MS || 60_000);
+    const SHELL_MAX = 300;
     app.get('*', async (req: Request, res: Response) => {
-      res.setHeader('Cache-Control', 'no-store, must-revalidate');
+      res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+      res.setHeader('Vary', 'Accept');
       // OWNER 9 Nov: advertise the machine resources on every response (RFC 8288), so an agent that
       // only follows headers still finds llms.txt, the sitemap and the MCP server card.
       res.setHeader('Link', agentLinkHeader());
@@ -371,6 +387,13 @@ export async function createApp(): Promise<express.Express> {
         res.status(404).type('text/html; charset=utf-8').send(notFoundHtml(cleanPath));
         return;
       }
+      const cacheKey = cleanPath;
+      const cachedShell = SHELL_TTL_MS > 0 ? shellCache.get(cacheKey) : undefined;
+      if (cachedShell && Date.now() - cachedShell.at < SHELL_TTL_MS) {
+        res.setHeader('X-T1S-Shell', 'hit');
+        res.send(cachedShell.html);
+        return;
+      }
       let html = enhanceHtml(baseHtml, req.path);
       // INDEXABLE RESULTS (owner 28 Oct): real cached prices in the first HTML byte, so
       // crawlers get a price list. OWNER 29 Oct: that block was ALSO visible to users,
@@ -387,6 +410,14 @@ export async function createApp(): Promise<express.Express> {
         if (ld) html = html.replace('</head>', `<script type="application/ld+json">${ld}</script>\n</head>`);
       } catch { /* snapshot is an optimisation; the shell still serves */ }
       html = html.replace('</body>', `<noscript>${siteInfoBlock}${snapshotBlock}</noscript></body>`);
+      if (SHELL_TTL_MS > 0) {
+        if (shellCache.size >= SHELL_MAX) {
+          const oldest = [...shellCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+          if (oldest) shellCache.delete(oldest[0]);
+        }
+        shellCache.set(cacheKey, { html, at: Date.now() });
+        res.setHeader('X-T1S-Shell', 'miss');
+      }
       res.send(html);
     });
   } else if (settings.isProduction) {

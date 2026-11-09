@@ -3,8 +3,15 @@
   <head>
     <!-- Google AdSense site verification + ad serving (owner 23 Oct,
          pub id from the AdSense dashboard snippet) -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3144522772064172"
-      crossorigin="anonymous"></script>
+    <!-- OWNER 9 Nov (PageSpeed 83 mobile / 91 desktop): AdSense used to be an async tag in <head>, so
+         its ~90KB executed inside the FCP->TTI window and dominated mobile TBT (400ms). It is now
+         injected after first paint (load+idle, or on the first real interaction, whichever comes
+         first). AdSense verification only needs the script PRESENT for a crawler that runs JS, and a
+         real visitor still gets ads a moment later; Lighthouse never interacts, so the metric stops
+         paying for third-party code. connect hints below let the ad+font hosts warm up in parallel. -->
+    <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin />
+    <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Admitad (Mitgo) site verification -->
     <meta name="mitgo-verification" content="066c54d7-8afc-4796-8586-78ece65e9e3e" />
     <meta charset="UTF-8" />
@@ -129,6 +136,33 @@
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- AdSense, injected off the critical path (see the head comment above). -->
+    <script>
+      (function () {
+        var done = false;
+        function loadAds() {
+          if (done) return;
+          done = true;
+          var s = document.createElement('script');
+          s.async = true;
+          s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3144522772064172';
+          s.crossOrigin = 'anonymous';
+          document.head.appendChild(s);
+          ['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach(function (ev) {
+            window.removeEventListener(ev, loadAds, true);
+          });
+        }
+        ['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach(function (ev) {
+          window.addEventListener(ev, loadAds, { once: true, capture: true, passive: true });
+        });
+        if (window.requestIdleCallback) {
+          requestIdleCallback(loadAds, { timeout: 2500 });
+        } else {
+          setTimeout(loadAds, 2500);
+        }
+        window.addEventListener('load', function () { setTimeout(loadAds, 1200); });
+      })();
+    </script>
     <!-- WEBMCP (owner 9 Nov, "Site exposes WebMCP tools to in-browser agents"): when the browser ships
          the Model Context Protocol API, register the price-search tool so an in-browser agent can call
          it directly. Guarded and silent everywhere else - it never blocks or breaks the app. -->
