@@ -27,6 +27,7 @@ import { isAccessoryOfQuery } from '../search/queryRelevance';
 import { bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
 import { parseRouteQuery, resolveCabQuery } from '../verticals/verticalEngine';
+import { enforceRequestedRoute } from '../search/routeGate';
 import { geoSearch, geoReverse, geoSuggest } from '../common/geoProxy';
 import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
@@ -901,9 +902,27 @@ function gateRowsForDate<T extends Record<string, any>>(
  * gets its rows, so web and app can never disagree again: no price, no card; wrong date, no card;
  * and "N sources verified" only counts shops whose row survives.
  */
-function finaliseLiveAnswer(response: any, vertical: string, dates: any): any {
+function finaliseLiveAnswer(response: any, vertical: string, dates: any, query?: string): any {
   if (!response) return response;
   const gated = gateRowsForDate((response.results || []) as any[], vertical, dates || {});
+  // OWNER 9 Nov ("indore to hyderabad search par indore to delhi ka results"): a cached or last-verified
+  // row for ANOTHER city pair must never be painted for this search. Same vertical scope as the date gate.
+  if (query && ['flights', 'bus', 'cab'].includes(String(vertical))) {
+    try {
+      const requested = parseRouteQuery(String(query));
+      if (requested) {
+        const routeGate = enforceRequestedRoute(gated.rows as any[], requested);
+        if (routeGate.dropped) {
+          log.info('Search', 'route gate dropped rows for another city pair', {
+            vertical, query, dropped: routeGate.dropped, droppedOn: routeGate.droppedOn,
+            kept: routeGate.rows.length, examples: routeGate.examples,
+          });
+          gated.rows = routeGate.rows;
+          if (!gated.rows.length) response.pendingRefresh = true;
+        }
+      }
+    } catch { /* a gate must never break an answer */ }
+  }
   if (gated.dropped) {
     log.info('Search', 'live answer gated before the web sees it', { vertical, dropped: gated.dropped, droppedOn: gated.droppedOn, kept: gated.rows.length });
     response.results = gated.rows;
@@ -1087,7 +1106,7 @@ apiRouter.post('/search', async (req, res) => {
     ])) as Awaited<ReturnType<typeof runSearch>> | null;
     if (late && (late.results || []).length) {
       return res.json({
-        ...finaliseLiveAnswer(late, String(input.vertical), input.travelDates),
+        ...finaliseLiveAnswer(late, String(input.vertical), input.travelDates, input.query),
         pendingRefresh: allowPending(chainKey, true),
         honestNotice: 'Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.',
         latencyMs: Date.now() - searchStart,
@@ -1150,7 +1169,7 @@ apiRouter.post('/search', async (req, res) => {
   // Owner 28 Oct, standing rule enforced at the API boundary: a flight row missing
   // flight number / dep-arr / duration goes to the BOTTOM of the feed. The installed
   // Play Store app cannot be patched remotely, so this ordering ships server-side.
-  const gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates);
+  const gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
   const orderedResults = orderFlightRowsLast(gatedResponse.results as any[], String(input.vertical));
   res.json({ success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== 'unavailable', ...gatedResponse, results: orderedResults });
 });
@@ -1680,7 +1699,17 @@ apiRouter.post('/scrape/live', async (req, res) => {
   res.on('finish', () => clearTimeout(hardTimer));
   const searchedLive = runLiveSearch(input, { signal: liveAbort.signal });
   searchedLive.catch(() => undefined);
-  const response = (await Promise.race([
+  // OWNER 9 Nov ("future date ka results ni aata jaise 27 nov ka flights dekhna hai wo ni aata"):
+  // MEASURED on production: for flights Indore->Hyderabad 2026-11-27 the catalogue floor is EMPTY, and
+  // the 2s race handed that empty answer straight to the client (rows 0, sourcesAttempted 0) while the
+  // SAME pipeline answered 140 correct rows a moment later via /api/search. Live rows now have their
+  // chance: if the fast answer carries nothing, wait for the in-flight pipeline (never a second scrape)
+  // and adopt it when it is better. Ceilings sit under the 26s hard request cap.
+  const firstAnswerBudget = (v: string) =>
+    (['flights'].includes(v) ? 14_000
+      : ['hotels', 'movies', 'movie'].includes(v) ? 16_000
+      : v === 'bus' ? 12_000 : 9_000);
+  let response = (await Promise.race([
     searchedLive,
     new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.min(resultDeadlineMs(), 2000))),
   ])) as Awaited<ReturnType<typeof runSearch>> | null;
@@ -1740,6 +1769,36 @@ apiRouter.post('/scrape/live', async (req, res) => {
       pendingRefresh: true, resultsCount: 0, latencyMs: Date.now() - searchStart,
     });
   }
+  // OWNER 9 Nov - the wait that makes a far-future date answerable on the FIRST search. The catalogue
+  // floor cannot hold rows for a date 18 days out, so the fast answer is legitimately empty while the
+  // live pipeline is still working; measured on production, the same query answered 140 correct rows a
+  // few seconds later. An empty (or still-scanning) answer now waits on the SAME in-flight pipeline via
+  // awaitSettledAnswer - never a second scrape - and is adopted only when it is better.
+  try {
+    const beforeRows = ((response as any)?.results || []).length;
+    const pending = Boolean((response as any)?.state?.pendingRefresh);
+    const wantsWait = beforeRows === 0 || (req.body?.settle === true && pending);
+    if (wantsWait) {
+      const budget = Math.max(3000, Math.min(
+        Number(req.body?.settleMs) || firstAnswerBudget(String(input.vertical)),
+        20_000,
+      ));
+      const settled: any = await Promise.race([
+        awaitSettledAnswer(input, budget),
+        new Promise((resolve) => setTimeout(() => resolve(null), budget + 1200)),
+      ]).catch(() => null);
+      const afterRows = (settled?.results || []).length;
+      if (settled && afterRows > beforeRows) {
+        response = { ...(settled as any), latencyMs: Date.now() - searchStart };
+        log.info('Search', 'first answer waited for the live pipeline', {
+          vertical: input.vertical, query: input.query, depart: input.travelDates?.depart || null,
+          before: beforeRows, after: afterRows,
+        });
+      }
+    }
+  } catch { /* the wait is an improvement, never a blocker */ }
+  if (!response) { res.status(503).json({ ok: false, error: 'search unavailable', results: [] }); return; }
+
   // SELF-HEAL SAFETY NET (owner 23 Oct — "loader ke 3-2-1 hone pr bhi results
   // bahut late"): a search that did NOT come from the warm cache means the
   // background keep-warm rotation is dead (every vertical default should be

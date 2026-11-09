@@ -37854,6 +37854,69 @@ var init_basket = __esm({
   }
 });
 
+// server/search/routeGate.ts
+function normPlace3(raw) {
+  return String(raw ?? "").toLowerCase().replace(/[^a-z ]+/g, " ").replace(/\b(tahsil|tehsil|taluka|district|village|gram|nagar|cantt|city|india|airport|intl|international|terminal)\b/g, " ").replace(/\s+/g, " ").trim();
+}
+function samePlace(a, b) {
+  const x = normPlace3(a);
+  const y = normPlace3(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const xs = x.split(" ");
+  const ys = y.split(" ");
+  if (xs.includes(y) || ys.includes(x)) return true;
+  const lastX = xs[xs.length - 1];
+  const lastY = ys[ys.length - 1];
+  if (lastX && lastX === lastY && lastX.length >= 4) return true;
+  if (/^[a-z]{3}$/.test(x) && /^[a-z]{3}$/.test(y)) return x === y;
+  return false;
+}
+function routeOfRow(row) {
+  const specs = row?.specs || row?.attributes || {};
+  const direct = (v) => String(v ?? "").trim();
+  const fromField = direct(specs.from ?? specs.origin ?? specs.departureCity ?? row?.origin ?? row?.from);
+  const toField = direct(specs.to ?? specs.destination ?? specs.arrivalCity ?? row?.destination ?? row?.to);
+  if (fromField && toField) return { from: fromField, to: toField };
+  const raw = direct(specs.route ?? specs.sector ?? row?.route ?? "");
+  const arrow = raw.split(/\s*(?:→|->|=>|—|–|to)\s*/i).map((s) => s.trim()).filter(Boolean);
+  if (arrow.length === 2 && arrow[0] && arrow[1]) return { from: arrow[0], to: arrow[1] };
+  const title = direct(row?.title);
+  const m = title.match(/·\s*([^·]+?)\s*(?:→|->|to)\s*([^·]+)$/i);
+  if (m) return { from: m[1].trim(), to: m[2].trim() };
+  return null;
+}
+function enforceRequestedRoute(rows, requested) {
+  if (!requested) return { rows, dropped: 0, droppedOn: { from: 0, to: 0 }, examples: [] };
+  const keep = [];
+  let from_M = 0;
+  let to_M = 0;
+  let droppedRows = 0;
+  const examples = [];
+  for (const row of rows || []) {
+    const route2 = routeOfRow(row);
+    if (!route2) {
+      keep.push(row);
+      continue;
+    }
+    const fromOk = samePlace(route2.from, requested.from.city) || (requested.from.code ? samePlace(route2.from, requested.from.code) : false);
+    const toOk = samePlace(route2.to, requested.to.city) || (requested.to.code ? samePlace(route2.to, requested.to.code) : false);
+    if (fromOk && toOk) {
+      keep.push(row);
+      continue;
+    }
+    droppedRows += 1;
+    if (!fromOk) from_M += 1;
+    if (!toOk) to_M += 1;
+    if (examples.length < 4) examples.push(String(row?.title || `${route2.from} \u2192 ${route2.to}`).slice(0, 70));
+  }
+  return { rows: keep, dropped: droppedRows, droppedOn: { from: from_M, to: to_M }, examples };
+}
+var init_routeGate = __esm({
+  "server/search/routeGate.ts"() {
+  }
+});
+
 // server/pipeline/productGrouping.ts
 function sizeTokens(text) {
   const out = [];
@@ -45014,9 +45077,30 @@ function gateRowsForDate(rows, vertical, dates2) {
     droppedOn: { ...g.droppedOn, ...priced.dropped ? { unpriced: priced.dropped } : {} }
   };
 }
-function finaliseLiveAnswer(response, vertical, dates2) {
+function finaliseLiveAnswer(response, vertical, dates2, query) {
   if (!response) return response;
   const gated = gateRowsForDate(response.results || [], vertical, dates2 || {});
+  if (query && ["flights", "bus", "cab"].includes(String(vertical))) {
+    try {
+      const requested = parseRouteQuery(String(query));
+      if (requested) {
+        const routeGate = enforceRequestedRoute(gated.rows, requested);
+        if (routeGate.dropped) {
+          log.info("Search", "route gate dropped rows for another city pair", {
+            vertical,
+            query,
+            dropped: routeGate.dropped,
+            droppedOn: routeGate.droppedOn,
+            kept: routeGate.rows.length,
+            examples: routeGate.examples
+          });
+          gated.rows = routeGate.rows;
+          if (!gated.rows.length) response.pendingRefresh = true;
+        }
+      }
+    } catch {
+    }
+  }
   if (gated.dropped) {
     log.info("Search", "live answer gated before the web sees it", { vertical, dropped: gated.dropped, droppedOn: gated.droppedOn, kept: gated.rows.length });
     response.results = gated.rows;
@@ -45585,6 +45669,7 @@ var init_routes = __esm({
     init_basket();
     init_registry();
     init_verticalEngine();
+    init_routeGate();
     init_geoProxy();
     init_productGrouping();
     init_health();
@@ -46195,7 +46280,7 @@ var init_routes = __esm({
         ]);
         if (late && (late.results || []).length) {
           return res.json({
-            ...finaliseLiveAnswer(late, String(input.vertical), input.travelDates),
+            ...finaliseLiveAnswer(late, String(input.vertical), input.travelDates, input.query),
             pendingRefresh: allowPending(chainKey, true),
             honestNotice: "Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.",
             latencyMs: Date.now() - searchStart
@@ -46243,7 +46328,7 @@ var init_routes = __esm({
         } catch {
         }
       }
-      const gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates);
+      const gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
       const orderedResults = orderFlightRowsLast(gatedResponse.results, String(input.vertical));
       res.json({ success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== "unavailable", ...gatedResponse, results: orderedResults });
     });
@@ -46438,7 +46523,8 @@ var init_routes = __esm({
       res.on("finish", () => clearTimeout(hardTimer));
       const searchedLive = runLiveSearch(input, { signal: liveAbort.signal });
       searchedLive.catch(() => void 0);
-      const response = await Promise.race([
+      const firstAnswerBudget = (v) => ["flights"].includes(v) ? 14e3 : ["hotels", "movies", "movie"].includes(v) ? 16e3 : v === "bus" ? 12e3 : 9e3;
+      let response = await Promise.race([
         searchedLive,
         new Promise((resolve) => setTimeout(() => resolve(null), Math.min(resultDeadlineMs(), 2e3)))
       ]);
@@ -46479,6 +46565,37 @@ var init_routes = __esm({
           resultsCount: 0,
           latencyMs: Date.now() - searchStart
         });
+      }
+      try {
+        const beforeRows = (response?.results || []).length;
+        const pending = Boolean(response?.state?.pendingRefresh);
+        const wantsWait = beforeRows === 0 || req.body?.settle === true && pending;
+        if (wantsWait) {
+          const budget = Math.max(3e3, Math.min(
+            Number(req.body?.settleMs) || firstAnswerBudget(String(input.vertical)),
+            2e4
+          ));
+          const settled = await Promise.race([
+            awaitSettledAnswer(input, budget),
+            new Promise((resolve) => setTimeout(() => resolve(null), budget + 1200))
+          ]).catch(() => null);
+          const afterRows = (settled?.results || []).length;
+          if (settled && afterRows > beforeRows) {
+            response = { ...settled, latencyMs: Date.now() - searchStart };
+            log.info("Search", "first answer waited for the live pipeline", {
+              vertical: input.vertical,
+              query: input.query,
+              depart: input.travelDates?.depart || null,
+              before: beforeRows,
+              after: afterRows
+            });
+          }
+        }
+      } catch {
+      }
+      if (!response) {
+        res.status(503).json({ ok: false, error: "search unavailable", results: [] });
+        return;
       }
       if (String(response.state?.servedFrom || "") !== "cache") {
         const now = Date.now();
