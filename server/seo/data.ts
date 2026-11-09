@@ -508,15 +508,22 @@ export function resolveSeoPage(path: string): SeoPage | null {
   if (clean === '/') {
     return {
       path: '/',
-      title: 'Try1Second — Compare Flights, Hotels, Cabs, Groceries & Loans in One Second',
-      description: 'India\u2019s one-second price comparison across flights, hotels, cabs, groceries, loans and more. NRIs book India flights from Dubai, USA, UK or Singapore at the same INR fares.',
-      h1: 'Compare Anything. One Second Is All It Takes.',
+      // OWNER 9 Nov: the old title/H1 said "Compare Anything. One Second Is All It Takes." - pure
+      // branding, so the page carried almost no query terms and the bare brand search was lost to the
+      // "1 Second Everyday" app. Title, H1 and the first paragraph now carry the brand AND the head
+      // terms people type (price comparison / flight / hotel / bus / India), and the FAQ answers the
+      // brand-collision question directly.
+      title: 'Try1Second: Flight, Hotel, Bus & Grocery Price Comparison in India',
+      description: 'Compare live prices in one search: flights, hotels, bus, cabs, shopping, grocery, food, movies, loans, insurance and bank accounts in India, with direct links to each seller.',
+      h1: 'Try1Second: live flight, hotel, bus and grocery price comparison in India',
       intro: [
-        'Try1Second is an independent metasearch engine: one search, and we ask airlines, stores, banks, insurers and cab apps for their live price at the same moment — then rank them lowest first.',
+        'Try1Second (also written Try 1 Second, T1S or try1second.com) is an independent metasearch engine for India: one search, and we ask airlines, travel sites, stores, banks, insurers and cab apps for their live price at the same moment — then rank them lowest first.',
         'No aggregator middlemen, no sponsored rankings. Every row is a real offer from a real seller with a direct link to book or buy where the price actually is.',
         'Booking from abroad? NRIs in Dubai, the USA, UK, Singapore and the Gulf get the same live INR fares — compare here, then pay on the airline or travel site in your country of residence.',
       ],
       faqs: [
+        // Brand-collision answer: this is the query that currently lands on an unrelated video app.
+        { q: 'Is Try1Second the same as the "1 Second Everyday" video app?', a: 'No. Try1Second (try1second.com) is an Indian price comparison website that compares live prices for flights, hotels, bus tickets, cabs, shopping, grocery, food delivery, movie tickets, loans, insurance, credit cards and bank accounts. It is not connected to any one-second video diary app or any other "1 second" product.' },
         { q: 'What is Try1Second?', a: 'A metasearch engine that compares live prices across 13 verticals — flights, hotels, bus, ecommerce, grocery, food delivery, movies, loans, insurance, cabs, credit cards, bank accounts and banking products.' },
         { q: 'Is it free to use?', a: 'Yes, comparison is completely free. We earn from ads and affiliate commissions from sellers — never by selling your data.' },
         { q: 'How fast is a comparison?', a: 'The first live rows arrive in about a second, and the scan keeps enriching results in the background while you look.' },

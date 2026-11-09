@@ -244,6 +244,14 @@ export async function createApp(): Promise<express.Express> {
 
   // Production static frontend (vite build output) — KVM4 serves `dist/`
   const dist = path.resolve(__dirname, 'dist');
+  // INDEXNOW (owner 9 Nov: "google yaa google jaise saare browser pr search krte hi top pr dikhe").
+  // Serves /<key>.txt and a token-guarded POST /api/seo/indexnow that pushes every sitemap URL to
+  // Bing, Yandex and Seznam, which is what makes the non-Google engines pick new pages up in minutes.
+  {
+    const { registerIndexNowRoutes } = await import('./seo/indexnow');
+    registerIndexNowRoutes(app);
+  }
+
   // Warm the sitemap at boot so the first crawler hit is instant (owner 28 Oct).
   void import('./seo/sitemap').then((m) => m.warmSitemapSoon()).catch(() => {});
 

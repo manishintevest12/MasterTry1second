@@ -63,7 +63,7 @@ const nav = (): string => `<header>
 </header>`;
 
 const footer = (): string => `<footer>
-  <p><a href="/guides">All guides</a><a href="/about">About</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/affiliate-disclosure">Affiliate disclosure</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></p>
+  <p><a href="/guides">All guides</a><a href="/answers">Compare answers (all verticals &amp; states)</a><a href="/about">About</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/affiliate-disclosure">Affiliate disclosure</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></p>
   <p>Try1Second is a metasearch engine. We compare prices; the purchase and its terms belong to the partner you choose.</p>
 </footer>`;
 

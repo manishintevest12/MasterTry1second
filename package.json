@@ -21,7 +21,9 @@
     "cron:dev": "tsx server/cron/warm.ts",
     "build:cron:affiliate": "esbuild server/cron/affiliateSync.ts --bundle --platform=node --format=cjs --target=node18 --packages=external --outfile=affiliate-sync.cjs",
     "sync:affiliate": "node affiliate-sync.cjs",
-    "acceptance": "tsx server/registry/acceptanceCli.ts"
+    "acceptance": "tsx server/registry/acceptanceCli.ts",
+    "seo:indexnow": "node scripts/indexnow.mjs",
+    "seo:indexnow:dry": "node scripts/indexnow.mjs --dry-run"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

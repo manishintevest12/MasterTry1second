@@ -53637,15 +53637,22 @@ function resolveSeoPage(path18) {
   if (clean4 === "/") {
     return {
       path: "/",
-      title: "Try1Second \u2014 Compare Flights, Hotels, Cabs, Groceries & Loans in One Second",
-      description: "India\u2019s one-second price comparison across flights, hotels, cabs, groceries, loans and more. NRIs book India flights from Dubai, USA, UK or Singapore at the same INR fares.",
-      h1: "Compare Anything. One Second Is All It Takes.",
+      // OWNER 9 Nov: the old title/H1 said "Compare Anything. One Second Is All It Takes." - pure
+      // branding, so the page carried almost no query terms and the bare brand search was lost to the
+      // "1 Second Everyday" app. Title, H1 and the first paragraph now carry the brand AND the head
+      // terms people type (price comparison / flight / hotel / bus / India), and the FAQ answers the
+      // brand-collision question directly.
+      title: "Try1Second: Flight, Hotel, Bus & Grocery Price Comparison in India",
+      description: "Compare live prices in one search: flights, hotels, bus, cabs, shopping, grocery, food, movies, loans, insurance and bank accounts in India, with direct links to each seller.",
+      h1: "Try1Second: live flight, hotel, bus and grocery price comparison in India",
       intro: [
-        "Try1Second is an independent metasearch engine: one search, and we ask airlines, stores, banks, insurers and cab apps for their live price at the same moment \u2014 then rank them lowest first.",
+        "Try1Second (also written Try 1 Second, T1S or try1second.com) is an independent metasearch engine for India: one search, and we ask airlines, travel sites, stores, banks, insurers and cab apps for their live price at the same moment \u2014 then rank them lowest first.",
         "No aggregator middlemen, no sponsored rankings. Every row is a real offer from a real seller with a direct link to book or buy where the price actually is.",
         "Booking from abroad? NRIs in Dubai, the USA, UK, Singapore and the Gulf get the same live INR fares \u2014 compare here, then pay on the airline or travel site in your country of residence."
       ],
       faqs: [
+        // Brand-collision answer: this is the query that currently lands on an unrelated video app.
+        { q: 'Is Try1Second the same as the "1 Second Everyday" video app?', a: 'No. Try1Second (try1second.com) is an Indian price comparison website that compares live prices for flights, hotels, bus tickets, cabs, shopping, grocery, food delivery, movie tickets, loans, insurance, credit cards and bank accounts. It is not connected to any one-second video diary app or any other "1 second" product.' },
         { q: "What is Try1Second?", a: "A metasearch engine that compares live prices across 13 verticals \u2014 flights, hotels, bus, ecommerce, grocery, food delivery, movies, loans, insurance, cabs, credit cards, bank accounts and banking products." },
         { q: "Is it free to use?", a: "Yes, comparison is completely free. We earn from ads and affiliate commissions from sellers \u2014 never by selling your data." },
         { q: "How fast is a comparison?", a: "The first live rows arrive in about a second, and the scan keeps enriching results in the background while you look." },
@@ -55328,6 +55335,79 @@ var init_singleton = __esm({
   }
 });
 
+// server/seo/indexnow.ts
+var indexnow_exports = {};
+__export(indexnow_exports, {
+  INDEXNOW_ENDPOINTS: () => INDEXNOW_ENDPOINTS,
+  INDEXNOW_HOST: () => INDEXNOW_HOST,
+  INDEXNOW_KEY: () => INDEXNOW_KEY,
+  INDEXNOW_KEY_PATH: () => INDEXNOW_KEY_PATH,
+  indexNowPayloads: () => indexNowPayloads,
+  registerIndexNowRoutes: () => registerIndexNowRoutes
+});
+function indexNowPayloads(max = 1e4) {
+  let paths = [];
+  try {
+    paths = listSeoPaths();
+  } catch {
+    paths = ["/"];
+  }
+  const urls = Array.from(new Set(paths.filter(Boolean))).map((p) => `${SEO_HOST}${p === "/" ? "/" : p}`);
+  const chunks = [];
+  for (let i = 0; i < urls.length; i += max) {
+    chunks.push({
+      host: INDEXNOW_HOST,
+      key: INDEXNOW_KEY,
+      keyLocation: `${SEO_HOST}${INDEXNOW_KEY_PATH}`,
+      urlList: urls.slice(i, i + max)
+    });
+  }
+  return chunks;
+}
+function registerIndexNowRoutes(app) {
+  app.get(INDEXNOW_KEY_PATH, (_req, res) => {
+    res.type("text/plain; charset=utf-8").setHeader("Cache-Control", "public, max-age=86400");
+    res.send(INDEXNOW_KEY);
+  });
+  app.post("/api/seo/indexnow", async (req, res) => {
+    const token = process.env.SEO_PING_TOKEN || "";
+    if (!token || String(req.query.token || "") !== token) {
+      res.status(403).json({ ok: false, error: "token required" });
+      return;
+    }
+    const results = [];
+    for (const chunk of indexNowPayloads()) {
+      for (const endpoint of INDEXNOW_ENDPOINTS) {
+        try {
+          const r = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json; charset=utf-8" },
+            body: JSON.stringify(chunk)
+          });
+          results.push({ endpoint, status: r.status });
+        } catch (e2) {
+          results.push({ endpoint, status: 0 });
+        }
+      }
+    }
+    res.json({ ok: true, urls: indexNowPayloads().reduce((n, c) => n + c.urlList.length, 0), results });
+  });
+}
+var INDEXNOW_KEY, INDEXNOW_KEY_PATH, INDEXNOW_ENDPOINTS, INDEXNOW_HOST;
+var init_indexnow = __esm({
+  "server/seo/indexnow.ts"() {
+    init_data();
+    INDEXNOW_KEY = "b7d41e6a9c2f4f8a8e13c5d6a07b2e94";
+    INDEXNOW_KEY_PATH = `/${INDEXNOW_KEY}.txt`;
+    INDEXNOW_ENDPOINTS = [
+      "https://api.indexnow.org/indexnow",
+      "https://www.bing.com/indexnow",
+      "https://yandex.com/indexnow"
+    ];
+    INDEXNOW_HOST = "www.try1second.com";
+  }
+});
+
 // server/seo/answerPages.ts
 var answerPages_exports = {};
 __export(answerPages_exports, {
@@ -55825,7 +55905,7 @@ ${extra}</head>`;
   <nav><a href="/">Compare prices</a><a href="/guides">Guides</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
 </header>`;
     footer = () => `<footer>
-  <p><a href="/guides">All guides</a><a href="/about">About</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/affiliate-disclosure">Affiliate disclosure</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></p>
+  <p><a href="/guides">All guides</a><a href="/answers">Compare answers (all verticals &amp; states)</a><a href="/about">About</a><a href="/privacy-policy">Privacy</a><a href="/terms">Terms</a><a href="/affiliate-disclosure">Affiliate disclosure</a><a href="/faq">FAQ</a><a href="/contact">Contact</a></p>
   <p>Try1Second is a metasearch engine. We compare prices; the purchase and its terms belong to the partner you choose.</p>
 </footer>`;
     GUIDE_SLUGS2 = GUIDES.map((g) => g.slug);
@@ -55845,6 +55925,11 @@ function jsonLd2(path18) {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "Try1Second",
+    // OWNER 9 Nov ("search krne se google mai try1second.com mil raha hai... jiss se top pr dikhe").
+    // A search for the bare brand currently returns the "1 Second Everyday" video app, because the
+    // brand is written four different ways by real people. alternateName is how schema.org tells a
+    // search engine those spellings are the same entity, so the brand query resolves to this site.
+    alternateName: ["Try 1 Second", "Try1Second.com", "Try1Second India", "T1S"],
     url: SEO_HOST,
     logo: {
       "@type": "ImageObject",
@@ -55878,6 +55963,7 @@ function jsonLd2(path18) {
       "@context": "https://schema.org",
       "@type": "WebSite",
       name: "Try1Second",
+      alternateName: ["Try 1 Second", "Try1Second.com"],
       url: SEO_HOST,
       potentialAction: {
         "@type": "SearchAction",
@@ -56506,6 +56592,10 @@ async function createApp() {
   const { redirectRouteHandler: redirectRouteHandler2 } = await Promise.resolve().then(() => (init_interstitial(), interstitial_exports));
   app.get("/redirect", redirectRouteHandler2);
   const dist = import_path9.default.resolve(__dirname2, "dist");
+  {
+    const { registerIndexNowRoutes: registerIndexNowRoutes2 } = await Promise.resolve().then(() => (init_indexnow(), indexnow_exports));
+    registerIndexNowRoutes2(app);
+  }
   void Promise.resolve().then(() => (init_sitemap(), sitemap_exports)).then((m) => m.warmSitemapSoon()).catch(() => {
   });
   app.get(/^\/google[0-9a-f]+\.html$/i, (req, res) => {

@@ -23,6 +23,11 @@ function jsonLd(path: string): string[] {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: 'Try1Second',
+    // OWNER 9 Nov ("search krne se google mai try1second.com mil raha hai... jiss se top pr dikhe").
+    // A search for the bare brand currently returns the "1 Second Everyday" video app, because the
+    // brand is written four different ways by real people. alternateName is how schema.org tells a
+    // search engine those spellings are the same entity, so the brand query resolves to this site.
+    alternateName: ['Try 1 Second', 'Try1Second.com', 'Try1Second India', 'T1S'],
     url: SEO_HOST,
     logo: {
       '@type': 'ImageObject',
@@ -56,6 +61,7 @@ function jsonLd(path: string): string[] {
       '@context': 'https://schema.org',
       '@type': 'WebSite',
       name: 'Try1Second',
+      alternateName: ['Try 1 Second', 'Try1Second.com'],
       url: SEO_HOST,
       potentialAction: {
         '@type': 'SearchAction',
