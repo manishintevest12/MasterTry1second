@@ -252,6 +252,13 @@ export async function createApp(): Promise<express.Express> {
     registerIndexNowRoutes(app);
   }
 
+  // BING WEBMASTER VERIFICATION (owner 9 Nov): /BingSiteAuth.xml must be served verbatim, else the SPA
+  // catch-all returns the HTML shell and Bing refuses the site. Registered before static for that reason.
+  {
+    const { registerBingAuthRoutes } = await import('./seo/bingAuth');
+    registerBingAuthRoutes(app);
+  }
+
   // Warm the sitemap at boot so the first crawler hit is instant (owner 28 Oct).
   void import('./seo/sitemap').then((m) => m.warmSitemapSoon()).catch(() => {});
 

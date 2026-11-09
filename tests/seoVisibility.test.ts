@@ -103,3 +103,22 @@ test('route pages link the vertical answer hub', () => {
   assert.ok(flight, 'flight route page must resolve');
   assert.ok((flight!.links || []).some((l) => l.href === '/best/flights'), 'flight route must link /best/flights');
 });
+
+test('Bing verification file is served verbatim at the site root', async () => {
+  const express = (await import('express')).default;
+  const { registerBingAuthRoutes, BING_AUTH_PATH, BING_AUTH_XML } = await import('../server/seo/bingAuth');
+  assert.equal(BING_AUTH_PATH, '/BingSiteAuth.xml');
+  assert.match(BING_AUTH_XML, /<user>E811B25A024009A953C73041CF399A5E<\/user>/, 'must carry the exact Bing token');
+  assert.ok(BING_AUTH_XML.startsWith('<?xml version="1.0"?>'), 'must keep the XML declaration byte for byte');
+  const app = express();
+  registerBingAuthRoutes(app);
+  const server = app.listen(4612);
+  try {
+    const res = await fetch(`http://127.0.0.1:4612${BING_AUTH_PATH}`);
+    assert.equal(res.status, 200);
+    assert.match(String(res.headers.get('content-type')), /xml/, 'must not be served as HTML');
+    assert.equal(await res.text(), BING_AUTH_XML, 'body must match the file exactly, not the SPA shell');
+  } finally {
+    server.close();
+  }
+});

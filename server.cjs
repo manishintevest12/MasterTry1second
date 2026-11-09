@@ -55427,6 +55427,31 @@ var init_indexnow = __esm({
   }
 });
 
+// server/seo/bingAuth.ts
+var bingAuth_exports = {};
+__export(bingAuth_exports, {
+  BING_AUTH_PATH: () => BING_AUTH_PATH,
+  BING_AUTH_XML: () => BING_AUTH_XML,
+  registerBingAuthRoutes: () => registerBingAuthRoutes
+});
+function registerBingAuthRoutes(app) {
+  app.get(BING_AUTH_PATH, (_req, res) => {
+    res.type("application/xml; charset=utf-8").setHeader("Cache-Control", "public, max-age=86400");
+    res.send(BING_AUTH_XML);
+  });
+}
+var BING_AUTH_PATH, BING_AUTH_XML;
+var init_bingAuth = __esm({
+  "server/seo/bingAuth.ts"() {
+    BING_AUTH_PATH = "/BingSiteAuth.xml";
+    BING_AUTH_XML = `<?xml version="1.0"?>
+<users>
+	<user>E811B25A024009A953C73041CF399A5E</user>
+</users>
+`;
+  }
+});
+
 // server/seo/answerPages.ts
 var answerPages_exports = {};
 __export(answerPages_exports, {
@@ -56614,6 +56639,10 @@ async function createApp() {
   {
     const { registerIndexNowRoutes: registerIndexNowRoutes2 } = await Promise.resolve().then(() => (init_indexnow(), indexnow_exports));
     registerIndexNowRoutes2(app);
+  }
+  {
+    const { registerBingAuthRoutes: registerBingAuthRoutes2 } = await Promise.resolve().then(() => (init_bingAuth(), bingAuth_exports));
+    registerBingAuthRoutes2(app);
   }
   void Promise.resolve().then(() => (init_sitemap(), sitemap_exports)).then((m) => m.warmSitemapSoon()).catch(() => {
   });
