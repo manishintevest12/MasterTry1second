@@ -38,6 +38,7 @@ import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerP
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { enrichFlightSchedules } from '../common/flightSchedule';
+import { enforceAccountKind, requestedAccountKind } from './accountTypeGate';
 import { enforceRequestedTravelDate, normalizeTravelDate, offerTravelDate, enforceRequestedCity, dropUnpricedRows, reconcileVerifiedSources } from './travelDateGate';
 import { backfillFlightTimes, hideFlightRowsWithoutTimes, noteFlightTimeDrop } from './flightTimeBackfill';
 import { gateRapidoRows } from './rapidoPriceGate';
@@ -746,6 +747,22 @@ function gateTravelDateResponseUncached(input: SearchInput, response: SearchResp
     checkin: (input.travelDates as any)?.checkin,
     checkout: (input.travelDates as any)?.checkout,
   }, { strictUndated: true, undatedAsPresence: false });
+  // Account TYPE honesty (owner 9 Nov): "demat account" must not answer savings rows. Applied before
+  // the price/date gates so the tail can never be filled with a different account type.
+  if (vertical === 'account' || vertical === 'banking') {
+    const kind = requestedAccountKind(String(input.query || ''));
+    if (kind) {
+      const typed = enforceAccountKind(response.results as any[], kind);
+      if (typed.dropped) {
+        log.info('Search', 'rows dropped for another account type', { vertical, kind, dropped: typed.dropped, droppedKinds: typed.droppedKinds });
+        response.results = typed.kept as any;
+        if (!response.results.length) {
+          response.state = { ...(response.state || {}), sourcesSucceeded: [], pendingRefresh: true, triggeredRefresh: true } as any;
+          return response;
+        }
+      }
+    }
+  }
   // Owner 3 Nov: no price = not shown. This removes presence cards, undated hotel properties and
   // every "price on site" placeholder from the ANSWER, so what a user sees always carries a live
   // price for this search.

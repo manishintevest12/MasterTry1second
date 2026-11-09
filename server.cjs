@@ -34921,6 +34921,46 @@ var init_flightSchedule = __esm({
   }
 });
 
+// server/search/accountTypeGate.ts
+function requestedAccountKind(rawQuery) {
+  const q3 = String(rawQuery || "").toLowerCase();
+  if (/\bdemat\b|d\.?mat\b|\btrading\b|\bbroking\b|share (?:market|khaata)|stock (?:market|account)/.test(q3)) return "demat";
+  if (/\bcurrent\b/.test(q3)) return "current";
+  if (/\bsavings?\b|\bsaving account\b|\bsalary\b/.test(q3)) return "savings";
+  return "";
+}
+function rowAccountKind(row) {
+  const bags = [
+    row?.title,
+    row?.subtitle,
+    row?.category,
+    row?.provider,
+    row?.description,
+    ...Array.isArray(row?.features) ? row.features : [],
+    ...Object.values(row?.specs || {})
+  ];
+  const text = bags.filter(Boolean).join(" ").toLowerCase();
+  if (/\bdemat\b|d\.?mat\b|\btrading account\b|\bbroking account\b/.test(text)) return "demat";
+  if (/\bcurrent account\b/.test(text)) return "current";
+  if (/\bsavings? account\b|\bsavings?\b|\bsalary account\b/.test(text)) return "savings";
+  return "";
+}
+function enforceAccountKind(rows, kind) {
+  if (!kind || !Array.isArray(rows) || !rows.length) return { kept: rows || [], dropped: 0, droppedKinds: {} };
+  const kept = [];
+  const droppedKinds = {};
+  for (const row of rows) {
+    const k = rowAccountKind(row) || "unclassified";
+    if (k === kind) kept.push(row);
+    else droppedKinds[k] = (droppedKinds[k] || 0) + 1;
+  }
+  return { kept, dropped: rows.length - kept.length, droppedKinds };
+}
+var init_accountTypeGate = __esm({
+  "server/search/accountTypeGate.ts"() {
+  }
+});
+
 // server/search/travelDateGate.ts
 function normalizeTravelDate(raw) {
   const s = String(raw ?? "").trim();
@@ -36067,6 +36107,20 @@ function gateTravelDateResponseUncached(input, response) {
     checkin: input.travelDates?.checkin,
     checkout: input.travelDates?.checkout
   }, { strictUndated: true, undatedAsPresence: false });
+  if (vertical === "account" || vertical === "banking") {
+    const kind = requestedAccountKind(String(input.query || ""));
+    if (kind) {
+      const typed = enforceAccountKind(response.results, kind);
+      if (typed.dropped) {
+        log.info("Search", "rows dropped for another account type", { vertical, kind, dropped: typed.dropped, droppedKinds: typed.droppedKinds });
+        response.results = typed.kept;
+        if (!response.results.length) {
+          response.state = { ...response.state || {}, sourcesSucceeded: [], pendingRefresh: true, triggeredRefresh: true };
+          return response;
+        }
+      }
+    }
+  }
   const priced = dropUnpricedRows(response.results, vertical);
   if (priced.dropped) {
     log.info("Search", "price-less rows withheld from the answer", { vertical, dropped: priced.dropped, kept: priced.kept.length });
@@ -36820,6 +36874,7 @@ var init_searchOrchestrator = __esm({
     init_verticalEngine();
     init_catalogueService();
     init_flightSchedule();
+    init_accountTypeGate();
     init_travelDateGate();
     init_flightTimeBackfill();
     init_rapidoPriceGate();
@@ -37223,6 +37278,52 @@ var init_liveSearchGate = __esm({
     };
     REPEAT_CACHE_MAX = 400;
     liveGateStats = () => ({ ...governorStats(), repeatCached: repeatCache.size, repeatTtlMs: REPEAT_TTL_MS() });
+  }
+});
+
+// server/search/moviesPriceFill.ts
+function moneyFrom(text) {
+  const m = String(text || "").match(/(?:₹|rs\.?|inr)\s*([0-9][0-9,]{1,7})/i) || String(text || "").match(/\b([0-9]{3,6})\b/);
+  if (!m) return 0;
+  const n = Number(m[1].replace(/,/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function fillMoviePricesFromBand(rows) {
+  if (!Array.isArray(rows) || !rows.length) return { rows: rows || [], filled: 0 };
+  const best = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const title = normTitle2(String(r.title || ""));
+    if (!title) continue;
+    let price2 = Number(r.primaryPrice ?? 0);
+    if (!(price2 > 0)) price2 = moneyFrom(String(r.specs?.["price band"] ?? r.specs?.["price_band"] ?? ""));
+    if (!(price2 > 0)) price2 = moneyFrom(String(r.specs?.["cheapest show"] ?? r.specs?.["cheapest_show"] ?? ""));
+    if (price2 > 0) best.set(title, Math.min(best.get(title) ?? Infinity, price2));
+  }
+  let filled = 0;
+  const out = rows.map((r) => {
+    if (Number(r.primaryPrice ?? 0) > 0) return r;
+    const title = normTitle2(String(r.title || ""));
+    const band = best.get(title);
+    if (!band || !(band > 0)) return r;
+    filled += 1;
+    return {
+      ...r,
+      primaryPrice: band,
+      priceAvailable: true,
+      unit: "from",
+      specs: {
+        ...r.specs || {},
+        "price basis": "observed_seat_band",
+        "price note": "Cheapest seat price observed for this film in Indore sessions; this seller publishes no fare"
+      }
+    };
+  });
+  return { rows: out, filled };
+}
+var normTitle2;
+var init_moviesPriceFill = __esm({
+  "server/search/moviesPriceFill.ts"() {
+    normTitle2 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   }
 });
 
@@ -45150,6 +45251,24 @@ function gateRowsForDate(rows, vertical, dates2) {
 }
 function finaliseLiveAnswer(response, vertical, dates2, query) {
   if (!response) return response;
+  if ((vertical === "account" || vertical === "banking") && query) {
+    const kind = requestedAccountKind(String(query));
+    if (kind) {
+      const typed = enforceAccountKind(response.results || [], kind);
+      if (typed.dropped) {
+        log.info("Search", "live answer: rows dropped for another account type", { vertical, kind, dropped: typed.dropped, droppedKinds: typed.droppedKinds });
+        response.results = typed.kept;
+        if (!response.results.length) response.pendingRefresh = true;
+      }
+    }
+  }
+  if (vertical === "movies" || vertical === "movie") {
+    const band = fillMoviePricesFromBand(response.results || []);
+    if (band.filled) {
+      log.info("Search", "movie rows priced from the observed seat band", { vertical, filled: band.filled });
+      response.results = band.rows;
+    }
+  }
   const gated = gateRowsForDate(response.results || [], vertical, dates2 || {});
   if (query && ["flights", "bus", "cab"].includes(String(vertical))) {
     try {
@@ -45733,6 +45852,8 @@ var init_routes = __esm({
     init_verticalAlias();
     init_searchOrchestrator();
     init_liveSearchGate();
+    init_moviesPriceFill();
+    init_accountTypeGate();
     init_proxyRotator();
     init_proxyDiscovery();
     init_ecomDepartments();

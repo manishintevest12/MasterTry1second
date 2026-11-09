@@ -11,6 +11,8 @@ import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { awaitSettledAnswer, runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
+import { fillMoviePricesFromBand } from '../search/moviesPriceFill';
+import { enforceAccountKind, requestedAccountKind } from '../search/accountTypeGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
 import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
@@ -904,6 +906,26 @@ function gateRowsForDate<T extends Record<string, any>>(
  */
 function finaliseLiveAnswer(response: any, vertical: string, dates: any, query?: string): any {
   if (!response) return response;
+  // OWNER 9 Nov: account TYPE must scope the feed (demat must not answer savings), and a film the site
+  // prices from its observed seat band must not vanish on the app just because that seller carries no fare.
+  if ((vertical === 'account' || vertical === 'banking') && query) {
+    const kind = requestedAccountKind(String(query));
+    if (kind) {
+      const typed = enforceAccountKind((response.results || []) as any[], kind);
+      if (typed.dropped) {
+        log.info('Search', 'live answer: rows dropped for another account type', { vertical, kind, dropped: typed.dropped, droppedKinds: typed.droppedKinds });
+        response.results = typed.kept;
+        if (!response.results.length) response.pendingRefresh = true;
+      }
+    }
+  }
+  if (vertical === 'movies' || vertical === 'movie') {
+    const band = fillMoviePricesFromBand((response.results || []) as any[]);
+    if (band.filled) {
+      log.info('Search', 'movie rows priced from the observed seat band', { vertical, filled: band.filled });
+      response.results = band.rows;
+    }
+  }
   const gated = gateRowsForDate((response.results || []) as any[], vertical, dates || {});
   // OWNER 9 Nov ("indore to hyderabad search par indore to delhi ka results"): a cached or last-verified
   // row for ANOTHER city pair must never be painted for this search. Same vertical scope as the date gate.
