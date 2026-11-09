@@ -1,8 +1,8 @@
 {
   "redbus": {
-    "at": 1794135202380,
-    "ok": false,
+    "at": 1794203496270,
+    "ok": true,
     "status": 200,
-    "note": "bogus id renders the same page"
+    "note": "id changes the page"
   }
 }
