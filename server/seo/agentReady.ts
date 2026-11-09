@@ -30,6 +30,23 @@ export const CONTACT_EMAIL = 'info@try1second.com';
 export const SAME_AS: string[] = [
   'https://github.com/manishintevest12/MasterTry1second',
 ];
+/**
+ * Operating company details (owner 9 Nov: "Organization schema is missing telephone, address").
+ * Taken from Standard Petro India Private Limited's own public company page — 4, Vishal Nagar,
+ * Annapurna Road, Indore 452012, Madhya Pradesh, and the company number published on its official
+ * Instagram profile. Nothing here is invented; if the owner wants a different support line, change
+ * BUSINESS_TELEPHONE in one place and every page + the MCP card follows.
+ */
+export const BUSINESS_TELEPHONE = '+917389654447';
+export const BUSINESS_ADDRESS = {
+  '@type': 'PostalAddress',
+  streetAddress: '4, Vishal Nagar, Annapurna Road',
+  addressLocality: 'Indore',
+  addressRegion: 'Madhya Pradesh',
+  postalCode: '452012',
+  addressCountry: 'IN',
+} as const;
+export const BUSINESS_LEGAL_NAME = 'Standard Petro India Private Limited';
 export const BRAND = 'Try1Second';
 export const SUMMARY =
   'Try1Second is an independent metasearch engine that compares live prices in one second across flights, hotels, bus tickets, online shopping, 10-minute grocery, food delivery, movie tickets, cabs, loans, insurance, credit cards and bank accounts in India. No bookings are taken here: every price links out to the seller it came from.';
@@ -231,7 +248,7 @@ export function serverCard() {
     transport: { type: 'http', url: `${SEO_HOST}/mcp`, protocolVersion: '2025-06-18' },
     capabilities: { tools: { listChanged: false } },
     tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
-    contact: { email: CONTACT_EMAIL, url: `${SEO_HOST}/contact` },
+    contact: { email: CONTACT_EMAIL, telephone: BUSINESS_TELEPHONE, url: `${SEO_HOST}/contact`, address: BUSINESS_ADDRESS },
     documentation: `${SEO_HOST}/llms.txt`,
   };
 }

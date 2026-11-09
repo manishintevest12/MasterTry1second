@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   llmsText, llmsFullText, markdownForPath, serverCard, isKnownPath,
-  agentLinkHeader, notFoundHtml, CONTACT_EMAIL, SAME_AS,
+  agentLinkHeader, notFoundHtml, CONTACT_EMAIL, SAME_AS, BUSINESS_TELEPHONE, BUSINESS_ADDRESS,
 } from '../server/seo/agentReady';
 import { robotsText } from '../server/seo/sitemap';
 
@@ -86,4 +86,29 @@ test('the Link header is set by middleware, so legal/SEO pages carry it too', ()
   const src = readFileSync(new URL('../server/index.ts', import.meta.url), 'utf8');
   assert.ok(src.includes('res.setHeader(\'Link\''), 'a global middleware sets Link');
   assert.ok(src.includes("startsWith('/api')"), 'api responses are skipped');
+});
+
+// OWNER 9 Nov (second pass): "Page has a clear heading hierarchy - found 3 <h1>" and
+// "Organization schema is missing telephone, address".
+test('exactly one h1 can reach a page: the shell loader and prerender loader are demoted', () => {
+  const shell = readFileSync(new URL('../dist/index.html', import.meta.url), 'utf8');
+  assert.equal((shell.match(/<h1[\s>]/g) || []).length, 0, 'the SPA shell carries no h1 at all');
+  assert.ok(shell.includes('role="heading" aria-level="2"'), 'the splash title is an h2-level heading');
+  const render = readFileSync(new URL('../server/seo/render.ts', import.meta.url), 'utf8');
+  const blocks = render.split('function prerenderLoader')[1]?.split('function prerenderBody')[0] || '';
+  assert.ok(!blocks.includes('<h1'), 'the prerender loader must not open a second h1');
+  assert.ok(render.includes('<h1 style="font-size:26px'), 'the page body keeps the single h1');
+});
+
+test('the Organization node publishes a telephone and a postal address', () => {
+  const src = readFileSync(new URL('../server/seo/render.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('telephone: BUSINESS_TELEPHONE'));
+  assert.ok(src.includes('address: BUSINESS_ADDRESS'));
+  assert.equal(BUSINESS_TELEPHONE, '+917389654447');
+  assert.equal(BUSINESS_ADDRESS.addressLocality, 'Indore');
+  assert.equal(BUSINESS_ADDRESS.postalCode, '452012');
+  assert.equal(BUSINESS_ADDRESS.addressCountry, 'IN');
+  const card: any = serverCard();
+  assert.equal(card.contact.telephone, BUSINESS_TELEPHONE);
+  assert.equal(card.contact.address.postalCode, '452012');
 });

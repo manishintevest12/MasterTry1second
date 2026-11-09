@@ -116,6 +116,10 @@ export const LEGAL_PAGES: Record<string, LegalPage> = {
     blocks: [
       { t: 'h2', x: "Contact Us & Support Desk" },
       { t: 'p', x: "We respond within 24 hours · 7 days a week" },
+      // Owner 9 Nov: the contact page is where a person (and an agent) expects the phone, the email
+      // and the registered office in plain text - these are the same values the JSON-LD publishes.
+      { t: 'p', x: "Email: <a href=\"mailto:info@try1second.com\">info@try1second.com</a> · Phone: <a href=\"tel:+917389654447\">+91 73896 54447</a>" },
+      { t: 'p', x: "Registered office: Standard Petro India Private Limited, 4, Vishal Nagar, Annapurna Road, Indore 452012, Madhya Pradesh, India." },
     ],
   },
 };

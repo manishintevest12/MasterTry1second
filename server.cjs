@@ -54135,7 +54135,11 @@ var init_legalContent = __esm({
         description: "Reach the Try1Second support desk. We respond within 24 hours, 7 days a week.",
         blocks: [
           { t: "h2", x: "Contact Us & Support Desk" },
-          { t: "p", x: "We respond within 24 hours \xB7 7 days a week" }
+          { t: "p", x: "We respond within 24 hours \xB7 7 days a week" },
+          // Owner 9 Nov: the contact page is where a person (and an agent) expects the phone, the email
+          // and the registered office in plain text - these are the same values the JSON-LD publishes.
+          { t: "p", x: 'Email: <a href="mailto:info@try1second.com">info@try1second.com</a> \xB7 Phone: <a href="tel:+917389654447">+91 73896 54447</a>' },
+          { t: "p", x: "Registered office: Standard Petro India Private Limited, 4, Vishal Nagar, Annapurna Road, Indore 452012, Madhya Pradesh, India." }
         ]
       }
     };
@@ -54271,6 +54275,9 @@ var init_legalPages = __esm({
 var agentReady_exports = {};
 __export(agentReady_exports, {
   BRAND: () => BRAND,
+  BUSINESS_ADDRESS: () => BUSINESS_ADDRESS,
+  BUSINESS_LEGAL_NAME: () => BUSINESS_LEGAL_NAME,
+  BUSINESS_TELEPHONE: () => BUSINESS_TELEPHONE,
   CONTACT_EMAIL: () => CONTACT_EMAIL,
   MCP_TOOLS: () => MCP_TOOLS,
   SAME_AS: () => SAME_AS,
@@ -54434,7 +54441,7 @@ function serverCard() {
     transport: { type: "http", url: `${SEO_HOST}/mcp`, protocolVersion: "2025-06-18" },
     capabilities: { tools: { listChanged: false } },
     tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
-    contact: { email: CONTACT_EMAIL, url: `${SEO_HOST}/contact` },
+    contact: { email: CONTACT_EMAIL, telephone: BUSINESS_TELEPHONE, url: `${SEO_HOST}/contact`, address: BUSINESS_ADDRESS },
     documentation: `${SEO_HOST}/llms.txt`
   };
 }
@@ -54480,7 +54487,7 @@ function registerAgentFileRoutes(app) {
     res.json(serverCard());
   });
 }
-var CONTACT_EMAIL, SAME_AS, BRAND, SUMMARY, APP_PATHS, APP_PREFIXES, knownCache, MCP_TOOLS;
+var CONTACT_EMAIL, SAME_AS, BUSINESS_TELEPHONE, BUSINESS_ADDRESS, BUSINESS_LEGAL_NAME, BRAND, SUMMARY, APP_PATHS, APP_PREFIXES, knownCache, MCP_TOOLS;
 var init_agentReady = __esm({
   "server/seo/agentReady.ts"() {
     init_data();
@@ -54490,6 +54497,16 @@ var init_agentReady = __esm({
     SAME_AS = [
       "https://github.com/manishintevest12/MasterTry1second"
     ];
+    BUSINESS_TELEPHONE = "+917389654447";
+    BUSINESS_ADDRESS = {
+      "@type": "PostalAddress",
+      streetAddress: "4, Vishal Nagar, Annapurna Road",
+      addressLocality: "Indore",
+      addressRegion: "Madhya Pradesh",
+      postalCode: "452012",
+      addressCountry: "IN"
+    };
+    BUSINESS_LEGAL_NAME = "Standard Petro India Private Limited";
     BRAND = "Try1Second";
     SUMMARY = "Try1Second is an independent metasearch engine that compares live prices in one second across flights, hotels, bus tickets, online shopping, 10-minute grocery, food delivery, movie tickets, cabs, loans, insurance, credit cards and bank accounts in India. No bookings are taken here: every price links out to the seller it came from.";
     APP_PATHS = /* @__PURE__ */ new Set([
@@ -54966,10 +54983,14 @@ function jsonLd(path18) {
     // No social account is invented - SAME_AS only ever holds URLs that answer today.
     sameAs: SAME_AS,
     email: CONTACT_EMAIL,
+    legalName: BUSINESS_LEGAL_NAME,
+    telephone: BUSINESS_TELEPHONE,
+    address: BUSINESS_ADDRESS,
     contactPoint: [{
       "@type": "ContactPoint",
       contactType: "customer support",
       email: CONTACT_EMAIL,
+      telephone: BUSINESS_TELEPHONE,
       url: `${SEO_HOST}/contact`,
       availableLanguage: ["en", "hi"],
       areaServed: "IN"
@@ -55036,7 +55057,7 @@ function prerenderLoader(page) {
       </div>`).join("");
   return `<div data-t1s-prerender="loader" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f9f9fb;min-height:100vh">
     <div style="max-width:720px;margin:0 auto;padding:28px 16px 8px">
-      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc6(page.h1)}</h1>
+      <h2 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc6(page.h1)}</h2>
       <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#374151;margin-bottom:10px">
         <span style="width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block"></span>
         <span>Checking live prices&hellip;</span>

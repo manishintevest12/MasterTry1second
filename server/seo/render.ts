@@ -10,7 +10,7 @@
  *     hydration (Googlebot and link previews read it; users get the app).
  */
 import { resolveSeoPage, listSeoPaths, SEO_HOST } from './data';
-import { SAME_AS, CONTACT_EMAIL } from './agentReady';
+import { SAME_AS, CONTACT_EMAIL, BUSINESS_TELEPHONE, BUSINESS_ADDRESS, BUSINESS_LEGAL_NAME } from './agentReady';
 
 const esc = (s: string) => s
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -36,10 +36,14 @@ function jsonLd(path: string): string[] {
     // No social account is invented - SAME_AS only ever holds URLs that answer today.
     sameAs: SAME_AS,
     email: CONTACT_EMAIL,
+    legalName: BUSINESS_LEGAL_NAME,
+    telephone: BUSINESS_TELEPHONE,
+    address: BUSINESS_ADDRESS,
     contactPoint: [{
       '@type': 'ContactPoint',
       contactType: 'customer support',
       email: CONTACT_EMAIL,
+      telephone: BUSINESS_TELEPHONE,
       url: `${SEO_HOST}/contact`,
       availableLanguage: ['en', 'hi'],
       areaServed: 'IN',
@@ -115,7 +119,7 @@ function prerenderLoader(page: NonNullable<ReturnType<typeof resolveSeoPage>>): 
       </div>`).join('');
   return `<div data-t1s-prerender="loader" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f9f9fb;min-height:100vh">
     <div style="max-width:720px;margin:0 auto;padding:28px 16px 8px">
-      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc(page.h1)}</h1>
+      <h2 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc(page.h1)}</h2>
       <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#374151;margin-bottom:10px">
         <span style="width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block"></span>
         <span>Checking live prices&hellip;</span>
