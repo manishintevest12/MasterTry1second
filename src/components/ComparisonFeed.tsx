@@ -191,7 +191,12 @@ export const ComparisonFeed: React.FC = () => {
   });
 
   const INITIAL_VISIBLE_COUNT = 4;
+  // Zero-based row index the in-feed sponsored unit follows: 5 => after the 6th card (owner 9 Nov).
+  const IN_FEED_AD_AFTER = 5;
   const [visibleCount, setVisibleCount] = useState<number>(INITIAL_VISIBLE_COUNT);
+  // In-feed sponsored card state (owner 9 Nov). Kept separate from verticalAdActive so the existing
+  // "network banner stands down when a house/Google unit is served" rule keeps working either way.
+  const [inFeedAdActive, setInFeedAdActive] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
 
   useEffect(() => {
@@ -240,6 +245,9 @@ export const ComparisonFeed: React.FC = () => {
   const visibleHotels = hotelGroups.slice(0, visibleCount);
   // The 'Load More' button only appears if there are at least 4 results currently displayed and more items remain
   const shouldShowLoadMore = (isHotels ? visibleHotels.length : visibleItems.length) >= 4 && visibleCount < totalCount;
+  // Only place the ad inside the list when there really is a 7th row after it; otherwise it would be the
+  // last thing in the feed and starve the list on short answers.
+  const inFeedAdVisible = !isHotels && visibleItems.length > IN_FEED_AD_AFTER + 1;
 
   const handleLoadMore = () => {
     setIsLoadingMore(true);
@@ -433,21 +441,30 @@ export const ComparisonFeed: React.FC = () => {
               )}
 
               {/* Standard Organic Result Cards */}
+              {/* OWNER 9 Nov: "search results ke beech mein har 5th ya 6th card ek Sponsored Deal ho".
+                  The single ad below the list is now an IN-FEED unit after the 6th card, so a visitor
+                  who scrolls sees it inside the results instead of under them, and no second unit is
+                  created (one slot, one impression, same vertical targeting as before). A short list
+                  that never reaches 6 rows keeps the unit under the list so short answers still
+                  monetise. Hotels keep the below-list unit because that grid renders 3-up cards and an
+                  inserted full-width block would break the grid rhythm. */}
               {isHotels
                 ? visibleHotels.map((g) => <HotelDealCard key={g.key + g.best.item.id} group={g} />)
-                : vertical === 'creditcards'
-                  ? visibleGroups.map((g) => (
-                      <CreditCardCard
-                        key={g.key + g.best.item.id}
-                        group={g}
-                        selectedForCompare={ccCompare.some((c) => c.id === g.best.item.id)}
-                        onToggleCompare={toggleCcCompare}
-                      />
-                    ))
-                : visibleGroups.map((g) => (
-                    ['flights', 'bus', 'cab'].includes(g.vertical)
-                      ? <TravelDealRow key={g.key + g.best.item.id} group={g} />
-                      : <ComparisonCard key={g.key + g.best.item.id} group={g} />
+                : (vertical === 'creditcards' ? visibleGroups : visibleGroups).map((g, i) => (
+                    <React.Fragment key={g.key + g.best.item.id}>
+                      {vertical === 'creditcards'
+                        ? <CreditCardCard
+                            group={g}
+                            selectedForCompare={ccCompare.some((c) => c.id === g.best.item.id)}
+                            onToggleCompare={toggleCcCompare}
+                          />
+                        : ['flights', 'bus', 'cab'].includes(g.vertical)
+                          ? <TravelDealRow group={g} />
+                          : <ComparisonCard group={g} />}
+                      {i === IN_FEED_AD_AFTER && inFeedAdVisible && (
+                        <div className="my-3"><AdBannerSlot slotKey={`vertical_${vertical}`} onActiveChange={setInFeedAdActive} /></div>
+                      )}
+                    </React.Fragment>
                   ))}
 
               {/* Credit-cards compare tray: fixed bar with the chosen cards */}
@@ -488,7 +505,9 @@ export const ComparisonFeed: React.FC = () => {
             in; the API falls back to the shared vertical_feed slot when a vertical has none.
             OWNER 3 Nov: "flight vertical open hua hai tho neeche flight se related ad aaye" - a
             configured vertical creative wins and the network banner below stands down. */}
-        <div className="my-4"><AdBannerSlot slotKey={`vertical_${vertical}`} onActiveChange={setVerticalAdActive} /></div>
+        {!inFeedAdVisible && (
+          <div className="my-4"><AdBannerSlot slotKey={`vertical_${vertical}`} onActiveChange={setVerticalAdActive} /></div>
+        )}
         {/* NativeBanner_1 (owner 3 Nov): the network's own unit in the SAME ad position. It only
             shows when no vertical creative is configured, because network inventory cannot be
             vertical-targeted by us (that is where the poker creatives came from). */}

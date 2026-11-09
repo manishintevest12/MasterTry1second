@@ -55694,6 +55694,15 @@ function jsonLd(page) {
   });
   return blocks.map((b) => `<script type="application/ld+json">${JSON.stringify(b)}</script>`).join("\n");
 }
+function monetisationHtml(page) {
+  const vertical = (page.path.split("/").filter(Boolean)[1] || "").replace(/[^a-z-]/g, "");
+  const slot2 = (process.env.T1S_ANSWER_AD_SLOT || "").trim();
+  const ad = slot2 ? `<div class="adwrap"><span class="adlabel">Advertisement</span>
+<ins class="adsbygoogle" style="display:block" data-ad-client="${ADSENSE_CLIENT}" data-ad-slot="${esc5(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins>
+<script>(adsbygoogle=window.adsbygoogle||[]).push({});</script></div>` : "";
+  const cta = vertical ? `<div class="cta"><a href="/${vertical}"><strong>Compare live prices now</strong><span>Run one search across every seller in this vertical, cheapest first.</span></a></div>` : "";
+  return `${ad}${cta}`;
+}
 function renderAnswerHtml(page) {
   const canonical = `${ORIGIN}${page.path}`;
   const crumbs = page.breadcrumbs.map((b) => `<a href="${b.path}">${esc5(b.name)}</a>`).join(" &rsaquo; ");
@@ -55719,6 +55728,7 @@ ${page.sellers.map((s) => `<tr><td>${esc5(s)}</td><td>Live price returned during
 <meta property="og:url" content="${canonical}">
 <meta name="twitter:card" content="summary_large_image">
 <style>${STYLE2}</style>
+${ADSENSE_LOADER}
 ${jsonLd(page)}
 </head>
 <body>
@@ -55726,6 +55736,7 @@ ${jsonLd(page)}
 <nav class="crumbs">${crumbs}</nav>
 <h1>${esc5(page.h1)}</h1>
 <p class="answer"><strong>Direct answer:</strong> ${esc5(page.quickAnswer)}</p>
+${monetisationHtml(page)}
 ${page.body.map((p) => `<p>${esc5(p)}</p>`).join("\n")}
 ${sellerTable}
 <h2>Frequently asked questions</h2>
@@ -55758,7 +55769,7 @@ function renderAnswerMarkdown(page) {
     ""
   ].filter((l) => l !== void 0).join("\n");
 }
-var ORIGIN, SELLERS, esc5, sellersFor, verticalLinks, STYLE2;
+var ORIGIN, SELLERS, esc5, sellersFor, verticalLinks, STYLE2, ADSENSE_CLIENT, ADSENSE_LOADER;
 var init_answerPages = __esm({
   "server/seo/answerPages.ts"() {
     init_data();
@@ -55788,6 +55799,12 @@ var init_answerPages = __esm({
 :root{color-scheme:light dark}
 *{box-sizing:border-box}
 body{margin:0;font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#0f172a;background:#fff}
+.adwrap{margin:22px 0;min-height:90px}
+.adlabel{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px}
+.cta{margin:22px 0}
+.cta a{display:block;text-decoration:none;background:#e7000b;color:#fff;border-radius:14px;padding:14px 18px}
+.cta strong{display:block;font-size:17px;font-weight:800}
+.cta span{display:block;font-size:13.5px;opacity:.92;margin-top:2px}
 main{max-width:820px;margin:0 auto;padding:28px 20px 64px}
 a{color:#b91c1c;text-decoration:none}a:hover{text-decoration:underline}
 nav.crumbs{font-size:13px;color:#64748b;margin-bottom:18px}
@@ -55801,6 +55818,8 @@ ul.links{padding-left:18px}
 footer{margin-top:44px;font-size:13px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:16px}
 @media(prefers-color-scheme:dark){body{background:#0b1220;color:#e2e8f0}.answer{background:#1e1b1b;border-color:#ef4444}th,td{border-color:#1e293b}footer{border-color:#1e293b}}
 `;
+    ADSENSE_CLIENT = "ca-pub-3144522772064172";
+    ADSENSE_LOADER = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}" crossorigin="anonymous"></script>`;
   }
 });
 

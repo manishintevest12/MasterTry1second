@@ -325,6 +325,12 @@ const STYLE = `
 :root{color-scheme:light dark}
 *{box-sizing:border-box}
 body{margin:0;font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#0f172a;background:#fff}
+.adwrap{margin:22px 0;min-height:90px}
+.adlabel{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px}
+.cta{margin:22px 0}
+.cta a{display:block;text-decoration:none;background:#e7000b;color:#fff;border-radius:14px;padding:14px 18px}
+.cta strong{display:block;font-size:17px;font-weight:800}
+.cta span{display:block;font-size:13.5px;opacity:.92;margin-top:2px}
 main{max-width:820px;margin:0 auto;padding:28px 20px 64px}
 a{color:#b91c1c;text-decoration:none}a:hover{text-decoration:underline}
 nav.crumbs{font-size:13px;color:#64748b;margin-bottom:18px}
@@ -338,6 +344,39 @@ ul.links{padding-left:18px}
 footer{margin-top:44px;font-size:13px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:16px}
 @media(prefers-color-scheme:dark){body{background:#0b1220;color:#e2e8f0}.answer{background:#1e1b1b;border-color:#ef4444}th,td{border-color:#1e293b}footer{border-color:#1e293b}}
 `;
+
+/** AdSense publisher id already used by the SPA shell (index.html), so both surfaces share one account. */
+const ADSENSE_CLIENT = 'ca-pub-3144522772064172';
+
+/**
+ * OWNER 9 Nov: the answer layer should earn without a payment gateway and without a popunder -
+ * "content page par AdSense impression + affiliate intent".
+ *
+ * These 482 pages are the only surface that receives cold organic traffic, and until now they carried
+ * no ad at all: a visitor landed, read, and left unmonetised. Two additions, both inline and quiet:
+ *   1. one responsive AdSense unit between the direct answer and the seller table (only when a slot id
+ *      is configured via T1S_ANSWER_AD_SLOT - AdSense needs a real slot id to fill an <ins>);
+ *   2. an internal CTA to the vertical comparison page, which is where the masked /api/out affiliate
+ *      exits already live. That is the intent-routing half: no new ad window, the click just continues
+ *      the journey the visitor came for.
+ * The AdSense loader is emitted regardless of (1) so dashboard Auto ads work on these pages too.
+ */
+function monetisationHtml(page: AnswerPage): string {
+  const vertical = (page.path.split('/').filter(Boolean)[1] || '').replace(/[^a-z-]/g, '');
+  const slot = (process.env.T1S_ANSWER_AD_SLOT || '').trim();
+  const ad = slot
+    ? `<div class="adwrap"><span class="adlabel">Advertisement</span>
+<ins class="adsbygoogle" style="display:block" data-ad-client="${ADSENSE_CLIENT}" data-ad-slot="${esc(slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins>
+<script>(adsbygoogle=window.adsbygoogle||[]).push({});</script></div>`
+    : '';
+  const cta = vertical
+    ? `<div class="cta"><a href="/${vertical}"><strong>Compare live prices now</strong><span>Run one search across every seller in this vertical, cheapest first.</span></a></div>`
+    : '';
+  return `${ad}${cta}`;
+}
+
+/** AdSense loader, shared by every answer page. Auto ads (dashboard side) also use this. */
+const ADSENSE_LOADER = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}" crossorigin="anonymous"></script>`;
 
 export function renderAnswerHtml(page: AnswerPage): string {
   const canonical = `${ORIGIN}${page.path}`;
@@ -368,6 +407,7 @@ ${page.sellers.map((s) => `<tr><td>${esc(s)}</td><td>Live price returned during 
 <meta property="og:url" content="${canonical}">
 <meta name="twitter:card" content="summary_large_image">
 <style>${STYLE}</style>
+${ADSENSE_LOADER}
 ${jsonLd(page)}
 </head>
 <body>
@@ -375,6 +415,7 @@ ${jsonLd(page)}
 <nav class="crumbs">${crumbs}</nav>
 <h1>${esc(page.h1)}</h1>
 <p class="answer"><strong>Direct answer:</strong> ${esc(page.quickAnswer)}</p>
+${monetisationHtml(page)}
 ${page.body.map((p) => `<p>${esc(p)}</p>`).join('\n')}
 ${sellerTable}
 <h2>Frequently asked questions</h2>
