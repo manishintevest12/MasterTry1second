@@ -49,21 +49,64 @@ export function samePlace(a: unknown, b: unknown): boolean {
 }
 
 /** Read the route a row claims to be about, or null when it says nothing usable. */
+/**
+ * Read a named field from a row's spec bags REGARDLESS of how the producer spelled it.
+ *
+ * OWNER 9 Nov ("bus ko fix kro"): 55 of the 69 real bus rows carry `specs.Route = "Indore → Bhopal"`
+ * (title-cased, because the answer pipeline maps attributes to display labels) while this function
+ * looked only for `specs.route`. Those 55 rows came back "unreadable", the gate never guessed, and an
+ * Indore -> Bhopal search could be painted with an Indore -> Nagpur card - exactly his screenshot.
+ */
+function bagValue(row: any, names: string[]): string {
+  const want = new Set(names.map((n) => n.toLowerCase().replace(/[_\s-]+/g, '')));
+  for (const bag of [row?.specs, row?.attributes, row?.specifications]) {
+    if (!bag || typeof bag !== 'object') continue;
+    for (const k of Object.keys(bag)) {
+      if (!want.has(k.toLowerCase().replace(/[_\s-]+/g, ''))) continue;
+      const v = String((bag as any)[k] ?? '').trim();
+      if (v) return v;
+    }
+  }
+  return '';
+}
+
 export function routeOfRow(row: any): { from: string; to: string } | null {
   const specs = row?.specs || row?.attributes || {};
   const direct = (v: unknown) => String(v ?? '').trim();
   // 1) explicit fields
-  const fromField = direct(specs.from ?? specs.origin ?? specs.departureCity ?? row?.origin ?? row?.from);
-  const toField = direct(specs.to ?? specs.destination ?? specs.arrivalCity ?? row?.destination ?? row?.to);
+  const fromField = direct(specs.from ?? specs.origin ?? specs.departureCity ?? row?.origin ?? row?.from)
+    || bagValue(row, ['from', 'origin', 'departurecity', 'departure city', 'from city', 'source city']);
+  const toField = direct(specs.to ?? specs.destination ?? specs.arrivalCity ?? row?.destination ?? row?.to)
+    || bagValue(row, ['to', 'destination', 'arrivalcity', 'arrival city', 'to city', 'destination city']);
   if (fromField && toField) return { from: fromField, to: toField };
   // 2) a single "A → B" / "A to B" / "A-B" string
-  const raw = direct(specs.route ?? specs.sector ?? row?.route ?? '');
+  const raw = direct(specs.route ?? specs.sector ?? row?.route ?? '') || bagValue(row, ['route', 'sector', 'journey', 'route name']);
   const arrow = raw.split(/\s*(?:→|->|=>|—|–|to)\s*/i).map((s) => s.trim()).filter(Boolean);
   if (arrow.length === 2 && arrow[0] && arrow[1]) return { from: arrow[0], to: arrow[1] };
   // 3) title tail: "IndiGo 6E147 · Indore → Hyderabad"
   const title = direct(row?.title);
   const m = title.match(/·\s*([^·]+?)\s*(?:→|->|to)\s*([^·]+)$/i);
   if (m) return { from: m[1].trim(), to: m[2].trim() };
+  // 4) OWNER 9 Nov ("bus ko fix kro"): the bus sellers' own titles. A redBus/AbhiBus title reads
+  //    "Hans Travels (I) Pvt Ltd 20:45 (Indore) to 08:00 (Nagpur)" and an aggregator title reads
+  //    "Barkoti Travels Indore to Bhopal bus (19:50 - 00:30)". Neither shape carries from/to fields on
+  //    the row, so this gate used to answer null ("unreadable route is never guessed") and KEEP the
+  //    row - which is how Indore -> Nagpur cards were painted under an Indore -> Bhopal search.
+  //    Both bus shapes are read now; the cities must sit in the two positions the title already uses.
+  const paren = title.match(/\(([^()]{2,40})\)\s*(?:→|->|to)\s*[^()]*\(([^()]{2,40})\)/i);
+  if (paren) return { from: paren[1].trim(), to: paren[2].trim() };
+  const busTitle = title.match(/\s+to\s+([A-Za-z][A-Za-z .'-]{1,30}?)\s+(?:bus|volvo|sleeper|seater)\b/i);
+  if (busTitle) {
+    // The origin is the city word right before " to " (the operator name sits further left, so the
+    // match is taken from the RIGHT, and a known multi-word prefix such as "New" is carried along).
+    const before = title.slice(0, busTitle.index).trim().split(/\s+/).filter(Boolean);
+    const PREFIX = new Set(['new', 'navi', 'north', 'south', 'east', 'west', 'old', 'greater']);
+    let from = before[before.length - 1] || '';
+    const prev = (before[before.length - 2] || '').toLowerCase();
+    if (from && PREFIX.has(prev)) from = `${before[before.length - 2]} ${from}`;
+    const to = busTitle[1].trim();
+    if (from && to) return { from, to };
+  }
   return null;
 }
 

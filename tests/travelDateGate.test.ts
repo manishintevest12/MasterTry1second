@@ -240,3 +240,27 @@ test('priceOfRow reads the item shape the web feed receives', () => {
   assert.deepEqual(kept.kept.map((r: any) => r.id), ['a']);
   assert.equal(kept.dropped, 1);
 });
+
+// OWNER 9 Nov ("bus ko fix kro"), from the pasted production log: bus catalogue rows were dropped as
+// "undated" (droppedOn {undated: 40}) even though they answer the requested date, because by the time a
+// row is cached/re-gated it is a ComparisonItem whose date sits in the title-cased `specs` bag or in
+// attributes.journey_date - shapes offerTravelDate never read. These rows are the real payload shape.
+test('a bus row is dated from the specs bag the answer pipeline actually carries', () => {
+  const row = {
+    vertical: 'bus', title: 'Barkoti Travels Indore to Bhopal bus (19:50 - 00:30)', primaryPrice: 300,
+    specs: { Date: '2026-11-25', Route: 'Indore to Bhopal', 'departure time': '19:50' },
+  };
+  assert.equal(offerTravelDate(row), '2026-11-25');
+  assert.deepEqual(enforceRequestedTravelDate([row], 'bus', { depart: '2026-11-25' }, { strictUndated: true }).kept.length, 1);
+  assert.deepEqual(enforceRequestedTravelDate([row], 'bus', { depart: '2026-11-26' }, { strictUndated: true }).kept.length, 0,
+    'the same row must still be dropped for another date');
+});
+
+test('a bus row is dated from attributes.journey_date, and a dateless row stays undated', () => {
+  const dated = { vertical: 'bus', title: 'Mahakal Indore to Bhopal bus', primaryPrice: 250, attributes: { journey_date: '2026-11-25' } };
+  assert.equal(offerTravelDate(dated), '2026-11-25');
+  assert.equal(enforceRequestedTravelDate([dated], 'bus', { depart: '2026-11-25' }, { strictUndated: true }).kept.length, 1);
+  const dateless = { vertical: 'bus', title: 'no date anywhere', primaryPrice: 250, attributes: { data_note: 'not a date' } };
+  assert.equal(offerTravelDate(dateless), '', 'free text is never mistaken for a date');
+  assert.equal(enforceRequestedTravelDate([dateless], 'bus', { depart: '2026-11-25' }, { strictUndated: true }).kept.length, 0);
+});

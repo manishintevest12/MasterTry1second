@@ -90,6 +90,46 @@ export function normalizeTravelDate(raw: unknown): string {
 }
 
 /** The date a row actually answers, read from the fields sources and the catalogue use. */
+/**
+ * OWNER 9 Nov, "bus ko fix kro" + the pasted production log: every bus line read
+ * "catalogue floor rows dropped for answering a different travel date ... asked 2026-11-09
+ * dropped 40 kept 0 droppedOn {undated: 40}" and eleven seconds later "asked 2026-11-17 ...
+ * dropped 40 kept 0" - the bus feed was empty for a dated search even though the rows carry
+ * the date. Cause: by the time rows are cached and re-gated they are ComparisonItems whose
+ * dates live in a TITLE-CASED `specs` bag ("Date", "journey date", "departure time"...) and in
+ * `attributes.journey_date`, and this reader only looked at travel.date and six snake_case
+ * attribute names. Anything it could not read was treated as undated and dropped.
+ *
+ * The date is now read from whichever of those shapes the row actually uses. Keys are matched
+ * case-insensitively and with separators collapsed, so "journey date", "journey_date" and
+ * "Journey Date" are the same field. Values are still only ACCEPTED when they parse as a real
+ * date (normalizeTravelDate), so a free-text or malformed value can never be mistaken for one,
+ * and rows with no readable date are still undated - the strict rule is unchanged.
+ */
+const DATE_KEYS = [
+  'travel date', 'journey date', 'departure date', 'depart date', 'checkin date', 'check in date',
+  'show date', 'checkin', 'check in', 'date',
+].map((k) => k);
+
+function dateKey(k: string): string {
+  return k.toLowerCase().replace(/[_:\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function lookupTravelDate(rec: any): string {
+  if (!rec || typeof rec !== 'object') return '';
+  const bag = new Map<string, unknown>();
+  for (const k of Object.keys(rec)) {
+    const key = dateKey(k);
+    if (!bag.has(key)) bag.set(key, (rec as any)[k]);
+  }
+  for (const want of DATE_KEYS) {
+    if (!bag.has(want)) continue;
+    const n = normalizeTravelDate(bag.get(want));
+    if (n) return n;
+  }
+  return '';
+}
+
 export function offerTravelDate(offer: any): string {
   const candidates: unknown[] = [
     offer?.travel?.date,
@@ -104,6 +144,11 @@ export function offerTravelDate(offer: any): string {
   ];
   for (const c of candidates) {
     const n = normalizeTravelDate(c);
+    if (n) return n;
+  }
+  // Same information in the shapes the answer pipeline actually carries.
+  for (const bag of [offer?.travel, offer?.attributes, offer?.specs, offer?.specifications]) {
+    const n = lookupTravelDate(bag);
     if (n) return n;
   }
   return '';

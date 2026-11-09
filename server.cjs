@@ -34936,6 +34936,23 @@ function normalizeTravelDate(raw) {
   }
   return "";
 }
+function dateKey(k) {
+  return k.toLowerCase().replace(/[_:\-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function lookupTravelDate(rec) {
+  if (!rec || typeof rec !== "object") return "";
+  const bag = /* @__PURE__ */ new Map();
+  for (const k of Object.keys(rec)) {
+    const key = dateKey(k);
+    if (!bag.has(key)) bag.set(key, rec[k]);
+  }
+  for (const want of DATE_KEYS) {
+    if (!bag.has(want)) continue;
+    const n = normalizeTravelDate(bag.get(want));
+    if (n) return n;
+  }
+  return "";
+}
 function offerTravelDate(offer) {
   const candidates = [
     offer?.travel?.date,
@@ -34950,6 +34967,10 @@ function offerTravelDate(offer) {
   ];
   for (const c of candidates) {
     const n = normalizeTravelDate(c);
+    if (n) return n;
+  }
+  for (const bag of [offer?.travel, offer?.attributes, offer?.specs, offer?.specifications]) {
+    const n = lookupTravelDate(bag);
     if (n) return n;
   }
   return "";
@@ -35073,7 +35094,7 @@ function reconcileVerifiedSources(rows, sourcesSucceeded) {
   const visible = distinctSellerCount(rows);
   return visible > 0 ? declared.slice(0, Math.min(declared.length, visible)) : [];
 }
-var DATE_ANSWERING_VERTICALS, iso2, NO_PRICE_VERTICALS, SOURCE_ALIASES;
+var DATE_ANSWERING_VERTICALS, iso2, DATE_KEYS, NO_PRICE_VERTICALS, SOURCE_ALIASES;
 var init_travelDateGate = __esm({
   "server/search/travelDateGate.ts"() {
     DATE_ANSWERING_VERTICALS = ["flights", "hotels", "bus"];
@@ -35084,6 +35105,18 @@ var init_travelDateGate = __esm({
       const dd = String(d).padStart(2, "0");
       return `${y}-${mm}-${dd}`;
     };
+    DATE_KEYS = [
+      "travel date",
+      "journey date",
+      "departure date",
+      "depart date",
+      "checkin date",
+      "check in date",
+      "show date",
+      "checkin",
+      "check in",
+      "date"
+    ].map((k) => k);
     NO_PRICE_VERTICALS = ["loans", "insurance", "creditcards", "account", "banking"];
     SOURCE_ALIASES = {
       emt: "easemytrip",
@@ -37872,18 +37905,42 @@ function samePlace(a, b) {
   if (/^[a-z]{3}$/.test(x) && /^[a-z]{3}$/.test(y)) return x === y;
   return false;
 }
+function bagValue(row, names) {
+  const want = new Set(names.map((n) => n.toLowerCase().replace(/[_\s-]+/g, "")));
+  for (const bag of [row?.specs, row?.attributes, row?.specifications]) {
+    if (!bag || typeof bag !== "object") continue;
+    for (const k of Object.keys(bag)) {
+      if (!want.has(k.toLowerCase().replace(/[_\s-]+/g, ""))) continue;
+      const v = String(bag[k] ?? "").trim();
+      if (v) return v;
+    }
+  }
+  return "";
+}
 function routeOfRow(row) {
   const specs = row?.specs || row?.attributes || {};
   const direct = (v) => String(v ?? "").trim();
-  const fromField = direct(specs.from ?? specs.origin ?? specs.departureCity ?? row?.origin ?? row?.from);
-  const toField = direct(specs.to ?? specs.destination ?? specs.arrivalCity ?? row?.destination ?? row?.to);
+  const fromField = direct(specs.from ?? specs.origin ?? specs.departureCity ?? row?.origin ?? row?.from) || bagValue(row, ["from", "origin", "departurecity", "departure city", "from city", "source city"]);
+  const toField = direct(specs.to ?? specs.destination ?? specs.arrivalCity ?? row?.destination ?? row?.to) || bagValue(row, ["to", "destination", "arrivalcity", "arrival city", "to city", "destination city"]);
   if (fromField && toField) return { from: fromField, to: toField };
-  const raw = direct(specs.route ?? specs.sector ?? row?.route ?? "");
+  const raw = direct(specs.route ?? specs.sector ?? row?.route ?? "") || bagValue(row, ["route", "sector", "journey", "route name"]);
   const arrow = raw.split(/\s*(?:→|->|=>|—|–|to)\s*/i).map((s) => s.trim()).filter(Boolean);
   if (arrow.length === 2 && arrow[0] && arrow[1]) return { from: arrow[0], to: arrow[1] };
   const title = direct(row?.title);
   const m = title.match(/·\s*([^·]+?)\s*(?:→|->|to)\s*([^·]+)$/i);
   if (m) return { from: m[1].trim(), to: m[2].trim() };
+  const paren = title.match(/\(([^()]{2,40})\)\s*(?:→|->|to)\s*[^()]*\(([^()]{2,40})\)/i);
+  if (paren) return { from: paren[1].trim(), to: paren[2].trim() };
+  const busTitle = title.match(/\s+to\s+([A-Za-z][A-Za-z .'-]{1,30}?)\s+(?:bus|volvo|sleeper|seater)\b/i);
+  if (busTitle) {
+    const before = title.slice(0, busTitle.index).trim().split(/\s+/).filter(Boolean);
+    const PREFIX = /* @__PURE__ */ new Set(["new", "navi", "north", "south", "east", "west", "old", "greater"]);
+    let from = before[before.length - 1] || "";
+    const prev = (before[before.length - 2] || "").toLowerCase();
+    if (from && PREFIX.has(prev)) from = `${before[before.length - 2]} ${from}`;
+    const to = busTitle[1].trim();
+    if (from && to) return { from, to };
+  }
   return null;
 }
 function enforceRequestedRoute(rows, requested) {

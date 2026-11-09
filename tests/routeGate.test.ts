@@ -65,3 +65,18 @@ test('an EMPTY answer on /api/search also waits (first cold search for a fresh c
   assert.ok(src.includes('const emptyFirstAnswer = Boolean(response)'));
   assert.ok(/emptyFirstAnswer\) \{/.test(src), 'the wait runs for an empty first answer even without settle:true');
 });
+
+// OWNER 9 Nov, from his bus screenshot: the search was Indore -> Bhopal and the cards were
+// "(Indore) to 08:00 (Nagpur)" - the sellers' own bus titles carry no from/to fields, so the gate
+// could not read the route, answered null and KEPT the wrong-city row.
+test('bus titles that carry the cities only in text are read, so another city pair is dropped', () => {
+  const nagpur = { vertical: 'bus', title: 'Hans Travels (I) Private Limited 20:45 (Indore) to 08:00 (Nagpur)', primaryPrice: 750, specs: { Date: '2026-11-25' } };
+  const bhopal = { vertical: 'bus', title: 'Barkoti Travels Indore to Bhopal bus (19:50 - 00:30)', primaryPrice: 300, specs: { Date: '2026-11-25' } };
+  assert.deepEqual(routeOfRow(nagpur), { from: 'Indore', to: 'Nagpur' });
+  assert.deepEqual(routeOfRow(bhopal), { from: 'Indore', to: 'Bhopal' });
+  const asked = { from: { city: 'Indore' }, to: { city: 'Bhopal' } } as any;
+  const res = enforceRequestedRoute([nagpur, bhopal], asked);
+  assert.equal(res.rows.length, 1);
+  assert.equal(res.rows[0].title, bhopal.title);
+  assert.equal(res.dropped, 1);
+});
