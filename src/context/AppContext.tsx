@@ -1066,6 +1066,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       activeSearchKeyRef.current = searchKey;
       setPendingSearchKey(searchKey);
       searchStartedAtRef.current = Date.now();
+      // OWNER 9 Nov (25-11-2026 picker, every card still 2026-11-09): a NEW dated search used to
+      // leave the PREVIOUS search's cards on screen while the new answer was still being fetched, so
+      // the feed looked like it had answered the new date with the old one - and when the fresh
+      // answer came back empty (a cold engine) those old cards simply stayed forever. A new search
+      // key now clears this vertical's cards first: the panel/loader is the only thing on screen
+      // until rows that actually match this search arrive. Never touches another vertical.
+      if (dateSensitive && travel.depart) {
+        setItems((prev) => prev.some((it) => sameVertical(it.vertical, vertical))
+          ? prev.filter((it) => !sameVertical(it.vertical, vertical))
+          : prev);
+      }
     }
     // A fresh search owns the late-row watch: cancel any earlier one so a previous vertical's
     // retry can never inject rows into this one.
