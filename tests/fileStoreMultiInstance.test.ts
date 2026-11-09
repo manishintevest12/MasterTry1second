@@ -9,7 +9,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 // Isolated data dir BEFORE the store module loads (each test process owns it).
+// A PID-keyed dir is reused by a later run with the same PID, which left 3 rows from the previous
+// run and failed the "fresh data dir - empty" assertion (seen 9 Nov). Give every run its own dir.
 process.env.NODE_ENV = 'test';
+const fs = await import('node:fs');
+const os = await import('node:os');
+const path = await import('node:path');
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 't1s-store-'));
 const { FileStore } = await import('../server/common/db');
 
 describe('FileStore multi-instance coherence', () => {

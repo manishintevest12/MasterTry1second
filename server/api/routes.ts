@@ -1516,6 +1516,10 @@ apiRouter.get('/version', async (_req, res) => {
   res.json({
     ok: true,
     bundle,
+    // OWNER 9 Nov, third report of the same stale-feed complaint: "is the fix live?" must be answerable
+    // in ONE request. The commit the running code was built from sits next to the bundle it serves, so a
+    // stale checkout (code pulled but dist not, or vice versa) is visible immediately instead of guessed.
+    commit: deployedCommit(),
     startedAt: startedAtIso,
     uptimeSec: Math.round(process.uptime()),
     node: process.version,
