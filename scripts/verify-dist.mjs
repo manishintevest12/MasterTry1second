@@ -19,7 +19,9 @@ const fail = (msg, extra) => {
 
 if (!existsSync(path.join(dist, 'index.html'))) fail('dist/index.html is missing');
 
-const html = readFileSync(path.join(dist, 'index.html'), 'utf8');
+const rawHtml = readFileSync(path.join(dist, 'index.html'), 'utf8');
+// Example paths inside comments are documentation, not references.
+const html = rawHtml.replace(/<!--[\s\S]*?-->/g, '');
 const assetsDir = path.join(dist, 'assets');
 const files = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
 if (!files.length) fail('dist/assets is empty', `  expected: ${assetsDir}`);

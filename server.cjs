@@ -55864,6 +55864,7 @@ async function createApp() {
       const wantsMarkdown = /text\/markdown|application\/x-markdown/i.test(acc) && !/text\/html/i.test(acc);
       if (wantsMarkdown) {
         if (!isKnownPath2(cleanPath)) {
+          res.setHeader("Cache-Control", "no-store");
           res.status(404).type("text/markdown; charset=utf-8").send(`# 404 \u2014 page not found
 
 \`${cleanPath}\` does not exist on Try1Second. Start at ${"https://www.try1second.com"}/llms.txt
@@ -55879,6 +55880,7 @@ async function createApp() {
         return;
       }
       if (!isKnownPath2(cleanPath)) {
+        res.setHeader("Cache-Control", "no-store");
         res.status(404).type("text/html; charset=utf-8").send(notFoundHtml2(cleanPath));
         return;
       }
@@ -55913,6 +55915,18 @@ async function createApp() {
   } else if (settings3.isProduction) {
     log3.warn("Bootstrap", "dist/ not found \u2014 build the frontend with `npm run build` before serving");
   }
+  app.use((req, res) => {
+    if (String(req.path || "").startsWith("/api")) {
+      res.status(404).json({ ok: false, error: "not found" });
+      return;
+    }
+    res.setHeader("Cache-Control", "no-store");
+    if (/^\/assets\//.test(req.path || "")) {
+      res.status(404).type("text/plain").send("asset not found");
+      return;
+    }
+    res.status(404).type("text/html; charset=utf-8").send('<!doctype html><meta charset="utf-8"><title>404</title><p>Not found. <a href="/">Home</a></p>');
+  });
   return app;
 }
 var shuttingDown = false;

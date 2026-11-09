@@ -109,3 +109,27 @@ test('/api/version reports dist integrity instead of a bare null bundle', () => 
   assert.ok(src.includes('referencedAssetsMissing'));
   assert.ok(src.includes('run `npm run build` on the host'));
 });
+
+// OWNER 9 Nov (console screenshot): after a deploy, a browser holding the PREVIOUS index.html asked for
+// hashed files that no longer existed, so the page painted and froze. These pin the three recovery paths.
+test('a page whose hashed bundle 404s reloads itself once with a cache-buster', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes("var KEY = 't1s-asset-heal'"), 'guarded by sessionStorage');
+  assert.ok(html.includes('t1s_reload='), 'reload carries a cache-buster');
+  assert.ok(html.includes("addEventListener('error'"), 'script/img load errors are caught');
+  assert.ok(html.includes('dynamically imported module'), 'lazy chunk failures are caught');
+  assert.ok(/sessionStorage\.getItem\(KEY\)\) return/.test(html), 'never loops');
+});
+
+test('404s are never cacheable, so a deploy gap cannot stick in a browser or CDN', () => {
+  const src = readFileSync(new URL('../server/index.ts', import.meta.url), 'utf8');
+  const notFoundBlocks = src.split('status(404)').length - 1;
+  assert.ok(notFoundBlocks >= 3, 'every 404 path is explicit');
+  assert.ok(/status\(404\)[\s\S]{0,80}Cache-Control', 'no-store'/.test(src) || src.includes("res.setHeader('Cache-Control', 'no-store');\n        res.status(404)"), 'not-found responses say no-store');
+  assert.ok(src.includes('asset not found'), 'missing assets answer a plain 404 with no-store');
+});
+
+test('verify-dist ignores example paths inside HTML comments', () => {
+  const src = readFileSync(new URL('../scripts/verify-dist.mjs', import.meta.url), 'utf8');
+  assert.ok(src.includes('replace(/<!--'), 'comments are stripped before scanning');
+});

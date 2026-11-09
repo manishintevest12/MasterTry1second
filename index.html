@@ -136,6 +136,42 @@
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- OWNER 9 Nov (console: a 404 on the hashed entry bundle plus broken logos): after a
+         deploy, a browser or CDN still holding the PREVIOUS index.html asks for hashed files that no longer
+         exist and the page paints but never hydrates. This watchdog catches that exact case and reloads ONCE
+         with a cache-buster so the visitor gets the current HTML + assets. Guarded by sessionStorage so a
+         genuinely missing file can never cause a reload loop. -->
+    <script>
+      (function () {
+        var KEY = 't1s-asset-heal';
+        function heal(what) {
+          try {
+            if (sessionStorage.getItem(KEY)) return;
+            sessionStorage.setItem(KEY, String(Date.now()));
+          } catch (e) { return; }
+          var url = location.pathname + location.search + (location.search ? '&' : '?') + 't1s_reload=' + Date.now();
+          if (what && window.console && console.warn) console.warn('[try1second] stale asset, reloading:', what);
+          location.replace(url);
+        }
+        window.addEventListener('error', function (ev) {
+          var t = ev && ev.target;
+          if (t && t.tagName === 'SCRIPT' && t.src) heal(t.src);
+          else if (t && (t.tagName === 'LINK' || t.tagName === 'IMG') && t.src) heal(t.src);
+        }, true);
+        // React lazy chunks report here when their dynamic import 404s.
+        window.addEventListener('unhandledrejection', function (ev) {
+          var msg = String((ev && ev.reason && (ev.reason.message || ev.reason)) || '');
+          if (/dynamically imported module|Importing a module script failed|Failed to fetch/i.test(msg)) heal(msg.slice(0, 80));
+        });
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && root.childElementCount === 0) {
+            var s = document.querySelector('script[type="module"][src*="/assets/"]');
+            if (s) heal(s.src);
+          }
+        }, 8000);
+      })();
+    </script>
     <!-- AdSense, injected off the critical path (see the head comment above). -->
     <script>
       (function () {

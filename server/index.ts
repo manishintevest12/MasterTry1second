@@ -447,6 +447,7 @@ export async function createApp(): Promise<express.Express> {
       const wantsMarkdown = /text\/markdown|application\/x-markdown/i.test(acc) && !/text\/html/i.test(acc);
       if (wantsMarkdown) {
         if (!isKnownPath(cleanPath)) {
+          res.setHeader('Cache-Control', 'no-store');
           res.status(404).type('text/markdown; charset=utf-8').send(`# 404 — page not found\n\n\`${cleanPath}\` does not exist on Try1Second. Start at ${'https://www.try1second.com'}/llms.txt\n`);
           return;
         }
@@ -458,6 +459,9 @@ export async function createApp(): Promise<express.Express> {
       // OWNER 9 Nov ("Missing pages return a real 404"): a URL we do not serve answers 404 with a
       // small honest page, never the 200 shell - agents treat 200 as "this page exists".
       if (!isKnownPath(cleanPath)) {
+        // A 404 must never be reused from cache (owner 9 Nov: the browser kept replaying 404s for the
+        // hashed bundle long after the deploy had fixed them).
+        res.setHeader('Cache-Control', 'no-store');
         res.status(404).type('text/html; charset=utf-8').send(notFoundHtml(cleanPath));
         return;
       }
@@ -497,6 +501,15 @@ export async function createApp(): Promise<express.Express> {
   } else if (settings.isProduction) {
     log.warn('Bootstrap', 'dist/ not found — build the frontend with `npm run build` before serving');
   }
+
+  // Anything that reached here is a miss (asset deleted mid-deploy, unknown API path). Answer 404 with
+  // no-store so neither the browser nor the CDN can pin a broken resource.
+  app.use((req: Request, res: Response) => {
+    if (String(req.path || '').startsWith('/api')) { res.status(404).json({ ok: false, error: 'not found' }); return; }
+    res.setHeader('Cache-Control', 'no-store');
+    if (/^\/assets\//.test(req.path || '')) { res.status(404).type('text/plain').send('asset not found'); return; }
+    res.status(404).type('text/html; charset=utf-8').send('<!doctype html><meta charset="utf-8"><title>404</title><p>Not found. <a href="/">Home</a></p>');
+  });
 
   return app;
 }
