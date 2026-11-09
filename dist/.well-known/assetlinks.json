@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.try1second.try1second",
+      "sha256_cert_fingerprints": [
+        "BC:22:41:42:7D:5B:43:B8:51:9F:AE:A3:81:33:45:CA:A3:9E:D6:05:8A:65:38:46:43:85:8D:C8:DC:F1:5C:DE",
+        "45:9E:B5:8E:8F:71:B0:94:26:59:E5:17:96:C1:54:06:F9:D0:98:F5:64:2E:15:89:A2:23:6B:67:58:30:A7:C5"
+      ]
+    }
+  }
+]
