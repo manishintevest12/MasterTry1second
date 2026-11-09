@@ -22,17 +22,39 @@ import {
   parseMmtCitySuggestion,
 } from '../parsers/makemytripBus';
 
-function routeFromQuery(raw: string): { from: string; to: string } | null {
+export function routeFromQuery(raw: string): { from: string; to: string } | null {
   const cleaned = raw
     .replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, ' ')
     .replace(/\b(today|tonight|tomorrow|day after tomorrow|this week|this weekend|next week|next day)\b/gi, ' ')
     .replace(/\b(?:on|at)\s+(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)day\b/gi, ' ')
     .replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, ' ')
     .replace(/\b\d{4}-\d{2}-\d{2}\b/gi, ' ')
+    // An arrow between the cities is the same route ("Indore → Bhopal"); the matcher below looks for
+    // the word "to", so the arrow is rewritten to it before parsing.
+    .replace(/\s*(?:→|->|–|—)\s*/g, ' to ')
     .replace(/\s+/g, ' ').trim();
   const m = cleaned.match(/(.{2,40}?)\s+(?:to|from)\s+(.{2,40})/);
   if (!m) return null;
-  return { from: m[1].trim(), to: m[2].trim() };
+  // OWNER 9 Nov ("bus abhi v fix ni hua"): the bus box is the same route input the flights box uses, so
+  // it submits "Indore (IDR) to Bhopal (BHO)". The old code kept the bracketed code in the city name
+  // ("Indore (IDR)"), every source was then asked for a city that does not exist - redBus slug
+  // "indore-(idr)-to-bhopal-(bho)", citySuggestion "Indore (IDR)", abhibus/zingbus/ixigo lookups - and
+  // the whole bus pipeline answered 0 rows in ~2s while the plain "Indore to Bhopal" query answered 15.
+  // Bracketed codes, arrows and stray punctuation are stripped here, and the city is title-cased so
+  // every source gets the same clean name.
+  const clean = (t: string) => t
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[→>|]/g, ' ')
+    .replace(/[^A-Za-z\s.'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(' ');
+  const from = clean(m[1]);
+  const to = clean(m[2]);
+  if (!from || !to) return null;
+  return { from, to };
 }
 
 export const busWorker: VerticalWorker = {

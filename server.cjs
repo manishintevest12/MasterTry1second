@@ -27536,10 +27536,14 @@ var init_makemytripBus = __esm({
 
 // server/workers/verticals/bus.ts
 function routeFromQuery3(raw) {
-  const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, " ").replace(/\b(today|tonight|tomorrow|day after tomorrow|this week|this weekend|next week|next day)\b/gi, " ").replace(/\b(?:on|at)\s+(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)day\b/gi, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, " ").replace(/\b\d{4}-\d{2}-\d{2}\b/gi, " ").replace(/\s+/g, " ").trim();
+  const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, " ").replace(/\b(today|tonight|tomorrow|day after tomorrow|this week|this weekend|next week|next day)\b/gi, " ").replace(/\b(?:on|at)\s+(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)day\b/gi, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, " ").replace(/\b\d{4}-\d{2}-\d{2}\b/gi, " ").replace(/\s*(?:→|->|–|—)\s*/g, " to ").replace(/\s+/g, " ").trim();
   const m = cleaned.match(/(.{2,40}?)\s+(?:to|from)\s+(.{2,40})/);
   if (!m) return null;
-  return { from: m[1].trim(), to: m[2].trim() };
+  const clean4 = (t) => t.replace(/\([^)]*\)/g, " ").replace(/[→>|]/g, " ").replace(/[^A-Za-z\s.'-]/g, " ").replace(/\s+/g, " ").trim().split(" ").map((w) => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w).join(" ");
+  const from = clean4(m[1]);
+  const to = clean4(m[2]);
+  if (!from || !to) return null;
+  return { from, to };
 }
 var busWorker;
 var init_bus = __esm({
