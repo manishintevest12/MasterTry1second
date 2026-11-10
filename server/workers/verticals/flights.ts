@@ -11,6 +11,8 @@ import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { loadOpenFlights, parseRoute } from '../parsers/openflights';
 import { parseIxigoFlights, parseIxigoOffers, ixigoRouteTokens } from '../parsers/ixigoFlights';
 import { rescueFetch, describeRescue } from '../../sources/rescueFetch';
+import { akasaConfigured, akasaFetchLowFares, akasaMissingEnv } from '../parsers/akasaIbe';
+import { newRawItem } from '../../sources/contract';
 import { AcquisitionError } from '../../common/httpClient';
 import { BOOKING_PROBE, bookingGate, bookingGateMessage } from '../parsers/bookingProbe';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
@@ -445,6 +447,59 @@ export const flightsWorker: VerticalWorker = {
         const gate = bookingGate(r.status, r.body);
         if (gate !== 'ok') throw new AcquisitionError(gate === 'access_challenge' ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE', bookingGateMessage('flights', r.status, gate), r.status);
         throw new AcquisitionError('EMPTY_RESPONSE', 'Booking.com Flights answered 200 but exposed no machine-readable fare payload; needs the partner API to become a priced source.');
+      },
+    },
+    {
+      // OWNER 10 Nov ("IndiGo/Akasa ki fare API capture karo"): Akasa's own IBE feed, captured from their
+      // production bundle. Endpoint + payload are exact; access needs an authorised Cognito bearer token
+      // (AKASA_BEARER) because the host answers a plain nginx 403 to our egress and to every rescue rung.
+      // Until the token exists this source reports exactly that instead of an empty "no results".
+      sourceId: 'w_flights_akasa_ibe',
+      name: 'Flights worker: Akasa Air IBE lowest fares (captured endpoint, needs AKASA_BEARER)',
+      priority: 9,
+      maxPerMinute: 4,
+      timeoutMs: 20_000,
+      run: async (ctx) => {
+        if (!akasaConfigured()) {
+          throw new AcquisitionError('CAPABILITY_UNAVAILABLE',
+            `Akasa IBE needs ${akasaMissingEnv().join(', ')}: the endpoint (prod-bl.qp.akasaair.com/api/ibe/availability/v2/search) answers 403 to our egress and requires an authorised Cognito bearer token.`);
+        }
+        const route = routeFromQuery(String(ctx.query.rawQuery || ctx.query.entityName || ''));
+        if (!route?.fromCode || !route?.toCode) return [];
+        const day = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        let fares: Awaited<ReturnType<typeof akasaFetchLowFares>> = [];
+        try {
+          fares = await akasaFetchLowFares({ origin: route.fromCode, destination: route.toCode, startDate: day, endDate: day });
+        } catch (e: any) {
+          const msg = String(e?.message || e);
+          if (msg.includes('AKASA_EDGE_403')) throw new AcquisitionError('ACCESS_CHALLENGE', 'Akasa IBE edge-blocked (403) for this egress; token present but the host refuses our IPs.');
+          if (msg.includes('AKASA_BEARER_NOT_CONFIGURED')) throw new AcquisitionError('CAPABILITY_UNAVAILABLE', 'AKASA_BEARER missing');
+          throw new AcquisitionError('MALFORMED_RESPONSE', `Akasa IBE failed: ${msg.slice(0, 140)}`);
+        }
+        const forDay = fares.filter((f) => f.date === day);
+        return forDay.slice(0, 3).map((f) => newRawItem(ctx.source, {
+          title: `Akasa Air lowest fare ${route.fromCode} to ${route.toCode} on ${f.date}`,
+          price: f.price,
+          currency: 'INR',
+          seller: 'Akasa Air',
+          sellerUrl: `https://www.akasaair.com/`,
+          availability: 'in_stock',
+          travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}`, date: f.date },
+          attributes: {
+            ...(f.taxesAndFees ? { taxes_and_fees: String(f.taxesAndFees) } : {}),
+            ...(f.available ? { seats_listed: String(f.available) } : {}),
+            price_scope: `lowest fare published by Akasa for ${f.date} (not a specific flight)`,
+            via: 'akasa_ibe',
+          },
+          evidence: {
+            sourceUrl: `https://www.akasaair.com/flights`,
+            sourceReference: `akasa-ibe:${route.fromCode}-${route.toCode}-${f.date}`,
+            rawFingerprint: '',
+            extractedFields: ['title', 'price'],
+          },
+        }));
       },
     },
     {

@@ -9018,6 +9018,71 @@ var init_rescueFetch = __esm({
   }
 });
 
+// server/workers/parsers/akasaIbe.ts
+function akasaConfigured() {
+  return Boolean((process.env.AKASA_BEARER || "").trim());
+}
+function akasaMissingEnv() {
+  return akasaConfigured() ? [] : ["AKASA_BEARER"];
+}
+function akasaLowFareUrl(q3) {
+  const params = new URLSearchParams({
+    origin: q3.origin.toUpperCase(),
+    destination: q3.destination.toUpperCase(),
+    startDate: q3.startDate,
+    endDate: q3.endDate || q3.startDate,
+    numberOfPassengers: "1",
+    currencyCode: (q3.currency || "INR").toUpperCase()
+  });
+  return `${AKASA_BASE}/api/ibe/availability/v2/search?${params.toString()}`;
+}
+function akasaLowFares(payload) {
+  const root = payload;
+  const candidates = Array.isArray(root) && root || Array.isArray(root?.data) && root.data || Array.isArray(root?.data?.dates) && root.data.dates || Array.isArray(root?.dates) && root.dates || [];
+  const out = [];
+  for (const c of candidates) {
+    if (!c || typeof c !== "object") continue;
+    const price2 = Number(c.price ?? c.totalPrice ?? c.amount ?? 0);
+    const date = String(c.date || c.departureDate || "").slice(0, 10);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
+    if (c.soldOut === true || c.noFlights === true) continue;
+    const taxes = Number(c.taxesAndFees ?? 0) || void 0;
+    out.push({ date, price: price2, taxesAndFees: taxes, available: Number(c.available ?? 0) || void 0 });
+  }
+  return out;
+}
+async function akasaFetchLowFares(q3, fetchImpl = fetch) {
+  const token = (process.env.AKASA_BEARER || "").trim();
+  if (!token) throw new Error("AKASA_BEARER_NOT_CONFIGURED");
+  const url = akasaLowFareUrl(q3);
+  const res = await fetchImpl(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json, text/plain, */*",
+      Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}`,
+      Origin: "https://www.akasaair.com",
+      Referer: "https://www.akasaair.com/"
+    }
+  });
+  const text = await res.text();
+  if (res.status === 403) throw new Error("AKASA_EDGE_403");
+  if (!res.ok) throw new Error(`AKASA_${res.status}: ${text.slice(0, 160)}`);
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("AKASA_MALFORMED_RESPONSE");
+  }
+  return akasaLowFares(parsed);
+}
+var AKASA_BASE;
+var init_akasaIbe = __esm({
+  "server/workers/parsers/akasaIbe.ts"() {
+    AKASA_BASE = (process.env.AKASA_API_BASE || "https://prod-bl.qp.akasaair.com").replace(/\/+$/, "");
+  }
+});
+
 // server/workers/parsers/bookingProbe.ts
 function bookingGate(status, body) {
   const text = String(body || "");
@@ -17363,6 +17428,8 @@ var init_flights = __esm({
     init_verticalWorker();
     init_ixigoFlights();
     init_rescueFetch();
+    init_akasaIbe();
+    init_contract();
     init_httpClient();
     init_bookingProbe();
     init_emtFareCalendar();
@@ -17693,6 +17760,59 @@ var init_flights = __esm({
             const gate = bookingGate(r.status, r.body);
             if (gate !== "ok") throw new AcquisitionError(gate === "access_challenge" ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", bookingGateMessage("flights", r.status, gate), r.status);
             throw new AcquisitionError("EMPTY_RESPONSE", "Booking.com Flights answered 200 but exposed no machine-readable fare payload; needs the partner API to become a priced source.");
+          }
+        },
+        {
+          // OWNER 10 Nov ("IndiGo/Akasa ki fare API capture karo"): Akasa's own IBE feed, captured from their
+          // production bundle. Endpoint + payload are exact; access needs an authorised Cognito bearer token
+          // (AKASA_BEARER) because the host answers a plain nginx 403 to our egress and to every rescue rung.
+          // Until the token exists this source reports exactly that instead of an empty "no results".
+          sourceId: "w_flights_akasa_ibe",
+          name: "Flights worker: Akasa Air IBE lowest fares (captured endpoint, needs AKASA_BEARER)",
+          priority: 9,
+          maxPerMinute: 4,
+          timeoutMs: 2e4,
+          run: async (ctx) => {
+            if (!akasaConfigured()) {
+              throw new AcquisitionError(
+                "CAPABILITY_UNAVAILABLE",
+                `Akasa IBE needs ${akasaMissingEnv().join(", ")}: the endpoint (prod-bl.qp.akasaair.com/api/ibe/availability/v2/search) answers 403 to our egress and requires an authorised Cognito bearer token.`
+              );
+            }
+            const route2 = routeFromQuery(String(ctx.query.rawQuery || ctx.query.entityName || ""));
+            if (!route2?.fromCode || !route2?.toCode) return [];
+            const day = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            let fares = [];
+            try {
+              fares = await akasaFetchLowFares({ origin: route2.fromCode, destination: route2.toCode, startDate: day, endDate: day });
+            } catch (e2) {
+              const msg = String(e2?.message || e2);
+              if (msg.includes("AKASA_EDGE_403")) throw new AcquisitionError("ACCESS_CHALLENGE", "Akasa IBE edge-blocked (403) for this egress; token present but the host refuses our IPs.");
+              if (msg.includes("AKASA_BEARER_NOT_CONFIGURED")) throw new AcquisitionError("CAPABILITY_UNAVAILABLE", "AKASA_BEARER missing");
+              throw new AcquisitionError("MALFORMED_RESPONSE", `Akasa IBE failed: ${msg.slice(0, 140)}`);
+            }
+            const forDay = fares.filter((f) => f.date === day);
+            return forDay.slice(0, 3).map((f) => newRawItem(ctx.source, {
+              title: `Akasa Air lowest fare ${route2.fromCode} to ${route2.toCode} on ${f.date}`,
+              price: f.price,
+              currency: "INR",
+              seller: "Akasa Air",
+              sellerUrl: `https://www.akasaair.com/`,
+              availability: "in_stock",
+              travel: { route: `${route2.from.toLowerCase()} to ${route2.to.toLowerCase()}`, date: f.date },
+              attributes: {
+                ...f.taxesAndFees ? { taxes_and_fees: String(f.taxesAndFees) } : {},
+                ...f.available ? { seats_listed: String(f.available) } : {},
+                price_scope: `lowest fare published by Akasa for ${f.date} (not a specific flight)`,
+                via: "akasa_ibe"
+              },
+              evidence: {
+                sourceUrl: `https://www.akasaair.com/flights`,
+                sourceReference: `akasa-ibe:${route2.fromCode}-${route2.toCode}-${f.date}`,
+                rawFingerprint: "",
+                extractedFields: ["title", "price"]
+              }
+            }));
           }
         },
         {
