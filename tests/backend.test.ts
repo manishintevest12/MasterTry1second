@@ -158,7 +158,7 @@ test('affiliate: a deep link is built only from the owner\'s real publisher cid,
   const { attachAffiliateDeepLinks } = await import('../server/affiliate/affiliateNetwork.ts');
   const offers: any = [{ id: 'x', sellerUrl: 'https://www.cleartrip.com/flights' }];
   const out = await attachAffiliateDeepLinks(offers);
-  const link = String(out[0]?.affiliate?.url || out[0]?.affiliate?.deepLink || out[0]?.affiliateUrl || '');
+  const link = String(out[0]?.affiliate?.deepLink || '');
   if (link) {
     assert.match(link, /^https:\/\/linksredirect\.com\/\?cid=\d+/, 'only a real linkkit link');
     assert.ok(link.includes(encodeURIComponent('https://www.cleartrip.com/flights')), 'destination preserved');
