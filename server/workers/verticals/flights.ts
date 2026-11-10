@@ -10,6 +10,7 @@
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { loadOpenFlights, parseRoute } from '../parsers/openflights';
 import { parseIxigoFlights, parseIxigoOffers, ixigoRouteTokens } from '../parsers/ixigoFlights';
+import { rescueFetch, describeRescue } from '../../sources/rescueFetch';
 import { AcquisitionError } from '../../common/httpClient';
 import { BOOKING_PROBE, bookingGate, bookingGateMessage } from '../parsers/bookingProbe';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
@@ -436,7 +437,11 @@ export const flightsWorker: VerticalWorker = {
       maxPerMinute: 2,
       timeoutMs: 20_000,
       run: async () => {
-        const r = await cffiFetch(BOOKING_PROBE.flights, { impersonate: 'chrome', timeoutMs: 15_000 });
+        // Owner 10 Nov: a refusing partner must still be reached, so the probe walks the rescue
+        // ladder (direct -> our relay -> ScraperAPI -> reader) before it reports the wall.
+        const rr = await rescueFetch(BOOKING_PROBE.flights, { timeoutMs: 15_000, minHtmlBytes: 5000 });
+        const r = { status: rr.status, body: rr.body } as any;
+        if (!rr.exhausted && rr.body.length >= 5000) throw new AcquisitionError('EMPTY_RESPONSE', `Booking.com flights answered via ${rr.via} but no fare parser is captured yet (${describeRescue(rr)})`);
         const gate = bookingGate(r.status, r.body);
         if (gate !== 'ok') throw new AcquisitionError(gate === 'access_challenge' ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE', bookingGateMessage('flights', r.status, gate), r.status);
         throw new AcquisitionError('EMPTY_RESPONSE', 'Booking.com Flights answered 200 but exposed no machine-readable fare payload; needs the partner API to become a priced source.');

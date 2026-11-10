@@ -18,6 +18,7 @@ import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity } from 
 import { rapidoGuestFares, rapidoServiceCatalog, buildRapidoFareRows } from '../parsers/rapidoFares';
 import { uberIndiaCityFor } from '../parsers/uberIndiaCities';
 import { buildUberProductsRequestBody, parseUberProductsResponse, buildUberGoBookUrl, buildUberProductSelectionBody, parseUberProductSelectionResponse, type UberGoPlace, type UberGoProduct } from '../parsers/uberGoProducts';
+import { rescueFetch, describeRescue } from '../../sources/rescueFetch';
 import { AcquisitionError } from '../../common/httpClient';
 import { BOOKING_PROBE, bookingGate, bookingGateMessage } from '../parsers/bookingProbe';
 
@@ -976,7 +977,9 @@ export const cabWorker: VerticalWorker = {
       maxPerMinute: 2,
       timeoutMs: 20_000,
       run: async () => {
-        const r = await cffiFetch(BOOKING_PROBE.taxi, { impersonate: 'chrome', timeoutMs: 15_000 });
+        const rr = await rescueFetch(BOOKING_PROBE.taxi, { timeoutMs: 15_000, minHtmlBytes: 5000 });
+        const r = { status: rr.status, body: rr.body } as any;
+        if (!rr.exhausted && rr.body.length >= 5000) throw new AcquisitionError('EMPTY_RESPONSE', `Booking.com taxi answered via ${rr.via} but no transfer parser is captured yet (${describeRescue(rr)})`);
         const gate = bookingGate(r.status, r.body);
         if (gate !== 'ok') throw new AcquisitionError(gate === 'access_challenge' ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE', bookingGateMessage('taxi', r.status, gate), r.status);
         throw new AcquisitionError('EMPTY_RESPONSE', 'Booking.com Taxis answered 200 but exposed no machine-readable quote payload; transfer fares stay unwired until a partner feed exists.');

@@ -8871,6 +8871,153 @@ var init_ixigoFlights = __esm({
   }
 });
 
+// server/sources/rescueFetch.ts
+function scraperKey() {
+  return String(process.env.SCRAPER_API_KEY || "").trim();
+}
+function readerEnabled() {
+  return String(process.env.T1S_READER_RESCUE || "1").trim() !== "0";
+}
+function rescueRungs() {
+  const out = ["direct"];
+  if (relayConfigured()) out.push("relay");
+  if (scraperKey()) out.push("scraperapi");
+  if (readerEnabled()) out.push("reader");
+  return out;
+}
+function rescueOrderFor(host) {
+  const enabled = rescueRungs();
+  const learned = _order.get(host) || [];
+  const merged = [...learned.filter((v) => enabled.includes(v)), ...enabled.filter((v) => !learned.includes(v))];
+  return merged.length ? merged : ["direct"];
+}
+async function ensureScoreboard() {
+  if (schemaReady) return;
+  schemaReady = true;
+  try {
+    await getStore().execute(`
+      CREATE TABLE IF NOT EXISTS rescue_scoreboard (
+        host VARCHAR(190) NOT NULL,
+        via VARCHAR(20) NOT NULL,
+        wins INT NOT NULL DEFAULT 0,
+        failures INT NOT NULL DEFAULT 0,
+        last_ok_at DATETIME NULL,
+        PRIMARY KEY (host, via)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  } catch {
+    schemaReady = false;
+  }
+}
+async function learn(host, via) {
+  await ensureScoreboard();
+  const current = rescueOrderFor(host);
+  const next = [via, ...current.filter((v) => v !== via)];
+  _order.set(host, next);
+  try {
+    await getStore().execute(
+      `INSERT INTO rescue_scoreboard (host, via, wins, failures, last_ok_at)
+       VALUES (?, ?, 1, 0, NOW())
+       ON DUPLICATE KEY UPDATE wins = wins + 1, last_ok_at = NOW()`,
+      [host, via]
+    );
+  } catch {
+  }
+}
+async function penalise(host, via) {
+  await ensureScoreboard();
+  try {
+    await getStore().execute(
+      `INSERT INTO rescue_scoreboard (host, via, wins, failures, last_ok_at)
+       VALUES (?, ?, 0, 1, NULL)
+       ON DUPLICATE KEY UPDATE failures = failures + 1`,
+      [host, via]
+    );
+  } catch {
+  }
+}
+function hostOf(url) {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+async function viaDirect(url, timeoutMs) {
+  const res = await cffiFetch(url, { impersonate: "chrome", timeoutMs });
+  return { status: Number(res.status || 0), body: String(res.body || "") };
+}
+async function viaRelay(url, timeoutMs) {
+  const r = await edgeRelayFetch(url, { timeoutMs });
+  if (!r) throw new Error("relay unavailable");
+  return { status: Number(r.status || 0), body: String(r.body || "") };
+}
+async function viaScraperApi(url, timeoutMs) {
+  const key = scraperKey();
+  if (!key) throw new Error("SCRAPER_API_KEY missing");
+  const target = `https://api.scraperapi.com/?api_key=${encodeURIComponent(key)}&country_code=in&url=${encodeURIComponent(url)}`;
+  const res = await cffiFetch(target, { impersonate: "chrome", timeoutMs: Math.max(timeoutMs, 45e3) });
+  return { status: Number(res.status || 0), body: String(res.body || "") };
+}
+async function viaReader(url, timeoutMs) {
+  const res = await cffiFetch(`https://r.jina.ai/${url}`, {
+    impersonate: "chrome",
+    timeoutMs: Math.max(timeoutMs, 3e4)
+  });
+  return { status: Number(res.status || 0), body: String(res.body || "") };
+}
+function looksUsable(status, body, minHtmlBytes, validate) {
+  if (!status || status >= 400) return { ok: false, reason: `HTTP ${status}` };
+  if (status === 202) return { ok: false, reason: "HTTP 202 bot wall" };
+  if (!body.trim()) return { ok: false, reason: "empty body" };
+  if (isGatedResponse(status, body, { minHtmlBytes })) return { ok: false, reason: "gated/blocks page" };
+  if (body.length < minHtmlBytes) return { ok: false, reason: `short body (${body.length}b)` };
+  if (validate && !validate(body, status)) return { ok: false, reason: "validator rejected body" };
+  return { ok: true };
+}
+async function rescueFetch(url, opts = {}) {
+  const host = opts.host || hostOf(url);
+  const minHtmlBytes = opts.minHtmlBytes ?? 2e3;
+  const timeoutMs = opts.timeoutMs ?? 25e3;
+  const maxRungs = Math.max(1, opts.maxRungs ?? 4);
+  const order = rescueOrderFor(host).slice(0, maxRungs);
+  const attempts = [];
+  let best = { status: 0, body: "" };
+  for (const via of order) {
+    const started3 = Date.now();
+    try {
+      const res = via === "direct" ? await viaDirect(url, timeoutMs) : via === "relay" ? await viaRelay(url, timeoutMs) : via === "scraperapi" ? await viaScraperApi(url, timeoutMs) : await viaReader(url, timeoutMs);
+      const verdict = looksUsable(res.status, res.body, minHtmlBytes, opts.validate);
+      if (res.body.length > best.body.length) best = res;
+      attempts.push({ via, ok: verdict.ok, status: res.status, bytes: res.body.length, reason: verdict.reason, ms: Date.now() - started3 });
+      if (verdict.ok) {
+        if (via !== "direct") await learn(host, via);
+        log.info("Rescue", `${host} answered via ${via}`, { bytes: res.body.length, ms: Date.now() - started3 });
+        return { status: res.status, body: res.body, via, attempts, exhausted: false };
+      }
+      if (via !== "direct") await penalise(host, via);
+    } catch (e2) {
+      attempts.push({ via, ok: false, status: 0, bytes: 0, reason: String(e2?.message || e2).slice(0, 120), ms: Date.now() - started3 });
+      if (via !== "direct") await penalise(host, via);
+    }
+  }
+  return { status: best.status, body: best.body, via: "none", attempts, exhausted: true };
+}
+function describeRescue(r) {
+  const tried = r.attempts.map((a) => `${a.via}:${a.ok ? "ok" : a.reason || "fail"}`).join("; ");
+  return r.exhausted ? `all transports failed (${tried})` : `via ${r.via} (${tried})`;
+}
+var _order, schemaReady;
+var init_rescueFetch = __esm({
+  "server/sources/rescueFetch.ts"() {
+    init_curlCffiFetch();
+    init_edgeRelay();
+    init_db();
+    init_logger();
+    _order = /* @__PURE__ */ new Map();
+    schemaReady = false;
+  }
+});
+
 // server/workers/parsers/bookingProbe.ts
 function bookingGate(status, body) {
   const text = String(body || "");
@@ -17215,6 +17362,7 @@ var init_flights = __esm({
   "server/workers/verticals/flights.ts"() {
     init_verticalWorker();
     init_ixigoFlights();
+    init_rescueFetch();
     init_httpClient();
     init_bookingProbe();
     init_emtFareCalendar();
@@ -17539,7 +17687,9 @@ var init_flights = __esm({
           maxPerMinute: 2,
           timeoutMs: 2e4,
           run: async () => {
-            const r = await cffiFetch(BOOKING_PROBE.flights, { impersonate: "chrome", timeoutMs: 15e3 });
+            const rr = await rescueFetch(BOOKING_PROBE.flights, { timeoutMs: 15e3, minHtmlBytes: 5e3 });
+            const r = { status: rr.status, body: rr.body };
+            if (!rr.exhausted && rr.body.length >= 5e3) throw new AcquisitionError("EMPTY_RESPONSE", `Booking.com flights answered via ${rr.via} but no fare parser is captured yet (${describeRescue(rr)})`);
             const gate = bookingGate(r.status, r.body);
             if (gate !== "ok") throw new AcquisitionError(gate === "access_challenge" ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", bookingGateMessage("flights", r.status, gate), r.status);
             throw new AcquisitionError("EMPTY_RESPONSE", "Booking.com Flights answered 200 but exposed no machine-readable fare payload; needs the partner API to become a priced source.");
@@ -24091,6 +24241,7 @@ var init_cab = __esm({
     init_rapidoFares();
     init_uberIndiaCities();
     init_uberGoProducts();
+    init_rescueFetch();
     init_httpClient();
     init_bookingProbe();
     _uberTokenCache = null;
@@ -24361,7 +24512,9 @@ var init_cab = __esm({
           maxPerMinute: 2,
           timeoutMs: 2e4,
           run: async () => {
-            const r = await cffiFetch(BOOKING_PROBE.taxi, { impersonate: "chrome", timeoutMs: 15e3 });
+            const rr = await rescueFetch(BOOKING_PROBE.taxi, { timeoutMs: 15e3, minHtmlBytes: 5e3 });
+            const r = { status: rr.status, body: rr.body };
+            if (!rr.exhausted && rr.body.length >= 5e3) throw new AcquisitionError("EMPTY_RESPONSE", `Booking.com taxi answered via ${rr.via} but no transfer parser is captured yet (${describeRescue(rr)})`);
             const gate = bookingGate(r.status, r.body);
             if (gate !== "ok") throw new AcquisitionError(gate === "access_challenge" ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", bookingGateMessage("taxi", r.status, gate), r.status);
             throw new AcquisitionError("EMPTY_RESPONSE", "Booking.com Taxis answered 200 but exposed no machine-readable quote payload; transfer fares stay unwired until a partner feed exists.");
@@ -30093,7 +30246,7 @@ function sellerKeyOf(offer) {
   return "";
 }
 async function ensureSellerMemorySchema() {
-  if (schemaReady) return;
+  if (schemaReady2) return;
   const store7 = getStore();
   await store7.execute(`
     CREATE TABLE IF NOT EXISTS seller_memory (
@@ -30111,7 +30264,7 @@ async function ensureSellerMemorySchema() {
       KEY idx_seller_memory_route (vertical, route_key)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
-  schemaReady = true;
+  schemaReady2 = true;
 }
 async function saveSellerMemory(key, offers) {
   try {
@@ -30191,12 +30344,12 @@ function mergeSellerMemory(liveOffers, snaps, now = Date.now()) {
   }
   return { offers, restored };
 }
-var clean3, schemaReady;
+var clean3, schemaReady2;
 var init_sellerMemory = __esm({
   "server/search/sellerMemory.ts"() {
     init_db();
     clean3 = (v) => String(v ?? "").trim().toLowerCase();
-    schemaReady = false;
+    schemaReady2 = false;
   }
 });
 
@@ -32439,7 +32592,7 @@ var init_merchantLogos = __esm({
 });
 
 // server/pipeline/brandImage.ts
-function hostOf(u) {
+function hostOf2(u) {
   try {
     return u ? new URL(u).hostname.replace(/^www\./, "") : void 0;
   } catch {
@@ -32464,7 +32617,7 @@ function brandImageFor(o) {
   if (hd) return hd;
   let dom = BRAND_DOMAIN.find(([re]) => re.test(label))?.[1];
   if (!dom) {
-    const h = hostOf(o.sellerUrl);
+    const h = hostOf2(o.sellerUrl);
     if (h && !DATA_HOST.test(h)) dom = h;
   }
   return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128` : void 0;
@@ -40024,7 +40177,7 @@ var init_interstitial = __esm({
 });
 
 // server/affiliate/appTargets.ts
-function hostOf2(url) {
+function hostOf3(url) {
   try {
     return new URL(url).hostname.toLowerCase();
   } catch {
@@ -40032,13 +40185,13 @@ function hostOf2(url) {
   }
 }
 function directAppTarget(destinationUrl) {
-  const host = hostOf2(destinationUrl);
+  const host = hostOf3(destinationUrl);
   if (!host) return null;
   for (const [re, target] of BY_HOST) if (re.test(host)) return target;
   return null;
 }
 function keepsWebviewExit(destinationUrl) {
-  const host = hostOf2(destinationUrl);
+  const host = hostOf3(destinationUrl);
   if (!host) return false;
   return WEBVIEW_ONLY_HOSTS.some(([re]) => re.test(host));
 }
@@ -47478,7 +47631,7 @@ var init_routes = __esm({
       const priced = search.results.map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 })).filter((x) => x.price > 0);
       const relevant = vertical === "ecommerce" || !vertical ? priced.filter((x) => isSameProduct(scanQuery, String(x.o.title || ""))) : priced;
       const cheapestFirst = relevant.sort((a, b) => a.price - b.price).slice(0, 8);
-      const hostOf3 = (u) => {
+      const hostOf4 = (u) => {
         try {
           return new URL(u).hostname.replace(/^www\./, "");
         } catch {
@@ -47487,7 +47640,7 @@ var init_routes = __esm({
       };
       const sellerQuotes = cheapestFirst.map((x, i) => ({
         id: `sq-${x.o.id || i}`,
-        sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf3(String(x.o.sellerUrl || "")) || "Verified source")),
+        sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf4(String(x.o.sellerUrl || "")) || "Verified source")),
         price: x.price,
         currency: "\u20B9",
         url: (() => {
@@ -47496,7 +47649,7 @@ var init_routes = __esm({
         })(),
         isLowest: i === 0,
         isLiveScraped: true,
-        sourceDomain: hostOf3(String(x.o.sellerUrl || "")),
+        sourceDomain: hostOf4(String(x.o.sellerUrl || "")),
         deliveryOrEta: x.o.attributes?.eta ? `Delivers in ${x.o.attributes.eta}` : void 0
       }));
       if (product.pagePrice && Number(product.pagePrice) > 0) {
