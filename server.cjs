@@ -56301,6 +56301,7 @@ __export(sitemap_exports, {
   productSlug: () => productSlug,
   registerSeoRoutes: () => registerSeoRoutes,
   robotsText: () => robotsText,
+  sitemapPriority: () => sitemapPriority,
   sitemapResponse: () => sitemapResponse,
   sitemapXml: () => sitemapXml,
   warmSitemapSoon: () => warmSitemapSoon
@@ -56406,17 +56407,33 @@ function warmSitemapSoon() {
     warming = null;
   });
 }
+function churnsDaily(path18) {
+  if (path18 === "/" || !path18.startsWith("/")) return true;
+  if (/^\/(best|answers|guides|product|about|privacy|terms|contact)\b/.test(path18)) return false;
+  return path18.split("/").filter(Boolean).length > 1;
+}
+function sitemapPriority(path18) {
+  if (path18 === "/") return "1.0";
+  const segs = path18.split("/").filter(Boolean);
+  if (segs.length === 1) return "0.9";
+  if (segs[0] === "best" && segs.length === 2) return "0.8";
+  if (segs[0] === "guides") return "0.8";
+  if (segs[0] === "best") return "0.5";
+  if (segs[0] === "answers") return "0.5";
+  if (segs[0] === "product") return "0.4";
+  return "0.7";
+}
 function sitemapXml(extraPaths = []) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const urls = [...listSeoPaths(), ...extraPaths];
   const body = urls.map((p) => {
-    const deep = p.split("/").filter(Boolean).length > 1;
-    const freq = deep ? "daily" : "weekly";
-    const pri = p === "/" ? "1.0" : deep ? "0.8" : "0.6";
+    const freq = churnsDaily(p) ? "daily" : "weekly";
+    const pri = sitemapPriority(p);
+    const lastmod = churnsDaily(p) ? today2 : RELEASE_DATE;
     return [
       "  <url>",
       `    <loc>${SEO_HOST}${p === "/" ? "/" : p}</loc>`,
-      `    <lastmod>${today2}</lastmod>`,
+      `    <lastmod>${lastmod}</lastmod>`,
       `    <changefreq>${freq}</changefreq>`,
       `    <priority>${pri}</priority>`,
       "  </url>"
@@ -56450,7 +56467,7 @@ function registerSeoRoutes(app) {
     res.send(await sitemapResponse());
   });
 }
-var productPathCache, WARM_FILE, WARM_TTL_MS, warm, warming;
+var productPathCache, WARM_FILE, WARM_TTL_MS, warm, warming, RELEASE_DATE;
 var init_sitemap = __esm({
   "server/seo/sitemap.ts"() {
     init_data();
@@ -56460,6 +56477,16 @@ var init_sitemap = __esm({
     WARM_TTL_MS = 10 * 6e4;
     warm = null;
     warming = null;
+    RELEASE_DATE = (() => {
+      const explicit = (process.env.T1S_RELEASE_DATE || "").trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
+      try {
+        const stat = require("node:fs").statSync(require("node:path").join(process.cwd(), "dist", "index.html"));
+        return new Date(stat.mtimeMs).toISOString().slice(0, 10);
+      } catch {
+        return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      }
+    })();
   }
 });
 

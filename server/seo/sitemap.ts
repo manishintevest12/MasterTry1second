@@ -129,18 +129,59 @@ export function warmSitemapSoon(): void {
   warming = buildWarm().catch(() => '').finally(() => { warming = null; }) as any;
 }
 
+/**
+ * Sitemap dates and crawl priority.
+ *
+ * OWNER 10 Nov ("jo bacha hai usko fix kro"), defect found in the served sitemap: all 1,020 URLs carried
+ * <lastmod> = today and <priority> = 0.8. A lastmod that moves every single day for every URL is the classic
+ * signal Google learns to IGNORE, which costs us recrawl freshness exactly where it matters (city pages whose
+ * prices change). So:
+ *   - pages whose data actually churns (city and route pages) keep a daily lastmod,
+ *   - static shells, answer pages and product pages get the release date (when we truly shipped content),
+ *   - priority now expresses importance: home 1.0, vertical hubs 0.9, money categories and guides 0.8,
+ *     city/route pages 0.7, answer pages 0.5, product pages 0.4.
+ */
+const RELEASE_DATE = (() => {
+  const explicit = (process.env.T1S_RELEASE_DATE || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
+  try {
+    const stat = require('node:fs').statSync(require('node:path').join(process.cwd(), 'dist', 'index.html'));
+    return new Date(stat.mtimeMs).toISOString().slice(0, 10);
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+})();
+
+/** True when the page's own content is refreshed by live data (prices/fares), not only by a code release. */
+function churnsDaily(path: string): boolean {
+  if (path === '/' || !path.startsWith('/')) return true;
+  if (/^\/(best|answers|guides|product|about|privacy|terms|contact)\b/.test(path)) return false;
+  return path.split('/').filter(Boolean).length > 1;
+}
+
+export function sitemapPriority(path: string): string {
+  if (path === '/') return '1.0';
+  const segs = path.split('/').filter(Boolean);
+  if (segs.length === 1) return '0.9'; // vertical hubs: /flights /hotels ...
+  if (segs[0] === 'best' && segs.length === 2) return '0.8'; // money category answers
+  if (segs[0] === 'guides') return '0.8'; // search-intent guides
+  if (segs[0] === 'best') return '0.5'; // 481 state answers: keep, but do not chase crawl budget
+  if (segs[0] === 'answers') return '0.5';
+  if (segs[0] === 'product') return '0.4';
+  return '0.7'; // city and route pages
+}
+
 export function sitemapXml(extraPaths: string[] = []): string {
   const today = new Date().toISOString().slice(0, 10);
   const urls = [...listSeoPaths(), ...extraPaths];
   const body = urls.map((p) => {
-    // Route and category pages refresh as fares move; static shells weekly.
-    const deep = p.split('/').filter(Boolean).length > 1;
-    const freq = deep ? 'daily' : 'weekly';
-    const pri = p === '/' ? '1.0' : deep ? '0.8' : '0.6';
+    const freq = churnsDaily(p) ? 'daily' : 'weekly';
+    const pri = sitemapPriority(p);
+    const lastmod = churnsDaily(p) ? today : RELEASE_DATE;
     return [
       '  <url>',
       `    <loc>${SEO_HOST}${p === '/' ? '/' : p}</loc>`,
-      `    <lastmod>${today}</lastmod>`,
+      `    <lastmod>${lastmod}</lastmod>`,
       `    <changefreq>${freq}</changefreq>`,
       `    <priority>${pri}</priority>`,
       '  </url>',
