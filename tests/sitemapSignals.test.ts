@@ -27,3 +27,27 @@ test('lastmod is not "today" for pages whose content only changes on release', (
   const cityBlock = byPath('/hotels/mumbai');
   assert.ok(/<changefreq>daily<\/changefreq>/.test(cityBlock), 'city page keeps a daily churn signal');
 });
+
+test('the sitemap is an index of three buckets, so coverage is reported per group', async () => {
+  const { sitemapBucketOf, sitemapIndexXml, sitemapXml } = await import('../server/seo/sitemap');
+  const { listSeoPaths } = await import('../server/seo/data');
+  const paths = listSeoPaths();
+  const cities = paths.filter((p) => sitemapBucketOf(p) === 'cities');
+  const core = paths.filter((p) => sitemapBucketOf(p) === 'core');
+  assert.ok(cities.length > 2500, `every city page goes to the cities bucket, got ${cities.length}`);
+  assert.ok(core.includes('/'), 'homepage stays in core');
+  assert.ok(core.includes('/best/hotels/maharashtra'), 'state answers stay in core');
+  assert.ok(cities.includes('/hotels/kozhikode'));
+  assert.equal(sitemapBucketOf('/product/iphone-15-128gb'), 'products');
+  assert.equal(sitemapBucketOf('/flights/indore-to-new-delhi-flights'), 'core', 'route pages are not cities');
+
+  const index = sitemapIndexXml({ core: core.length, cities: cities.length, products: 0 });
+  assert.match(index, /<sitemapindex/);
+  assert.match(index, /\/sitemap-core\.xml/);
+  assert.match(index, /\/sitemap-cities\.xml/);
+  assert.doesNotMatch(index, /\/sitemap-products\.xml/, 'an empty bucket is not advertised');
+
+  const cityXml = sitemapXml(cities);
+  assert.match(cityXml, /<urlset/);
+  assert.doesNotMatch(cityXml, /\/best\//, 'the cities file carries no answer pages');
+});

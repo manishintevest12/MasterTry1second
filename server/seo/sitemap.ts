@@ -77,7 +77,8 @@ export async function productSitemapPaths(limit = 200): Promise<string[]> {
  */
 const WARM_FILE = 'data/sitemap-cache.xml';
 const WARM_TTL_MS = 10 * 60_000;
-let warm: { xml: string; at: number } | null = null;
+type Warm = { xml: string; at: number; buckets?: Record<SitemapBucket, string>; counts?: Record<SitemapBucket, number> };
+let warm: Warm | null = null;
 let warming: Promise<string> | null = null;
 
 function readWarmFile(): string | null {
@@ -97,12 +98,29 @@ function writeWarmFile(xml: string): void {
   } catch { /* disk is optional */ }
 }
 
+function splitBuckets(paths: string[]): Record<SitemapBucket, string[]> {
+  const out: Record<SitemapBucket, string[]> = { core: [], cities: [], products: [] };
+  for (const p of paths) out[sitemapBucketOf(p)].push(p);
+  return out;
+}
+
+/** Build every bucket, the index, and the counts the index needs to skip an empty bucket. */
+function buildDocuments(paths: string[]): { index: string; buckets: Record<SitemapBucket, string>; counts: Record<SitemapBucket, number> } {
+  const split = splitBuckets(paths);
+  const counts = { core: split.core.length, cities: split.cities.length, products: split.products.length };
+  return {
+    index: sitemapIndexXml(counts),
+    counts,
+    buckets: { core: sitemapXml(split.core), cities: sitemapXml(split.cities), products: sitemapXml(split.products) },
+  };
+}
+
 async function buildWarm(): Promise<string> {
   const extras = await productSitemapPaths().catch(() => [] as string[]);
-  const xml = sitemapXml(extras);
-  warm = { xml, at: Date.now() };
-  writeWarmFile(xml);
-  return xml;
+  const docs = buildDocuments([...listSeoPaths(), ...extras]);
+  warm = { xml: docs.index, at: Date.now(), buckets: docs.buckets, counts: docs.counts };
+  writeWarmFile(docs.index);
+  return docs.index;
 }
 
 /** Serve the sitemap instantly; refresh in the background when stale. */
@@ -121,6 +139,17 @@ export async function sitemapResponse(): Promise<string> {
   }
   warming = buildWarm().finally(() => { warming = null; }) as any;
   return warming as unknown as Promise<string>;
+}
+
+/** One bucket on its own URL (/sitemap-cities.xml and friends); rebuilds through the same warm pass. */
+export async function bucketSitemapResponse(bucket: SitemapBucket): Promise<string> {
+  await sitemapResponse();
+  const cached = warm?.buckets?.[bucket];
+  if (cached) return cached;
+  // Cold and unbuilt (or a bucket that does not exist yet): build just this bucket from the live corpus.
+  const extras = await productSitemapPaths().catch(() => [] as string[]);
+  const split = splitBuckets([...listSeoPaths(), ...extras]);
+  return sitemapXml(split[bucket]);
 }
 
 /** Boot/self-heal hook: warm the cache without making any request wait for it. */
@@ -180,9 +209,19 @@ export function sitemapPriority(path: string): string {
   return '0.7'; // route pages
 }
 
-export function sitemapXml(extraPaths: string[] = []): string {
+export type SitemapBucket = 'core' | 'cities' | 'products';
+
+/** Which bucket a URL belongs to, so Search Console reports coverage per group instead of one 3,250-URL blob. */
+export function sitemapBucketOf(path: string): SitemapBucket {
+  const segs = path.split('/').filter(Boolean);
+  if (segs[0] === 'product') return 'products';
+  if (CITY_VERTICALS.includes(segs[0]) && segs.length === 2) return 'cities';
+  return 'core';
+}
+
+export function sitemapXml(paths: string[] = listSeoPaths()): string {
   const today = new Date().toISOString().slice(0, 10);
-  const urls = [...listSeoPaths(), ...extraPaths];
+  const urls = [...paths];
   const body = urls.map((p) => {
     const freq = churnsDaily(p) ? 'daily' : 'weekly';
     const pri = sitemapPriority(p);
@@ -197,6 +236,24 @@ export function sitemapXml(extraPaths: string[] = []): string {
     ].join('\n');
   }).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
+}
+
+/**
+ * OWNER 10 Nov: the corpus went to 525 places, so 2,620 new city URLs landed in one file next to the money
+ * pages and the 200 product pages. A single 3,250-URL sitemap hides which half of the site Google actually
+ * accepts; a sitemap index gives Search Console a per-bucket verdict (core, cities, products) and lets one
+ * weak bucket be fixed without republishing the rest (the sitemap protocol allows 50k URLs / 50MB per file,
+ * so this is a diagnostics win, not a limit workaround).
+ */
+export function sitemapIndexXml(buckets: Record<SitemapBucket, number>, today = new Date().toISOString().slice(0, 10)): string {
+  const order: SitemapBucket[] = ['core', 'cities', 'products'];
+  const body = order.filter((b) => (buckets[b] || 0) > 0).map((b) => [
+    '  <sitemap>',
+    `    <loc>${SEO_HOST}/sitemap-${b}.xml</loc>`,
+    `    <lastmod>${b === 'core' ? RELEASE_DATE : today}</lastmod>`,
+    '  </sitemap>',
+  ].join('\n')).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</sitemapindex>\n`;
 }
 
 export function registerSeoRoutes(app: { get: (p: string, h: (req: any, res: Response) => void) => void }) {
@@ -223,4 +280,11 @@ export function registerSeoRoutes(app: { get: (p: string, h: (req: any, res: Res
     // waits on MySQL and a fetch during a deploy still gets the last good file.
     res.send(await sitemapResponse());
   });
+  for (const bucket of ['core', 'cities', 'products'] as SitemapBucket[]) {
+    app.get(`/sitemap-${bucket}.xml`, async (_req: any, res: Response) => {
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(await bucketSitemapResponse(bucket));
+    });
+  }
 }

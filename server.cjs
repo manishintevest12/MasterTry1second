@@ -56342,10 +56342,13 @@ ${body}
 // server/seo/sitemap.ts
 var sitemap_exports = {};
 __export(sitemap_exports, {
+  bucketSitemapResponse: () => bucketSitemapResponse,
   productSitemapPaths: () => productSitemapPaths,
   productSlug: () => productSlug,
   registerSeoRoutes: () => registerSeoRoutes,
   robotsText: () => robotsText,
+  sitemapBucketOf: () => sitemapBucketOf,
+  sitemapIndexXml: () => sitemapIndexXml,
   sitemapPriority: () => sitemapPriority,
   sitemapResponse: () => sitemapResponse,
   sitemapXml: () => sitemapXml,
@@ -56417,12 +56420,26 @@ function writeWarmFile(xml) {
   } catch {
   }
 }
+function splitBuckets(paths) {
+  const out = { core: [], cities: [], products: [] };
+  for (const p of paths) out[sitemapBucketOf(p)].push(p);
+  return out;
+}
+function buildDocuments(paths) {
+  const split = splitBuckets(paths);
+  const counts = { core: split.core.length, cities: split.cities.length, products: split.products.length };
+  return {
+    index: sitemapIndexXml(counts),
+    counts,
+    buckets: { core: sitemapXml(split.core), cities: sitemapXml(split.cities), products: sitemapXml(split.products) }
+  };
+}
 async function buildWarm() {
   const extras = await productSitemapPaths().catch(() => []);
-  const xml = sitemapXml(extras);
-  warm = { xml, at: Date.now() };
-  writeWarmFile(xml);
-  return xml;
+  const docs = buildDocuments([...listSeoPaths(), ...extras]);
+  warm = { xml: docs.index, at: Date.now(), buckets: docs.buckets, counts: docs.counts };
+  writeWarmFile(docs.index);
+  return docs.index;
 }
 async function sitemapResponse() {
   if (warm) {
@@ -56445,6 +56462,14 @@ async function sitemapResponse() {
     warming = null;
   });
   return warming;
+}
+async function bucketSitemapResponse(bucket) {
+  await sitemapResponse();
+  const cached3 = warm?.buckets?.[bucket];
+  if (cached3) return cached3;
+  const extras = await productSitemapPaths().catch(() => []);
+  const split = splitBuckets([...listSeoPaths(), ...extras]);
+  return sitemapXml(split[bucket]);
 }
 function warmSitemapSoon() {
   if (warm || warming) return;
@@ -56471,9 +56496,15 @@ function sitemapPriority(path18) {
   }
   return "0.7";
 }
-function sitemapXml(extraPaths = []) {
+function sitemapBucketOf(path18) {
+  const segs = path18.split("/").filter(Boolean);
+  if (segs[0] === "product") return "products";
+  if (CITY_VERTICALS.includes(segs[0]) && segs.length === 2) return "cities";
+  return "core";
+}
+function sitemapXml(paths = listSeoPaths()) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const urls = [...listSeoPaths(), ...extraPaths];
+  const urls = [...paths];
   const body = urls.map((p) => {
     const freq = churnsDaily(p) ? "daily" : "weekly";
     const pri = sitemapPriority(p);
@@ -56491,6 +56522,20 @@ function sitemapXml(extraPaths = []) {
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${body}
 </urlset>
+`;
+}
+function sitemapIndexXml(buckets2, today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) {
+  const order = ["core", "cities", "products"];
+  const body = order.filter((b) => (buckets2[b] || 0) > 0).map((b) => [
+    "  <sitemap>",
+    `    <loc>${SEO_HOST}/sitemap-${b}.xml</loc>`,
+    `    <lastmod>${b === "core" ? RELEASE_DATE : today2}</lastmod>`,
+    "  </sitemap>"
+  ].join("\n")).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${body}
+</sitemapindex>
 `;
 }
 function registerSeoRoutes(app) {
@@ -56514,6 +56559,13 @@ function registerSeoRoutes(app) {
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.send(await sitemapResponse());
   });
+  for (const bucket of ["core", "cities", "products"]) {
+    app.get(`/sitemap-${bucket}.xml`, async (_req, res) => {
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(await bucketSitemapResponse(bucket));
+    });
+  }
 }
 var productPathCache, WARM_FILE, WARM_TTL_MS, warm, warming, RELEASE_DATE, CITY_VERTICALS, METRO_CITIES;
 var init_sitemap = __esm({
