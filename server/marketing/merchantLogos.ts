@@ -92,28 +92,143 @@ export async function deleteMerchantLogo(nameKey: string): Promise<void> {
  * rather than a fake logo.
  */
 const KEY_DOMAIN: Record<string, string> = {
-  reliance: 'reliancedigital.in', reliancedigital: 'reliancedigital.in',
-  croma: 'croma.com', amazon: 'amazon.in', amzn: 'amazon.in', flipkart: 'flipkart.com',
-  myntra: 'myntra.com', ajio: 'ajio.com', tatacliq: 'tatacliq.com', tata: 'tatacliq.com',
-  shopsy: 'shopsy.in', nykaa: 'nykaa.com', snapdeal: 'snapdeal.com', jiomart: 'jiomart.com',
-  blinkit: 'blinkit.com', zepto: 'zeptonow.com', zeptonow: 'zeptonow.com',
-  instamart: 'swiggy.com', swiggy: 'swiggy.com', bigbasket: 'bigbasket.com', bbnow: 'bigbasket.com',
-  flipkartminutes: 'flipkart.com', dmart: 'dmart.in', spencer: 'spencers.in', more: 'moreretail.in',
-  vijaysales: 'vijaysales.com', poorvika: 'poorvika.com', sangeetha: 'sangeethamobiles.com',
-  paytm: 'paytm.com', tataneu: 'newnue.com', firstcry: 'firstcry.com',
-  redbus: 'redbus.in', abhibus: 'abhibus.com', zingbus: 'zingbus.com', ola: 'olacabs.com',
-  uber: 'uber.com', rapido: 'rapido.bike', indrive: 'indrive.com', blusmart: 'blusmart.com',
-  makemytrip: 'makemytrip.com', goibibo: 'goibibo.com', cleartrip: 'cleartrip.com',
-  yatra: 'yatra.com', easemytrip: 'easemytrip.com', ixigo: 'ixigo.com', booking: 'booking.com',
-  agoda: 'agoda.com', airbnb: 'airbnb.co.in', oyo: 'oyorooms.com', treebo: 'treebo.com',
-  bookmyshow: 'bookmyshow.com', district: 'district.in', ticketnew: 'ticketnew.com', pvr: 'pvrcinemas.com',
-  cinepolis: 'cinepolisindia.com', inox: 'inoxmovies.com', zomato: 'zomato.com', dominos: 'dominos.co.in',
-  pizzahut: 'pizzahut.co.in', eatsure: 'eatsure.com', ovenstory: 'ovenstorypizzas.com',
-  hdfc: 'hdfcbank.com', icici: 'icicibank.com', sbi: 'sbi.co.in', axis: 'axisbank.com',
-  kotak: 'kotak.com', bajaj: 'bajajfinserv.in', acko: 'acko.com', digit: 'godigit.com',
-  policybazaar: 'policybazaar.com', paisabazaar: 'paisabazaar.com', bankbazaar: 'bankbazaar.com',
-  indigo: 'goindigo.in', spicejet: 'spicejet.com', airindia: 'airindia.in', akasa: 'akasaair.com',
+  // Merchant brand key -> the domain whose own mark represents it. Every seller the engine can render a
+  // row for belongs here, because a missing key is what makes the app fall back to an initials badge.
+  reliance: 'reliancedigital.in',
+  reliancedigital: 'reliancedigital.in',
+  croma: 'croma.com',
+  amazon: 'amazon.in',
+  amzn: 'amazon.in',
+  flipkart: 'flipkart.com',
+  myntra: 'myntra.com',
+  ajio: 'ajio.com',
+  tatacliq: 'tatacliq.com',
+  tata: 'tatacliq.com',
+  shopsy: 'shopsy.in',
+  nykaa: 'nykaa.com',
+  snapdeal: 'snapdeal.com',
+  jiomart: 'jiomart.com',
+  blinkit: 'blinkit.com',
+  zepto: 'zeptonow.com',
+  zeptonow: 'zeptonow.com',
+  instamart: 'swiggy.com',
+  swiggy: 'swiggy.com',
+  bigbasket: 'bigbasket.com',
+  bbnow: 'bigbasket.com',
+  flipkartminutes: 'flipkart.com',
+  dmart: 'dmart.in',
+  spencer: 'spencers.in',
+  more: 'moreretail.in',
+  vijaysales: 'vijaysales.com',
+  poorvika: 'poorvika.com',
+  sangeetha: 'sangeethamobiles.com',
+  paytm: 'paytm.com',
+  tataneu: 'newnue.com',
+  firstcry: 'firstcry.com',
+  redbus: 'redbus.in',
+  abhibus: 'abhibus.com',
+  zingbus: 'zingbus.com',
+  ola: 'olacabs.com',
+  uber: 'uber.com',
+  rapido: 'rapido.bike',
+  indrive: 'indrive.com',
+  blusmart: 'blusmart.com',
+  makemytrip: 'makemytrip.com',
+  goibibo: 'goibibo.com',
+  cleartrip: 'cleartrip.com',
+  yatra: 'yatra.com',
+  easemytrip: 'easemytrip.com',
+  ixigo: 'ixigo.com',
+  booking: 'booking.com',
+  agoda: 'agoda.com',
+  airbnb: 'airbnb.co.in',
+  oyo: 'oyorooms.com',
+  treebo: 'treebo.com',
+  bookmyshow: 'bookmyshow.com',
+  district: 'district.in',
+  ticketnew: 'ticketnew.com',
+  pvr: 'pvrcinemas.com',
+  cinepolis: 'cinepolisindia.com',
+  inox: 'inoxmovies.com',
+  zomato: 'zomato.com',
+  dominos: 'dominos.co.in',
+  pizzahut: 'pizzahut.co.in',
+  eatsure: 'eatsure.com',
+  ovenstory: 'ovenstorypizzas.com',
+  hdfc: 'hdfcbank.com',
+  icici: 'icicibank.com',
+  sbi: 'sbi.co.in',
+  axis: 'axisbank.com',
+  kotak: 'kotak.com',
+  bajaj: 'bajajfinserv.in',
+  acko: 'acko.com',
+  digit: 'godigit.com',
+  policybazaar: 'policybazaar.com',
+  paisabazaar: 'paisabazaar.com',
+  bankbazaar: 'bankbazaar.com',
+  indigo: 'goindigo.in',
+  spicejet: 'spicejet.com',
+  airindia: 'airindia.in',
+  akasa: 'akasaair.com',
+  meesho: 'meesho.com',
+  expedia: 'expedia.co.in',
+  hotels: 'hotels.com',
+  qatarairways: 'qatarairways.com',
+  emirates: 'emirates.com',
+  britishairways: 'britishairways.com',
+  singaporeair: 'singaporeair.com',
+  cathaypacific: 'cathaypacific.com',
+  srilankan: 'srilankan.com',
+  airindiaexpress: 'airindiaexpress.com',
+  starair: 'starair.in',
+  fly91: 'fly91.in',
+  kiwi: 'kiwi.com',
+  gotogate: 'gotogate.com',
+  flightnetwork: 'flightnetwork.com',
+  aertrip: 'aertrip.com',
+  via: 'via.com',
+  budgetair: 'budgetair.co.in',
+  marriott: 'marriott.com',
+  hilton: 'hilton.com',
+  hyatt: 'hyatt.com',
+  ihg: 'ihg.com',
+  taj: 'tajhotels.com',
+  accor: 'accor.com',
+  radisson: 'radissonhotels.com',
+  lemontree: 'lemontreehotels.com',
+  fabhotels: 'fabhotels.com',
+  zostel: 'zostel.com',
+  oberoi: 'oberoihotels.com',
+  theleela: 'theleela.com',
+  orchid: 'orchidhotel.com',
+  thepark: 'theparkhotels.com',
+  sunnsand: 'sunnsandhotels.com',
+  royalorchid: 'royalorchidhotels.com',
+  meru: 'mahindralogistics.com',
+  savaari: 'savaari.com',
+  bharattaxi: 'bharattaxi.com',
+  quickride: 'quickride.in',
+  coverfox: 'coverfox.com',
+  insurancedekho: 'insurancedekho.com',
+  cardinsider: 'cardinsider.com',
+  groww: 'groww.in',
+  zerodha: 'zerodha.com',
+  navi: 'navi.com',
+  kreditbee: 'kreditbee.in',
+  moneyview: 'moneyview.in',
+  hdfcergo: 'hdfcergo.com',
+  godigit: 'godigit.com',
+  rbl: 'rblbank.com',
+  yes: 'yesbank.in',
+  hsbc: 'hsbc.co.in',
+  amex: 'americanexpress.com',
+  aubank: 'aubank.in',
+  bobcard: 'bobfinancial.com',
+  inDrive: 'indrive.com',
+  bajajfinserv: 'bajajfinserv.in',
+  jingbus: 'jingbus.com',
 };
+
 
 const faviconCache = new Map<string, { bytes: Buffer; mime: string; at: number }>();
 const FAVICON_TTL_MS = 12 * 60 * 60_000;
@@ -125,22 +240,37 @@ export async function resolveBrandFavicon(nameKey: string): Promise<{ bytes: Buf
   if (!domain) return undefined;
   const hit = faviconCache.get(domain);
   if (hit && Date.now() - hit.at < FAVICON_TTL_MS) return { bytes: hit.bytes, mime: hit.mime };
-  try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 4000);
-    const res = await fetch(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`, {
-      signal: ctl.signal,
-      headers: { 'user-agent': 'Mozilla/5.0 (compatible; Try1SecondLogoBot/1.0)' },
-    });
-    clearTimeout(t);
-    if (!res.ok) return undefined;
-    const mime = String(res.headers.get('content-type') || '').split(';')[0] || 'image/png';
-    const bytes = Buffer.from(await res.arrayBuffer());
-    // A 0-byte or HTML answer is not a logo.
-    if (bytes.length < 100 || !/^image\//.test(mime)) return undefined;
-    faviconCache.set(domain, { bytes, mime, at: Date.now() });
-    return { bytes, mime };
-  } catch {
-    return undefined;
+  // Two independent providers: Google's favicon cache first, DuckDuckGo's icon service as the second way
+  // home. A single transient provider failure must not turn a seller's mark into an initials badge.
+  const providers = [
+    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`,
+    `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`,
+    // Third route: the brand's own icon files, for the handful the two caches do not carry.
+    `https://${domain}/apple-touch-icon.png`,
+    `https://${domain}/favicon.ico`,
+  ];
+  for (const url of providers) {
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 4500);
+      const res = await fetch(url, {
+        signal: ctl.signal,
+        headers: { 'user-agent': 'Mozilla/5.0 (compatible; Try1SecondLogoBot/1.0)' },
+      });
+      clearTimeout(t);
+      if (!res.ok) continue;
+      const mime = String(res.headers.get('content-type') || '').split(';')[0] || 'image/png';
+      const bytes = Buffer.from(await res.arrayBuffer());
+      // A 0-byte or HTML answer is not a logo.
+      const magic = bytes.subarray(0, 12);
+      const looksImage = (magic[0] === 0x89 && magic[1] === 0x50) || (magic[0] === 0xff && magic[1] === 0xd8)
+        || magic.subarray(0, 3).toString('ascii') === 'GIF' || magic.subarray(0, 4).toString('ascii') === 'RIFF'
+        || /svg|xml|image/i.test(mime);
+      if (bytes.length < 100 || !looksImage) continue;
+      const servedMime = /^image\//.test(mime) ? mime : 'image/png';
+      faviconCache.set(domain, { bytes, mime: servedMime, at: Date.now() });
+      return { bytes, mime: servedMime };
+    } catch { /* try the next provider */ }
   }
+  return undefined;
 }

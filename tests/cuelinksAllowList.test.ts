@@ -68,12 +68,25 @@ test('every merchant the owner has applied for is wrapped, and the deep path sur
     'https://in.bookmyshow.com/explore/movies-bengaluru',
     'https://www.bankbazaar.com/personal-loan.html',
   ]) {
-    const u = cuelinksMerchantUrl(dest, 'all');
-    assert.ok(u && u.includes(encodeURIComponent(dest)), `${dest} must be wrapped with its deep path`);
-    assert.equal(cuelinksMerchantUrl(dest, 'approved'), null, `${dest} is not approved yet`);
-    // applied tier (approved + pending) is what the click chain uses before LinkInR, because LinkInR drops
-    // the destination URL and these merchants must keep their deep path
-    if (/myntra|ajio|flipkart/.test(dest)) assert.ok(cuelinksMerchantUrl(dest, 'applied'), `${dest} on applied tier`);
+    // OWNER 10 Nov (later the same day): "unse paisa nahi aata - aana chaiye". A wrapped-but-unapproved
+    // merchant pays nothing, so by default those merchants are handed to the network that actually pays
+    // (vCommission keeps ajio's deep path, LinkInR pays the rest). The deep-path Cuelinks wrap is still
+    // available on demand with CUELINKS_DEEP_FIRST=1, which is what this block asserts.
+    process.env.CUELINKS_DEEP_FIRST = '1';
+    let u: string | null;
+    try {
+      u = cuelinksMerchantUrl(dest, 'all');
+      assert.ok(u && u.includes(encodeURIComponent(dest)), `${dest} must be wrapped with its deep path`);
+      assert.equal(cuelinksMerchantUrl(dest, 'approved'), null, `${dest} is not approved yet`);
+    } finally { delete process.env.CUELINKS_DEEP_FIRST; }
+    // paying-first default: a merchant that ANOTHER joined network pays for is not claimed by Cuelinks.
+    // A merchant with no paying alternative stays wrapped on the broad tier (free, deep path kept, and it
+    // starts earning the day approval lands).
+    if (/myntra|ajio|flipkart/.test(dest)) {
+      assert.equal(cuelinksMerchantUrl(dest, 'all'), null, `${dest} has a paying network: Cuelinks must not claim it`);
+    } else {
+      assert.ok(cuelinksMerchantUrl(dest, 'all'), `${dest} has no paying alternative: keep the wrap`);
+    }
   }
   // an approved merchant is claimed by the approved tier so a confirmed flat payout is never handed to LinkInR
   assert.ok(cuelinksMerchantUrl('https://www.cleartrip.com/flights', 'approved'));

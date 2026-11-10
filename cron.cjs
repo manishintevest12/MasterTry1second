@@ -28938,23 +28938,35 @@ async function resolveBrandFavicon(nameKey) {
   if (!domain) return void 0;
   const hit = faviconCache.get(domain);
   if (hit && Date.now() - hit.at < FAVICON_TTL_MS) return { bytes: hit.bytes, mime: hit.mime };
-  try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 4e3);
-    const res = await fetch(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`, {
-      signal: ctl.signal,
-      headers: { "user-agent": "Mozilla/5.0 (compatible; Try1SecondLogoBot/1.0)" }
-    });
-    clearTimeout(t);
-    if (!res.ok) return void 0;
-    const mime = String(res.headers.get("content-type") || "").split(";")[0] || "image/png";
-    const bytes = Buffer.from(await res.arrayBuffer());
-    if (bytes.length < 100 || !/^image\//.test(mime)) return void 0;
-    faviconCache.set(domain, { bytes, mime, at: Date.now() });
-    return { bytes, mime };
-  } catch {
-    return void 0;
+  const providers = [
+    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`,
+    `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`,
+    // Third route: the brand's own icon files, for the handful the two caches do not carry.
+    `https://${domain}/apple-touch-icon.png`,
+    `https://${domain}/favicon.ico`
+  ];
+  for (const url of providers) {
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 4500);
+      const res = await fetch(url, {
+        signal: ctl.signal,
+        headers: { "user-agent": "Mozilla/5.0 (compatible; Try1SecondLogoBot/1.0)" }
+      });
+      clearTimeout(t);
+      if (!res.ok) continue;
+      const mime = String(res.headers.get("content-type") || "").split(";")[0] || "image/png";
+      const bytes = Buffer.from(await res.arrayBuffer());
+      const magic = bytes.subarray(0, 12);
+      const looksImage = magic[0] === 137 && magic[1] === 80 || magic[0] === 255 && magic[1] === 216 || magic.subarray(0, 3).toString("ascii") === "GIF" || magic.subarray(0, 4).toString("ascii") === "RIFF" || /svg|xml|image/i.test(mime);
+      if (bytes.length < 100 || !looksImage) continue;
+      const servedMime = /^image\//.test(mime) ? mime : "image/png";
+      faviconCache.set(domain, { bytes, mime: servedMime, at: Date.now() });
+      return { bytes, mime: servedMime };
+    } catch {
+    }
   }
+  return void 0;
 }
 var ensured, DATA_URL_RE, KEY_DOMAIN, faviconCache, FAVICON_TTL_MS;
 var init_merchantLogos = __esm({
@@ -28964,6 +28976,8 @@ var init_merchantLogos = __esm({
     ensured = false;
     DATA_URL_RE = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
     KEY_DOMAIN = {
+      // Merchant brand key -> the domain whose own mark represents it. Every seller the engine can render a
+      // row for belongs here, because a missing key is what makes the app fall back to an initials badge.
       reliance: "reliancedigital.in",
       reliancedigital: "reliancedigital.in",
       croma: "croma.com",
@@ -29039,7 +29053,64 @@ var init_merchantLogos = __esm({
       indigo: "goindigo.in",
       spicejet: "spicejet.com",
       airindia: "airindia.in",
-      akasa: "akasaair.com"
+      akasa: "akasaair.com",
+      meesho: "meesho.com",
+      expedia: "expedia.co.in",
+      hotels: "hotels.com",
+      qatarairways: "qatarairways.com",
+      emirates: "emirates.com",
+      britishairways: "britishairways.com",
+      singaporeair: "singaporeair.com",
+      cathaypacific: "cathaypacific.com",
+      srilankan: "srilankan.com",
+      airindiaexpress: "airindiaexpress.com",
+      starair: "starair.in",
+      fly91: "fly91.in",
+      kiwi: "kiwi.com",
+      gotogate: "gotogate.com",
+      flightnetwork: "flightnetwork.com",
+      aertrip: "aertrip.com",
+      via: "via.com",
+      budgetair: "budgetair.co.in",
+      marriott: "marriott.com",
+      hilton: "hilton.com",
+      hyatt: "hyatt.com",
+      ihg: "ihg.com",
+      taj: "tajhotels.com",
+      accor: "accor.com",
+      radisson: "radissonhotels.com",
+      lemontree: "lemontreehotels.com",
+      fabhotels: "fabhotels.com",
+      zostel: "zostel.com",
+      oberoi: "oberoihotels.com",
+      theleela: "theleela.com",
+      orchid: "orchidhotel.com",
+      thepark: "theparkhotels.com",
+      sunnsand: "sunnsandhotels.com",
+      royalorchid: "royalorchidhotels.com",
+      meru: "mahindralogistics.com",
+      savaari: "savaari.com",
+      bharattaxi: "bharattaxi.com",
+      quickride: "quickride.in",
+      coverfox: "coverfox.com",
+      insurancedekho: "insurancedekho.com",
+      cardinsider: "cardinsider.com",
+      groww: "groww.in",
+      zerodha: "zerodha.com",
+      navi: "navi.com",
+      kreditbee: "kreditbee.in",
+      moneyview: "moneyview.in",
+      hdfcergo: "hdfcergo.com",
+      godigit: "godigit.com",
+      rbl: "rblbank.com",
+      yes: "yesbank.in",
+      hsbc: "hsbc.co.in",
+      amex: "americanexpress.com",
+      aubank: "aubank.in",
+      bobcard: "bobfinancial.com",
+      inDrive: "indrive.com",
+      bajajfinserv: "bajajfinserv.in",
+      jingbus: "jingbus.com"
     };
     faviconCache = /* @__PURE__ */ new Map();
     FAVICON_TTL_MS = 12 * 60 * 6e4;

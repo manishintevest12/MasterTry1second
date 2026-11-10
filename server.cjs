@@ -31849,6 +31849,7 @@ __export(deeplink_exports, {
   createMaskingPointer: () => createMaskingPointer,
   cuelinksKnownMerchants: () => cuelinksKnownMerchants,
   cuelinksMerchantUrl: () => cuelinksMerchantUrl,
+  cuelinksPaysNow: () => cuelinksPaysNow,
   envNetworkFor: () => envNetworkFor,
   looksAlreadyTracked: () => looksAlreadyTracked,
   merchantSearchFallback: () => merchantSearchFallback,
@@ -31902,10 +31903,26 @@ function safeDomain(url) {
 function cuelinksAllowList() {
   const extra = (process.env.CUELINKS_EXTRA_MERCHANTS || "").split(",").map((d) => d.trim().toLowerCase().replace(/^www\./, "")).filter(Boolean);
   const base = cuelinksOnlyJoined() ? CUELINKS_APPROVED_ONLY : CUELINKS_BASE_MERCHANTS;
-  return /* @__PURE__ */ new Set([...base, ...extra]);
+  const keep = base.filter((d) => !payingAlternative(d));
+  return /* @__PURE__ */ new Set([...keep, ...extra]);
 }
 function cuelinksOnlyJoined() {
   return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ONLY_JOINED || "").trim());
+}
+function cuelinksDeepFirst() {
+  return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_DEEP_FIRST || "").trim());
+}
+function cuelinksPaysNow(domain) {
+  const d = String(domain || "").toLowerCase().replace(/^www\./, "");
+  return CUELINKS_APPROVED_ONLY.some((a) => d === a || d.endsWith(`.${a}`));
+}
+function payingAlternative(domain) {
+  if (cuelinksDeepFirst() || cuelinksPaysNow(domain)) return false;
+  try {
+    return Boolean(linkinrCampaignFor(`https://${domain}/`));
+  } catch {
+    return false;
+  }
 }
 function cuelinksWrapAll() {
   return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ALL_MERCHANTS || "").trim());
@@ -32333,7 +32350,9 @@ var init_deeplink = __esm({
       "lenovo.com",
       "oppo.com",
       "realme.com",
-      "qatarairways.com"
+      "qatarairways.com",
+      // akasaair.com confirmed by a live tracker hop (tracking.astonmediaww.com) on 10 Nov.
+      "akasaair.com"
       // easemytrip.com REMOVED: an earlier API read attributed a 172.5 'Per Acquisition' campaign to it, but the
       // domain-matched re-check shows no campaign for easemytrip.com and linksredirect passes it straight through,
       // so claiming it as approved would credit a payout that does not exist.
@@ -32965,23 +32984,35 @@ async function resolveBrandFavicon(nameKey) {
   if (!domain) return void 0;
   const hit = faviconCache.get(domain);
   if (hit && Date.now() - hit.at < FAVICON_TTL_MS) return { bytes: hit.bytes, mime: hit.mime };
-  try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 4e3);
-    const res = await fetch(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`, {
-      signal: ctl.signal,
-      headers: { "user-agent": "Mozilla/5.0 (compatible; Try1SecondLogoBot/1.0)" }
-    });
-    clearTimeout(t);
-    if (!res.ok) return void 0;
-    const mime = String(res.headers.get("content-type") || "").split(";")[0] || "image/png";
-    const bytes = Buffer.from(await res.arrayBuffer());
-    if (bytes.length < 100 || !/^image\//.test(mime)) return void 0;
-    faviconCache.set(domain, { bytes, mime, at: Date.now() });
-    return { bytes, mime };
-  } catch {
-    return void 0;
+  const providers = [
+    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`,
+    `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`,
+    // Third route: the brand's own icon files, for the handful the two caches do not carry.
+    `https://${domain}/apple-touch-icon.png`,
+    `https://${domain}/favicon.ico`
+  ];
+  for (const url of providers) {
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 4500);
+      const res = await fetch(url, {
+        signal: ctl.signal,
+        headers: { "user-agent": "Mozilla/5.0 (compatible; Try1SecondLogoBot/1.0)" }
+      });
+      clearTimeout(t);
+      if (!res.ok) continue;
+      const mime = String(res.headers.get("content-type") || "").split(";")[0] || "image/png";
+      const bytes = Buffer.from(await res.arrayBuffer());
+      const magic = bytes.subarray(0, 12);
+      const looksImage = magic[0] === 137 && magic[1] === 80 || magic[0] === 255 && magic[1] === 216 || magic.subarray(0, 3).toString("ascii") === "GIF" || magic.subarray(0, 4).toString("ascii") === "RIFF" || /svg|xml|image/i.test(mime);
+      if (bytes.length < 100 || !looksImage) continue;
+      const servedMime = /^image\//.test(mime) ? mime : "image/png";
+      faviconCache.set(domain, { bytes, mime: servedMime, at: Date.now() });
+      return { bytes, mime: servedMime };
+    } catch {
+    }
   }
+  return void 0;
 }
 var ensured, DATA_URL_RE, KEY_DOMAIN, faviconCache, FAVICON_TTL_MS;
 var init_merchantLogos = __esm({
@@ -32991,6 +33022,8 @@ var init_merchantLogos = __esm({
     ensured = false;
     DATA_URL_RE = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
     KEY_DOMAIN = {
+      // Merchant brand key -> the domain whose own mark represents it. Every seller the engine can render a
+      // row for belongs here, because a missing key is what makes the app fall back to an initials badge.
       reliance: "reliancedigital.in",
       reliancedigital: "reliancedigital.in",
       croma: "croma.com",
@@ -33066,7 +33099,64 @@ var init_merchantLogos = __esm({
       indigo: "goindigo.in",
       spicejet: "spicejet.com",
       airindia: "airindia.in",
-      akasa: "akasaair.com"
+      akasa: "akasaair.com",
+      meesho: "meesho.com",
+      expedia: "expedia.co.in",
+      hotels: "hotels.com",
+      qatarairways: "qatarairways.com",
+      emirates: "emirates.com",
+      britishairways: "britishairways.com",
+      singaporeair: "singaporeair.com",
+      cathaypacific: "cathaypacific.com",
+      srilankan: "srilankan.com",
+      airindiaexpress: "airindiaexpress.com",
+      starair: "starair.in",
+      fly91: "fly91.in",
+      kiwi: "kiwi.com",
+      gotogate: "gotogate.com",
+      flightnetwork: "flightnetwork.com",
+      aertrip: "aertrip.com",
+      via: "via.com",
+      budgetair: "budgetair.co.in",
+      marriott: "marriott.com",
+      hilton: "hilton.com",
+      hyatt: "hyatt.com",
+      ihg: "ihg.com",
+      taj: "tajhotels.com",
+      accor: "accor.com",
+      radisson: "radissonhotels.com",
+      lemontree: "lemontreehotels.com",
+      fabhotels: "fabhotels.com",
+      zostel: "zostel.com",
+      oberoi: "oberoihotels.com",
+      theleela: "theleela.com",
+      orchid: "orchidhotel.com",
+      thepark: "theparkhotels.com",
+      sunnsand: "sunnsandhotels.com",
+      royalorchid: "royalorchidhotels.com",
+      meru: "mahindralogistics.com",
+      savaari: "savaari.com",
+      bharattaxi: "bharattaxi.com",
+      quickride: "quickride.in",
+      coverfox: "coverfox.com",
+      insurancedekho: "insurancedekho.com",
+      cardinsider: "cardinsider.com",
+      groww: "groww.in",
+      zerodha: "zerodha.com",
+      navi: "navi.com",
+      kreditbee: "kreditbee.in",
+      moneyview: "moneyview.in",
+      hdfcergo: "hdfcergo.com",
+      godigit: "godigit.com",
+      rbl: "rblbank.com",
+      yes: "yesbank.in",
+      hsbc: "hsbc.co.in",
+      amex: "americanexpress.com",
+      aubank: "aubank.in",
+      bobcard: "bobfinancial.com",
+      inDrive: "indrive.com",
+      bajajfinserv: "bajajfinserv.in",
+      jingbus: "jingbus.com"
     };
     faviconCache = /* @__PURE__ */ new Map();
     FAVICON_TTL_MS = 12 * 60 * 6e4;
@@ -48700,7 +48790,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path8, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
+var import_promises2, import_node_path8, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN, absoluteLogo, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
@@ -50160,7 +50250,8 @@ var init_routes = __esm({
           // or the brand's own favicon), so the app can paint the seller mark instead of a
           // grey placeholder. Web resolves the same key via FAV().
           sellerLogoKey: logoKey,
-          sellerLogo: logoKey ? `/api/logos/${logoKey}` : "",
+          sellerLogo: absoluteLogo(logoKey),
+          sellerLogoUrl: absoluteLogo(logoKey),
           listPrice: Number(o.prices?.listPrice ?? 0) || 0,
           image: imgs[0] || null,
           images: imgs.slice(0, 8),
@@ -50193,7 +50284,8 @@ var init_routes = __esm({
           image: sd.image,
           images: sd.image ? [sd.image] : [],
           sellerLogoKey: merchantKeyOf(sd.seller),
-          sellerLogo: merchantKeyOf(sd.seller) ? `/api/logos/${merchantKeyOf(sd.seller)}` : "",
+          sellerLogo: absoluteLogo(merchantKeyOf(sd.seller)),
+          sellerLogoUrl: absoluteLogo(merchantKeyOf(sd.seller)),
           availability: "unknown",
           rating: null,
           reviews: null,
@@ -50935,6 +51027,8 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Could not load leads" });
       }
     });
+    PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
+    absoluteLogo = (key) => key ? `${PUBLIC_ORIGIN}/api/logos/${key}` : "";
     apiRouter.get("/logos/:key", async (req, res) => {
       try {
         const { getMerchantLogo: getMerchantLogo2, decodeLogoDataUrl: decodeLogoDataUrl2, resolveBrandFavicon: resolveBrandFavicon2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));

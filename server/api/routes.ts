@@ -2619,7 +2619,8 @@ apiRouter.post('/product-page', async (req, res) => {
       // or the brand's own favicon), so the app can paint the seller mark instead of a
       // grey placeholder. Web resolves the same key via FAV().
       sellerLogoKey: logoKey,
-      sellerLogo: logoKey ? `/api/logos/${logoKey}` : '',
+      sellerLogo: absoluteLogo(logoKey),
+      sellerLogoUrl: absoluteLogo(logoKey),
       listPrice: Number(o.prices?.listPrice ?? 0) || 0,
       image: imgs[0] || null, images: imgs.slice(0, 8),
       availability: o.availability || 'unknown',
@@ -2652,7 +2653,7 @@ apiRouter.post('/product-page', async (req, res) => {
     offers.push({
       id: `seed-${k}`, title: sd.title, seller: sd.seller, price: sd.price,
       listPrice: sd.listPrice || 0, image: sd.image, images: sd.image ? [sd.image] : [],
-      sellerLogoKey: merchantKeyOf(sd.seller), sellerLogo: merchantKeyOf(sd.seller) ? `/api/logos/${merchantKeyOf(sd.seller)}` : '',
+      sellerLogoKey: merchantKeyOf(sd.seller), sellerLogo: absoluteLogo(merchantKeyOf(sd.seller)), sellerLogoUrl: absoluteLogo(merchantKeyOf(sd.seller)),
       availability: 'unknown', rating: null, reviews: null, canonicalEntityId: null,
       goUrl: sd.url, variantCount: 0,
     });
@@ -3853,6 +3854,18 @@ apiRouter.get('/merchant/leads', authMiddleware, requireAuth, async (req, res) =
     res.status(500).json({ success: false, error: e?.message || 'Could not load leads' });
   }
 });
+
+/** Public site origin for absolute asset URLs handed to clients.
+ *
+ * OWNER 10 Nov: "logo add kro bina new build kiye server se" - the app's seller-mark circles showed
+ * initials (RD, SH, MY, FL) instead of logos. MEASURED cause: /api/logos/<key> answers a real image on
+ * the origin, but the payload sent sellers a RELATIVE path, and the app resolves a relative path against
+ * its API base, which for installed builds is the Cloudflare relay. Flutter's Image.network sends the
+ * Dart user-agent and no relay key, so the relay answers 401 and the widget falls back to initials.
+ * Sending an absolute origin URL fixes every installed build at once, with no app release.
+ */
+const PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || 'https://www.try1second.com').replace(/\/+$/, '');
+const absoluteLogo = (key: string) => (key ? `${PUBLIC_ORIGIN}/api/logos/${key}` : '');
 
 // ============ Merchant logos (owner 21 Oct: admin-uploaded brand logos) ============
 // GET /api/merchant-logos -> { logos: { key: dataUrl } } for the whole site (cached client-side).

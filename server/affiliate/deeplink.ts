@@ -152,7 +152,10 @@ function cuelinksAllowList(): Set<string> {
     .map((d) => d.trim().toLowerCase().replace(/^www\./, ''))
     .filter(Boolean);
   const base = cuelinksOnlyJoined() ? CUELINKS_APPROVED_ONLY : CUELINKS_BASE_MERCHANTS;
-  return new Set<string>([...base, ...extra]);
+  // Paying-first: an unapproved merchant that another joined network carries is removed here, so the
+  // chain falls through to the network that actually pays instead of a Cuelinks wrap that earns nothing.
+  const keep = base.filter((d) => !payingAlternative(d));
+  return new Set<string>([...keep, ...extra]);
 }
 
 /** True when every merchant domain may be wrapped (owner opted in explicitly). */
@@ -171,6 +174,30 @@ function cuelinksOnlyJoined(): boolean {
 /** Applied on Cuelinks and either approved or awaiting approval (pays on approval, deep path always kept). */
 const CUELINKS_APPLIED_ONLY = ['myntra.com', 'ajio.com', 'flipkart.com', 'abhibus.com', 'agoda.com'];
 
+/**
+ * OWNER 10 Nov: "Baaki 62 Cuelinks-wrapped merchants seedha site par land karte hain, yaani unse paisa
+ * nahi aata - aana chaiye, Cuelinks partner hai humara". Correct, and the reason is account-side, not
+ * code: Cuelinks pays only for the campaigns THIS publisher has been approved on. A wrapped-but-unapproved
+ * merchant lands on the merchant with no commission. Where another network we are actually joined on
+ * carries the same merchant, that network must win, because a homepage that pays beats a deep link that
+ * pays nothing. Set CUELINKS_DEEP_FIRST=1 to keep Cuelinks' deep path everywhere instead.
+ */
+function cuelinksDeepFirst(): boolean {
+  return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_DEEP_FIRST || '').trim());
+}
+
+/** True when Cuelinks can actually pay for this domain on our account (approved list only). */
+export function cuelinksPaysNow(domain: string): boolean {
+  const d = String(domain || '').toLowerCase().replace(/^www\./, '');
+  return CUELINKS_APPROVED_ONLY.some((a) => d === a || d.endsWith(`.${a}`));
+}
+
+/** Another joined network can pay for this merchant, so Cuelinks must not shadow it. */
+function payingAlternative(domain: string): boolean {
+  if (cuelinksDeepFirst() || cuelinksPaysNow(domain)) return false;
+  try { return Boolean(linkinrCampaignFor(`https://${domain}/`)); } catch { return false; }
+}
+
 /** Approved-on-this-account domains only, used when CUELINKS_ONLY_JOINED=1. */
 const CUELINKS_APPROVED_ONLY = [
   // Verified access_status='open' on THIS publisher account (full vertical audit, 10 Nov 13:xx IST):
@@ -178,6 +205,8 @@ const CUELINKS_APPROVED_ONLY = [
   // lenovo 3%, oppo 2.63%, realme 1.05%, qatarairways 1.5%.
   'makemytrip.com', 'goibibo.com', 'shopsy.in', 'cleartrip.com', 'nykaa.com', 'croma.com',
   'lenovo.com', 'oppo.com', 'realme.com', 'qatarairways.com',
+  // akasaair.com confirmed by a live tracker hop (tracking.astonmediaww.com) on 10 Nov.
+  'akasaair.com',
   // easemytrip.com REMOVED: an earlier API read attributed a 172.5 'Per Acquisition' campaign to it, but the
   // domain-matched re-check shows no campaign for easemytrip.com and linksredirect passes it straight through,
   // so claiming it as approved would credit a payout that does not exist.

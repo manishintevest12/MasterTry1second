@@ -40,8 +40,13 @@ test('Goibibo deeplinks route through the publisher cid (owner request 15 Oct)',
 
 test('unknown merchants stay direct — never invented', () => {
   assert.equal(cuelinksMerchantUrl('https://www.google.com/search?q=x'), null);
-  // Owner 10 Nov: applied-for merchants are wrapped on the broad tier (pass-through that keeps the deep path).
-  assert.ok(String(cuelinksMerchantUrl('https://yatra.com/hotels/') || '').includes(encodeURIComponent('https://yatra.com/hotels/'))); // not joined yet
+  // Owner 10 Nov (paying-first): a merchant we are not approved on is handed to a network that pays, so
+  // Cuelinks no longer claims it. With CUELINKS_DEEP_FIRST=1 the deep-path wrap comes back.
+  assert.equal(cuelinksMerchantUrl('https://yatra.com/hotels/'), null);
+  process.env.CUELINKS_DEEP_FIRST = '1';
+  try {
+    assert.ok(String(cuelinksMerchantUrl('https://yatra.com/hotels/') || '').includes(encodeURIComponent('https://yatra.com/hotels/')));
+  } finally { delete process.env.CUELINKS_DEEP_FIRST; }
   assert.equal(cuelinksMerchantUrl('not a url'), null);
 });
 
