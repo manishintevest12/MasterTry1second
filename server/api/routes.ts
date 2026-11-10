@@ -19,6 +19,7 @@ import { runProxyDiscovery, listStoredProxies } from '../common/proxyDiscovery';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, recallGoodForVertical, rememberGood } from '../search/lastKnownGood';
 import { dropUnpricedRows, enforceRequestedTravelDate, reconcileVerifiedSources } from '../search/travelDateGate';
+import { attachIntentHubs } from '../search/deepLinkHub';
 import { allowPending, forgetPending, pollKey } from './pollBudget';
 import { refreshMovieDestination } from '../movies/freshMovieLink';
 import { refreshSeatDestination } from '../movies/liveSeatSession';
@@ -1213,7 +1214,17 @@ apiRouter.post('/search', async (req, res) => {
   // Owner 28 Oct, standing rule enforced at the API boundary: a flight row missing
   // flight number / dep-arr / duration goes to the BOTTOM of the feed. The installed
   // Play Store app cannot be patched remotely, so this ordering ships server-side.
-  const gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
+  let gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
+  // OWNER 10 Nov (deep-link-first hybrid, added ON TOP of the existing pipeline): partners we cannot read
+  // server-side (Booking.com, IndiGo, Akasa...) are still offered as intent hubs that exit through the
+  // affiliate chain, plus any real catalogue price we already hold for that exact merchant + date.
+  gatedResponse = await attachIntentHubs(gatedResponse, {
+    vertical: String(input.vertical),
+    query: String(input.query || ''),
+    city: input.city,
+    depart: input.travelDates?.depart,
+    returnDate: input.travelDates?.return,
+  });
   const orderedResults = orderFlightRowsLast(gatedResponse.results as any[], String(input.vertical));
   res.json({ success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== 'unavailable', ...gatedResponse, results: orderedResults });
 });

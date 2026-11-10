@@ -20437,26 +20437,26 @@ var init_bharatTaxi = __esm({
 function parseQuickRideCabs(html, source, pageUrl, from, to) {
   const items = [];
   const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
-  const norm8 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const norm9 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
   const fare = (s) => {
-    const m = /([\d,]{3,7})/.exec(norm8(s).replace(/[₹]/g, ""));
+    const m = /([\d,]{3,7})/.exec(norm9(s).replace(/[₹]/g, ""));
     return m ? Number(m[1].replace(/,/g, "")) : null;
   };
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const row of rows) {
     const cells = row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) || [];
     if (cells.length < 4) continue;
-    const rf = norm8(cells[0] || "").toLowerCase();
-    const rt = norm8(cells[1] || "").toLowerCase();
-    const f = norm8(from || "").toLowerCase();
-    const t = norm8(to || "").toLowerCase();
+    const rf = norm9(cells[0] || "").toLowerCase();
+    const rt = norm9(cells[1] || "").toLowerCase();
+    const f = norm9(from || "").toLowerCase();
+    const t = norm9(to || "").toLowerCase();
     const routeMatch = f && t && (rf.includes(f) || f.includes(rf)) && (rt.includes(t) || t.includes(rt));
     if (!routeMatch) continue;
     const oneWay = fare(cells[2] || "");
     const roundTrip = fare(cells[3] || "");
     if (oneWay && oneWay > 0) {
       items.push(newRawItem(source, {
-        title: `${norm8(cells[0] || "")} to ${norm8(cells[1] || "")} cab (one-way)`,
+        title: `${norm9(cells[0] || "")} to ${norm9(cells[1] || "")} cab (one-way)`,
         brand: "Quick Ride",
         price: Math.round(oneWay),
         currency: "INR",
@@ -20466,7 +20466,7 @@ function parseQuickRideCabs(html, source, pageUrl, from, to) {
         attributes: {
           pickup: from,
           drop: to,
-          route: `${norm8(cells[0] || "")} to ${norm8(cells[1] || "")}`,
+          route: `${norm9(cells[0] || "")} to ${norm9(cells[1] || "")}`,
           vehicle_type: "cab (outstation)",
           trip_type: "one-way",
           round_trip_fare: roundTrip ? String(roundTrip) : "",
@@ -20507,10 +20507,10 @@ async function indriveCityLookup(term) {
 function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
-  const norm8 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
+  const norm9 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
   const esc9 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rx = new RegExp(`^${esc9}\\b`);
-  return cities.find((c) => norm8(c.name) === t) || cities.find((c) => rx.test(norm8(c.name))) || cities.find((c) => norm8(c.name).includes(t)) || null;
+  return cities.find((c) => norm9(c.name) === t) || cities.find((c) => rx.test(norm9(c.name))) || cities.find((c) => norm9(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
   const url = `${HOST_API}/web/v1/prices?city_from_id=${fromId}&city_to_id=${toId}`;
@@ -26742,7 +26742,7 @@ async function gwCityCinemas(host, citySlug2, timeoutMs = 12e3) {
 }
 async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs = 12e3) {
   const byTitle = /* @__PURE__ */ new Map();
-  const norm8 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const norm9 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const cinemas = await gwCityCinemas(host, citySlug2, timeoutMs);
   const walkOne = async (cinema) => ({
     cinema,
@@ -26766,7 +26766,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
     for (const mv of moviesMeta) titleByMid.set(String(mv?.id || ""), String(mv?.name || "").trim());
     const contentByTitle = /* @__PURE__ */ new Map();
     for (const g of grouped) {
-      const lbl = norm8(String(g?.label || ""));
+      const lbl = norm9(String(g?.label || ""));
       if (lbl && Number(g?.contentId)) contentByTitle.set(lbl, Number(g.contentId));
     }
     const posterByMid = /* @__PURE__ */ new Map();
@@ -26776,7 +26776,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       const mid = String(ss?.mid || "");
       const title = titleByMid.get(mid) || "";
       if (!title) continue;
-      const key = norm8(title);
+      const key = norm9(title);
       if (!key) continue;
       const areas = [];
       for (const a of ss?.areas || []) {
@@ -38051,6 +38051,211 @@ var init_readPathCache = __esm({
   }
 });
 
+// server/search/deepLinkHub.ts
+function sellersPresent(rows) {
+  const out = /* @__PURE__ */ new Set();
+  for (const r of rows || []) {
+    const cands = [r?.seller, r?.provider, r?.brand, r?.sellerUrl, r?.seller_url, r?.url];
+    for (const c of cands) {
+      const v = String(c || "").toLowerCase();
+      if (!v) continue;
+      out.add(norm6(v));
+      const host = v.match(/https?:\/\/([^/]+)/)?.[1] || (v.includes(".") ? v.split("/")[0] : "");
+      if (host) out.add(norm6(host.replace(/^www\./, "")));
+    }
+  }
+  return out;
+}
+function hasPartner(present, m) {
+  if (present.has(norm6(m.seller))) return true;
+  const base = norm6(m.domain);
+  for (const p of present) if (p === base || p.endsWith(base)) return true;
+  return false;
+}
+function buildIntentHubs(input) {
+  const merchants = GATED_HUB_MERCHANTS[String(input.vertical || "").toLowerCase()];
+  if (!merchants?.length) return [];
+  const present = sellersPresent(input.rows);
+  const hubs = [];
+  for (const m of merchants) {
+    if (hasPartner(present, m)) continue;
+    let url = "";
+    try {
+      url = merchantDeepLink(m.seller, input.title || "", input.vertical, {
+        city: input.city,
+        // Both spellings: merchantLink implementations differ (checkin/checkout vs checkIn/checkOut).
+        checkin: input.travel?.depart,
+        checkout: input.travel?.return,
+        checkIn: input.travel?.depart,
+        checkOut: input.travel?.return,
+        depart: input.travel?.depart,
+        origin: input.title
+      });
+    } catch {
+      url = "";
+    }
+    if (!url || !/^https?:\/\//i.test(url)) {
+      try {
+        url = m.fallbackUrl({ city: input.city, depart: input.travel?.depart, returnDate: input.travel?.return, title: input.title });
+      } catch {
+        url = "";
+      }
+    }
+    if (!url || !/^https?:\/\//i.test(url)) continue;
+    hubs.push({ seller: m.seller, domain: m.domain, url, reason: m.reason });
+  }
+  return hubs;
+}
+function rowDate(row) {
+  const raw = [
+    row?.attributes?.travel_date,
+    row?.attributes?.check_in,
+    row?.attributes?.depart,
+    row?.attributes?.journey_date
+  ].find((v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v));
+  return raw ? String(raw).slice(0, 10) : "";
+}
+async function catalogueHubRows(input) {
+  const merchants = GATED_HUB_MERCHANTS[String(input.vertical || "").toLowerCase()];
+  if (!merchants?.length) return [];
+  const present = sellersPresent(input.rows);
+  const wanted = merchants.filter((m) => !hasPartner(present, m));
+  if (!wanted.length) return [];
+  const terms = String(input.title || "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+  let catalogue = [];
+  try {
+    catalogue = await findCatalogueOffers(input.vertical, {
+      city: input.city,
+      queryTerms: terms.slice(0, 2),
+      limit: 40,
+      date: input.depart
+    });
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const row of catalogue) {
+    const price2 = Number(row.effective_price ?? row.mandatory_total ?? 0);
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
+    const seller = String(row.seller || row.vendor || "");
+    const domainHit = wanted.find((m) => norm6(seller).includes(norm6(m.domain).slice(0, 5)) || norm6(seller) === norm6(m.seller));
+    if (!domainHit) continue;
+    const date = rowDate(row);
+    if (input.depart && date && date !== input.depart) continue;
+    if (out.some((r) => r.seller === seller && r.primaryPrice === price2)) continue;
+    const url = String(row.seller_url || "") || buildIntentHubs({ ...input, rows: [] }).find((h) => h.seller === domainHit.seller)?.url || "";
+    out.push({
+      id: `hub-${row.id}`,
+      title: `${seller} ${input.title || ""}`.trim(),
+      primaryPrice: price2,
+      currency: row.currency || "INR",
+      seller,
+      sellerUrl: url,
+      availability: row.availability || "unknown",
+      specs: {
+        ...date ? { "travel date": date } : {},
+        "last seen price": new Date(row.fetched_at || Date.now()).toISOString().slice(0, 10)
+      },
+      hub: true,
+      attributes: {
+        price_basis: "catalogue",
+        verify_live: "1",
+        hub_reason: domainHit.reason,
+        catalogue_age_ms: String(Date.now() - new Date(row.fetched_at || Date.now()).getTime())
+      }
+    });
+    if (out.length >= (input.limit ?? 3)) break;
+  }
+  return out;
+}
+async function attachIntentHubs(response, input) {
+  if (!response) return response;
+  try {
+    const rows = Array.isArray(response.results) ? response.results : [];
+    const title = String(response.query || input.query || "");
+    const hubs = buildIntentHubs({
+      vertical: input.vertical,
+      title,
+      rows,
+      city: input.city,
+      travel: { depart: input.depart, return: input.returnDate }
+    });
+    const catRows = await catalogueHubRows({
+      vertical: input.vertical,
+      title,
+      city: input.city,
+      depart: input.depart,
+      rows
+    });
+    if (!hubs.length && !catRows.length) return response;
+    return {
+      ...response,
+      intentHubs: hubs,
+      results: [...catRows, ...rows],
+      resultsCount: catRows.length + rows.length
+    };
+  } catch {
+    return response;
+  }
+}
+var GATED_HUB_MERCHANTS, norm6;
+var init_deepLinkHub = __esm({
+  "server/search/deepLinkHub.ts"() {
+    init_catalogueService();
+    init_merchantLinks();
+    GATED_HUB_MERCHANTS = {
+      hotels: [
+        {
+          seller: "Booking.com",
+          domain: "booking.com",
+          reason: "booking.com serves a 202 client shell; no property-card HTML to parse",
+          fallbackUrl: ({ city, depart, returnDate }) => {
+            const q3 = new URLSearchParams({ ss: city || "India", selected_currency: "INR", lang: "en-gb" });
+            if (depart) q3.set("checkin", depart);
+            if (returnDate) q3.set("checkout", returnDate);
+            return `https://www.booking.com/searchresults.html?${q3.toString()}`;
+          }
+        },
+        {
+          seller: "Agoda",
+          domain: "agoda.com",
+          reason: "agoda answers only for some city/date combinations",
+          fallbackUrl: ({ city }) => `https://www.agoda.com/search?city=${encodeURIComponent(city || "India")}`
+        }
+      ],
+      flights: [
+        {
+          seller: "Booking.com Flights",
+          domain: "booking.com",
+          reason: "flights.booking.com serves a 202 shell from our egress",
+          fallbackUrl: () => "https://www.booking.com/flights/index.en-gb.html"
+        },
+        {
+          seller: "IndiGo",
+          domain: "goindigo.in",
+          reason: "IndiGo API is Akamai-gated and needs a SkyPlus session token",
+          fallbackUrl: () => "https://www.goindigo.in/"
+        },
+        {
+          seller: "Akasa Air",
+          domain: "akasaair.com",
+          reason: "Akasa IBE answers nginx 403 without an authorised Cognito bearer",
+          fallbackUrl: () => "https://www.akasaair.com/"
+        }
+      ],
+      cab: [
+        {
+          seller: "Booking.com Taxi",
+          domain: "booking.com",
+          reason: "taxi.booking.com answers 405 Human Verification",
+          fallbackUrl: () => "https://www.booking.com/taxi/index.en-gb.html"
+        }
+      ]
+    };
+    norm6 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+});
+
 // server/movies/freshMovieLink.ts
 function movieShowDate(now = /* @__PURE__ */ new Date()) {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
@@ -40329,7 +40534,7 @@ function androidIntentUrl(target, webUrl) {
 function isAndroid(ua) {
   return /android/i.test(String(ua || ""));
 }
-var BY_HOST, norm6, BY_NAME, WEBVIEW_ONLY_HOSTS;
+var BY_HOST, norm7, BY_NAME, WEBVIEW_ONLY_HOSTS;
 var init_appTargets = __esm({
   "server/affiliate/appTargets.ts"() {
     BY_HOST = [
@@ -40386,8 +40591,8 @@ var init_appTargets = __esm({
       [/(^|\.)insurancedekho\.com$/, { label: "InsuranceDekho", pkg: "com.insurancedekho.pos" }],
       [/(^|\.)acko\.com$/, { label: "Acko", pkg: "com.acko.android" }]
     ];
-    norm6 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    BY_NAME = BY_HOST.map(([, t]) => [norm6(t.label), t]);
+    norm7 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    BY_NAME = BY_HOST.map(([, t]) => [norm7(t.label), t]);
     WEBVIEW_ONLY_HOSTS = [
       [/(^|\.)bookmyshow\.com$/, "BookMyShow"],
       [/(^|\.)district\.in$/, "District"],
@@ -42728,7 +42933,7 @@ var init_assistantThread = __esm({
 
 // server/lens/searchMemory.ts
 function memoryKey(k) {
-  return [norm7(k.vertical), norm7(k.query), norm7(k.city), norm7(k.depart || "")].join("|");
+  return [norm8(k.vertical), norm8(k.query), norm8(k.city), norm8(k.depart || "")].join("|");
 }
 async function ensureSearchMemoryTable() {
   const store7 = getStore();
@@ -42846,12 +43051,12 @@ function memoryNotice(mem) {
   const when = new Date(mem.lastVerifiedAt).toISOString().slice(0, 16).replace("T", " ");
   return `Last time you asked this, ${mem.rowCount} live rows came from ${mem.sellers.slice(0, 4).join(", ") || "our sources"} (verified ${when}Z). I start from those and re-check prices now.`;
 }
-var norm7, TABLE, parseJson, reliabilityMemo, RELIABILITY_TTL_MS;
+var norm8, TABLE, parseJson, reliabilityMemo, RELIABILITY_TTL_MS;
 var init_searchMemory = __esm({
   "server/lens/searchMemory.ts"() {
     init_db();
     init_logger();
-    norm7 = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+    norm8 = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
     TABLE = "assistant_search_memory";
     parseJson = (raw, fallback) => {
       try {
@@ -46614,6 +46819,7 @@ var init_routes = __esm({
     init_ecomDepartments();
     init_lastKnownGood();
     init_travelDateGate();
+    init_deepLinkHub();
     init_pollBudget();
     init_freshMovieLink();
     init_liveSeatSession();
@@ -47265,7 +47471,14 @@ var init_routes = __esm({
         } catch {
         }
       }
-      const gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
+      let gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
+      gatedResponse = await attachIntentHubs(gatedResponse, {
+        vertical: String(input.vertical),
+        query: String(input.query || ""),
+        city: input.city,
+        depart: input.travelDates?.depart,
+        returnDate: input.travelDates?.return
+      });
       const orderedResults = orderFlightRowsLast(gatedResponse.results, String(input.vertical));
       res.json({ success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== "unavailable", ...gatedResponse, results: orderedResults });
     });
@@ -51024,9 +51237,9 @@ function splitCsvLine(line) {
 }
 function headerIndex(headers, key) {
   const wanted = HEADER_ALIASES[key] || [];
-  const norm8 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
+  const norm9 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
   for (const w of wanted) {
-    const i = norm8.findIndex((h) => h === w || h.startsWith(`${w} `));
+    const i = norm9.findIndex((h) => h === w || h.startsWith(`${w} `));
     if (i >= 0) return i;
   }
   return -1;
