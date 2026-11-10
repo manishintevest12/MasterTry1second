@@ -370,7 +370,7 @@ export const hotelsWorker: VerticalWorker = {
         const sq = encodeURIComponent(JSON.stringify({ Companion: { TA: '1DA' }, Pax: { A: '2' }, RoomCnt: '1', City: base, CheckIn: checkIn, CheckOut: checkOut }));
         const hermesUrl = `https://hermes.goibibo.com/hotels/v12/search/data/v3?searchQuery=${sq}`;
         try {
-          const hr = await cffiFetch(hermesUrl, { impersonate: 'chrome', timeoutMs: 10_000, headers: { Accept: 'application/json', Referer: 'https://www.goibibo.com/hotels/' } });
+          const hr = await cffiFetch(hermesUrl, { impersonate: 'chrome', timeoutMs: 4_000, headers: { Accept: 'application/json', Referer: 'https://www.goibibo.com/hotels/' } });
           if (hr.status === 200 && hr.body.length > 100) {
             const offers = parseHermesHotels(hr.body, ctx.source, city, checkIn, checkOut, hermesUrl);
             if (offers.length) return offers;
@@ -418,26 +418,33 @@ export const hotelsWorker: VerticalWorker = {
         };
         let lastErr: AcquisitionError | null = null;
         const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+        // MEASURED 10 Nov: two slugs x four attempts x 2s sleeps spent 28.7s of the hotel sweep on a source that
+        // answered an 8-byte stub every single time, so real sellers (Agoda/Yatra/Ixigo/OYO/EMT/Airbnb) lost the
+        // budget. The self-healing property only needs one honest sample per client profile per search, so the
+        // loop is now 2 attempts per slug (chrome + iOS profile) inside a 9s deadline for the whole task.
+        const giDeadline = Date.now() + 7_000;
         for (const slug of attempts) {
+          if (Date.now() > giDeadline) break;
           const url = `https://www.goibibo.com/hotels/${slug}/`;
           let bigBody: string | null = null;
-          for (let attempt = 1; attempt <= 4; attempt++) {
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            if (Date.now() > giDeadline) break;
             let r;
-            const headers = attempt === 3 ? mobileHeaders : giChromeHeaders;
-            const imp = attempt === 3 ? 'safari17_0' : 'chrome';
+            const headers = attempt === 2 ? mobileHeaders : giChromeHeaders;
+            const imp = attempt === 2 ? 'safari17_0' : 'chrome';
             try {
-              r = await cffiFetch(url, { impersonate: imp, timeoutMs: 25_000, headers });
+              r = await cffiFetch(url, { impersonate: imp, timeoutMs: 8_000, headers });
             } catch (e: any) {
-              lastErr = new AcquisitionError('SERVER_ERROR', `Goibibo hotels page unreachable (attempt ${attempt}/4): ${String(e?.message || e).slice(0, 80)}`);
-              await sleep(1500);
+              lastErr = new AcquisitionError('SERVER_ERROR', `Goibibo hotels page unreachable (attempt ${attempt}/2): ${String(e?.message || e).slice(0, 80)}`);
+              await sleep(900);
               continue;
             }
             if (r.status === 404) break; // spelling has no page: try the -ct variant
             if (r.status === 403 || r.status === 429) throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Goibibo hotels edge-blocked (HTTP ${r.status}).`, r.status);
-            if (r.status !== 200) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', `Goibibo hotels HTTP ${r.status}`); await sleep(1500); continue; }
+            if (r.status !== 200) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', `Goibibo hotels HTTP ${r.status}`); await sleep(900); continue; }
             if (r.body.length >= 100_000) { bigBody = r.body; break; } // the real 1.3MB SSR page
-            lastErr = new AcquisitionError('ACCESS_CHALLENGE', `Goibibo hotels Akamai-sampled a ${r.body.length}B stub (attempt ${attempt}/3); ladder retries next search`);
-            await sleep(2000);
+            lastErr = new AcquisitionError('ACCESS_CHALLENGE', `Goibibo hotels Akamai-sampled a ${r.body.length}B stub (attempt ${attempt}/2); ladder retries next search`);
+            await sleep(900);
           }
           if (!bigBody) continue;
           const st = parseGoibiboHotelSsrState(bigBody);

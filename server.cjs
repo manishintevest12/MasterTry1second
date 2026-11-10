@@ -8558,7 +8558,7 @@ var init_hotels = __esm({
             const sq = encodeURIComponent(JSON.stringify({ Companion: { TA: "1DA" }, Pax: { A: "2" }, RoomCnt: "1", City: base, CheckIn: checkIn, CheckOut: checkOut }));
             const hermesUrl = `https://hermes.goibibo.com/hotels/v12/search/data/v3?searchQuery=${sq}`;
             try {
-              const hr = await cffiFetch(hermesUrl, { impersonate: "chrome", timeoutMs: 1e4, headers: { Accept: "application/json", Referer: "https://www.goibibo.com/hotels/" } });
+              const hr = await cffiFetch(hermesUrl, { impersonate: "chrome", timeoutMs: 4e3, headers: { Accept: "application/json", Referer: "https://www.goibibo.com/hotels/" } });
               if (hr.status === 200 && hr.body.length > 100) {
                 const offers = parseHermesHotels(hr.body, ctx.source, city, checkIn, checkOut, hermesUrl);
                 if (offers.length) return offers;
@@ -8592,33 +8592,36 @@ var init_hotels = __esm({
             };
             let lastErr = null;
             const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+            const giDeadline = Date.now() + 7e3;
             for (const slug5 of attempts) {
+              if (Date.now() > giDeadline) break;
               const url = `https://www.goibibo.com/hotels/${slug5}/`;
               let bigBody = null;
-              for (let attempt = 1; attempt <= 4; attempt++) {
+              for (let attempt = 1; attempt <= 2; attempt++) {
+                if (Date.now() > giDeadline) break;
                 let r;
-                const headers = attempt === 3 ? mobileHeaders : giChromeHeaders;
-                const imp = attempt === 3 ? "safari17_0" : "chrome";
+                const headers = attempt === 2 ? mobileHeaders : giChromeHeaders;
+                const imp = attempt === 2 ? "safari17_0" : "chrome";
                 try {
-                  r = await cffiFetch(url, { impersonate: imp, timeoutMs: 25e3, headers });
+                  r = await cffiFetch(url, { impersonate: imp, timeoutMs: 8e3, headers });
                 } catch (e2) {
-                  lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable (attempt ${attempt}/4): ${String(e2?.message || e2).slice(0, 80)}`);
-                  await sleep(1500);
+                  lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable (attempt ${attempt}/2): ${String(e2?.message || e2).slice(0, 80)}`);
+                  await sleep(900);
                   continue;
                 }
                 if (r.status === 404) break;
                 if (r.status === 403 || r.status === 429) throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Goibibo hotels edge-blocked (HTTP ${r.status}).`, r.status);
                 if (r.status !== 200) {
                   lastErr = new AcquisitionError("ACCESS_CHALLENGE", `Goibibo hotels HTTP ${r.status}`);
-                  await sleep(1500);
+                  await sleep(900);
                   continue;
                 }
                 if (r.body.length >= 1e5) {
                   bigBody = r.body;
                   break;
                 }
-                lastErr = new AcquisitionError("ACCESS_CHALLENGE", `Goibibo hotels Akamai-sampled a ${r.body.length}B stub (attempt ${attempt}/3); ladder retries next search`);
-                await sleep(2e3);
+                lastErr = new AcquisitionError("ACCESS_CHALLENGE", `Goibibo hotels Akamai-sampled a ${r.body.length}B stub (attempt ${attempt}/2); ladder retries next search`);
+                await sleep(900);
               }
               if (!bigBody) continue;
               const st = parseGoibiboHotelSsrState(bigBody);
