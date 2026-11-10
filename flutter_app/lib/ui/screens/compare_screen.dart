@@ -18,6 +18,7 @@ import '../widgets/location_hint_field.dart';
 import '../widgets/filter_panel.dart';
 import '../widgets/search_progress_card.dart';
 import '../widgets/kit.dart';
+import '../widgets/sponsored_slot.dart';
 import '../widgets/typeahead_field.dart';
 import 'hotel_picker_screen.dart';
 import 'smart_cart_screen.dart';
@@ -74,6 +75,21 @@ class _CompareScreenState extends State<CompareScreen> {
   // app looked like it had half the results. It now opens with the full first screen of
   // groups (12) and Load More adds 8 at a time; nothing else about grouping changed.
   int _visibleCount = 12;
+
+  /// House-sponsored card for this vertical (owner 9 Nov). Loaded once per vertical from
+  /// /api/ads?slot=vertical_<id>; empty means the deals registry has nothing relevant, in which case
+  /// the feed renders exactly as before and nothing is invented.
+  List<SponsoredOffer> _sponsor = const [];
+
+  /// Vertical ids that sell a CPA slot at the top instead of an in-feed card.
+  static const _financeVerticals = <String>{'loans', 'insurance', 'creditcards', 'account'};
+
+  /// Fire-and-forget sponsor lookup for [vertical]. Any failure leaves the feed untouched.
+  Future<void> _loadSponsor(String vertical) async {
+    final offers = await fetchSponsoredOffers(vertical);
+    if (!mounted || vertical != _meta.id) return;
+    setState(() => _sponsor = offers);
+  }
   /// The cache key of the response currently on screen; lets a background
   /// revalidation (stale TTL refresh) swap in newer prices without a spinner.
   String? _shownCacheKey;
@@ -90,6 +106,7 @@ class _CompareScreenState extends State<CompareScreen> {
     _state.addListener(_onState);
     _seedForm();
     _start();
+    unawaited(_loadSponsor(_meta.id));
   }
 
   /// Owner 23 Oct (homepage pills 'results nahi aate'): MainShell mounts this
@@ -772,10 +789,21 @@ class _CompareScreenState extends State<CompareScreen> {
                     ).cards(bc)
                   : const <Widget>[];
 
+              // OWNER 9 Nov: sponsored placement, labelled and inside the design language.
+              // Finance verticals (loans, credit cards, insurance, savings) get ONE "Featured partner"
+              // card at the top of the list, the way comparison sites sell their CPA slot. Every other
+              // vertical gets ONE "SPONSORED" card after the 6th result, matching the web feed. Never
+              // both, never a popup, and never a card without a real partner deal behind it.
+              final sponsoredFeed = _sponsor.isEmpty
+                  ? feed
+                  : _financeVerticals.contains(_meta.id)
+                      ? <Widget>[SponsoredCard(offer: _sponsor.first, label: 'FEATURED PARTNER'), ...feed]
+                      : injectSponsoredCard(feed, SponsoredCard(offer: _sponsor.first));
+
               return ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                itemCount: header.length + feed.length,
-                itemBuilder: (c, i) => i < header.length ? header[i] : feed[i - header.length],
+                itemCount: header.length + sponsoredFeed.length,
+                itemBuilder: (c, i) => i < header.length ? header[i] : sponsoredFeed[i - header.length],
               );
             },
           ),

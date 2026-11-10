@@ -13,6 +13,7 @@ import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/quick_apps_screen.dart';
 import 'screens/rewards_screen.dart';
+import 'widgets/sponsored_pill.dart';
 import 'widgets/kit.dart';
 import 'widgets/logo.dart';
 
@@ -148,13 +149,22 @@ class _MainShellState extends State<MainShell> {
           ),
         ]),
       ),
-      bottomNavigationBar: _BottomBar(
-        current: _state.tab,
-        spins: _state.spinsAvailable,
-        onTap: (t) {
-          setState(() => _menuOpen = false);
-          _state.go(t);
-        },
+      // OWNER 9 Nov: the smartlink pill sits just above the bottom bar ("bottom navigation bar ke
+      // just upar ek patli si clean interactive pill"). It renders nothing unless /api/app-ads
+      // publishes a live smartlink, and it only opens on the user's own tap.
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SponsoredDealPill(),
+          _BottomBar(
+            current: _state.tab,
+            spins: _state.spinsAvailable,
+            onTap: (t) {
+              setState(() => _menuOpen = false);
+              _state.go(t);
+            },
+          ),
+        ],
       ),
     );
   }
