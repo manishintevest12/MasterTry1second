@@ -6517,6 +6517,454 @@ var init_mmtHotelLanding = __esm({
   }
 });
 
+// server/common/airportLookup.ts
+async function resolveAirport(city, codeHint) {
+  if (codeHint && /^[A-Za-z]{3}$/.test(codeHint)) return { code: codeHint.toUpperCase(), city, country: "" };
+  const s = IATA[city.toLowerCase().trim()];
+  if (s) return { code: s, city, country: "India" };
+  return cityToAirport(city);
+}
+async function loadAirports() {
+  if (cache3 && Date.now() - cache3.at < TTL_OK) return cache3.byCity;
+  const res = await fetch(URL_DAT, { signal: AbortSignal.timeout(15e3) });
+  if (!res.ok) throw new Error(`airports.dat HTTP ${res.status}`);
+  const text = await res.text();
+  const byCity = /* @__PURE__ */ new Map();
+  const splitCsv2 = (line) => {
+    const out = [];
+    let cur = "";
+    let q3 = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (q3 && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else q3 = !q3;
+      } else if (ch === "," && !q3) {
+        out.push(cur);
+        cur = "";
+      } else cur += ch;
+    }
+    out.push(cur);
+    return out;
+  };
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    const f = splitCsv2(line);
+    const iata = (f[4] || "").trim();
+    if (!iata || iata === "\\N" || !/^[A-Z]{3}$/.test(iata)) continue;
+    const city = (f[2] || "").trim();
+    const country = (f[3] || "").trim();
+    if (!city || !country) continue;
+    const ap = { iata, city, country, name: (f[1] || "").trim() };
+    const key = norm2(city);
+    const bucket = byCity.get(key);
+    if (bucket) bucket.push(ap);
+    else byCity.set(key, [ap]);
+  }
+  cache3 = { at: Date.now(), byCity };
+  return byCity;
+}
+async function cityToAirport(city) {
+  const key = norm2(city);
+  if (!key) return { code: null, city, country: "" };
+  const missAt = missCache.get(key);
+  if (missAt && Date.now() - missAt < TTL_MISS) return { code: null, city, country: "" };
+  try {
+    const byCity = await loadAirports();
+    let bucket = byCity.get(key);
+    if (!bucket) {
+      for (const [ck, aps] of byCity) {
+        if (aps.some((a) => norm2(a.name).includes(key))) {
+          bucket = aps;
+          break;
+        }
+      }
+    }
+    if (!bucket || bucket.length === 0) {
+      missCache.set(key, Date.now());
+      return { code: null, city, country: "" };
+    }
+    const ranked = bucket.map((a) => ({ a, rank: PREF_RANK.has(a.iata) ? PREF_RANK.get(a.iata) : 999 })).sort((x, y) => x.rank - y.rank);
+    const preferred = ranked[0]?.a || bucket[0];
+    return { code: preferred.iata, city: preferred.city, country: preferred.country };
+  } catch (e2) {
+    log.warn("AirportLookup", `airports.dat unavailable: ${String(e2?.message || e2)}`);
+    return { code: null, city, country: "" };
+  }
+}
+var URL_DAT, PREFERRED, PREF_RANK, IATA, TTL_OK, TTL_MISS, cache3, missCache, norm2;
+var init_airportLookup = __esm({
+  "server/common/airportLookup.ts"() {
+    init_logger();
+    URL_DAT = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat";
+    PREFERRED = [
+      "LHR",
+      "JFK",
+      "EWR",
+      "LGA",
+      "LGW",
+      "DXB",
+      "SIN",
+      "CDG",
+      "AMS",
+      "FRA",
+      "IST",
+      "HND",
+      "ICN",
+      "PEK",
+      "PVG",
+      "SYD",
+      "DOH",
+      "AUH",
+      "BKK",
+      "MAD",
+      "FCO",
+      "MUC",
+      "YYZ",
+      "GRU",
+      "MEX",
+      "JNB",
+      "CAI",
+      "KUL",
+      "CGK",
+      "SVO",
+      "MOW",
+      "LAX",
+      "SFO",
+      "ORD",
+      "ATL",
+      "DFW",
+      "MIA",
+      "HKG",
+      "TPE",
+      "NRT",
+      "AKL",
+      "MEL",
+      "ZRH",
+      "VIE",
+      "ARN",
+      "OSL",
+      "HEL",
+      "DUB",
+      "LIS",
+      "ATH",
+      "WAW",
+      "PRG",
+      "OTP",
+      "SOF",
+      "BEY",
+      "AMM",
+      "TLV",
+      "KHI",
+      "LHE",
+      "ISB",
+      "DAC",
+      "KTM",
+      "CMB",
+      "ALA",
+      "TAS",
+      "TBS",
+      "RUH",
+      "JED",
+      "MLE",
+      "BOM",
+      "DEL",
+      "BLR",
+      "MAA",
+      "SHJ",
+      "DWC",
+      "LGW",
+      "STN"
+    ];
+    PREF_RANK = new Map(PREFERRED.map((c, i) => [c, i]));
+    IATA = {
+      delhi: "DEL",
+      "new delhi": "DEL",
+      mumbai: "BOM",
+      bombay: "BOM",
+      bangalore: "BLR",
+      bengaluru: "BLR",
+      hyderabad: "HYD",
+      chennai: "MAA",
+      kolkata: "CCU",
+      pune: "PNQ",
+      ahmedabad: "AMD",
+      jaipur: "JAI",
+      goa: "GOI",
+      panaji: "GOI",
+      lucknow: "LKO",
+      nagpur: "NAG",
+      indore: "IDR",
+      surat: "STV",
+      patna: "PAT",
+      bhopal: "BHO",
+      coimbatore: "CJB",
+      kochi: "COK",
+      ernakulam: "COK",
+      guwahati: "GAU",
+      chandigarh: "IXC",
+      dehradun: "DED",
+      amritsar: "ATQ",
+      varanasi: "VNS",
+      srinagar: "SXR",
+      trivandrum: "TRV",
+      thiruvananthapuram: "TRV",
+      vizag: "VTZ",
+      visakhapatnam: "VTZ",
+      madurai: "IXM",
+      udaipur: "UDR",
+      jodhpur: "JDH",
+      ranchi: "IXR",
+      raipur: "RPR",
+      bhubaneswar: "BBI",
+      imphal: "IMF",
+      leh: "IXL",
+      bagdogra: "IXB",
+      aurangabad: "IXU",
+      mangalore: "IXE",
+      vadodara: "BDQ",
+      rajkot: "RAJ",
+      jammu: "IXJ",
+      allahabad: "IXD",
+      prayagraj: "IXD",
+      gorakhpur: "GOP",
+      jharsuguda: "JRG",
+      dibrugarh: "DIB",
+      tezpur: "TEZ",
+      kanpur: "KNU",
+      mysore: "MYQ",
+      hubli: "HBX",
+      belgaum: "IXG",
+      kolhapur: "KLH",
+      nashik: "ISK",
+      shirdi: "SAG",
+      tirupati: "TIR"
+    };
+    TTL_OK = 24 * 36e5;
+    TTL_MISS = 10 * 6e4;
+    cache3 = null;
+    missCache = /* @__PURE__ */ new Map();
+    norm2 = (s) => s.toLowerCase().replace(/[’'’.]/g, "").replace(/\s+/g, " ").trim();
+  }
+});
+
+// server/workers/parsers/mmtListing.ts
+function mmtCityCode(city) {
+  const key = String(city || "").toLowerCase().trim();
+  if (!key) return null;
+  const code = IATA[key];
+  if (!code || code.length !== 3) return null;
+  return `CT${code.toUpperCase()}`;
+}
+function mmtListingUrl(city, checkin, checkout) {
+  const code = mmtCityCode(city);
+  const ci = mmtDate(checkin);
+  const co = mmtDate(checkout);
+  if (!code || !ci || !co) return null;
+  return `https://www.makemytrip.com/hotels/hotel-listing/?checkin=${ci}&checkout=${co}&city=${code}&country=IN&locusId=${code}&locusType=city&roomStayQualifier=2e0e`;
+}
+function parseMmtHotelListing(html) {
+  const body = String(html || "");
+  if (body.length < 5e3) return [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const starts = [];
+  const marker = /<div[^>]*class="[^"]*\blistingRow\b[^"]*"/g;
+  let m;
+  while (m = marker.exec(body)) starts.push(m.index);
+  for (let i = 0; i < starts.length; i++) {
+    const card = body.slice(starts[i], starts[i + 1] ?? Math.min(body.length, starts[i] + 6e4));
+    const candidates = Array.from(card.matchAll(/<p[^>]*class="[^"]*\blatoBlack\b[^"]*\bfont20\b[^"]*"[^>]*>([\s\S]*?)<\/p>/g)).map((mm) => stripTags(mm[1] || ""));
+    const name = candidates.find((t) => t.length >= 3 && t.length <= 90 && !/property is part of|spotlight program|advertisement fee|taxes & fees/i.test(t)) || "";
+    const shown = /id="hlistpg_hotel_shown_price"[^>]*>\s*(?:₹|&#8377;|Rs\.?)\s*([\d,]+)/.exec(card);
+    if (!name || !shown) continue;
+    const price2 = num5(shown[1]);
+    if (!price2) continue;
+    const taxes = num5((/\+\s*(?:₹|&#8377;|Rs\.?)\s*([\d,]+)\s*taxes/i.exec(card) || [])[1]) || 0;
+    const starRaw = num5((/\b([1-5](?:\.\d)?)\s*[- ]?star/i.exec(stripTags(card).slice(0, 400)) || [])[1]);
+    const url = (/https:\/\/www\.makemytrip\.com\/hotels\/[a-z0-9_%-]+-details-[a-z0-9-]+\.html/i.exec(card) || [])[0] || null;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, price: price2, taxes, total: price2 + taxes, star: starRaw || null, url });
+  }
+  return out;
+}
+function mmtPageMatchesStay(html, checkin, checkout) {
+  const ci = mmtDate(checkin);
+  const co = mmtDate(checkout);
+  const body = String(html || "");
+  if (!ci || !co || body.length < 5e3) return false;
+  return body.includes(ci) && body.includes(co);
+}
+var mmtDate, num5, stripTags;
+var init_mmtListing = __esm({
+  "server/workers/parsers/mmtListing.ts"() {
+    init_airportLookup();
+    mmtDate = (iso3) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso3 || ""));
+      return m ? `${m[2]}${m[3]}${m[1]}` : "";
+    };
+    num5 = (raw) => {
+      const n = Number(String(raw || "").replace(/[^0-9.]/g, ""));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    stripTags = (s) => s.replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/\s+/g, " ").trim();
+  }
+});
+
+// server/sources/rescueFetch.ts
+function scraperKey() {
+  return String(process.env.SCRAPER_API_KEY || "").trim();
+}
+function readerEnabled() {
+  return String(process.env.T1S_READER_RESCUE || "1").trim() !== "0";
+}
+function rescueRungs() {
+  const out = ["direct"];
+  if (relayConfigured()) out.push("relay");
+  if (scraperKey()) out.push("scraperapi");
+  if (readerEnabled()) out.push("reader");
+  return out;
+}
+function rescueOrderFor(host) {
+  const enabled = rescueRungs();
+  const learned = _order.get(host) || [];
+  const merged = [...learned.filter((v) => enabled.includes(v)), ...enabled.filter((v) => !learned.includes(v))];
+  return merged.length ? merged : ["direct"];
+}
+async function ensureScoreboard() {
+  if (schemaReady) return;
+  schemaReady = true;
+  try {
+    await getStore().execute(`
+      CREATE TABLE IF NOT EXISTS rescue_scoreboard (
+        host VARCHAR(190) NOT NULL,
+        via VARCHAR(20) NOT NULL,
+        wins INT NOT NULL DEFAULT 0,
+        failures INT NOT NULL DEFAULT 0,
+        last_ok_at DATETIME NULL,
+        PRIMARY KEY (host, via)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  } catch {
+    schemaReady = false;
+  }
+}
+async function learn(host, via) {
+  await ensureScoreboard();
+  const current = rescueOrderFor(host);
+  const next = [via, ...current.filter((v) => v !== via)];
+  _order.set(host, next);
+  try {
+    await getStore().execute(
+      `INSERT INTO rescue_scoreboard (host, via, wins, failures, last_ok_at)
+       VALUES (?, ?, 1, 0, NOW())
+       ON DUPLICATE KEY UPDATE wins = wins + 1, last_ok_at = NOW()`,
+      [host, via]
+    );
+  } catch {
+  }
+}
+async function penalise(host, via) {
+  await ensureScoreboard();
+  try {
+    await getStore().execute(
+      `INSERT INTO rescue_scoreboard (host, via, wins, failures, last_ok_at)
+       VALUES (?, ?, 0, 1, NULL)
+       ON DUPLICATE KEY UPDATE failures = failures + 1`,
+      [host, via]
+    );
+  } catch {
+  }
+}
+function hostOf(url) {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+async function viaDirect(url, timeoutMs) {
+  const res = await cffiFetch(url, { impersonate: "chrome", timeoutMs });
+  return { status: Number(res.status || 0), body: String(res.body || "") };
+}
+async function viaRelay(url, timeoutMs) {
+  const r = await edgeRelayFetch(url, { timeoutMs });
+  if (!r) throw new Error("relay unavailable");
+  return { status: Number(r.status || 0), body: String(r.body || "") };
+}
+async function viaScraperApi(url, timeoutMs, render = false) {
+  const key = scraperKey();
+  if (!key) throw new Error("SCRAPER_API_KEY missing");
+  const target = `https://api.scraperapi.com/?api_key=${encodeURIComponent(key)}&country_code=in${render ? "&render=true" : ""}&url=${encodeURIComponent(url)}`;
+  const res = await cffiFetch(target, { impersonate: "chrome", timeoutMs: Math.max(timeoutMs, 45e3) });
+  return { status: Number(res.status || 0), body: String(res.body || "") };
+}
+async function viaReader(url, timeoutMs) {
+  const res = await cffiFetch(`https://r.jina.ai/${url}`, {
+    impersonate: "chrome",
+    timeoutMs: Math.max(timeoutMs, 3e4)
+  });
+  return { status: Number(res.status || 0), body: String(res.body || "") };
+}
+function looksUsable(status, body, minHtmlBytes, validate) {
+  if (!status || status >= 400) return { ok: false, reason: `HTTP ${status}` };
+  if (status === 202) return { ok: false, reason: "HTTP 202 bot wall" };
+  if (!body.trim()) return { ok: false, reason: "empty body" };
+  if (isGatedResponse(status, body, { minHtmlBytes })) return { ok: false, reason: "gated/blocks page" };
+  if (body.length < minHtmlBytes) return { ok: false, reason: `short body (${body.length}b)` };
+  if (validate && !validate(body, status)) return { ok: false, reason: "validator rejected body" };
+  return { ok: true };
+}
+async function rescueFetch(url, opts = {}) {
+  const host = opts.host || hostOf(url);
+  const minHtmlBytes = opts.minHtmlBytes ?? 2e3;
+  const timeoutMs = opts.timeoutMs ?? 25e3;
+  const maxRungs = Math.max(1, opts.maxRungs ?? 4);
+  const order = rescueOrderFor(host).slice(0, maxRungs);
+  if (opts.render && order.includes("scraperapi")) {
+    order.sort((a, b) => a === "scraperapi" ? -1 : b === "scraperapi" ? 1 : 0);
+  }
+  const attempts = [];
+  let best = { status: 0, body: "" };
+  for (const via of order) {
+    const started3 = Date.now();
+    try {
+      const res = via === "direct" ? await viaDirect(url, timeoutMs) : via === "relay" ? await viaRelay(url, timeoutMs) : via === "scraperapi" ? await viaScraperApi(url, timeoutMs, opts.render) : await viaReader(url, timeoutMs);
+      const verdict = looksUsable(res.status, res.body, minHtmlBytes, opts.validate);
+      if (res.body.length > best.body.length) best = res;
+      attempts.push({ via, ok: verdict.ok, status: res.status, bytes: res.body.length, reason: verdict.reason, ms: Date.now() - started3 });
+      if (verdict.ok) {
+        if (via !== "direct") await learn(host, via);
+        log.info("Rescue", `${host} answered via ${via}`, { bytes: res.body.length, ms: Date.now() - started3 });
+        return { status: res.status, body: res.body, via, attempts, exhausted: false };
+      }
+      if (via !== "direct") await penalise(host, via);
+    } catch (e2) {
+      attempts.push({ via, ok: false, status: 0, bytes: 0, reason: String(e2?.message || e2).slice(0, 120), ms: Date.now() - started3 });
+      if (via !== "direct") await penalise(host, via);
+    }
+  }
+  return { status: best.status, body: best.body, via: "none", attempts, exhausted: true };
+}
+function describeRescue(r) {
+  const tried = r.attempts.map((a) => `${a.via}:${a.ok ? "ok" : a.reason || "fail"}`).join("; ");
+  return r.exhausted ? `all transports failed (${tried})` : `via ${r.via} (${tried})`;
+}
+var _order, schemaReady;
+var init_rescueFetch = __esm({
+  "server/sources/rescueFetch.ts"() {
+    init_curlCffiFetch();
+    init_edgeRelay();
+    init_db();
+    init_logger();
+    _order = /* @__PURE__ */ new Map();
+    schemaReady = false;
+  }
+});
+
 // server/workers/parsers/bookingDemand.ts
 function bookingDemandConfig() {
   const affiliateId = (process.env.BOOKING_DEMAND_AFFILIATE_ID || "").trim();
@@ -6675,7 +7123,7 @@ var init_apifySource = __esm({
 
 // server/common/cityAlias.ts
 function cityVariants(city) {
-  const n = norm2(city);
+  const n = norm3(city);
   const out = [n];
   for (const g of ALIAS_GROUPS) if (g.includes(n)) {
     for (const a of g) if (!out.includes(a)) out.push(a);
@@ -6686,7 +7134,7 @@ function titleCity(v) {
   return v.split(" ").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 function canonicalCity(raw) {
-  const n = norm2(raw || "");
+  const n = norm3(raw || "");
   if (!n) return "";
   if (KNOWN_CITIES.has(n)) return titleCity(n);
   const tokens3 = n.split(" ").filter((t) => t && !NOISE_TOKENS.has(t));
@@ -6699,7 +7147,7 @@ function canonicalCity(raw) {
   }
   return titleCity(tokens3[tokens3.length - 1]);
 }
-var ALIAS_GROUPS, norm2, slugOf, NOISE_TOKENS, KNOWN_CITIES;
+var ALIAS_GROUPS, norm3, slugOf, NOISE_TOKENS, KNOWN_CITIES;
 var init_cityAlias = __esm({
   "server/common/cityAlias.ts"() {
     ALIAS_GROUPS = [
@@ -6724,8 +7172,8 @@ var init_cityAlias = __esm({
       ["panaji", "panjim", "goa"],
       ["ayodhya", "faizabad"]
     ];
-    norm2 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-    slugOf = (s) => norm2(s).replace(/\s+/g, "-");
+    norm3 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    slugOf = (s) => norm3(s).replace(/\s+/g, "-");
     NOISE_TOKENS = /* @__PURE__ */ new Set([
       "tahsil",
       "tehsil",
@@ -7053,7 +7501,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num12 = (x) => {
+  const num13 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -7074,17 +7522,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num12(rating.value),
-      ratingCount: num12(rating.count),
-      pricePerNight: num12(pricing.bookingPrice),
-      tax: num12(tax.total_tax),
-      priceInclusive: num12(tax.final_price_with_tax),
-      slashedPrice: num12(pricing.slashedPrice),
-      discountPercentage: num12(pricing.discountPercentage),
+      rating: num13(rating.value),
+      ratingCount: num13(rating.count),
+      pricePerNight: num13(pricing.bookingPrice),
+      tax: num13(tax.total_tax),
+      priceInclusive: num13(tax.final_price_with_tax),
+      slashedPrice: num13(pricing.slashedPrice),
+      discountPercentage: num13(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num12(geo.lat ?? geo.latitude),
-      lon: num12(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num13(geo.lat ?? geo.latitude),
+      lon: num13(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -7160,20 +7608,20 @@ function parseYatraHotels(body) {
       id: String(h.id ?? ""),
       name: String(h.n ?? h.orgName ?? "").trim(),
       slug: typeof h.hsk === "string" ? h.hsk : null,
-      rating: num5(h?.gr?.rating),
-      reviews: num5(h?.gr?.reviews),
+      rating: num6(h?.gr?.rating),
+      reviews: num6(h?.gr?.reviews),
       city: typeof h?.loc?.c === "string" ? h.loc.c : null,
       area: typeof h?.loc?.a === "string" ? h.loc.a : null,
-      lat: num5(h?.loc?.la),
-      lon: num5(h?.loc?.lo),
+      lat: num6(h?.loc?.la),
+      lon: num6(h?.loc?.lo),
       imageUrl: typeof h?.cldImage?.url === "string" ? h.cldImage.url : null,
       categories: Array.isArray(h.ctg) ? h.ctg.filter((x) => typeof x === "string") : [],
-      rackRate: num5(h.r),
-      price: num5(rate.price),
-      basePrice: num5(rate.basePrice),
+      rackRate: num6(h.r),
+      price: num6(rate.price),
+      basePrice: num6(rate.basePrice),
       roomName: typeof rate.roomName === "string" ? rate.roomName : null,
       bookable: rate.bookable !== false,
-      roomsLeft: num5(rate.roomsLeft),
+      roomsLeft: num6(rate.roomsLeft),
       freeCancel: Boolean(rate.freeCancel)
     });
   }
@@ -7232,14 +7680,14 @@ function ddmmyyyy2(iso3) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso3 || "");
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
-var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num5;
+var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num6;
 var init_yatraHotels = __esm({
   "server/workers/parsers/yatraHotels.ts"() {
     init_contract();
     YATRA_HOTELS_API = "https://hotel.yatra.com/tgapi/hotels/v1/pageSearch";
     YATRA_HOTELS_API_KEY = "JN9aWyj7hJ1ZrExC7Ozo";
     YATRA_SRP = "https://hotel.yatra.com/nextui/hotel-search/dom/search";
-    num5 = (x) => {
+    num6 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -7294,13 +7742,13 @@ function parseEmtHotels(items, links) {
     out.push({
       id,
       name: it.name.trim(),
-      starRating: num6(it?.starRating?.ratingValue),
+      starRating: num7(it?.starRating?.ratingValue),
       area: area?.trim() || null,
       locality: localityPart?.trim() || (typeof addr.addressLocality === "string" ? addr.addressLocality : null),
       region: typeof addr.addressRegion === "string" ? addr.addressRegion : null,
-      latitude: num6(it?.geo?.latitude),
-      longitude: num6(it?.geo?.longitude),
-      price: num6(it.priceRange),
+      latitude: num7(it?.geo?.latitude),
+      longitude: num7(it?.geo?.longitude),
+      price: num7(it.priceRange),
       imageUrl: image,
       deeplink: id && links.get(id) || null,
       checkInTime: typeof it.checkInTime === "string" ? it.checkInTime : null,
@@ -7350,13 +7798,13 @@ function ddmmyyyyDash(iso3) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso3 || "");
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
-var EMT_HOTELS_WEB, num6;
+var EMT_HOTELS_WEB, num7;
 var init_emtHotels = __esm({
   "server/workers/parsers/emtHotels.ts"() {
     init_contract();
     init_cityAlias();
     EMT_HOTELS_WEB = "https://www.easemytrip.com";
-    num6 = (x) => {
+    num7 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -7400,16 +7848,16 @@ function parseSaffronVillas(data) {
       id: String(v.id ?? ""),
       title: v.title.trim(),
       location: typeof v.location === "string" ? v.location : null,
-      latitude: num7(v.latitude),
-      longitude: num7(v.longitude),
-      pricePerNight: num7(v.price_per_night),
-      perNightAfterDiscount: num7(v.per_night_price_after_discount),
-      totalWithTax: num7(v.total_amount_with_tax),
-      baseWithTax: num7(v.base_price_with_tax),
-      rating: num7(v.rating),
-      reviews: num7(v.total_reviews),
-      capacity: num7(v.max_capacity ?? v.capacity),
-      bedrooms: num7(v.bedrooms),
+      latitude: num8(v.latitude),
+      longitude: num8(v.longitude),
+      pricePerNight: num8(v.price_per_night),
+      perNightAfterDiscount: num8(v.per_night_price_after_discount),
+      totalWithTax: num8(v.total_amount_with_tax),
+      baseWithTax: num8(v.base_price_with_tax),
+      rating: num8(v.rating),
+      reviews: num8(v.total_reviews),
+      capacity: num8(v.max_capacity ?? v.capacity),
+      bedrooms: num8(v.bedrooms),
       signature: typeof v.signature === "string" ? v.signature : null,
       available: v.is_available !== false,
       imageIds: Array.isArray(v.images) ? v.images.filter((x) => typeof x === "string").slice(0, 6) : [],
@@ -7455,14 +7903,14 @@ function parseSaffronOffers(villas, source, city) {
   }
   return out;
 }
-var SAFFRON_API, SAFFRON_IMG_BASE, SAFFRON_WEB, num7;
+var SAFFRON_API, SAFFRON_IMG_BASE, SAFFRON_WEB, num8;
 var init_saffronStays = __esm({
   "server/workers/parsers/saffronStays.ts"() {
     init_contract();
     SAFFRON_API = "https://ecapi4.saffronstays.com/api/search-advance";
     SAFFRON_IMG_BASE = "https://ik.imagekit.io/5tgxhsqev/saffronstays-media";
     SAFFRON_WEB = "https://www.saffronstays.com";
-    num7 = (x) => {
+    num8 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -7907,7 +8355,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${site} GraphQL returned no priced LodgingCards for "${city}"`);
   return items;
 }
-var cleartripArtDeadUntil, OYO_WEB_URL, ddmmyyyy3, agodaCityIdCache, hotelsWorker;
+var cleartripArtDeadUntil, OYO_WEB_URL, ddmmyyyy3, agodaCityIdCache, MMT_RENDER_TTL_MS, mmtRenderCache, hotelsWorker;
 var init_hotels = __esm({
   "server/workers/verticals/hotels.ts"() {
     init_verticalWorker();
@@ -7924,6 +8372,8 @@ var init_hotels = __esm({
     init_goibiboHotels();
     init_goibiboHotelSsr();
     init_mmtHotelLanding();
+    init_mmtListing();
+    init_rescueFetch();
     init_curlCffiFetch();
     init_contract();
     init_httpClient();
@@ -7942,6 +8392,8 @@ var init_hotels = __esm({
       return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
     };
     agodaCityIdCache = /* @__PURE__ */ new Map();
+    MMT_RENDER_TTL_MS = 45 * 6e4;
+    mmtRenderCache = /* @__PURE__ */ new Map();
     hotelsWorker = {
       vertical: "hotels",
       tasks: [
@@ -7952,10 +8404,64 @@ var init_hotels = __esm({
           // unavailable) and never fabricate prices.
           sourceId: "w_hotels_mmt",
           priority: 15,
-          timeoutMs: 4e4,
+          // The browser rung needs headroom: a rendered MakeMyTrip listing takes 15-40s.
+          timeoutMs: 75e3,
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            const renderUrl = mmtListingUrl(city, checkin, checkout);
+            let renderErr = null;
+            if (renderUrl && String(process.env.T1S_MMT_RENDER || "1").trim() !== "0") {
+              const hit = mmtRenderCache.get(`${city.toLowerCase()}|${checkin}|${checkout}`);
+              const cached3 = hit && Date.now() - hit.at < MMT_RENDER_TTL_MS ? hit.items : null;
+              if (cached3 && cached3.length) return cached3;
+              const started3 = Date.now();
+              try {
+                let res = null;
+                let rows = [];
+                for (let attempt = 0; attempt < 2 && !rows.length; attempt++) {
+                  if (attempt) await new Promise((r) => setTimeout(r, 3e3));
+                  res = await rescueFetch(renderUrl, {
+                    render: true,
+                    maxRungs: 2,
+                    timeoutMs: 55e3,
+                    minHtmlBytes: 2e4,
+                    validate: (body) => parseMmtHotelListing(body).length > 0
+                  });
+                  rows = parseMmtHotelListing(String(res?.body || ""));
+                }
+                if (rows.length && mmtPageMatchesStay(String(res?.body || ""), checkin, checkout)) {
+                  const offers = rows.sort((a, b) => a.total - b.total).slice(0, 30).map((h) => newRawItem(ctx.source, {
+                    title: h.name,
+                    seller: "MakeMyTrip",
+                    sellerUrl: renderUrl,
+                    // redirect only to the site that owns the price
+                    currency: "INR",
+                    price: h.total,
+                    // printed room price + the taxes & fees MMT prints under it
+                    attributes: {
+                      city,
+                      check_in: checkin,
+                      check_out: checkout,
+                      price_basis: `room for ${checkin} to ${checkout}: Rs ${h.price} + Rs ${h.taxes} taxes & fees`,
+                      star_rating: h.star ? String(h.star) : "",
+                      data_note: "Live MakeMyTrip dated hotel listing (server-rendered cards)"
+                    },
+                    evidence: {
+                      sourceUrl: renderUrl,
+                      extractedFields: ["title", "price", "taxes", "check_in", "check_out"]
+                    }
+                  }));
+                  mmtRenderCache.set(`${city.toLowerCase()}|${checkin}|${checkout}`, { at: Date.now(), items: offers });
+                  log.info("MMT render", `${rows.length} priced hotels for ${city} ${checkin}`, { ms: Date.now() - started3, via: res?.via });
+                  return offers;
+                }
+                renderErr = new AcquisitionError("EMPTY_RESPONSE", `MakeMyTrip rendered listing carried no priced cards for "${city}" (${String(res?.body || "").length}B via ${res?.via || "none"})`);
+              } catch (e2) {
+                renderErr = new AcquisitionError("ACCESS_CHALLENGE", `MakeMyTrip rendered listing unavailable: ${String(e2?.message || e2).slice(0, 90)}`);
+              }
+            }
             const slug5 = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
             const mmtChromeHeaders = {
               "sec-ch-ua": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
@@ -8026,7 +8532,7 @@ var init_hotels = __esm({
               }
               lastErr = new AcquisitionError("EMPTY_RESPONSE", "MakeMyTrip hotel page reached but $hotelReducerResponse carried no priced hotels (gate holds for this IP)");
             }
-            throw lastErr || new AcquisitionError("NOT_FOUND", `MakeMyTrip has no hotels page for "${city}"`, 404);
+            throw lastErr || renderErr || new AcquisitionError("NOT_FOUND", `MakeMyTrip has no hotels page for "${city}"`, 404);
           }
         },
         {
@@ -8894,153 +9400,6 @@ var init_ixigoFlights = __esm({
   }
 });
 
-// server/sources/rescueFetch.ts
-function scraperKey() {
-  return String(process.env.SCRAPER_API_KEY || "").trim();
-}
-function readerEnabled() {
-  return String(process.env.T1S_READER_RESCUE || "1").trim() !== "0";
-}
-function rescueRungs() {
-  const out = ["direct"];
-  if (relayConfigured()) out.push("relay");
-  if (scraperKey()) out.push("scraperapi");
-  if (readerEnabled()) out.push("reader");
-  return out;
-}
-function rescueOrderFor(host) {
-  const enabled = rescueRungs();
-  const learned = _order.get(host) || [];
-  const merged = [...learned.filter((v) => enabled.includes(v)), ...enabled.filter((v) => !learned.includes(v))];
-  return merged.length ? merged : ["direct"];
-}
-async function ensureScoreboard() {
-  if (schemaReady) return;
-  schemaReady = true;
-  try {
-    await getStore().execute(`
-      CREATE TABLE IF NOT EXISTS rescue_scoreboard (
-        host VARCHAR(190) NOT NULL,
-        via VARCHAR(20) NOT NULL,
-        wins INT NOT NULL DEFAULT 0,
-        failures INT NOT NULL DEFAULT 0,
-        last_ok_at DATETIME NULL,
-        PRIMARY KEY (host, via)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  } catch {
-    schemaReady = false;
-  }
-}
-async function learn(host, via) {
-  await ensureScoreboard();
-  const current = rescueOrderFor(host);
-  const next = [via, ...current.filter((v) => v !== via)];
-  _order.set(host, next);
-  try {
-    await getStore().execute(
-      `INSERT INTO rescue_scoreboard (host, via, wins, failures, last_ok_at)
-       VALUES (?, ?, 1, 0, NOW())
-       ON DUPLICATE KEY UPDATE wins = wins + 1, last_ok_at = NOW()`,
-      [host, via]
-    );
-  } catch {
-  }
-}
-async function penalise(host, via) {
-  await ensureScoreboard();
-  try {
-    await getStore().execute(
-      `INSERT INTO rescue_scoreboard (host, via, wins, failures, last_ok_at)
-       VALUES (?, ?, 0, 1, NULL)
-       ON DUPLICATE KEY UPDATE failures = failures + 1`,
-      [host, via]
-    );
-  } catch {
-  }
-}
-function hostOf(url) {
-  try {
-    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-async function viaDirect(url, timeoutMs) {
-  const res = await cffiFetch(url, { impersonate: "chrome", timeoutMs });
-  return { status: Number(res.status || 0), body: String(res.body || "") };
-}
-async function viaRelay(url, timeoutMs) {
-  const r = await edgeRelayFetch(url, { timeoutMs });
-  if (!r) throw new Error("relay unavailable");
-  return { status: Number(r.status || 0), body: String(r.body || "") };
-}
-async function viaScraperApi(url, timeoutMs) {
-  const key = scraperKey();
-  if (!key) throw new Error("SCRAPER_API_KEY missing");
-  const target = `https://api.scraperapi.com/?api_key=${encodeURIComponent(key)}&country_code=in&url=${encodeURIComponent(url)}`;
-  const res = await cffiFetch(target, { impersonate: "chrome", timeoutMs: Math.max(timeoutMs, 45e3) });
-  return { status: Number(res.status || 0), body: String(res.body || "") };
-}
-async function viaReader(url, timeoutMs) {
-  const res = await cffiFetch(`https://r.jina.ai/${url}`, {
-    impersonate: "chrome",
-    timeoutMs: Math.max(timeoutMs, 3e4)
-  });
-  return { status: Number(res.status || 0), body: String(res.body || "") };
-}
-function looksUsable(status, body, minHtmlBytes, validate) {
-  if (!status || status >= 400) return { ok: false, reason: `HTTP ${status}` };
-  if (status === 202) return { ok: false, reason: "HTTP 202 bot wall" };
-  if (!body.trim()) return { ok: false, reason: "empty body" };
-  if (isGatedResponse(status, body, { minHtmlBytes })) return { ok: false, reason: "gated/blocks page" };
-  if (body.length < minHtmlBytes) return { ok: false, reason: `short body (${body.length}b)` };
-  if (validate && !validate(body, status)) return { ok: false, reason: "validator rejected body" };
-  return { ok: true };
-}
-async function rescueFetch(url, opts = {}) {
-  const host = opts.host || hostOf(url);
-  const minHtmlBytes = opts.minHtmlBytes ?? 2e3;
-  const timeoutMs = opts.timeoutMs ?? 25e3;
-  const maxRungs = Math.max(1, opts.maxRungs ?? 4);
-  const order = rescueOrderFor(host).slice(0, maxRungs);
-  const attempts = [];
-  let best = { status: 0, body: "" };
-  for (const via of order) {
-    const started3 = Date.now();
-    try {
-      const res = via === "direct" ? await viaDirect(url, timeoutMs) : via === "relay" ? await viaRelay(url, timeoutMs) : via === "scraperapi" ? await viaScraperApi(url, timeoutMs) : await viaReader(url, timeoutMs);
-      const verdict = looksUsable(res.status, res.body, minHtmlBytes, opts.validate);
-      if (res.body.length > best.body.length) best = res;
-      attempts.push({ via, ok: verdict.ok, status: res.status, bytes: res.body.length, reason: verdict.reason, ms: Date.now() - started3 });
-      if (verdict.ok) {
-        if (via !== "direct") await learn(host, via);
-        log.info("Rescue", `${host} answered via ${via}`, { bytes: res.body.length, ms: Date.now() - started3 });
-        return { status: res.status, body: res.body, via, attempts, exhausted: false };
-      }
-      if (via !== "direct") await penalise(host, via);
-    } catch (e2) {
-      attempts.push({ via, ok: false, status: 0, bytes: 0, reason: String(e2?.message || e2).slice(0, 120), ms: Date.now() - started3 });
-      if (via !== "direct") await penalise(host, via);
-    }
-  }
-  return { status: best.status, body: best.body, via: "none", attempts, exhausted: true };
-}
-function describeRescue(r) {
-  const tried = r.attempts.map((a) => `${a.via}:${a.ok ? "ok" : a.reason || "fail"}`).join("; ");
-  return r.exhausted ? `all transports failed (${tried})` : `via ${r.via} (${tried})`;
-}
-var _order, schemaReady;
-var init_rescueFetch = __esm({
-  "server/sources/rescueFetch.ts"() {
-    init_curlCffiFetch();
-    init_edgeRelay();
-    init_db();
-    init_logger();
-    _order = /* @__PURE__ */ new Map();
-    schemaReady = false;
-  }
-});
-
 // server/workers/parsers/akasaIbe.ts
 function akasaConfigured() {
   return Boolean((process.env.AKASA_BEARER || "").trim());
@@ -9385,239 +9744,6 @@ var init_emtAirbus = __esm({
   }
 });
 
-// server/common/airportLookup.ts
-async function resolveAirport(city, codeHint) {
-  if (codeHint && /^[A-Za-z]{3}$/.test(codeHint)) return { code: codeHint.toUpperCase(), city, country: "" };
-  const s = IATA[city.toLowerCase().trim()];
-  if (s) return { code: s, city, country: "India" };
-  return cityToAirport(city);
-}
-async function loadAirports() {
-  if (cache3 && Date.now() - cache3.at < TTL_OK) return cache3.byCity;
-  const res = await fetch(URL_DAT, { signal: AbortSignal.timeout(15e3) });
-  if (!res.ok) throw new Error(`airports.dat HTTP ${res.status}`);
-  const text = await res.text();
-  const byCity = /* @__PURE__ */ new Map();
-  const splitCsv2 = (line) => {
-    const out = [];
-    let cur = "";
-    let q3 = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (q3 && line[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else q3 = !q3;
-      } else if (ch === "," && !q3) {
-        out.push(cur);
-        cur = "";
-      } else cur += ch;
-    }
-    out.push(cur);
-    return out;
-  };
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    const f = splitCsv2(line);
-    const iata = (f[4] || "").trim();
-    if (!iata || iata === "\\N" || !/^[A-Z]{3}$/.test(iata)) continue;
-    const city = (f[2] || "").trim();
-    const country = (f[3] || "").trim();
-    if (!city || !country) continue;
-    const ap = { iata, city, country, name: (f[1] || "").trim() };
-    const key = norm3(city);
-    const bucket = byCity.get(key);
-    if (bucket) bucket.push(ap);
-    else byCity.set(key, [ap]);
-  }
-  cache3 = { at: Date.now(), byCity };
-  return byCity;
-}
-async function cityToAirport(city) {
-  const key = norm3(city);
-  if (!key) return { code: null, city, country: "" };
-  const missAt = missCache.get(key);
-  if (missAt && Date.now() - missAt < TTL_MISS) return { code: null, city, country: "" };
-  try {
-    const byCity = await loadAirports();
-    let bucket = byCity.get(key);
-    if (!bucket) {
-      for (const [ck, aps] of byCity) {
-        if (aps.some((a) => norm3(a.name).includes(key))) {
-          bucket = aps;
-          break;
-        }
-      }
-    }
-    if (!bucket || bucket.length === 0) {
-      missCache.set(key, Date.now());
-      return { code: null, city, country: "" };
-    }
-    const ranked = bucket.map((a) => ({ a, rank: PREF_RANK.has(a.iata) ? PREF_RANK.get(a.iata) : 999 })).sort((x, y) => x.rank - y.rank);
-    const preferred = ranked[0]?.a || bucket[0];
-    return { code: preferred.iata, city: preferred.city, country: preferred.country };
-  } catch (e2) {
-    log.warn("AirportLookup", `airports.dat unavailable: ${String(e2?.message || e2)}`);
-    return { code: null, city, country: "" };
-  }
-}
-var URL_DAT, PREFERRED, PREF_RANK, IATA, TTL_OK, TTL_MISS, cache3, missCache, norm3;
-var init_airportLookup = __esm({
-  "server/common/airportLookup.ts"() {
-    init_logger();
-    URL_DAT = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat";
-    PREFERRED = [
-      "LHR",
-      "JFK",
-      "EWR",
-      "LGA",
-      "LGW",
-      "DXB",
-      "SIN",
-      "CDG",
-      "AMS",
-      "FRA",
-      "IST",
-      "HND",
-      "ICN",
-      "PEK",
-      "PVG",
-      "SYD",
-      "DOH",
-      "AUH",
-      "BKK",
-      "MAD",
-      "FCO",
-      "MUC",
-      "YYZ",
-      "GRU",
-      "MEX",
-      "JNB",
-      "CAI",
-      "KUL",
-      "CGK",
-      "SVO",
-      "MOW",
-      "LAX",
-      "SFO",
-      "ORD",
-      "ATL",
-      "DFW",
-      "MIA",
-      "HKG",
-      "TPE",
-      "NRT",
-      "AKL",
-      "MEL",
-      "ZRH",
-      "VIE",
-      "ARN",
-      "OSL",
-      "HEL",
-      "DUB",
-      "LIS",
-      "ATH",
-      "WAW",
-      "PRG",
-      "OTP",
-      "SOF",
-      "BEY",
-      "AMM",
-      "TLV",
-      "KHI",
-      "LHE",
-      "ISB",
-      "DAC",
-      "KTM",
-      "CMB",
-      "ALA",
-      "TAS",
-      "TBS",
-      "RUH",
-      "JED",
-      "MLE",
-      "BOM",
-      "DEL",
-      "BLR",
-      "MAA",
-      "SHJ",
-      "DWC",
-      "LGW",
-      "STN"
-    ];
-    PREF_RANK = new Map(PREFERRED.map((c, i) => [c, i]));
-    IATA = {
-      delhi: "DEL",
-      "new delhi": "DEL",
-      mumbai: "BOM",
-      bombay: "BOM",
-      bangalore: "BLR",
-      bengaluru: "BLR",
-      hyderabad: "HYD",
-      chennai: "MAA",
-      kolkata: "CCU",
-      pune: "PNQ",
-      ahmedabad: "AMD",
-      jaipur: "JAI",
-      goa: "GOI",
-      panaji: "GOI",
-      lucknow: "LKO",
-      nagpur: "NAG",
-      indore: "IDR",
-      surat: "STV",
-      patna: "PAT",
-      bhopal: "BHO",
-      coimbatore: "CJB",
-      kochi: "COK",
-      ernakulam: "COK",
-      guwahati: "GAU",
-      chandigarh: "IXC",
-      dehradun: "DED",
-      amritsar: "ATQ",
-      varanasi: "VNS",
-      srinagar: "SXR",
-      trivandrum: "TRV",
-      thiruvananthapuram: "TRV",
-      vizag: "VTZ",
-      visakhapatnam: "VTZ",
-      madurai: "IXM",
-      udaipur: "UDR",
-      jodhpur: "JDH",
-      ranchi: "IXR",
-      raipur: "RPR",
-      bhubaneswar: "BBI",
-      imphal: "IMF",
-      leh: "IXL",
-      bagdogra: "IXB",
-      aurangabad: "IXU",
-      mangalore: "IXE",
-      vadodara: "BDQ",
-      rajkot: "RAJ",
-      jammu: "IXJ",
-      allahabad: "IXD",
-      prayagraj: "IXD",
-      gorakhpur: "GOP",
-      jharsuguda: "JRG",
-      dibrugarh: "DIB",
-      tezpur: "TEZ",
-      kanpur: "KNU",
-      mysore: "MYQ",
-      hubli: "HBX",
-      belgaum: "IXG",
-      kolhapur: "KLH",
-      nashik: "ISK",
-      shirdi: "SAG",
-      tirupati: "TIR"
-    };
-    TTL_OK = 24 * 36e5;
-    TTL_MISS = 10 * 6e4;
-    cache3 = null;
-    missCache = /* @__PURE__ */ new Map();
-    norm3 = (s) => s.toLowerCase().replace(/[’'’.]/g, "").replace(/\s+/g, " ").trim();
-  }
-});
-
 // server/workers/parsers/kiwiFlights.ts
 async function kiwiSearch(fromIata, toIata, dateIso) {
   const res = await cffiFetch(GRAPHQL_URL, {
@@ -9773,13 +9899,13 @@ function fillMeta(o, f) {
     if (typeof v === "string") f.duration = v;
   });
   if (f.stops === void 0) grab(["stop", "stops", "numberOfStops", "stopCount"], (v) => {
-    f.stops = num8(v);
+    f.stops = num9(v);
   });
   if (!f.cabin) grab(["cabin", "cabinClass", "class", "fareFamily"], (v) => {
     if (typeof v === "string") f.cabin = v;
   });
   if (f.seatsLeft === void 0) grab(["seatsLeft", "seatsAvailable", "availableSeats", "seatLeft"], (v) => {
-    const n = num8(v);
+    const n = num9(v);
     f.seatsLeft = n !== void 0 ? n : typeof v === "string" ? v : void 0;
   });
   const stat = (keys) => {
@@ -9821,7 +9947,7 @@ function collectFlights(root) {
       fillMeta(o, f);
       mine.push(f);
     }
-    const fare = num8(pick2(o, FARE_KEYS));
+    const fare = num9(pick2(o, FARE_KEYS));
     if (fare !== void 0 && fare > 0) {
       const first = mine.find((f) => f.fare === void 0);
       if (first) {
@@ -9985,12 +10111,12 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
     }
   })];
 }
-var FLIGHT_NO, num8, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
+var FLIGHT_NO, num9, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
 var init_indigoFlights = __esm({
   "server/workers/parsers/indigoFlights.ts"() {
     init_contract();
     FLIGHT_NO = /\b6E[-\s]*(\d{2,4})\b/i;
-    num8 = (v) => {
+    num9 = (v) => {
       if (typeof v === "number" && Number.isFinite(v)) return v;
       if (typeof v === "string" && v.trim() !== "") {
         const n = Number(v.replace(/[₹,\s]/g, ""));
@@ -10379,8 +10505,8 @@ function etraveliFlightsItems(flights, brand, source, route2, fromCode, toCode, 
     const carrier = String(segs[0].marketingCarrier?.name || carrierCode || brand.brand);
     const flightNos = segs.map((s) => {
       const code = String(s.marketingCarrier?.code || "");
-      const num12 = String(s.flightNumber || "");
-      return num12.startsWith(code) && code ? num12 : `${code}${num12}`;
+      const num13 = String(s.flightNumber || "");
+      return num13.startsWith(code) && code ? num13 : `${code}${num13}`;
     }).join("-");
     const depTime = String(segs[0].departuredAt || "").slice(11, 16);
     const arrTime = String(segs[segs.length - 1].arrivedAt || "").slice(11, 16);
@@ -11287,7 +11413,7 @@ function goibiboRouteUrl(fromCity, toCity) {
   };
   return `https://www.goibibo.com/flights/${slug5(fromCity)}-to-${slug5(toCity)}-flights/`;
 }
-function stripTags(s) {
+function stripTags2(s) {
   return String(s).replace(/<[^>]*>/g, "").trim();
 }
 function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
@@ -11334,8 +11460,8 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
     const lastSeg = jm[lastKey];
     if (!firstSeg) continue;
     const stops = legs2.length - 1;
-    const name = stripTags(String(j.simpleAirlineHeading?.nm || "")) || EMT_AIRLINES[String(j.airlineCodes?.[0] || "")]?.name || "Flight";
-    const flightNo2 = stripTags(String(j.flightNumber || j.simpleAirlineHeading?.cd || "")).slice(0, 40);
+    const name = stripTags2(String(j.simpleAirlineHeading?.nm || "")) || EMT_AIRLINES[String(j.airlineCodes?.[0] || "")]?.name || "Flight";
+    const flightNo2 = stripTags2(String(j.flightNumber || j.simpleAirlineHeading?.cd || "")).slice(0, 40);
     const depT = String(firstSeg.depTime || "");
     const arrT = String(lastSeg?.arrTime || "");
     const routeLabel = `${fromCity} \u2192 ${toCity}`;
@@ -12051,9 +12177,9 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     const last = legs2[legs2.length - 1];
     const depTime = localHm2(first?.origin?.departureLocalTime);
     const arrTime = localHm2(last?.destination?.arrivalLocalTime);
-    const num12 = String(first?.flightNumber || "").trim();
+    const num13 = String(first?.flightNumber || "").trim();
     const carrier = String(first?.carrierCode || "AI");
-    if (!depTime || !arrTime || !num12) continue;
+    if (!depTime || !arrTime || !num13) continue;
     const validity = first?.validityPeriod || {};
     const starts = String(validity.start || "").slice(0, 10);
     const ends = String(validity.end || "").slice(0, 10);
@@ -12066,7 +12192,7 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     }
     const durSecs = Number(entry?.duration ?? first?.flightDuration);
     out.push({
-      flightNo: `${carrier}${num12}`,
+      flightNo: `${carrier}${num13}`,
       dateIso: wantDateIso,
       depTime,
       arrTime,
@@ -20299,14 +20425,14 @@ function cabAppOpenUrl(links, offerId) {
   if (offerId) q3.set("o", String(offerId));
   return `/api/app-open?${q3.toString()}`;
 }
-var num9, ok, enc, CAB_APP_SCHEMES;
+var num10, ok, enc, CAB_APP_SCHEMES;
 var init_cabLinks = __esm({
   "server/affiliate/cabLinks.ts"() {
-    num9 = (n) => {
+    num10 = (n) => {
       const v = Number(n);
       return Number.isFinite(v) ? v : null;
     };
-    ok = (p) => !!p && num9(p.lat) !== null && num9(p.lng) !== null;
+    ok = (p) => !!p && num10(p.lat) !== null && num10(p.lng) !== null;
     enc = encodeURIComponent;
     CAB_APP_SCHEMES = ["uber", "olacabs", "rapido", "indrive", "meru"];
   }
@@ -25190,9 +25316,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num10(p.pricing?.discount?.prim_price?.sp);
+      const sp = num11(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num10(p.pricing?.discount?.mrp);
+      const mrp = num11(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -25228,11 +25354,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num10;
+var num11;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num10 = (v) => {
+    num11 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -27581,7 +27707,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num12 = (key) => {
+  const num13 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -27592,8 +27718,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num12("servicecount")) || 0,
-    operators: field("operators") || num12("operators") || "",
+    servicecount: Number(num13("servicecount")) || 0,
+    operators: field("operators") || num13("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -27998,7 +28124,7 @@ var init_ixigoBuses = __esm({
 });
 
 // server/workers/parsers/makemytripBus.ts
-function mmtDate(iso3) {
+function mmtDate2(iso3) {
   const d = String(iso3 || "").slice(0, 10);
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
@@ -28007,7 +28133,7 @@ function mmtBusRequest(fromCode, toCode, isoDate4, supportAltRoutes = true) {
   return {
     query: MMT_BUS_LISTING_QUERY,
     operationName: "BusListing",
-    variables: { req: { from: fromCode, to: toCode, date: mmtDate(isoDate4), flags: { supportAltRoutes } } }
+    variables: { req: { from: fromCode, to: toCode, date: mmtDate2(isoDate4), flags: { supportAltRoutes } } }
   };
 }
 function parseMmtCitySuggestion(json, city) {
@@ -28106,7 +28232,7 @@ function parseMmtBusListing(json, source, deeplinkUrl, from, to, depart, maxRows
 }
 function mmtBusDeeplink(from, to, isoDate4) {
   const cap = (s) => s.trim().replace(/\s+/g, " ").replace(/(^|\s)\S/g, (c) => c.toUpperCase());
-  return `https://www.makemytrip.com/bus/search/${encodeURIComponent(cap(from))}/${encodeURIComponent(cap(to))}/${mmtDate(isoDate4)}`;
+  return `https://www.makemytrip.com/bus/search/${encodeURIComponent(cap(from))}/${encodeURIComponent(cap(to))}/${mmtDate2(isoDate4)}`;
 }
 var MMT_GRAPHQL_URL, MMT_AUTOSUGGEST_URL, MMT_BUS_LISTING_QUERY;
 var init_makemytripBus = __esm({
@@ -41332,7 +41458,7 @@ async function resolveMerchantLogo(row) {
 function itemFromAffiliate(row, resolvedLogo = null) {
   const url = row.affiliate_url || row.original_url;
   if (!url) return null;
-  const dv = num11(row.discount_value);
+  const dv = num12(row.discount_value);
   const badge = row.coupon_code ? `Code: ${row.coupon_code}` : dv && row.discount_type === "percent" ? `${dv}% OFF` : dv ? `Upto \u20B9${dv} off` : null;
   const logo = resolvedLogo ?? merchantLogoCandidates(row)[0] ?? null;
   return {
@@ -41425,7 +41551,7 @@ async function fetchAffiliateRows(limit) {
        FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
       []
     );
-    rows.sort((a, b) => (num11(b.discount_value) ?? 0) - (num11(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
+    rows.sort((a, b) => (num12(b.discount_value) ?? 0) - (num12(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
     return rows.slice(0, limit);
   } catch (e2) {
     log.debug("Showcase", "affiliate pool query failed", { error: String(e2).slice(0, 100) });
@@ -41686,7 +41812,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num11, tsOf, ageDays, priceOf2, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
+var num12, tsOf, ageDays, priceOf2, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -41694,7 +41820,7 @@ var init_showcase = __esm({
     init_deeplink();
     init_merchantCrispLogo();
     init_merchantLogos();
-    num11 = (v) => {
+    num12 = (v) => {
       if (v === null || v === void 0 || v === "") return null;
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
@@ -41705,8 +41831,8 @@ var init_showcase = __esm({
       return Number.isFinite(t) ? t : 0;
     };
     ageDays = (r) => (Date.now() - tsOf(r.fetched_at)) / 864e5;
-    priceOf2 = (r) => num11(r.effective_price) ?? num11(r.mandatory_total) ?? 0;
-    mrpOf = (r) => num11(r.list_price) ?? 0;
+    priceOf2 = (r) => num12(r.effective_price) ?? num12(r.mandatory_total) ?? 0;
+    mrpOf = (r) => num12(r.list_price) ?? 0;
     pctOf = (r) => {
       const p = priceOf2(r), m = mrpOf(r);
       if (m && m > p) return (m - p) / m;
@@ -50323,7 +50449,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num12 = (v) => {
+    const num13 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -50334,8 +50460,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num12(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num12(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num13(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num13(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,

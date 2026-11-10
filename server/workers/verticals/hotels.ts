@@ -21,6 +21,8 @@ import { parseIxigoHotels, ixigoHotelsSlug } from '../parsers/ixigoHotels';
 import { parseGoibiboHotelsSsr } from '../parsers/goibiboHotels';
 import { parseGoibiboHotelSsrState } from '../parsers/goibiboHotelSsr';
 import { parseMmtHotelLanding } from '../parsers/mmtHotelLanding';
+import { parseMmtHotelListing, mmtListingUrl, mmtPageMatchesStay } from '../parsers/mmtListing';
+import { rescueFetch } from '../../sources/rescueFetch';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
 import type { RawSourceItem } from '../../types';
@@ -109,6 +111,10 @@ async function withBudget<T>(p: Promise<T>, ms: number, label: string): Promise<
     clearTimeout(timer);
   }
 }
+
+// Rendered MakeMyTrip listings are expensive (a browser rung), so one city+stay result is reused for 45 min.
+const MMT_RENDER_TTL_MS = 45 * 60_000;
+const mmtRenderCache = new Map<string, { at: number; items: RawSourceItem[] }>();
 
 function stayDates(q: any): { checkin: string; checkout: string } {
   const dep = q?.travelDates?.depart;
@@ -202,10 +208,70 @@ export const hotelsWorker: VerticalWorker = {
       // unavailable) and never fabricate prices.
       sourceId: 'w_hotels_mmt',
       priority: 15,
-      timeoutMs: 40_000,
+      // The browser rung needs headroom: a rendered MakeMyTrip listing takes 15-40s.
+      timeoutMs: 75_000,
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city || city.length < 3) return [];
+        // RECIPE 1 (10 Nov, CRACKED): the DATED listing page rendered through the rescue ladder's browser rung.
+        // The earlier "MMT is gated" conclusion was wrong twice over: the probe asked for city=CTIXE while
+        // searching Indore (IXE is MANGALORE, so MMT was right and I was wrong), and the React listing simply
+        // needs a browser rung. With city = CT + IATA and render=true the page returns 685KB of real cards
+        // carrying its own rupee prices, taxes and the requested stay.
+        const { checkin, checkout } = stayDates(ctx.query);
+        const renderUrl = mmtListingUrl(city, checkin, checkout);
+        let renderErr: AcquisitionError | null = null;
+        if (renderUrl && String(process.env.T1S_MMT_RENDER || '1').trim() !== '0') {
+          const hit = mmtRenderCache.get(`${city.toLowerCase()}|${checkin}|${checkout}`);
+          const cached = hit && Date.now() - hit.at < MMT_RENDER_TTL_MS ? hit.items : null;
+          if (cached && cached.length) return cached;
+          const started = Date.now();
+          try {
+            // The browser rung is intermittent against Akamai (measured 10 Nov: same URL answered a rendered
+            // 685KB listing twice and a 6-byte "200-OK" stub on the next four tries), so it is attempted twice
+            // with a short gap and every miss is reported as ACCESS_CHALLENGE for the self-healing layer.
+            let res: any = null;
+            let rows: any[] = [];
+            for (let attempt = 0; attempt < 2 && !rows.length; attempt++) {
+              if (attempt) await new Promise((r) => setTimeout(r, 3000));
+              res = await rescueFetch(renderUrl, {
+                render: true, maxRungs: 2, timeoutMs: 55_000, minHtmlBytes: 20_000,
+                validate: (body) => parseMmtHotelListing(body).length > 0,
+              });
+              rows = parseMmtHotelListing(String(res?.body || ''));
+            }
+            if (rows.length && mmtPageMatchesStay(String(res?.body || ''), checkin, checkout)) {
+              const offers: RawSourceItem[] = rows
+                .sort((a, b) => a.total - b.total)
+                .slice(0, 30)
+                .map((h) => newRawItem(ctx.source, {
+                  title: h.name,
+                  seller: 'MakeMyTrip',
+                  sellerUrl: renderUrl, // redirect only to the site that owns the price
+                  currency: 'INR',
+                  price: h.total, // printed room price + the taxes & fees MMT prints under it
+                  attributes: {
+                    city,
+                    check_in: checkin,
+                    check_out: checkout,
+                    price_basis: `room for ${checkin} to ${checkout}: Rs ${h.price} + Rs ${h.taxes} taxes & fees`,
+                    star_rating: h.star ? String(h.star) : '',
+                    data_note: 'Live MakeMyTrip dated hotel listing (server-rendered cards)',
+                  },
+                  evidence: {
+                    sourceUrl: renderUrl,
+                    extractedFields: ['title', 'price', 'taxes', 'check_in', 'check_out'],
+                  },
+                }));
+              mmtRenderCache.set(`${city.toLowerCase()}|${checkin}|${checkout}`, { at: Date.now(), items: offers });
+              log.info('MMT render', `${rows.length} priced hotels for ${city} ${checkin}`, { ms: Date.now() - started, via: res?.via });
+              return offers;
+            }
+            renderErr = new AcquisitionError('EMPTY_RESPONSE', `MakeMyTrip rendered listing carried no priced cards for "${city}" (${String(res?.body || '').length}B via ${res?.via || 'none'})`);
+          } catch (e: any) {
+            renderErr = new AcquisitionError('ACCESS_CHALLENGE', `MakeMyTrip rendered listing unavailable: ${String(e?.message || e).slice(0, 90)}`);
+          }
+        }
         const slug = city.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
         // SELF-DETECTING probe (21 Oct upgrade): the city landing
         // www.makemytrip.com/hotels-in-<city>/ is OPEN browserless but its
@@ -273,7 +339,7 @@ export const hotelsWorker: VerticalWorker = {
           }
           lastErr = new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip hotel page reached but $hotelReducerResponse carried no priced hotels (gate holds for this IP)');
         }
-        throw lastErr || new AcquisitionError('NOT_FOUND', `MakeMyTrip has no hotels page for "${city}"`, 404);
+        throw lastErr || renderErr || new AcquisitionError('NOT_FOUND', `MakeMyTrip has no hotels page for "${city}"`, 404);
       },
     },
     {

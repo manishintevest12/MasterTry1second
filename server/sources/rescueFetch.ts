@@ -49,6 +49,8 @@ export interface RescueOpts {
   timeoutMs?: number;
   /** try at most this many rungs (1 = direct only) */
   maxRungs?: number;
+  /** run the browser rung (ScraperAPI render=true) first: needed for client-rendered listings */
+  render?: boolean;
   /** host used for scoreboard learning; defaults to the URL host */
   host?: string;
   /**
@@ -145,10 +147,12 @@ async function viaRelay(url: string, timeoutMs: number): Promise<{ status: numbe
   return { status: Number((r as any).status || 0), body: String((r as any).body || '') };
 }
 
-async function viaScraperApi(url: string, timeoutMs: number): Promise<{ status: number; body: string }> {
+async function viaScraperApi(url: string, timeoutMs: number, render = false): Promise<{ status: number; body: string }> {
   const key = scraperKey();
   if (!key) throw new Error('SCRAPER_API_KEY missing');
-  const target = `https://api.scraperapi.com/?api_key=${encodeURIComponent(key)}&country_code=in&url=${encodeURIComponent(url)}`;
+  // render=true makes ScraperAPI run a real browser: the only rung that returns MakeMyTrip's dated hotel
+  // listing (verified 10 Nov: 685KB, server-rendered cards with its own rupee prices and taxes).
+  const target = `https://api.scraperapi.com/?api_key=${encodeURIComponent(key)}&country_code=in${render ? '&render=true' : ''}&url=${encodeURIComponent(url)}`;
   const res = await cffiFetch(target, { impersonate: 'chrome', timeoutMs: Math.max(timeoutMs, 45_000) });
   return { status: Number((res as any).status || 0), body: String((res as any).body || '') };
 }
@@ -183,6 +187,11 @@ export async function rescueFetch(url: string, opts: RescueOpts = {}): Promise<R
   const timeoutMs = opts.timeoutMs ?? 25_000;
   const maxRungs = Math.max(1, opts.maxRungs ?? 4);
   const order = rescueOrderFor(host).slice(0, maxRungs);
+  // A render-only source (a React listing) cannot be served by a plain HTTP rung, so the browser rung goes
+  // first instead of being wasted at the end of the ladder.
+  if (opts.render && order.includes('scraperapi')) {
+    order.sort((a, b) => (a === 'scraperapi' ? -1 : b === 'scraperapi' ? 1 : 0));
+  }
   const attempts: RescueAttempt[] = [];
   let best: { status: number; body: string } = { status: 0, body: '' };
 
@@ -191,7 +200,7 @@ export async function rescueFetch(url: string, opts: RescueOpts = {}): Promise<R
     try {
       const res = via === 'direct' ? await viaDirect(url, timeoutMs)
         : via === 'relay' ? await viaRelay(url, timeoutMs)
-        : via === 'scraperapi' ? await viaScraperApi(url, timeoutMs)
+        : via === 'scraperapi' ? await viaScraperApi(url, timeoutMs, opts.render)
         : await viaReader(url, timeoutMs);
       const verdict = looksUsable(res.status, res.body, minHtmlBytes, opts.validate);
       if (res.body.length > best.body.length) best = res;
