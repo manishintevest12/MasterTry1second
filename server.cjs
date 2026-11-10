@@ -8633,6 +8633,34 @@ var init_ixigoFlights = __esm({
   }
 });
 
+// server/workers/parsers/bookingProbe.ts
+function bookingGate(status, body) {
+  const text = String(body || "");
+  if (status === 202 || status === 403 || status === 405 || status === 429) return "access_challenge";
+  if (/human verification|are you a robot|captcha|access denied|unusual traffic/i.test(text.slice(0, 4e3))) return "access_challenge";
+  if (text.trim().length < 500) return "empty";
+  return "ok";
+}
+function bookingGateMessage(vertical, status, gate) {
+  const surface = vertical === "flights" ? "flights.booking.com" : "taxi.booking.com";
+  if (gate === "access_challenge") {
+    return `Booking.com ${surface} answers HTTP ${status} with a bot-verification wall (no HTML/JSON to parse). Registered as a monitored source: proxy rotation and backoff will retry it automatically.`;
+  }
+  if (gate === "empty") {
+    return `Booking.com ${surface} returned an empty shell (HTTP ${status}); no fare data served to this egress.`;
+  }
+  return `Booking.com ${surface} answered HTTP ${status}`;
+}
+var BOOKING_PROBE;
+var init_bookingProbe = __esm({
+  "server/workers/parsers/bookingProbe.ts"() {
+    BOOKING_PROBE = {
+      flights: "https://flights.booking.com/",
+      taxi: "https://www.booking.com/taxi/index.en-gb.html"
+    };
+  }
+});
+
 // server/workers/parsers/emtFareCalendar.ts
 function parseEmtFareCalendar(jsonText, wantDate) {
   const data = JSON.parse(jsonText);
@@ -16950,6 +16978,7 @@ var init_flights = __esm({
     init_verticalWorker();
     init_ixigoFlights();
     init_httpClient();
+    init_bookingProbe();
     init_emtFareCalendar();
     init_emtAirbus();
     init_airportLookup();
@@ -17261,6 +17290,24 @@ var init_flights = __esm({
           // ~800ms, INR prices, works for ANY world route). Seller = Kiwi.com, the
           // ticket-selling website; operating airline stays in title/brand per owner
           // policy. Deeplink = Kiwi's per-itinerary booking URL (its own token).
+          // OWNER 10 Nov ("flight ... mai booking.com ka source bnao"): Booking.com as a SOURCE.
+          // It is registered as a monitored probe, not a parser, because Booking.com serves our egress a
+          // 202 with zero bytes (measured 10 Nov). The source is honest by construction: it raises
+          // ACCESS_CHALLENGE so the proxy rotation/backoff keeps retrying, and it can never emit a row
+          // without a price (No Price, No Card). Its CJ affiliate exit is already live for the day it opens.
+          sourceId: "w_flights_booking",
+          name: "Flights worker: Booking.com Flights (monitored probe - bot wall)",
+          priority: 20,
+          maxPerMinute: 2,
+          timeoutMs: 2e4,
+          run: async () => {
+            const r = await cffiFetch(BOOKING_PROBE.flights, { impersonate: "chrome", timeoutMs: 15e3 });
+            const gate = bookingGate(r.status, r.body);
+            if (gate !== "ok") throw new AcquisitionError(gate === "access_challenge" ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", bookingGateMessage("flights", r.status, gate), r.status);
+            throw new AcquisitionError("EMPTY_RESPONSE", "Booking.com Flights answered 200 but exposed no machine-readable fare payload; needs the partner API to become a priced source.");
+          }
+        },
+        {
           sourceId: "w_flights_kiwi",
           name: "Flights worker: Kiwi.com worldwide live fares (seller = Kiwi.com)",
           priority: 12,
@@ -23807,6 +23854,7 @@ var init_cab = __esm({
     init_uberIndiaCities();
     init_uberGoProducts();
     init_httpClient();
+    init_bookingProbe();
     _uberTokenCache = null;
     UBER_CITY_SLUGS = [
       { keys: ["delhi", "new delhi", "ndls"], slug: "new-delhi-new-delhi-in", city: "New Delhi" },
@@ -24061,6 +24109,24 @@ var init_cab = __esm({
             const fare = await rapidoLiveFaresSafe(ctx, rt, a.name);
             if (fare.length) return fare;
             return [];
+          }
+        },
+        {
+          // OWNER 10 Nov ("cab ... mai booking.com ka source bnao"): Booking.com Taxis / airport transfers.
+          // Measured 10 Nov: taxi.booking.com answers HTTP 405 "Human Verification" and
+          // booking.com/taxi returns 202 with zero bytes, so no transfer quote is readable. Registered as a
+          // monitored probe for the same reason as the flights source: honest ACCESS_CHALLENGE, proxy
+          // rotation keeps trying, and the CJ exit already pays if a row ever appears.
+          sourceId: "w_cab_booking_taxi",
+          name: "Cab worker: Booking.com Taxis / airport transfers (monitored probe - bot wall)",
+          priority: 20,
+          maxPerMinute: 2,
+          timeoutMs: 2e4,
+          run: async () => {
+            const r = await cffiFetch(BOOKING_PROBE.taxi, { impersonate: "chrome", timeoutMs: 15e3 });
+            const gate = bookingGate(r.status, r.body);
+            if (gate !== "ok") throw new AcquisitionError(gate === "access_challenge" ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", bookingGateMessage("taxi", r.status, gate), r.status);
+            throw new AcquisitionError("EMPTY_RESPONSE", "Booking.com Taxis answered 200 but exposed no machine-readable quote payload; transfer fares stay unwired until a partner feed exists.");
           }
         },
         {

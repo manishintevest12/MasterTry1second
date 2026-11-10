@@ -11,6 +11,7 @@ import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { loadOpenFlights, parseRoute } from '../parsers/openflights';
 import { parseIxigoFlights, parseIxigoOffers, ixigoRouteTokens } from '../parsers/ixigoFlights';
 import { AcquisitionError } from '../../common/httpClient';
+import { BOOKING_PROBE, bookingGate, bookingGateMessage } from '../parsers/bookingProbe';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
 import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus';
 import { resolveAirport, IATA } from '../../common/airportLookup';
@@ -424,6 +425,24 @@ export const flightsWorker: VerticalWorker = {
       // ~800ms, INR prices, works for ANY world route). Seller = Kiwi.com, the
       // ticket-selling website; operating airline stays in title/brand per owner
       // policy. Deeplink = Kiwi's per-itinerary booking URL (its own token).
+      // OWNER 10 Nov ("flight ... mai booking.com ka source bnao"): Booking.com as a SOURCE.
+      // It is registered as a monitored probe, not a parser, because Booking.com serves our egress a
+      // 202 with zero bytes (measured 10 Nov). The source is honest by construction: it raises
+      // ACCESS_CHALLENGE so the proxy rotation/backoff keeps retrying, and it can never emit a row
+      // without a price (No Price, No Card). Its CJ affiliate exit is already live for the day it opens.
+      sourceId: 'w_flights_booking',
+      name: 'Flights worker: Booking.com Flights (monitored probe - bot wall)',
+      priority: 20,
+      maxPerMinute: 2,
+      timeoutMs: 20_000,
+      run: async () => {
+        const r = await cffiFetch(BOOKING_PROBE.flights, { impersonate: 'chrome', timeoutMs: 15_000 });
+        const gate = bookingGate(r.status, r.body);
+        if (gate !== 'ok') throw new AcquisitionError(gate === 'access_challenge' ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE', bookingGateMessage('flights', r.status, gate), r.status);
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Booking.com Flights answered 200 but exposed no machine-readable fare payload; needs the partner API to become a priced source.');
+      },
+    },
+    {
       sourceId: 'w_flights_kiwi',
       name: 'Flights worker: Kiwi.com worldwide live fares (seller = Kiwi.com)',
       priority: 12,

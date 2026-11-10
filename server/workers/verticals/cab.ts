@@ -19,6 +19,7 @@ import { rapidoGuestFares, rapidoServiceCatalog, buildRapidoFareRows } from '../
 import { uberIndiaCityFor } from '../parsers/uberIndiaCities';
 import { buildUberProductsRequestBody, parseUberProductsResponse, buildUberGoBookUrl, buildUberProductSelectionBody, parseUberProductSelectionResponse, type UberGoPlace, type UberGoProduct } from '../parsers/uberGoProducts';
 import { AcquisitionError } from '../../common/httpClient';
+import { BOOKING_PROBE, bookingGate, bookingGateMessage } from '../parsers/bookingProbe';
 
 /**
  * Rapido live-fare flow, hard-failed safe: returns [] on any miss so the caller
@@ -961,6 +962,24 @@ export const cabWorker: VerticalWorker = {
         // cannot be obtained the availability rows ("Fare on app") are no longer shown —
         // a Rapido card without a price is exactly what the owner asked to stop showing.
         return [];
+      },
+    },
+    {
+      // OWNER 10 Nov ("cab ... mai booking.com ka source bnao"): Booking.com Taxis / airport transfers.
+      // Measured 10 Nov: taxi.booking.com answers HTTP 405 "Human Verification" and
+      // booking.com/taxi returns 202 with zero bytes, so no transfer quote is readable. Registered as a
+      // monitored probe for the same reason as the flights source: honest ACCESS_CHALLENGE, proxy
+      // rotation keeps trying, and the CJ exit already pays if a row ever appears.
+      sourceId: 'w_cab_booking_taxi',
+      name: 'Cab worker: Booking.com Taxis / airport transfers (monitored probe - bot wall)',
+      priority: 20,
+      maxPerMinute: 2,
+      timeoutMs: 20_000,
+      run: async () => {
+        const r = await cffiFetch(BOOKING_PROBE.taxi, { impersonate: 'chrome', timeoutMs: 15_000 });
+        const gate = bookingGate(r.status, r.body);
+        if (gate !== 'ok') throw new AcquisitionError(gate === 'access_challenge' ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE', bookingGateMessage('taxi', r.status, gate), r.status);
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Booking.com Taxis answered 200 but exposed no machine-readable quote payload; transfer fares stay unwired until a partner feed exists.');
       },
     },
     {
