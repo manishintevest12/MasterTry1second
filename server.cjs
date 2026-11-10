@@ -31143,8 +31143,15 @@ function safeDomain(url) {
     return "";
   }
 }
+function cuelinksAllowList() {
+  const extra = (process.env.CUELINKS_EXTRA_MERCHANTS || "").split(",").map((d) => d.trim().toLowerCase().replace(/^www\./, "")).filter(Boolean);
+  return /* @__PURE__ */ new Set([...CUELINKS_BASE_MERCHANTS, ...extra]);
+}
+function cuelinksWrapAll() {
+  return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ALL_MERCHANTS || "").trim());
+}
 function cuelinksKnownMerchants() {
-  return [...CUELINKS_MERCHANTS];
+  return [...cuelinksAllowList()];
 }
 function cuelinksMerchantUrl(dest) {
   const c = settings.cuelinks;
@@ -31155,7 +31162,7 @@ function cuelinksMerchantUrl(dest) {
   } catch {
     return null;
   }
-  if (!CUELINKS_MERCHANTS.has(domain)) return null;
+  if (!cuelinksWrapAll() && !cuelinksAllowList().has(domain)) return null;
   return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
 function amazonAssociatesUrl(dest) {
@@ -31309,7 +31316,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   }
   return "";
 }
-var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
+var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_MERCHANTS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
@@ -31321,7 +31328,8 @@ var init_deeplink = __esm({
     init_db();
     init_merchantLinks();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
-    CUELINKS_MERCHANTS = /* @__PURE__ */ new Set(["makemytrip.com", "goibibo.com", "shopsy.in"]);
+    CUELINKS_BASE_MERCHANTS = ["makemytrip.com", "goibibo.com", "shopsy.in"];
+    CUELINKS_MERCHANTS = new Set(CUELINKS_BASE_MERCHANTS);
     AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
     ALREADY_TRACKED_HOSTS = /(^|\.)(linksredirect\.com|fktr\.in|myntr\.it|earnkaro\.com|ekaro\.[a-z.]+|affiliaters\.in|bitli\.in|linkinr\.[a-z.]+|vcommission\.com|inr\.deals|cuelinks\.com|cashkaro\.com|amzn\.to|go\.redirectingat\.com|sjv\.io|linksynergy\.com|clicweb|pxf\.io|dl\.flipkart\.com)$/i;
   }

@@ -86,10 +86,36 @@ export function safeDomain(url: string): string {
  * and 3942 both 302 to the exact destination. When the API key is set, the
  * provider's campaign sync can discover newer per-vertical campaigns.
  */
-const CUELINKS_MERCHANTS = new Set(['makemytrip.com', 'goibibo.com', 'shopsy.in']);
+const CUELINKS_BASE_MERCHANTS = ['makemytrip.com', 'goibibo.com', 'shopsy.in'];
+
+/**
+ * OWNER 10 Nov ("ab maine env mai cuelink update kr diya"): the allow-list used to be three hardcoded
+ * domains, so joining a new advertiser in Cuelinks still paid nothing until someone edited code and
+ * shipped it. It is now environment-extensible, in the order the owner actually works:
+ *   CUELINKS_EXTRA_MERCHANTS="cleartrip.com,redbus.in,amazon.in"  -> add merchants you joined
+ *   CUELINKS_ALL_MERCHANTS=1                                     -> wrap every merchant domain
+ * Tracking uses the publisher cid (326794, per the current per-publisher linkkit), so a newly joined
+ * merchant starts being attributed from the moment its domain is listed - no deploy of new code.
+ * Unlisted domains still go direct, which is the safe default: Cuelinks cannot pay for a campaign the
+ * publisher has not joined, and a wrapped-but-unjoined link would hide that fact.
+ */
+function cuelinksAllowList(): Set<string> {
+  const extra = (process.env.CUELINKS_EXTRA_MERCHANTS || '')
+    .split(',')
+    .map((d) => d.trim().toLowerCase().replace(/^www\./, ''))
+    .filter(Boolean);
+  return new Set<string>([...CUELINKS_BASE_MERCHANTS, ...extra]);
+}
+
+/** True when every merchant domain may be wrapped (owner opted in explicitly). */
+function cuelinksWrapAll(): boolean {
+  return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ALL_MERCHANTS || '').trim());
+}
+
+const CUELINKS_MERCHANTS = new Set(CUELINKS_BASE_MERCHANTS);
 
 /** Read-only accessor for the admin coverage view (owner 27 Oct). */
-export function cuelinksKnownMerchants(): string[] { return [...CUELINKS_MERCHANTS]; }
+export function cuelinksKnownMerchants(): string[] { return [...cuelinksAllowList()]; }
 // Campaign refs (public ids, for the dashboard): makemytrip.com = 3801
 // "MakeMyTrip (Hotels)" (access open, deeplink_allowed false — deep-path
 // commission not guaranteed but the hop lands on the exact page), goibibo.com =
@@ -104,7 +130,7 @@ export function cuelinksMerchantUrl(dest: string): string | null {
   if (!c.publisherId) return null;
   let domain: string;
   try { domain = new URL(dest).hostname.toLowerCase().replace(/^www\./, ''); } catch { return null; }
-  if (!CUELINKS_MERCHANTS.has(domain)) return null;
+  if (!cuelinksWrapAll() && !cuelinksAllowList().has(domain)) return null;
   // Mirrors the API-generated tracking_url (source=api) + our subid (sub_ids_allowed=true)
   return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
