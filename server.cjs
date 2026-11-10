@@ -8284,7 +8284,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   const primeLadder = [impersonate, impersonate === "chrome" ? "safari17_0" : "chrome"];
   let primed = null;
   for (let i = 0; i < primeLadder.length; i++) {
-    primed = await cffiFetch(srpUrl, { impersonate: primeLadder[i], timeoutMs: 3e4, returnCookies: true, cookies, headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" } });
+    primed = await cffiFetch(srpUrl, { impersonate: primeLadder[i], timeoutMs: 7e3, returnCookies: true, cookies, headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" } });
     cookies = primed.cookies || cookies;
     const gated = primed.status === 429 || primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4e3));
     if (!gated) break;
@@ -8313,7 +8313,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   const r = await cffiFetch(`${origin2}/graphql`, {
     method: "POST",
     impersonate,
-    timeoutMs: 45e3,
+    timeoutMs: 1e4,
     cookies,
     body: payload,
     headers: {
@@ -8330,7 +8330,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
     const again = await cffiFetch(`${origin2}/graphql`, {
       method: "POST",
       impersonate: primeLadder[primeLadder.length - 1],
-      timeoutMs: 45e3,
+      timeoutMs: 1e4,
       cookies,
       body: payload,
       headers: {
@@ -8355,7 +8355,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${site} GraphQL returned no priced LodgingCards for "${city}"`);
   return items;
 }
-var cleartripArtDeadUntil, OYO_WEB_URL, ddmmyyyy3, agodaCityIdCache, MMT_RENDER_TTL_MS, mmtRenderCache, hotelsWorker;
+var cleartripArtDeadUntil, OYO_WEB_URL, ddmmyyyy3, agodaCityIdCache, HC_CACHE_TTL_MS, HC_BLOCK_MS, hotelsComCache, hotelsComBlockedUntil, MMT_RENDER_TTL_MS, mmtRenderCache, hotelsWorker;
 var init_hotels = __esm({
   "server/workers/verticals/hotels.ts"() {
     init_verticalWorker();
@@ -8392,6 +8392,10 @@ var init_hotels = __esm({
       return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
     };
     agodaCityIdCache = /* @__PURE__ */ new Map();
+    HC_CACHE_TTL_MS = 30 * 6e4;
+    HC_BLOCK_MS = 5 * 6e4;
+    hotelsComCache = /* @__PURE__ */ new Map();
+    hotelsComBlockedUntil = 0;
     MMT_RENDER_TTL_MS = 45 * 6e4;
     mmtRenderCache = /* @__PURE__ */ new Map();
     hotelsWorker = {
@@ -8920,7 +8924,7 @@ var init_hotels = __esm({
             const city = cityFromQuery(ctx);
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
-            const items = await withBudget(expediaGroupSearch(ctx, "expedia.com", "safari", city, checkin, checkout), 18e3, "Expedia");
+            const items = await withBudget(expediaGroupSearch(ctx, "expedia.com", "chrome", city, checkin, checkout), 8e3, "Expedia");
             return stampStayDates(items, checkin, checkout);
           }
         },
@@ -8934,14 +8938,35 @@ var init_hotels = __esm({
             const city = cityFromQuery(ctx);
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
-            let items;
-            try {
-              items = await withBudget(expediaGroupSearch(ctx, "hotels.com", "safari17_0", city, checkin, checkout), 16e3, "Hotels.com");
-            } catch (e2) {
-              if (String(e2?.failureClass) !== "ACCESS_CHALLENGE" && String(e2?.failureClass) !== "RATE_LIMITED") throw e2;
-              items = await withBudget(expediaGroupSearch(ctx, "hotels.com", "chrome_android", city, checkin, checkout), 14e3, "Hotels.com (android key)");
+            const cacheKey = `${city.toLowerCase()}|${checkin}|${checkout}`;
+            const hit = hotelsComCache.get(cacheKey);
+            if (hit && Date.now() - hit.at < HC_CACHE_TTL_MS) return hit.items;
+            if (Date.now() < hotelsComBlockedUntil) {
+              throw new AcquisitionError("RATE_LIMITED", `Hotels.com edge is rate-sampling after a 429; cooling down ${Math.ceil((hotelsComBlockedUntil - Date.now()) / 1e3)}s`);
             }
-            return stampStayDates(items, checkin, checkout);
+            let items;
+            let lastErr = null;
+            const hcDeadline = Date.now() + 7e3;
+            for (const imp of ["chrome", "chrome_android", "safari17_0"]) {
+              const left = hcDeadline - Date.now();
+              if (left < 2500) break;
+              try {
+                items = await withBudget(expediaGroupSearch(ctx, "hotels.com", imp, city, checkin, checkout), left, "Hotels.com");
+                break;
+              } catch (e2) {
+                lastErr = e2;
+                const cls = String(e2?.failureClass);
+                if (cls !== "ACCESS_CHALLENGE" && cls !== "RATE_LIMITED" && cls !== "TIMEOUT") throw e2;
+              }
+            }
+            if (!items) {
+              hotelsComBlockedUntil = Date.now() + HC_BLOCK_MS;
+              throw lastErr || new AcquisitionError("ACCESS_CHALLENGE", "Hotels.com: no readable edge profile");
+            }
+            const stamped = stampStayDates(items, checkin, checkout);
+            hotelsComBlockedUntil = 0;
+            hotelsComCache.set(cacheKey, { at: Date.now(), items: stamped });
+            return stamped;
           }
         },
         {

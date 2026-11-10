@@ -112,6 +112,14 @@ async function withBudget<T>(p: Promise<T>, ms: number, label: string): Promise<
   }
 }
 
+// Hotels.com answers ONE clean LodgingCard search and then rate-samples every request for minutes (measured
+// 10 Nov: 49 dated rows in 2.5s, then 429 on the next three calls), so a success is cached for 30 min and a 429
+// parks the source for 5 min instead of letting every sweep pay for the same wall.
+const HC_CACHE_TTL_MS = 30 * 60_000;
+const HC_BLOCK_MS = 5 * 60_000;
+const hotelsComCache = new Map<string, { at: number; items: RawSourceItem[] }>();
+let hotelsComBlockedUntil = 0;
+
 // Rendered MakeMyTrip listings are expensive (a browser rung), so one city+stay result is reused for 45 min.
 const MMT_RENDER_TTL_MS = 45 * 60_000;
 const mmtRenderCache = new Map<string, { at: number; items: RawSourceItem[] }>();
@@ -139,7 +147,10 @@ async function expediaGroupSearch(ctx: any, site: 'expedia.com' | 'hotels.com', 
   const primeLadder = [impersonate, impersonate === 'chrome' ? 'safari17_0' : 'chrome'];
   let primed: any = null;
   for (let i = 0; i < primeLadder.length; i++) {
-    primed = await cffiFetch(srpUrl, { impersonate: primeLadder[i], timeoutMs: 30_000, returnCookies: true, cookies, headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' } });
+    // MEASURED 10 Nov: a clean profile primes in 1.4-1.6s and answers LodgingCard GraphQL in 1.1s, while a gated
+    // profile returns 429 "Bot or Not?" after 9-16s. A 30s timeout therefore never bought anything, it only let a
+    // gated profile eat the worker budget: Hotels.com was spending its whole 16s on safari17_0 and returning nothing.
+    primed = await cffiFetch(srpUrl, { impersonate: primeLadder[i], timeoutMs: 7_000, returnCookies: true, cookies, headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' } });
     cookies = primed.cookies || cookies;
     const gated = primed.status === 429 || (primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4000)));
     if (!gated) break;
@@ -166,7 +177,7 @@ async function expediaGroupSearch(ctx: any, site: 'expedia.com' | 'hotels.com', 
     },
   });
   const r = await cffiFetch(`${origin}/graphql`, {
-    method: 'POST', impersonate, timeoutMs: 45_000, cookies, body: payload,
+    method: 'POST', impersonate, timeoutMs: 10_000, cookies, body: payload,
     headers: {
       'Content-Type': 'application/json', Accept: '*/*', Origin: origin, Referer: srpUrl,
       'client-info': `shopping-pwa,eb187b18bd35573abd2de93e9fd6a422a6206cfe,${site === 'hotels.com' ? 'us-west-2' : 'us-east-1'}`,
@@ -177,7 +188,7 @@ async function expediaGroupSearch(ctx: any, site: 'expedia.com' | 'hotels.com', 
     // Same reasoning as the prime ladder: back off once, replay with the warmed cookies.
     await new Promise((res) => setTimeout(res, 1800));
     const again = await cffiFetch(`${origin}/graphql`, {
-      method: 'POST', impersonate: primeLadder[primeLadder.length - 1], timeoutMs: 45_000, cookies, body: payload,
+      method: 'POST', impersonate: primeLadder[primeLadder.length - 1], timeoutMs: 10_000, cookies, body: payload,
       headers: {
         'Content-Type': 'application/json', Accept: '*/*', Origin: origin, Referer: srpUrl,
         'client-info': `shopping-pwa,eb187b18bd35573abd2de93e9fd6a422a6206cfe,${site === 'hotels.com' ? 'us-west-2' : 'us-east-1'}`,
@@ -739,7 +750,9 @@ export const hotelsWorker: VerticalWorker = {
         const city = cityFromQuery(ctx);
         if (!city) return [];
         const { checkin, checkout } = stayDates(ctx.query);
-        const items = await withBudget(expediaGroupSearch(ctx, 'expedia.com', 'safari', city, checkin, checkout), 18_000, 'Expedia');
+        // MEASURED 10 Nov: expedia.com answers 429 "Bot or Not?" to safari and chrome alike (hotels.com does not), so
+        // this worker fails fast with ACCESS_CHALLENGE instead of spending 18s of the sweep on a gated edge.
+        const items = await withBudget(expediaGroupSearch(ctx, 'expedia.com', 'chrome', city, checkin, checkout), 8_000, 'Expedia');
         return stampStayDates(items, checkin, checkout);
       },
     },
@@ -753,15 +766,40 @@ export const hotelsWorker: VerticalWorker = {
         const city = cityFromQuery(ctx);
         if (!city) return [];
         const { checkin, checkout } = stayDates(ctx.query);
-        let items: Awaited<ReturnType<typeof expediaGroupSearch>>;
-        try {
-          items = await withBudget(expediaGroupSearch(ctx, 'hotels.com', 'safari17_0', city, checkin, checkout), 16_000, 'Hotels.com');
-        } catch (e: any) {
-          // Akamai rate-samples the SRP edge; the mobile-Android JA3 is a second key.
-          if (String(e?.failureClass) !== 'ACCESS_CHALLENGE' && String(e?.failureClass) !== 'RATE_LIMITED') throw e;
-          items = await withBudget(expediaGroupSearch(ctx, 'hotels.com', 'chrome_android', city, checkin, checkout), 14_000, 'Hotels.com (android key)');
+        const cacheKey = `${city.toLowerCase()}|${checkin}|${checkout}`;
+        const hit = hotelsComCache.get(cacheKey);
+        if (hit && Date.now() - hit.at < HC_CACHE_TTL_MS) return hit.items;
+        if (Date.now() < hotelsComBlockedUntil) {
+          throw new AcquisitionError('RATE_LIMITED', `Hotels.com edge is rate-sampling after a 429; cooling down ${Math.ceil((hotelsComBlockedUntil - Date.now()) / 1000)}s`);
         }
-        return stampStayDates(items, checkin, checkout);
+        // ORDER MATTERS, measured 10 Nov: the same SRP answered 429 "Bot or Not?" to safari17_0 after 16.2s and
+        // HTTP 200 (1.29MB) to chrome in 1.35s, but safari ran first so the 16s budget died on the gated profile
+        // and Hotels.com never appeared. chrome is now the primary key, the other two only as fallbacks.
+        let items: Awaited<ReturnType<typeof expediaGroupSearch>>;
+        let lastErr: any = null;
+        // One overall deadline across the three profiles: a gated profile can take 7-9s to say 429, so without this
+        // the fallbacks alone outlived the worker budget (measured 14,001ms TIMEOUT with three profiles).
+        const hcDeadline = Date.now() + 7_000;
+        for (const imp of ['chrome', 'chrome_android', 'safari17_0'] as const) {
+          const left = hcDeadline - Date.now();
+          if (left < 2_500) break;
+          try {
+            items = await withBudget(expediaGroupSearch(ctx, 'hotels.com', imp, city, checkin, checkout), left, 'Hotels.com');
+            break;
+          } catch (e: any) {
+            lastErr = e;
+            const cls = String(e?.failureClass);
+            if (cls !== 'ACCESS_CHALLENGE' && cls !== 'RATE_LIMITED' && cls !== 'TIMEOUT') throw e;
+          }
+        }
+        if (!items!) {
+          hotelsComBlockedUntil = Date.now() + HC_BLOCK_MS;
+          throw lastErr || new AcquisitionError('ACCESS_CHALLENGE', 'Hotels.com: no readable edge profile');
+        }
+        const stamped = stampStayDates(items, checkin, checkout);
+        hotelsComBlockedUntil = 0;
+        hotelsComCache.set(cacheKey, { at: Date.now(), items: stamped });
+        return stamped;
       },
     },
     {
