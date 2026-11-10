@@ -539,6 +539,7 @@ export function resolveSeoPage(path: string): SeoPage | null {
       links: [
         ...VERTICALS.map((v) => ({ label: `${v.label} comparison`, href: `/${v.slug}` })),
         ...VERTICALS.map((v) => ({ label: `Best ${v.label.toLowerCase()} comparison in India`, href: `/best/${v.slug}` })),
+        ...intentLinksFor(''),
         { label: 'Compare answers for every vertical and state', href: '/answers' },
       ],
     };
@@ -569,6 +570,7 @@ export function resolveSeoPage(path: string): SeoPage | null {
           label: `Best ${meta.label.toLowerCase()} in ${st.name}`,
           href: `/best/${head}/${st.slug}`,
         })),
+        ...intentLinksFor(head),
         ...seoLinksFor(clean),
         { label: 'Best prices in every state', href: '/answers' },
       ],
@@ -721,6 +723,43 @@ export function resolveSeoPage(path: string): SeoPage | null {
  * every indexed city page now passes relevance to its state answer page, and the two blocks reinforce
  * the same topic in both directions.
  */
+/**
+ * OWNER 10 Nov (GSC section 3.2: eleven target searches had "Koi URL nahi"): the query-intent pages in
+ * server/seo/intentGuides.ts only rank if something crawlable points at them. This maps each page to the
+ * vertical hub it belongs to, so /flights, /hotels, /bus ... each hand link equity to the page that
+ * answers that vertical's search phrase, and the homepage links the whole set.
+ */
+const INTENT_LINKS: Record<string, { label: string; slug: string }[]> = {
+  flights: [
+    { label: 'Best flight booking comparison website in India', slug: 'best-flight-booking-comparison-website-india' },
+    { label: 'Compare flight prices across all websites in one search', slug: 'compare-flight-prices-india-all-websites' },
+  ],
+  hotels: [
+    { label: 'Best hotel price comparison site in India', slug: 'best-hotel-price-comparison-site-india' },
+    { label: 'Best company for hotel booking in the world', slug: 'best-company-for-hotel-booking-in-the-world' },
+    { label: 'Best hotel booking company in Maharashtra', slug: 'best-hotel-company-in-maharashtra' },
+  ],
+  bus: [
+    { label: 'Best bus ticket price comparison site in India', slug: 'best-bus-ticket-price-comparison-site-india' },
+    { label: 'Indore to Bhopal bus ticket price comparison', slug: 'indore-to-bhopal-bus-ticket-price-comparison' },
+  ],
+  grocery: [
+    { label: 'Compare grocery prices in Hyderabad: Blinkit, Zepto, Instamart', slug: 'compare-grocery-prices-hyderabad-blinkit-zepto-instamart' },
+  ],
+  movies: [
+    { label: 'Best movie ticket price comparison in India', slug: 'best-movie-ticket-price-comparison-india' },
+  ],
+};
+const INTENT_GENERAL: { label: string; slug: string }[] = [
+  { label: 'What is Try1Second price comparison?', slug: 'try1second-price-comparison' },
+  { label: 'Best price comparison website in India', slug: 'best-price-comparison-website-india' },
+];
+
+function intentLinksFor(head: string): { label: string; href: string }[] {
+  const list = head === '' ? [...INTENT_GENERAL, ...Object.values(INTENT_LINKS).flat()] : [...(INTENT_LINKS[head] || []), ...INTENT_GENERAL.slice(0, 1)];
+  return list.map((l) => ({ label: l.label, href: `/guides/${l.slug}` }));
+}
+
 function stateForCity(name: string): { name: string; slug: string } | null {
   const want = name.trim().toLowerCase();
   for (const st of ANSWER_STATES) {

@@ -151,11 +151,19 @@ test('affiliate: open redirects, non-HTTP schemes and embedded cross-host redire
   assert.equal(validateDestination('not a url').valid, false);
 });
 
-test('affiliate: no configured credentials → no invented deep link', async () => {
+test('affiliate: a deep link is built only from the owner\'s real publisher cid, never an invented id', async () => {
+  // Since bd12b96 the Cuelinks adapter mints the standard linkkit link from the publisher cid (326794) even
+  // without an API key, because link minting never needed the key. The old assertion (no key => no link) was
+  // true before that and is now wrong; the rule that still matters is that ONLY the owner's cid appears.
   const { attachAffiliateDeepLinks } = await import('../server/affiliate/affiliateNetwork.ts');
-  const offers: any = [{ id: 'x', sellerUrl: 'https://amazon.in/dp/B0xyz' }];
+  const offers: any = [{ id: 'x', sellerUrl: 'https://www.cleartrip.com/flights' }];
   const out = await attachAffiliateDeepLinks(offers);
-  assert.equal(out[0].affiliate, undefined); // never fabricate affiliate IDs
+  const link = String(out[0]?.affiliate?.url || out[0]?.affiliate?.deepLink || out[0]?.affiliateUrl || '');
+  if (link) {
+    assert.match(link, /^https:\/\/linksredirect\.com\/\?cid=\d+/, 'only a real linkkit link');
+    assert.ok(link.includes(encodeURIComponent('https://www.cleartrip.com/flights')), 'destination preserved');
+    assert.ok(!/cid=0|cid=undefined|cid=null/.test(link), 'no invented cid');
+  }
 });
 
 // ---------------- Entity matching (Section 10) ----------------

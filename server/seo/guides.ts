@@ -369,6 +369,9 @@ export const GUIDES: Guide[] = [
 ];
 
 /** Lookup used by the renderer and by tests. */
+import { INTENT_GUIDES } from './intentGuides';
+GUIDES.push(...INTENT_GUIDES);
+
 export const GUIDE_BY_SLUG: Record<string, Guide> = Object.fromEntries(GUIDES.map((g) => [g.slug, g]));
 
 /** Slugs in publication order - used by the sitemap. */

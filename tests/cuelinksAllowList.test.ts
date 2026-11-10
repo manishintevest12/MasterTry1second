@@ -40,3 +40,19 @@ test('CUELINKS_ALL_MERCHANTS wraps any https merchant, still nothing for garbage
     delete process.env.CUELINKS_ALL_MERCHANTS;
   }
 });
+
+test('merchants measured as joined on the owner cid are wrapped by default (cleartrip, nykaa)', async () => {
+  const { cuelinksMerchantUrl } = await import('../server/affiliate/deeplink');
+  for (const dest of [
+    'https://www.cleartrip.com/hotels/india/indore-hotels',
+    'https://www.cleartrip.com/flights/results?from=IDR&to=DEL',
+    'https://www.nykaa.com/skin/c/8377',
+  ]) {
+    const u = cuelinksMerchantUrl(dest);
+    assert.ok(u && u.startsWith('https://linksredirect.com/?cid='), `${dest} must be wrapped`);
+    assert.ok(u.includes(encodeURIComponent(dest)), 'full deep path survives in url=');
+  }
+  // measured NOT joined: stays direct until CUELINKS_EXTRA_MERCHANTS lists it
+  assert.equal(cuelinksMerchantUrl('https://www.redbus.in/bus-tickets'), null);
+  assert.equal(cuelinksMerchantUrl('https://www.yatra.com/flights'), null);
+});

@@ -87,7 +87,15 @@ export function safeDomain(url: string): string {
  * and 3942 both 302 to the exact destination. When the API key is set, the
  * provider's campaign sync can discover newer per-vertical campaigns.
  */
-const CUELINKS_BASE_MERCHANTS = ['makemytrip.com', 'goibibo.com', 'shopsy.in'];
+// OWNER 10 Nov ("cleartrip wagera tho cuelinks pr hai maine link generate kiya ... deeplink pr fix krna"):
+// MEASURED against linksredirect.com with the owner's cid 326794 - a merchant is JOINED exactly when the hop
+// lands on a tracker host instead of bouncing straight back to the merchant:
+//   cleartrip.com -> track.clickonik.com / tjzuh.com (deep paths /flights and /hotels/india/indore-hotels too)
+//   nykaa.com     -> tjzuh.com
+//   redbus.in, ixigo.com, yatra.com, easemytrip.com, abhibus.com, zingbus.com, agoda.com, expedia.co.in,
+//   bigbasket.com, myntra.com, ajio.com, bookmyshow.com, pvrinox.com -> plain 302 to the merchant (NOT joined)
+// so only joined merchants are baked in; the rest stay direct until CUELINKS_EXTRA_MERCHANTS adds them.
+const CUELINKS_BASE_MERCHANTS = ['makemytrip.com', 'goibibo.com', 'shopsy.in', 'cleartrip.com', 'nykaa.com'];
 
 /**
  * OWNER 10 Nov ("ab maine env mai cuelink update kr diya"): the allow-list used to be three hardcoded
