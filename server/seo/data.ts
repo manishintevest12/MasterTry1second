@@ -99,7 +99,7 @@ interface VerticalMeta {
   faqs: SeoFaq[];
 }
 
-const VERTICALS: VerticalMeta[] = [
+export const VERTICALS: VerticalMeta[] = [
   {
     id: 'flights', slug: 'flights', label: 'Flights',
     title: 'Compare Flight Prices Live in India — Cheapest Airfare Scanner | Try1Second',
@@ -531,7 +531,16 @@ export function resolveSeoPage(path: string): SeoPage | null {
         { q: 'Is Try1Second available outside India?', a: 'Yes. Anyone can compare prices on try1second.com from any country; flight, hotel and finance comparisons show the same live India prices in INR.' },
       ],
       breadcrumbs: [{ name: 'Home', path: '/' }],
-      links: VERTICALS.map((v) => ({ label: v.label, href: `/${v.slug}` })),
+      // OWNER 10 Nov: "traffic homepage se le kr sb page se aana chaiye". The homepage used to link only
+      // the comparison apps, so the 482 answer pages were reachable almost exclusively from /answers.
+      // It now offers all three doors: the live comparison for each vertical, the "best X" answer hub
+      // for each vertical, and the state-by-state answers index. Every one of those is crawlable text,
+      // so link equity flows from the strongest page on the site into the whole answer layer.
+      links: [
+        ...VERTICALS.map((v) => ({ label: `${v.label} comparison`, href: `/${v.slug}` })),
+        ...VERTICALS.map((v) => ({ label: `Best ${v.label.toLowerCase()} comparison in India`, href: `/best/${v.slug}` })),
+        { label: 'Compare answers for every vertical and state', href: '/answers' },
+      ],
     };
   }
 
@@ -551,7 +560,18 @@ export function resolveSeoPage(path: string): SeoPage | null {
       intro: meta.intro,
       faqs: meta.faqs,
       breadcrumbs: [{ name: 'Home', path: '/' }, { name: meta.label, path: clean }],
-      links: seoLinksFor(clean),
+      // OWNER 10 Nov: the vertical hub is the page the homepage links, so it must hand that equity on to
+      // the answer layer: its own "best in India" page, the state answers that already name real cities,
+      // and the answers index. Order matters - hub first, then states, then the index.
+      links: [
+        { label: `Best ${meta.label.toLowerCase()} comparison in India`, href: `/best/${head}` },
+        ...ANSWER_STATES.filter((st) => st.cities.length).slice(0, 8).map((st) => ({
+          label: `Best ${meta.label.toLowerCase()} in ${st.name}`,
+          href: `/best/${head}/${st.slug}`,
+        })),
+        ...seoLinksFor(clean),
+        { label: 'Best prices in every state', href: '/answers' },
+      ],
     };
   }
 

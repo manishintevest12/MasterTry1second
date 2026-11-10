@@ -35508,10 +35508,18 @@ var init_affiliateNetwork = __esm({
         this.name = "Cuelinks";
       }
       buildDeepLink(destinationUrl, _vendorDomain) {
-        const apiKey2 = settings.cuelinks.apiKey;
-        const template = settings.cuelinks.campaignId ? `https://linksredirect.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}` : null;
-        if (!apiKey2 || !template) return null;
-        return template.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
+        const subId = settings.cuelinks.subId;
+        const campaignId = settings.cuelinks.campaignId;
+        const cid = settings.cuelinks.cid;
+        if (campaignId) {
+          const template = `https://linksredirect.com/cuelink?type=nl&subid=${subId}&campaign=${campaignId}&url={DESTINATION}`;
+          return template.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
+        }
+        if (cid) {
+          const sub = subId ? `&subid=${encodeURIComponent(subId)}` : "";
+          return `https://linksredirect.com/?cid=${encodeURIComponent(cid)}&source=linkkit${sub}&url=${encodeURIComponent(destinationUrl)}`;
+        }
+        return null;
       }
     };
     NETWORKS = [new CuelinksAdapter()];
@@ -53660,7 +53668,16 @@ function resolveSeoPage(path18) {
         { q: "Is Try1Second available outside India?", a: "Yes. Anyone can compare prices on try1second.com from any country; flight, hotel and finance comparisons show the same live India prices in INR." }
       ],
       breadcrumbs: [{ name: "Home", path: "/" }],
-      links: VERTICALS2.map((v) => ({ label: v.label, href: `/${v.slug}` }))
+      // OWNER 10 Nov: "traffic homepage se le kr sb page se aana chaiye". The homepage used to link only
+      // the comparison apps, so the 482 answer pages were reachable almost exclusively from /answers.
+      // It now offers all three doors: the live comparison for each vertical, the "best X" answer hub
+      // for each vertical, and the state-by-state answers index. Every one of those is crawlable text,
+      // so link equity flows from the strongest page on the site into the whole answer layer.
+      links: [
+        ...VERTICALS2.map((v) => ({ label: `${v.label} comparison`, href: `/${v.slug}` })),
+        ...VERTICALS2.map((v) => ({ label: `Best ${v.label.toLowerCase()} comparison in India`, href: `/best/${v.slug}` })),
+        { label: "Compare answers for every vertical and state", href: "/answers" }
+      ]
     };
   }
   const seg = clean4.split("/").filter(Boolean);
@@ -53677,7 +53694,18 @@ function resolveSeoPage(path18) {
       intro: meta.intro,
       faqs: meta.faqs,
       breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: clean4 }],
-      links: seoLinksFor(clean4)
+      // OWNER 10 Nov: the vertical hub is the page the homepage links, so it must hand that equity on to
+      // the answer layer: its own "best in India" page, the state answers that already name real cities,
+      // and the answers index. Order matters - hub first, then states, then the index.
+      links: [
+        { label: `Best ${meta.label.toLowerCase()} comparison in India`, href: `/best/${head3}` },
+        ...ANSWER_STATES.filter((st) => st.cities.length).slice(0, 8).map((st) => ({
+          label: `Best ${meta.label.toLowerCase()} in ${st.name}`,
+          href: `/best/${head3}/${st.slug}`
+        })),
+        ...seoLinksFor(clean4),
+        { label: "Best prices in every state", href: "/answers" }
+      ]
     };
   }
   if (head3 === "flights" && /-to-.*-flights$/.test(tail)) {

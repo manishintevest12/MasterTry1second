@@ -25,13 +25,29 @@ class CuelinksAdapter implements AffiliateNetwork {
   readonly name = 'Cuelinks';
 
   buildDeepLink(destinationUrl: string, _vendorDomain: string): string | null {
-    const apiKey = settings.cuelinks.apiKey;
-    const template = settings.cuelinks.campaignId
-      ? `https://linksredirect.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}`
-      : null;
-    // No credentials configured → no deep link. We NEVER invent affiliate parameters.
-    if (!apiKey || !template) return null;
-    return template.replace('{DESTINATION}', encodeURIComponent(destinationUrl));
+    // OWNER 10 Nov ("cuelinks, admitad, vcommission ye sb ka decision already humne de diya hai"):
+    // the account is decided, so a click must be attributed even before a per-campaign template is
+    // pasted in. Two shapes, in order of specificity:
+    //   1. CUELINKS_CAMPAIGN_ID set  -> the campaign template the dashboard gives you;
+    //   2. CUELINKS_CID (default 326794, the publisher cid already in settings) -> the standard
+    //      linkkit deep link https://linksredirect.com/?cid=<cid>&source=linkkit&url=<destination>.
+    // Shape 2 is what linksredirect answers with a 302 to the merchant today (verified 10 Nov), so
+    // every exit is attributed without waiting for anything. The API key is NOT required to mint a
+    // link (it only reads reporting), which is why an expired key no longer blocks monetisation.
+    // Nothing is invented: with no cid and no campaign id there is still no deep link.
+    const subId = settings.cuelinks.subId;
+    const campaignId = settings.cuelinks.campaignId;
+    const cid = settings.cuelinks.cid;
+
+    if (campaignId) {
+      const template = `https://linksredirect.com/cuelink?type=nl&subid=${subId}&campaign=${campaignId}&url={DESTINATION}`;
+      return template.replace('{DESTINATION}', encodeURIComponent(destinationUrl));
+    }
+    if (cid) {
+      const sub = subId ? `&subid=${encodeURIComponent(subId)}` : '';
+      return `https://linksredirect.com/?cid=${encodeURIComponent(cid)}&source=linkkit${sub}&url=${encodeURIComponent(destinationUrl)}`;
+    }
+    return null;
   }
 }
 
