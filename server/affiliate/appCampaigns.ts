@@ -106,6 +106,23 @@ export function appInstallTrackingUrl(campaign: AppCampaign, subId?: string): st
 }
 
 /**
+ * True when the caller can install an Android app: a real Android browser UA, or the Flutter app itself.
+ * The Flutter app's own HTTP client sends Dart's default UA ("Dart/3.x (dart:io)"), which carries no
+ * "Android" token, so without this the CPI exit would never fire for our app users even though the app is
+ * Android-only. Keeping it here means the app inherits server-side affiliate changes with no APK.
+ */
+export function appLikeAndroid(ua: string | undefined): boolean {
+  const u = String(ua || '');
+  if (/android/i.test(u)) return true;
+  return /dart|flutter|try1second\//i.test(u);
+}
+
+/** The exit for a given user agent, so callers do not need to know about UA quirks. */
+export function appInstallExitForUserAgent(userAgent: string | undefined, destination: string, subId?: string): string | null {
+  return appInstallExit(destination, { isAndroid: appLikeAndroid(userAgent), subId });
+}
+
+/**
  * Exit target for an Android visitor when app-install exits are enabled for that merchant,
  * else null (caller keeps the normal merchant exit).
  */

@@ -42,3 +42,15 @@ test('a domain with no app campaign is untouched', () => {
   assert.equal(appCampaignFor('https://www.makemytrip.com/hotels/'), null);
   assert.equal(appInstallExit('https://www.makemytrip.com/hotels/', { isAndroid: true }), null);
 });
+
+test('the Flutter app counts as Android even though its UA is Dart/... ', async () => {
+  const { appLikeAndroid, appInstallExitForUserAgent } = await import('../server/affiliate/appCampaigns');
+  assert.equal(appLikeAndroid('Mozilla/5.0 (Linux; Android 13) Chrome/120 Mobile'), true);
+  assert.equal(appLikeAndroid('Dart/3.5 (dart:io)'), true, 'app requests must count');
+  assert.equal(appLikeAndroid('Try1Second/1.8.79'), true);
+  assert.equal(appLikeAndroid('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605'), false);
+  process.env.T1S_APP_INSTALL_EXITS = 'easemytrip';
+  assert.ok(appInstallExitForUserAgent('Dart/3.5 (dart:io)', 'https://www.easemytrip.com/hotels/'));
+  assert.equal(appInstallExitForUserAgent('Mozilla/5.0 (Windows NT 10.0) Chrome/120', 'https://www.easemytrip.com/hotels/'), null);
+  delete process.env.T1S_APP_INSTALL_EXITS;
+});
