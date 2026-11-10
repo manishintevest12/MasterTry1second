@@ -118,6 +118,21 @@ const CUELINKS_BASE_MERCHANTS = [
   // means that if a Cuelinks approval ever lands they route through Cuelinks instead (deep path the owner wants)
   'hdfc.bank.in', 'axis.bank.in', 'idfcfirst.bank.in', 'creditcards.federalbank.co.in', 'au.bank.in',
   'bankofbaroda.bank.in', 'kotak811.com', 'zurichkotak.com', 'acko.com',
+  // Audited 10 Nov against Cuelinks, LinkInR, vCommission (54 D2C brands) and Admitad (2 campaigns): these
+  // verticals have NO campaign on any of the four networks yet, so they still pay nothing today - but they are
+  // wrapped so the exact deep path survives and an approval pays with no deploy. Grocery/10-minute is the
+  // clearest gap: blinkit, zepto, instamart, bigbasket, jiomart have nothing on any network. Food likewise:
+  // swiggy, zomato, dominos, pizzahut, eatsure, ovenstory. The only food 'campaign' found was ubereats at
+  // 0.14/click, i.e. noise, not a partner.
+  'blinkit.com', 'zepto.com', 'swiggy.com', 'instamart.swiggy.com', 'zomato.com', 'bigbasket.com', 'jiomart.com',
+  'dominos.co.in', 'pizzahut.co.in', 'eatsure.com', 'ovenstory.in', 'ubereats.com', 'dunzo.com', 'licious.in',
+  'dmart.in', 'milkbasket.com', 'countrydelight.in', 'eatclub.in', 'faasos.com', 'behrouz.in', 'freshmenu.com',
+  'pvrinox.com', 'bookmyshow.com', 'tatacliq.com', 'snapdeal.com', 'reliancedigital.in', 'searchbff.tatacliq.com',
+  'redbus.in', 'ixigo.com', 'zingbus.com', 'abhibus.com', 'bharattaxi.com', 'meru.in', 'quickride.in',
+  'savaari.com', 'oyorooms.com', 'airbnb.co.in', 'saffronstays.com', 'spicejet.com', 'akasaair.com', 'fly91.in',
+  'bookme.allianceair.in', 'cathaypacific.com', 'britishairways.com', 'budgetair.com', 'emirates.com',
+  'expedia.com', 'singaporeair.com', 'srilankan.com', 'easemytrip.com', 'goindigo.in',
+  'amazon.in', 'mi.com', 'in-go.buy.mi.com',
 ];
 
 /**
@@ -157,7 +172,16 @@ function cuelinksOnlyJoined(): boolean {
 const CUELINKS_APPLIED_ONLY = ['myntra.com', 'ajio.com', 'flipkart.com', 'abhibus.com', 'agoda.com'];
 
 /** Approved-on-this-account domains only, used when CUELINKS_ONLY_JOINED=1. */
-const CUELINKS_APPROVED_ONLY = ['makemytrip.com', 'goibibo.com', 'shopsy.in', 'cleartrip.com', 'nykaa.com', 'croma.com', 'easemytrip.com'];
+const CUELINKS_APPROVED_ONLY = [
+  // Verified access_status='open' on THIS publisher account (full vertical audit, 10 Nov 13:xx IST):
+  // makemytrip 112.5/sale, goibibo 210/sale, shopsy 7.5%, cleartrip 67.5/sale, nykaa 4.2%, croma 3.38%,
+  // lenovo 3%, oppo 2.63%, realme 1.05%, qatarairways 1.5%.
+  'makemytrip.com', 'goibibo.com', 'shopsy.in', 'cleartrip.com', 'nykaa.com', 'croma.com',
+  'lenovo.com', 'oppo.com', 'realme.com', 'qatarairways.com',
+  // easemytrip.com REMOVED: an earlier API read attributed a 172.5 'Per Acquisition' campaign to it, but the
+  // domain-matched re-check shows no campaign for easemytrip.com and linksredirect passes it straight through,
+  // so claiming it as approved would credit a payout that does not exist.
+];
 
 function cuelinksWrapAll(): boolean {
   return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ALL_MERCHANTS || '').trim());

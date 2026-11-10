@@ -48,9 +48,12 @@ test('every merchant the owner has applied for is wrapped, and the deep path sur
     'https://www.cleartrip.com/hotels/india/indore-hotels',
     'https://www.makemytrip.com/flights/',
     'https://www.goibibo.com/hotels/',
-    'https://www.easemytrip.com/hotels/',
     'https://www.nykaa.com/skin/c/8377',
     'https://www.croma.com/mobiles/c/1',
+    // audited 10 Nov as access_status='open' on this account
+    'https://www.lenovo.com/in/en/laptops/',
+    'https://www.oppo.com/in/smartphones/',
+    'https://www.realme.com/in/',
   ]) {
     const u = cuelinksMerchantUrl(dest, 'approved');
     assert.ok(u && u.includes(encodeURIComponent(dest)), `${dest} must be wrapped on the approved tier`);
@@ -87,4 +90,11 @@ test('CUELINKS_ONLY_JOINED=1 falls back to the strict approved-only allow-list',
   } finally {
     delete process.env.CUELINKS_ONLY_JOINED;
   }
+});
+
+test('easemytrip is pass-through, not approved (audit 10 Nov: no campaign for its domain)', async () => {
+  const { cuelinksMerchantUrl } = await import('../server/affiliate/deeplink');
+  const u = 'https://www.easemytrip.com/hotels/';
+  assert.equal(cuelinksMerchantUrl(u, 'approved'), null, 'must not claim a confirmed payout');
+  assert.ok(cuelinksMerchantUrl(u, 'all'), 'still wrapped so the deep path and future approval work');
 });

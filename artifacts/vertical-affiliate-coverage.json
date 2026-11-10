@@ -1,0 +1,1067 @@
+{
+ "flights": [
+  {
+   "domain": "akasaair.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "api-prod-mobile-skyplus6e.goindigo.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "book.cathaypacific.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "0.14INR",
+    "type": "Per Click",
+    "deeplink": true
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "bookme.allianceair.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "britishairways.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "budgetair.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "cleartrip.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "67.5INR",
+    "type": "Per Sale",
+    "deeplink": false
+   },
+   "linkinr": [
+    "Cleartrip",
+    "Upto \u20b9288",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "easemytrip.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "emirates.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "0.94%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "expedia.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "3.0%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "flight.yatra.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": null,
+   "linkinr": [
+    "Yatra (Hotel and Flights)",
+    "Upto \u20b970",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "flightservice-node.easemytrip.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "flightservice-seo.easemytrip.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "fly91.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "gi.easemytrip.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "ixigo.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "qatarairways.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "1.5%",
+    "type": "Per Sale(%)",
+    "deeplink": false
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "raw.githubusercontent.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "singaporeair.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "0.14INR",
+    "type": "Per Click",
+    "deeplink": false
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "spicejet.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "srilankan.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "cab": [
+  {
+   "domain": "bharattaxi.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "book.olacabs.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "devapi.olacabs.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "login.uber.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": null,
+   "linkinr": [
+    "Uber",
+    "Flat \u20b9120",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "m.uber.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": null,
+   "linkinr": [
+    "Uber",
+    "Flat \u20b9120",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "meru.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "quickride.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "router.project-osrm.org",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "savaari.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "uber.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": null,
+   "linkinr": [
+    "Uber",
+    "Flat \u20b9120",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "webapps.olacabs.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "account": [
+  {
+   "domain": "bankbazaar.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "groww.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "paisabazaar.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "zerodha.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "0.75INR",
+    "type": "Per Lead",
+    "deeplink": true
+   },
+   "linkinr": null
+  }
+ ],
+ "bus": [
+  {
+   "domain": "abhibus.com",
+   "route": "cuelinks_applied",
+   "pays_now": "pending",
+   "cuelinks": {
+    "status": "pending",
+    "payout": "0.14INR",
+    "type": "Per Click",
+    "deeplink": false
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "ixigo.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "makemytrip.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "112.5INR",
+    "type": "Per Sale",
+    "deeplink": false
+   },
+   "linkinr": [
+    "MakeMyTrip Domestic Hotels",
+    "Flat \u20b9144",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "redbus.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "45.0INR",
+    "type": "Per Sale",
+    "deeplink": false
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "yatra.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": null,
+   "linkinr": [
+    "Yatra (Hotel and Flights)",
+    "Upto \u20b970",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "zingbus.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "creditcards": [
+  {
+   "domain": "bankbazaar.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "cardinsider.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "paisabazaar.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "ecommerce": [
+  {
+   "domain": "ajio.com",
+   "route": "cuelinks_applied",
+   "pays_now": "pending",
+   "cuelinks": {
+    "status": "pending",
+    "payout": "9.0%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Ajio",
+    "Upto 8.64%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "amazon.in",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "3.17%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Amazon",
+    "Upto 16.13%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "api.croma.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "3.38%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Croma",
+    "Upto 2.4%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "api.realme.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "1.05%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Realme",
+    "Upto 2.24%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "croma.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "3.38%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Croma",
+    "Upto 2.4%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "flipkart.com",
+   "route": "cuelinks_applied",
+   "pays_now": "pending",
+   "cuelinks": {
+    "status": "pending",
+    "payout": "6.0%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Flipkart",
+    "Upto 5.76%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "in-go.buy.mi.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "0.13INR",
+    "type": "Per Click",
+    "deeplink": true
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "jiomart.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": null,
+   "linkinr": [
+    "JioMart",
+    "Upto 2.88%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "lenovo.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "3.0%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Lenovo",
+    "Upto 5.6%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "mi.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "0.13INR",
+    "type": "Per Click",
+    "deeplink": true
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "myntra.com",
+   "route": "cuelinks_applied",
+   "pays_now": "pending",
+   "cuelinks": {
+    "status": "pending",
+    "payout": "7.5%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Myntra",
+    "Upto 8%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "nykaa.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "4.2%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Nykaa Beauty",
+    "Upto 5.44%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "oppo.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "2.63%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Oppo",
+    "Upto 3.4%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "realme.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "1.05%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Realme",
+    "Upto 2.24%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "reliancedigital.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "searchbff.tatacliq.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": null,
+   "linkinr": [
+    "TataCliq",
+    "Flat 3.4%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "shopsy.in",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "7.5%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Shopsy",
+    "Upto 8.84%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "snapdeal.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "food": [
+  {
+   "domain": "disc.swiggy.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "dominos.co.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "eatsure.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "ovenstory.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "pizzahut.co.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "swiggy.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "ubereats.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "0.14INR",
+    "type": "Per Click",
+    "deeplink": true
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "zomato.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "grocery": [
+  {
+   "domain": "amazon.in",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "not_applied",
+    "payout": "3.17%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Amazon",
+    "Upto 16.13%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "api3.blinkit.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "bigbasket.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "blinkit.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "flipkart.com",
+   "route": "cuelinks_applied",
+   "pays_now": "pending",
+   "cuelinks": {
+    "status": "pending",
+    "payout": "6.0%",
+    "type": "Per Sale(%)",
+    "deeplink": true
+   },
+   "linkinr": [
+    "Flipkart",
+    "Upto 5.76%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "instamart.swiggy.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "media-assets.swiggy.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "zepto.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "hotels": [
+  {
+   "domain": "agoda.com",
+   "route": "cuelinks_applied",
+   "pays_now": "pending",
+   "cuelinks": {
+    "status": "pending",
+    "payout": "4.5%",
+    "type": "Per Sale(%)",
+    "deeplink": false
+   },
+   "linkinr": [
+    "Agoda",
+    "Flat 4.8%",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "airbnb.co.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "booking.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": {
+    "status": "rejected",
+    "payout": "4.5%",
+    "type": "Per Sale(%)",
+    "deeplink": false
+   },
+   "linkinr": null
+  },
+  {
+   "domain": "cleartrip.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "67.5INR",
+    "type": "Per Sale",
+    "deeplink": false
+   },
+   "linkinr": [
+    "Cleartrip",
+    "Upto \u20b9288",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "easemytrip.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "goibibo.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "210.0INR",
+    "type": "Per Sale",
+    "deeplink": false
+   },
+   "linkinr": [
+    "Goibibo Hotels",
+    "Upto \u20b9288",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "hermes.goibibo.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "210.0INR",
+    "type": "Per Sale",
+    "deeplink": false
+   },
+   "linkinr": [
+    "Goibibo Hotels",
+    "Upto \u20b9288",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "hotel.yatra.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": null,
+   "linkinr": [
+    "Yatra (Hotel and Flights)",
+    "Upto \u20b970",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "ixigo.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "makemytrip.com",
+   "route": "cuelinks_approved",
+   "pays_now": true,
+   "cuelinks": {
+    "status": "open",
+    "payout": "112.5INR",
+    "type": "Per Sale",
+    "deeplink": false
+   },
+   "linkinr": [
+    "MakeMyTrip Domestic Hotels",
+    "Flat \u20b9144",
+    "CPS"
+   ]
+  },
+  {
+   "domain": "oyorooms.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "saffronstays.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "insurance": [
+  {
+   "domain": "acko.com",
+   "route": "linkinr",
+   "pays_now": true,
+   "cuelinks": null,
+   "linkinr": [
+    "Acko Bike",
+    "Upto 30%",
+    "CPL"
+   ]
+  },
+  {
+   "domain": "bankbazaar.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "coverfox.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "getditto.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "godigit.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "hdfcergo.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "insurancedekho.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "policybazaar.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "loans": [
+  {
+   "domain": "bajajfinserv.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "bankbazaar.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "hdfcbank.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "kreditbee.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "moneyview.in",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "navi.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "paisabazaar.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  },
+  {
+   "domain": "policybazaar.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ],
+ "movies": [
+  {
+   "domain": "pvrinox.com",
+   "route": "cuelinks_passthrough (deep path kept)",
+   "pays_now": false,
+   "cuelinks": null,
+   "linkinr": null
+  }
+ ]
+}
