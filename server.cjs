@@ -32042,19 +32042,45 @@ var init_deeplink = __esm({
       "pvrinox.com",
       "districtonline.in",
       // finance (highest CPA; wrap now, earn the moment the publisher program is approved)
+      // Finance, as the owner listed it 10 Nov ("banking partners ke liye wo bhi cuelinks, vcommission, admitad,
+      // linkinr par available hai"). Aggregators measured on our own accounts: no campaign yet on Cuelinks /
+      // LinkInR / Admitad / vCommission, so they need direct publisher programs - but they are wrapped from day
+      // one, which means the day an approval lands it pays with no deploy and no code change.
       "bankbazaar.com",
       "paisabazaar.com",
       "policybazaar.com",
       "coverfox.com",
       "insurancedekho.com",
-      "acko.com",
+      "cardinsider.com",
       "godigit.com",
       "hdfcergo.com",
+      "getditto.com",
       "groww.in",
       "zerodha.com",
       "navi.com",
       "bajajfinserv.in",
-      "moneyview.in"
+      "moneyview.in",
+      "kreditbee.in",
+      "hdfcbank.com",
+      "icicilombard.com",
+      "bobcards.com",
+      "bobfinancial.com",
+      "airtelpayments.bank.in",
+      "equitas.bank.in",
+      "fibe.in",
+      "creditmantri.com",
+      "emergencypaisa.com",
+      // issuer hosts that LinkInR already pays on: LinkInR runs first, so it keeps them; listing them here only
+      // means that if a Cuelinks approval ever lands they route through Cuelinks instead (deep path the owner wants)
+      "hdfc.bank.in",
+      "axis.bank.in",
+      "idfcfirst.bank.in",
+      "creditcards.federalbank.co.in",
+      "au.bank.in",
+      "bankofbaroda.bank.in",
+      "kotak811.com",
+      "zurichkotak.com",
+      "acko.com"
     ];
     CUELINKS_APPLIED_ONLY = ["myntra.com", "ajio.com", "flipkart.com", "abhibus.com", "agoda.com"];
     CUELINKS_APPROVED_ONLY = ["makemytrip.com", "goibibo.com", "shopsy.in", "cleartrip.com", "nykaa.com", "croma.com", "easemytrip.com"];
