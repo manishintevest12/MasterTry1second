@@ -57872,6 +57872,7 @@ footer{margin-top:44px;font-size:13px;color:#64748b;border-top:1px solid #e2e8f0
 var liveSnapshot_exports = {};
 __export(liveSnapshot_exports, {
   clearSnapshotCache: () => clearSnapshotCache,
+  isStateAnswerPath: () => isStateAnswerPath,
   pagePlacement: () => pagePlacement,
   pickCityDiverseRows: () => pickCityDiverseRows,
   renderSnapshotHtml: () => renderSnapshotHtml,
@@ -58004,9 +58005,13 @@ function snapshotJsonLd(snapshot, path18) {
     }))
   });
 }
+function isStateAnswerPath(path18) {
+  return /^\/best\/[a-z0-9-]+\/[a-z0-9-]+$/.test((path18 || "").replace(/\/+$/, ""));
+}
 async function snapshotForPath(path18) {
-  const page = resolveSeoPage(path18);
-  if (!page) return null;
+  const stateAnswer = isStateAnswerPath(path18);
+  const page = stateAnswer ? null : resolveSeoPage(path18);
+  if (!page && !stateAnswer) return null;
   const key = (path18 || "/").replace(/\/+$/, "") || "/";
   const hit = cache10.get(key);
   if (hit && Date.now() - hit.at < (hit.ttl ?? SNAPSHOT_TTL_MS)) return hit.snap;
