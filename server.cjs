@@ -31533,10 +31533,12 @@ var init_ekaro = __esm({
 // server/affiliate/gromo.ts
 var gromo_exports = {};
 __export(gromo_exports, {
+  gromoAdvisorLink: () => gromoAdvisorLink,
   gromoClickUrl: () => gromoClickUrl,
   gromoCoverage: () => gromoCoverage,
   gromoLinkFor: () => gromoLinkFor,
   gromoLinkMap: () => gromoLinkMap,
+  isAggregatorDomain: () => isAggregatorDomain,
   isFinanceDomain: () => isFinanceDomain,
   isGromoUrl: () => isGromoUrl
 });
@@ -31576,26 +31578,41 @@ function envLinks() {
     return {};
   }
 }
+function gromoAdvisorLink() {
+  const override = (process.env.GROMO_ADVISOR_LINK || process.env.GROMO_DEFAULT_LINK || "").trim();
+  if (override && isGromoUrl(override)) return override;
+  return BUILTIN_ADVISOR_LINK;
+}
 function gromoLinkMap() {
-  return { ...BUILTIN_LINKS, ...envLinks() };
+  const map = { ...envLinks() };
+  const advisor = gromoAdvisorLink();
+  if (advisor) map.advisor = advisor;
+  return map;
 }
 function isFinanceDomain(domain) {
   const d = String(domain || "").toLowerCase().replace(/^www\./, "");
-  return FINANCE_DOMAINS.some((f) => d === f || d.endsWith(`.${f}`));
+  if (FINANCE_DOMAINS.some((f) => d === f || d.endsWith(`.${f}`))) return true;
+  return /(^|\.)bank\.in$/.test(d);
 }
-function gromoLinkFor(merchant, domain = "", targetUrl = "") {
+function skippedDomain(domain) {
+  const d = String(domain || "").toLowerCase().replace(/^www\./, "");
+  if (!d) return false;
+  return (process.env.GROMO_SKIP_DOMAINS || "").split(",").map((x) => x.trim().toLowerCase().replace(/^www\./, "")).filter(Boolean).some((skip) => d === skip || d.endsWith(`.${skip}`));
+}
+function gromoLinkFor(merchant, domain = "", _targetUrl = "") {
+  const d = String(domain || "").toLowerCase().replace(/^www\./, "");
+  if (skippedDomain(d)) return null;
   const map = gromoLinkMap();
-  const envKeys = envLinks();
   for (const v of keyVariants(merchant)) {
     const hit = map[v];
-    if (!hit || !isGromoUrl(hit)) continue;
-    const ctx = BUILTIN_CONTEXT[v];
-    if (ctx && !envKeys[v] && targetUrl && !ctx.test(targetUrl)) continue;
-    return hit;
+    if (hit && isGromoUrl(hit)) return hit;
   }
-  const defaultLink = (process.env.GROMO_DEFAULT_LINK || "").trim();
-  if (defaultLink && isGromoUrl(defaultLink) && isFinanceDomain(domain)) return defaultLink;
-  return null;
+  if (isAggregatorDomain(d) || !isFinanceDomain(d)) return null;
+  return gromoAdvisorLink();
+}
+function isAggregatorDomain(domain) {
+  const d = String(domain || "").toLowerCase().replace(/^www\./, "");
+  return AGGREGATOR_DOMAINS.some((a) => d === a || d.endsWith(`.${a}`));
 }
 function gromoClickUrl(link, subid = "") {
   if (!isGromoUrl(link)) return "";
@@ -31612,11 +31629,12 @@ function gromoClickUrl(link, subid = "") {
 function gromoCoverage() {
   return {
     keys: Object.keys(gromoLinkMap()).sort(),
-    defaultConfigured: Boolean((process.env.GROMO_DEFAULT_LINK || "").trim()),
+    advisorLink: gromoAdvisorLink(),
+    defaultConfigured: Boolean(gromoAdvisorLink()),
     financeDomains: FINANCE_DOMAINS.length
   };
 }
-var FINANCE_DOMAINS, BUILTIN_LINKS, BUILTIN_CONTEXT;
+var FINANCE_DOMAINS, BUILTIN_ADVISOR_LINK, AGGREGATOR_DOMAINS;
 var init_gromo = __esm({
   "server/affiliate/gromo.ts"() {
     FINANCE_DOMAINS = [
@@ -31663,17 +31681,19 @@ var init_gromo = __esm({
       "groww.in",
       "zerodha.com"
     ];
-    BUILTIN_LINKS = {
-      axis: "https://sales.gromo.in/ac/CCiv1ofkx2",
-      axisbank: "https://sales.gromo.in/ac/CCiv1ofkx2",
-      axisbankcreditcard: "https://sales.gromo.in/ac/CCiv1ofkx2"
-    };
-    BUILTIN_CONTEXT = {
-      // the Axis link the owner pasted is a CREDIT CARD application; an Axis loan/account row must not use it
-      axis: /card|credit|cc[-_/]|apply/i,
-      axisbank: /card|credit|cc[-_/]|apply/i,
-      axisbankcreditcard: /card|credit|cc[-_/]|apply/i
-    };
+    BUILTIN_ADVISOR_LINK = "https://sales.gromo.in/ac/CCiv1ofkx2";
+    AGGREGATOR_DOMAINS = [
+      "policybazaar.com",
+      "paisabazaar.com",
+      "bankbazaar.com",
+      "coverfox.com",
+      "insurancedekho.com",
+      "cardinsider.com",
+      "kredit.pe",
+      "creditmantri.com",
+      "getditto.com",
+      "emergencypaisa.com"
+    ];
   }
 });
 
@@ -33067,6 +33087,7 @@ var init_deals = __esm({
 // server/marketing/merchantLogos.ts
 var merchantLogos_exports = {};
 __export(merchantLogos_exports, {
+  brandDomainFor: () => brandDomainFor,
   decodeLogoDataUrl: () => decodeLogoDataUrl,
   deleteMerchantLogo: () => deleteMerchantLogo,
   ensureMerchantLogosTable: () => ensureMerchantLogosTable,
@@ -33134,6 +33155,10 @@ async function upsertMerchantLogo(p) {
 async function deleteMerchantLogo(nameKey) {
   await ensureMerchantLogosTable();
   await getStore().execute("DELETE FROM merchant_logos WHERE name_key = ?", [String(nameKey || "").slice(0, 80)]);
+}
+function brandDomainFor(nameKey) {
+  const key = String(nameKey || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return KEY_DOMAIN[key] || "";
 }
 async function resolveBrandFavicon(nameKey) {
   const key = String(nameKey || "").toLowerCase().replace(/[^a-z0-9]/g, "");

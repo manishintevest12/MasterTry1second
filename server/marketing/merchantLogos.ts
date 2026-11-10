@@ -233,6 +233,13 @@ const KEY_DOMAIN: Record<string, string> = {
 const faviconCache = new Map<string, { bytes: Buffer; mime: string; at: number }>();
 const FAVICON_TTL_MS = 12 * 60 * 60_000;
 
+/** The brand's own domain for a key, or '' when the brand is unknown. Export makes the map testable without
+ *  depending on a live favicon provider (provider flakes are not a code regression). */
+export function brandDomainFor(nameKey: string): string {
+  const key = String(nameKey || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return KEY_DOMAIN[key] || '';
+}
+
 /** Real favicon bytes for a brand key, cached. undefined = unknown brand / fetch failed. */
 export async function resolveBrandFavicon(nameKey: string): Promise<{ bytes: Buffer; mime: string } | undefined> {
   const key = String(nameKey || '').toLowerCase().replace(/[^a-z0-9]/g, '');

@@ -28871,6 +28871,7 @@ var init_deals = __esm({
 // server/marketing/merchantLogos.ts
 var merchantLogos_exports = {};
 __export(merchantLogos_exports, {
+  brandDomainFor: () => brandDomainFor,
   decodeLogoDataUrl: () => decodeLogoDataUrl,
   deleteMerchantLogo: () => deleteMerchantLogo,
   ensureMerchantLogosTable: () => ensureMerchantLogosTable,
@@ -28938,6 +28939,10 @@ async function upsertMerchantLogo(p) {
 async function deleteMerchantLogo(nameKey) {
   await ensureMerchantLogosTable();
   await getStore().execute("DELETE FROM merchant_logos WHERE name_key = ?", [String(nameKey || "").slice(0, 80)]);
+}
+function brandDomainFor(nameKey) {
+  const key = String(nameKey || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return KEY_DOMAIN[key] || "";
 }
 async function resolveBrandFavicon(nameKey) {
   const key = String(nameKey || "").toLowerCase().replace(/[^a-z0-9]/g, "");
