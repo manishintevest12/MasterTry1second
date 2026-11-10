@@ -41789,7 +41789,7 @@ async function buildShowcase() {
   const stealsC = sectionItems(ecom, (r) => serv(r) && priceOf2(r) <= 999 && pctOf(r) >= 0.2, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
   const placesC = sectionItems(hotels, (r) => serv(r), newest);
   const cardsC = sectionItems(cardsPool, (r) => servableRow(r, 45), newest);
-  const [picked, goBig, tech, steals, places, cards] = await Promise.all([
+  const [picked, goBig, tech, steals, places2, cards] = await Promise.all([
     verifyLiveArt(pickedC),
     verifyLiveArt(goBigC),
     verifyLiveArt(techC),
@@ -41815,7 +41815,7 @@ async function buildShowcase() {
     [...hotelsByCity.get(d.name) || [], ...hotels],
     liveArt
   )).filter((x) => x !== null).slice(0, 12);
-  const placesFinal = finalizeSection(places);
+  const placesFinal = finalizeSection(places2);
   const sections = [
     { id: "picked", title: "Picked Just for You", subtitle: "real products, live-acquired prices", items: finalizeSection(picked) },
     { id: "special", title: "Special Offers For You", subtitle: "auto-tested coupons from live registries", items: couponSpecial },
@@ -42742,6 +42742,1349 @@ var init_verticalLexicon = __esm({
   }
 });
 
+// server/seo/cityCorpus.ts
+function citiesOfState(stateSlug) {
+  return INDIAN_CITIES.filter((c) => c.state === stateSlug).map((c) => c.name);
+}
+var RAW, slugify, build, INDIAN_CITIES, CITY_STATE;
+var init_cityCorpus = __esm({
+  "server/seo/cityCorpus.ts"() {
+    RAW = [
+      ["andhra-pradesh", "Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Kurnool", "Rajahmundry", "Tirupati", "Kakinada", "Kadapa", "Anantapur", "Vizianagaram", "Eluru", "Ongole", "Chittoor", "Bhimavaram", "Machilipatnam", "Tenali", "Proddatur", "Hindupur"],
+      ["arunachal-pradesh", "Itanagar", "Naharlagun", "Pasighat", "Tawang", "Ziro", "Bomdila", "Tezu"],
+      ["assam", "Guwahati", "Silchar", "Dibrugarh", "Jorhat", "Tezpur", "Nagaon", "Bongaigaon", "Tinsukia", "Dhubri", "Diphu", "Goalpara"],
+      ["bihar", "Patna", "Gaya", "Bhagalpur", "Muzaffarpur", "Darbhanga", "Purnia", "Bihar Sharif", "Arrah", "Begusarai", "Katihar", "Chhapra", "Munger", "Saharsa", "Sasaram", "Hajipur", "Motihari", "Bettiah", "Siwan", "Jamalpur"],
+      ["chhattisgarh", "Raipur", "Bhilai", "Bilaspur", "Korba", "Durg", "Rajnandgaon", "Jagdalpur", "Ambikapur", "Raigarh", "Dhamtari", "Chirmiri"],
+      ["goa", "Goa", "Panaji", "Margao", "Vasco Da Gama", "Calangute", "Candolim", "Anjuna", "Ponda", "Mapusa"],
+      ["gujarat", "Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar", "Junagadh", "Gandhinagar", "Gandhidham", "Anand", "Navsari", "Morbi", "Vapi", "Veraval", "Porbandar", "Bhuj", "Mehsana", "Palanpur", "Valsad", "Bharuch", "Godhra", "Patan", "Dahod"],
+      ["haryana", "Gurugram", "Faridabad", "Panipat", "Ambala", "Yamunanagar", "Rohtak", "Hisar", "Karnal", "Sonipat", "Panchkula", "Bhiwani", "Sirsa", "Kurukshetra", "Rewari", "Palwal", "Jind", "Kaithal"],
+      ["himachal-pradesh", "Shimla", "Manali", "Dharamshala", "Solan", "Mandi", "Kullu", "Palampur", "Kangra", "Una", "Chamba", "Hamirpur", "Baddi", "Nahan", "Keylong"],
+      ["jharkhand", "Ranchi", "Jamshedpur", "Dhanbad", "Bokaro Steel City", "Deoghar", "Hazaribagh", "Giridih", "Ramgarh", "Medininagar", "Chaibasa", "Dumka", "Sahibganj"],
+      ["karnataka", "Bengaluru", "Mysuru", "Mangaluru", "Hubballi", "Dharwad", "Belagavi", "Kalaburagi", "Davanagere", "Ballari", "Vijayapura", "Shivamogga", "Tumakuru", "Udupi", "Hassan", "Mandya", "Chikkamagaluru", "Bidar", "Raichur", "Kolar", "Bagalkot", "Gadag", "Hospet", "Karwar", "Madikeri"],
+      ["kerala", "Kochi", "Thiruvananthapuram", "Kozhikode", "Thrissur", "Kollam", "Kannur", "Alappuzha", "Palakkad", "Malappuram", "Kottayam", "Munnar", "Varkala", "Kovalam", "Wayanad", "Idukki", "Pathanamthitta", "Kasaragod", "Kannur", "Thalassery", "Nilambur"],
+      ["madhya-pradesh", "Indore", "Bhopal", "Jabalpur", "Gwalior", "Ujjain", "Sagar", "Rewa", "Satna", "Ratlam", "Dewas", "Singrauli", "Katni", "Chhindwara", "Khandwa", "Morena", "Bhind", "Vidisha", "Hoshangabad", "Shivpuri", "Damoh", "Mandsaur", "Khargone", "Neemuch", "Betul", "Sehore", "Guna", "Shahdol", "Chhatarpur", "Pithampur", "Omkareshwar", "Maheshwar"],
+      ["maharashtra", "Mumbai", "Pune", "Nagpur", "Nashik", "Thane", "Navi Mumbai", "Aurangabad", "Solapur", "Amravati", "Kolhapur", "Sangli", "Jalgaon", "Akola", "Latur", "Dhule", "Ahmednagar", "Chandrapur", "Parbhani", "Nanded", "Satara", "Ratnagiri", "Alibaug", "Lonavala", "Mahabaleshwar", "Shirdi", "Panvel", "Vasai-Virar", "Bhiwandi", "Ichalkaranji", "Nandurbar", "Wardha", "Gondia", "Yavatmal", "Buldhana", "Osmanabad", "Jalna", "Beed", "Karad", "Baramati", "Palghar", "Badlapur", "Ambernath"],
+      ["manipur", "Imphal", "Thoubal", "Churachandpur", "Bishnupur", "Kakching"],
+      ["meghalaya", "Shillong", "Tura", "Cherrapunji", "Jowai", "Nongstoin", "Williamnagar"],
+      ["mizoram", "Aizawl", "Lunglei", "Champhai", "Serchhip", "Kolasib"],
+      ["nagaland", "Kohima", "Dimapur", "Mokokchung", "Tuensang", "Wokha", "Zunheboto"],
+      ["odisha", "Bhubaneswar", "Cuttack", "Rourkela", "Berhampur", "Sambalpur", "Puri", "Balasore", "Bhadrak", "Baripada", "Jharsuguda", "Angul", "Koraput", "Rayagada", "Bargarh", "Konark"],
+      ["punjab", "Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda", "Mohali", "Hoshiarpur", "Batala", "Pathankot", "Moga", "Abohar", "Malerkotla", "Barnala", "Firozpur", "Kapurthala", "Sangrur", "Fazilka"],
+      ["rajasthan", "Jaipur", "Udaipur", "Jodhpur", "Kota", "Bikaner", "Ajmer", "Bhilwara", "Alwar", "Sikar", "Pali", "Sri Ganganagar", "Bharatpur", "Chittorgarh", "Mount Abu", "Pushkar", "Jaisalmer", "Sawai Madhopur", "Bundi", "Beawar", "Hanumangarh", "Nagaur", "Tonk", "Kishangarh", "Ranthambore"],
+      ["sikkim", "Gangtok", "Namchi", "Gyalshing", "Mangan", "Pelling", "Lachung"],
+      ["tamil-nadu", "Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tirunelveli", "Tiruppur", "Erode", "Vellore", "Thoothukudi", "Thanjavur", "Dindigul", "Kanyakumari", "Ooty", "Kumbakonam", "Nagercoil", "Hosur", "Karur", "Cuddalore", "Kanchipuram", "Rameswaram", "Pollachi", "Namakkal", "Villupuram", "Ariyalur", "Nagapattinam", "Pudukkottai", "Yercaud", "Kodaikanal", "Mahabalipuram"],
+      ["telangana", "Hyderabad", "Warangal", "Nizamabad", "Karimnagar", "Khammam", "Ramagundam", "Secunderabad", "Mahbubnagar", "Nalgonda", "Adilabad", "Siddipet", "Medak", "Suryapet", "Miryalaguda", "Jagtial"],
+      ["tripura", "Agartala", "Dharmanagar", "Kailashahar", "Belonia", "Khowai", "Ambassa"],
+      ["uttar-pradesh", "Lucknow", "Noida", "Ghaziabad", "Agra", "Varanasi", "Kanpur", "Meerut", "Prayagraj", "Bareilly", "Aligarh", "Moradabad", "Saharanpur", "Gorakhpur", "Jhansi", "Muzaffarnagar", "Mathura", "Ayodhya", "Firozabad", "Budaun", "Rampur", "Shahjahanpur", "Farrukhabad", "Hapur", "Etawah", "Mirzapur", "Bulandshahr", "Amroha", "Hardoi", "Fatehpur", "Raebareli", "Orai", "Sitapur", "Bahraich", "Unnao", "Jaunpur", "Hathras", "Banda", "Pilibhit", "Barabanki", "Gonda", "Mainpuri", "Etah", "Deoria", "Ghazipur", "Sultanpur", "Azamgarh", "Basti", "Ballia", "Greater Noida", "Vrindavan", "Sarnath", "Naimisharanya"],
+      ["uttarakhand", "Dehradun", "Haridwar", "Rishikesh", "Roorkee", "Haldwani", "Rudrapur", "Kashipur", "Nainital", "Mussoorie", "Almora", "Pithoragarh", "Kotdwar", "Ramnagar", "Kedarnath", "Badrinath", "Joshimath", "Chamoli", "Tehri", "Bageshwar"],
+      ["west-bengal", "Kolkata", "Howrah", "Durgapur", "Asansol", "Siliguri", "Bardhaman", "Malda", "Kharagpur", "Haldia", "Darjeeling", "Jalpaiguri", "Kalyani", "Krishnanagar", "Barasat", "Barrackpore", "Hugli-Chinsurah", "Raiganj", "Medinipur", "Cooch Behar", "Bankura", "Purulia", "Bolpur", "Kalimpong", "Digha", "Mandarmani"],
+      ["andaman-and-nicobar-islands", "Port Blair", "Havelock Island", "Neil Island", "Diglipur"],
+      ["chandigarh", "Chandigarh"],
+      ["dadra-and-nagar-haveli-and-daman-and-diu", "Silvassa", "Daman", "Diu"],
+      ["delhi", "Delhi", "New Delhi", "Dwarka", "Rohini"],
+      ["jammu-and-kashmir", "Srinagar", "Jammu", "Anantnag", "Baramulla", "Udhampur", "Kathua", "Sopore", "Gulmarg", "Pahalgam", "Katra", "Sonamarg"],
+      ["ladakh", "Leh", "Kargil", "Nubra Valley", "Pangong"],
+      ["lakshadweep", "Kavaratti", "Agatti", "Minicoy"],
+      ["puducherry", "Puducherry", "Karaikal", "Mahe", "Yanam", "Auroville"]
+    ];
+    slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    build = () => {
+      const seen = /* @__PURE__ */ new Set();
+      const out = [];
+      for (const [state, ...names] of RAW) {
+        const inState = /* @__PURE__ */ new Set();
+        for (const name of names) {
+          const key = name.trim().toLowerCase();
+          if (inState.has(key)) continue;
+          inState.add(key);
+          let slug5 = slugify(name);
+          if (seen.has(slug5)) slug5 = `${slug5}-${state}`;
+          if (seen.has(slug5)) continue;
+          seen.add(slug5);
+          out.push({ slug: slug5, name, state });
+        }
+      }
+      return out;
+    };
+    INDIAN_CITIES = build();
+    CITY_STATE = Object.fromEntries(
+      INDIAN_CITIES.map((c) => [c.name.trim().toLowerCase(), c.state])
+    );
+  }
+});
+
+// server/lens/indicLexicon.ts
+function detectIndicScript(text) {
+  for (const s of SCRIPT_RANGES) if (s.re.test(text)) return s.script;
+  return null;
+}
+function translateIndic(text) {
+  const script = detectIndicScript(text);
+  let changed = false;
+  let out = String(text || "");
+  if (script) {
+    const dict = DICTS[script];
+    const keys = Object.keys(dict).sort((a, b) => b.length - a.length);
+    for (const k of keys) {
+      if (out.includes(k)) {
+        out = out.split(k).join(dict[k]);
+        changed = true;
+      }
+    }
+  }
+  out = out.replace(/\b[a-z]{2,10}\b/gi, (w) => {
+    const hit = ROMANISED[w.toLowerCase()];
+    if (!hit) return w;
+    changed = true;
+    return hit;
+  });
+  return { text: out, changed, script };
+}
+var SCRIPT_RANGES, HOTEL, BENGALI, GUJARATI, GURMUKHI, TAMIL, TELUGU, KANNADA, MALAYALAM, ODIA, URDU, DICTS, ROMANISED;
+var init_indicLexicon = __esm({
+  "server/lens/indicLexicon.ts"() {
+    SCRIPT_RANGES = [
+      { script: "bengali", re: /[\u0980-\u09FF]/ },
+      { script: "gurmukhi", re: /[\u0A00-\u0A7F]/ },
+      { script: "gujarati", re: /[\u0A80-\u0AFF]/ },
+      { script: "odia", re: /[\u0B00-\u0B7F]/ },
+      { script: "tamil", re: /[\u0B80-\u0BFF]/ },
+      { script: "telugu", re: /[\u0C00-\u0C7F]/ },
+      { script: "kannada", re: /[\u0C80-\u0CFF]/ },
+      { script: "malayalam", re: /[\u0D00-\u0D7F]/ },
+      { script: "urdu", re: /[\u0600-\u06FF]/ }
+    ];
+    HOTEL = {
+      "\u09B9\u09CB\u099F\u09C7\u09B2": "hotel",
+      "\u09B9\u09CB\u099F\u09C7\u09B2\u09C7\u09B0": "hotel",
+      "\u0AB9\u0ACB\u0A9F\u0AC7\u0AB2": "hotel",
+      "\u0A39\u0A4B\u0A1F\u0A32": "hotel",
+      "\u0BB9\u0BCB\u0B9F\u0BCD\u0B9F\u0BB2\u0BCD": "hotel",
+      "\u0C39\u0C4B\u0C1F\u0C32\u0C4D": "hotel",
+      "\u0CB9\u0CCB\u0C9F\u0CC6\u0CB2\u0CCD": "hotel",
+      "\u0D39\u0D4B\u0D1F\u0D4D\u0D1F\u0D7D": "hotel",
+      "\u0B39\u0B4B\u0B1F\u0B47\u0B32": "hotel",
+      "\u06C1\u0648\u0679\u0644": "hotel"
+    };
+    BENGALI = {
+      ...HOTEL,
+      "\u09AB\u09CD\u09B2\u09BE\u0987\u099F": "flight",
+      "\u0989\u09A1\u09BC\u09BE\u09A8": "flight",
+      "\u09AC\u09BE\u09B8": "bus",
+      "\u099F\u09CD\u09B0\u09C7\u09A8": "train",
+      "\u0995\u09CD\u09AF\u09BE\u09AC": "cab",
+      "\u099F\u09CD\u09AF\u09BE\u0995\u09CD\u09B8\u09BF": "taxi",
+      "\u09B8\u09BF\u09A8\u09C7\u09AE\u09BE": "movie",
+      "\u099B\u09AC\u09BF": "movie",
+      "\u099F\u09BF\u0995\u09BF\u099F": "ticket",
+      "\u09AE\u09C1\u09AD\u09BF": "movie",
+      "\u09A6\u09BE\u09AE": "price",
+      "\u09A6\u09BE\u09AE\u09C7": "price",
+      "\u0995\u09A4": "kitna",
+      "\u0995\u09A4\u099F\u09BE": "kitna",
+      "\u09B8\u09B8\u09CD\u09A4\u09BE": "sasta",
+      "\u09B8\u09B8\u09CD\u09A4\u09BE\u09AF\u09BC": "sasta",
+      "\u0995\u09CB\u09A5\u09BE\u09AF\u09BC": "kaha",
+      "\u0986\u099C": "aaj",
+      "\u0995\u09BE\u09B2": "kal",
+      "\u09AA\u09B0\u09B6\u09C1": "parso",
+      "\u0986\u0997\u09BE\u09AE\u09C0\u0995\u09BE\u09B2": "kal",
+      "\u09A6\u09C1\u09A7": "milk",
+      "\u0986\u099F\u09BE": "flour",
+      "\u099A\u09BE\u09B2": "rice",
+      "\u09A1\u09BE\u09B2": "dal",
+      "\u09AC\u09BF\u09B0\u09BF\u09AF\u09BC\u09BE\u09A8\u09BF": "biryani",
+      "\u09AE\u09C1\u09B0\u0997\u09BF": "chicken",
+      "\u09AA\u09BF\u099C\u09BE": "pizza",
+      "\u0995\u09B8\u09AE\u09C7\u099F\u09BF\u0995": "cosmetics",
+      "\u09AA\u09CD\u09B0\u09B8\u09BE\u09A7\u09A8\u09C0": "cosmetics",
+      "\u09AE\u09CB\u09AC\u09BE\u0987\u09B2": "mobile",
+      "\u09B2\u09CD\u09AF\u09BE\u09AA\u099F\u09AA": "laptop",
+      "\u099C\u09C1\u09A4\u09CB": "shoes",
+      "\u09B6\u09BE\u09B0\u09CD\u099F": "shirt",
+      "\u098B\u09A3": "loan",
+      "\u09AC\u09BF\u09AE\u09BE": "insurance",
+      "\u0995\u09CD\u09B0\u09C7\u09A1\u09BF\u099F": "credit",
+      "\u0995\u09BE\u09B0\u09CD\u09A1": "card",
+      "\u0985\u09CD\u09AF\u09BE\u0995\u09BE\u0989\u09A8\u09CD\u099F": "account",
+      "\u09AE\u09A7\u09CD\u09AF\u09C7": "me",
+      "\u09A5\u09C7\u0995\u09C7": "se",
+      "\u09AA\u09B0\u09CD\u09AF\u09A8\u09CD\u09A4": "tak",
+      "\u099A\u09BE\u0987": "chahiye",
+      "\u09AC\u09B2\u09C1\u09A8": "batao",
+      "\u09A6\u09C7\u0996\u09BE\u09A8": "dikhao",
+      "\u0995\u09B2\u0995\u09BE\u09A4\u09BE": "Kolkata",
+      "\u0995\u09CB\u09B2\u0995\u09BE\u09A4\u09BE": "Kolkata",
+      "\u09A6\u09BF\u09B2\u09CD\u09B2\u09BF": "Delhi",
+      "\u09AE\u09C1\u09AE\u09CD\u09AC\u0987": "Mumbai",
+      "\u09AE\u09C1\u09AE\u09CD\u09AC\u09BE\u0987": "Mumbai",
+      "\u099A\u09C7\u09A8\u09CD\u09A8\u09BE\u0987": "Chennai",
+      "\u09AC\u09C7\u0999\u09CD\u0997\u09BE\u09B2\u09C1\u09B0\u09C1": "Bangalore",
+      "\u09B9\u09BE\u09AF\u09BC\u09A6\u09B0\u09BE\u09AC\u09BE\u09A6": "Hyderabad",
+      "\u09AA\u09C1\u09A8\u09C7": "Pune",
+      "\u099C\u09AF\u09BC\u09AA\u09C1\u09B0": "Jaipur",
+      "\u09B2\u0996\u09A8\u0989": "Lucknow",
+      "\u09AA\u09BE\u099F\u09A8\u09BE": "Patna",
+      "\u0997\u09C1\u09AF\u09BC\u09BE\u09B9\u09BE\u099F\u09BF": "Guwahati",
+      "\u09AD\u09C1\u09AC\u09A8\u09C7\u09B6\u09CD\u09AC\u09B0": "Bhubaneswar",
+      "\u09B8\u09BF\u09B2\u09BF\u0997\u09C1\u09A1\u09BC\u09BF": "Siliguri",
+      "\u09A6\u09BE\u09B0\u09CD\u099C\u09BF\u09B2\u09BF\u0982": "Darjeeling",
+      "\u09B0\u09BE\u0981\u099A\u09BF": "Ranchi",
+      "\u0995\u099F\u0995": "Cuttack",
+      "\u0997\u09CB\u09AF\u09BC\u09BE": "Goa"
+    };
+    GUJARATI = {
+      ...HOTEL,
+      "\u0AAB\u0ACD\u0AB2\u0ABE\u0A87\u0A9F": "flight",
+      "\u0AAC\u0AB8": "bus",
+      "\u0A95\u0AC7\u0AAC": "cab",
+      "\u0A9F\u0AC7\u0A95\u0ACD\u0AB8\u0AC0": "taxi",
+      "\u0AB8\u0ABF\u0AA8\u0AC7\u0AAE\u0ABE": "movie",
+      "\u0AAE\u0AC2\u0AB5\u0AC0": "movie",
+      "\u0A9F\u0ABF\u0A95\u0ABF\u0A9F": "ticket",
+      "\u0AAD\u0ABE\u0AB5": "price",
+      "\u0A95\u0ABF\u0A82\u0AAE\u0AA4": "price",
+      "\u0A95\u0AC7\u0A9F\u0AB2\u0AC1\u0A82": "kitna",
+      "\u0A95\u0AC7\u0A9F\u0AB2\u0ABE": "kitna",
+      "\u0AB8\u0AB8\u0ACD\u0AA4\u0AC1\u0A82": "sasta",
+      "\u0AB8\u0AB8\u0ACD\u0AA4\u0ABE": "sasta",
+      "\u0A95\u0ACD\u0AAF\u0ABE\u0A82": "kaha",
+      "\u0A86\u0A9C\u0AC7": "aaj",
+      "\u0A95\u0ABE\u0AB2\u0AC7": "kal",
+      "\u0AAA\u0AB0\u0AAE\u0AA6\u0ABF\u0AB5\u0AB8\u0AC7": "parso",
+      "\u0AA6\u0AC2\u0AA7": "milk",
+      "\u0AB2\u0ACB\u0A9F": "flour",
+      "\u0A9A\u0ACB\u0A96\u0ABE": "rice",
+      "\u0AA6\u0ABE\u0AB3": "dal",
+      "\u0AAC\u0ABF\u0AB0\u0AAF\u0ABE\u0AA8\u0AC0": "biryani",
+      "\u0A9A\u0ABF\u0A95\u0AA8": "chicken",
+      "\u0A95\u0ACB\u0AB8\u0ACD\u0AAE\u0AC7\u0A9F\u0ABF\u0A95": "cosmetics",
+      "\u0A95\u0ACB\u0AB8\u0ACD\u0AAE\u0AC7\u0A9F\u0ABF\u0A95\u0ACD\u0AB8": "cosmetics",
+      "\u0AAE\u0AC7\u0A95\u0A85\u0AAA": "makeup",
+      "\u0AB8\u0ACC\u0A82\u0AA6\u0AB0\u0ACD\u0AAF": "beauty",
+      "\u0AAE\u0ACB\u0AAC\u0ABE\u0A87\u0AB2": "mobile",
+      "\u0AB2\u0AC7\u0AAA\u0A9F\u0ACB\u0AAA": "laptop",
+      "\u0AB2\u0ACB\u0AA8": "loan",
+      "\u0AB5\u0AC0\u0AAE\u0ACB": "insurance",
+      "\u0A95\u0ACD\u0AB0\u0AC7\u0AA1\u0ABF\u0A9F": "credit",
+      "\u0A95\u0ABE\u0AB0\u0ACD\u0AA1": "card",
+      "\u0A96\u0ABE\u0AA4\u0AC1\u0A82": "account",
+      "\u0AAE\u0ABE\u0A82": "me",
+      "\u0AA5\u0AC0": "se",
+      "\u0AB8\u0AC1\u0AA7\u0AC0": "tak",
+      "\u0A9C\u0ACB\u0A88\u0A8F": "chahiye",
+      "\u0A95\u0AB9\u0ACB": "batao",
+      "\u0AAC\u0AA4\u0ABE\u0AB5\u0ACB": "dikhao",
+      "\u0A85\u0AAE\u0AA6\u0ABE\u0AB5\u0ABE\u0AA6": "Ahmedabad",
+      "\u0AB8\u0AC1\u0AB0\u0AA4": "Surat",
+      "\u0AB5\u0AA1\u0ACB\u0AA6\u0AB0\u0ABE": "Vadodara",
+      "\u0AB0\u0ABE\u0A9C\u0A95\u0ACB\u0A9F": "Rajkot",
+      "\u0AAD\u0ABE\u0AB5\u0AA8\u0A97\u0AB0": "Bhavnagar",
+      "\u0A97\u0ABE\u0A82\u0AA7\u0AC0\u0AA8\u0A97\u0AB0": "Gandhinagar",
+      "\u0A9C\u0ABE\u0AAE\u0AA8\u0A97\u0AB0": "Jamnagar",
+      "\u0AAE\u0AC1\u0A82\u0AAC\u0A88": "Mumbai",
+      "\u0AA6\u0ABF\u0AB2\u0ACD\u0AB9\u0AC0": "Delhi",
+      "\u0A97\u0ACB\u0AB5\u0ABE": "Goa"
+    };
+    GURMUKHI = {
+      ...HOTEL,
+      "\u0A2B\u0A32\u0A3E\u0A08\u0A1F": "flight",
+      "\u0A2C\u0A71\u0A38": "bus",
+      "\u0A15\u0A48\u0A2C": "cab",
+      "\u0A1F\u0A48\u0A15\u0A38\u0A40": "taxi",
+      "\u0A2B\u0A3F\u0A32\u0A2E": "movie",
+      "\u0A1F\u0A3F\u0A15\u0A1F": "ticket",
+      "\u0A15\u0A40\u0A2E\u0A24": "price",
+      "\u0A15\u0A3F\u0A70\u0A28\u0A3E": "kitna",
+      "\u0A15\u0A3F\u0A70\u0A28\u0A47": "kitna",
+      "\u0A38\u0A38\u0A24\u0A3E": "sasta",
+      "\u0A38\u0A38\u0A24\u0A40": "sasta",
+      "\u0A15\u0A3F\u0A71\u0A25\u0A47": "kaha",
+      "\u0A05\u0A71\u0A1C": "aaj",
+      "\u0A15\u0A71\u0A32\u0A4D\u0A39": "kal",
+      "\u0A2A\u0A30\u0A38\u0A4B\u0A02": "parso",
+      "\u0A26\u0A41\u0A71\u0A27": "milk",
+      "\u0A06\u0A1F\u0A3E": "flour",
+      "\u0A1A\u0A3E\u0A35\u0A32": "rice",
+      "\u0A26\u0A3E\u0A32": "dal",
+      "\u0A2C\u0A3F\u0A30\u0A2F\u0A3E\u0A28\u0A40": "biryani",
+      "\u0A1A\u0A3F\u0A15\u0A28": "chicken",
+      "\u0A15\u0A3E\u0A38\u0A2E\u0A48\u0A1F\u0A3F\u0A15": "cosmetics",
+      "\u0A2E\u0A4B\u0A2C\u0A3E\u0A08\u0A32": "mobile",
+      "\u0A32\u0A48\u0A2A\u0A1F\u0A3E\u0A2A": "laptop",
+      "\u0A15\u0A30\u0A1C\u0A3C\u0A3E": "loan",
+      "\u0A2C\u0A40\u0A2E\u0A3E": "insurance",
+      "\u0A15\u0A4D\u0A30\u0A48\u0A21\u0A3F\u0A1F": "credit",
+      "\u0A15\u0A3E\u0A30\u0A21": "card",
+      "\u0A16\u0A3E\u0A24\u0A3E": "account",
+      "\u0A35\u0A3F\u0A71\u0A1A": "me",
+      "\u0A24\u0A4B\u0A02": "se",
+      "\u0A24\u0A71\u0A15": "tak",
+      "\u0A1A\u0A3E\u0A39\u0A40\u0A26\u0A3E": "chahiye",
+      "\u0A26\u0A71\u0A38\u0A4B": "batao",
+      "\u0A26\u0A3F\u0A16\u0A3E\u0A13": "dikhao",
+      "\u0A05\u0A70\u0A2E\u0A4D\u0A30\u0A3F\u0A24\u0A38\u0A30": "Amritsar",
+      "\u0A32\u0A41\u0A27\u0A3F\u0A06\u0A23\u0A3E": "Ludhiana",
+      "\u0A1C\u0A32\u0A70\u0A27\u0A30": "Jalandhar",
+      "\u0A1A\u0A70\u0A21\u0A40\u0A17\u0A5C\u0A4D\u0A39": "Chandigarh",
+      "\u0A2A\u0A1F\u0A3F\u0A06\u0A32\u0A3E": "Patiala",
+      "\u0A26\u0A3F\u0A71\u0A32\u0A40": "Delhi",
+      "\u0A2E\u0A41\u0A39\u0A3E\u0A32\u0A40": "Mohali",
+      "\u0A2C\u0A20\u0A3F\u0A70\u0A21\u0A3E": "Bathinda"
+    };
+    TAMIL = {
+      ...HOTEL,
+      "\u0BB9\u0BCB\u0B9F\u0BCD\u0B9F\u0BB2\u0BBF\u0BB2\u0BCD": "hotel",
+      "\u0BB5\u0BBF\u0BAE\u0BBE\u0BA9\u0BAE\u0BCD": "flight",
+      "\u0BAA\u0BB8\u0BCD": "bus",
+      "\u0BAA\u0BC7\u0BB0\u0BC1\u0BA8\u0BCD\u0BA4\u0BC1": "bus",
+      "\u0B95\u0BC7\u0BAA\u0BCD": "cab",
+      "\u0B9F\u0BBE\u0B95\u0BCD\u0BB8\u0BBF": "taxi",
+      "\u0B9A\u0BBF\u0BA9\u0BBF\u0BAE\u0BBE": "movie",
+      "\u0BAA\u0B9F\u0BAE\u0BCD": "movie",
+      "\u0B9F\u0BBF\u0B95\u0BCD\u0B95\u0BC6\u0B9F\u0BCD": "ticket",
+      "\u0BB5\u0BBF\u0BB2\u0BC8": "price",
+      "\u0B8E\u0BB5\u0BCD\u0BB5\u0BB3\u0BB5\u0BC1": "kitna",
+      "\u0BAE\u0BB2\u0BBF\u0BB5\u0BBE\u0BA9": "sasta",
+      "\u0BAE\u0BB2\u0BBF\u0BB5\u0BC1": "sasta",
+      "\u0B8E\u0B99\u0BCD\u0B95\u0BC7": "kaha",
+      "\u0B87\u0BA9\u0BCD\u0BB1\u0BC1": "aaj",
+      "\u0BA8\u0BBE\u0BB3\u0BC8": "kal",
+      "\u0BA8\u0BBE\u0BB3\u0BC8\u0B95\u0BCD\u0B95\u0BC1": "kal",
+      "\u0BAA\u0BBE\u0BB2\u0BCD": "milk",
+      "\u0BAE\u0BBE\u0BB5\u0BC1": "flour",
+      "\u0B85\u0BB0\u0BBF\u0B9A\u0BBF": "rice",
+      "\u0BAA\u0BB0\u0BC1\u0BAA\u0BCD\u0BAA\u0BC1": "dal",
+      "\u0BAA\u0BBF\u0BB0\u0BBF\u0BAF\u0BBE\u0BA3\u0BBF": "biryani",
+      "\u0B95\u0BCB\u0BB4\u0BBF": "chicken",
+      "\u0B85\u0BB4\u0B95\u0BC1": "beauty",
+      "\u0B95\u0BBE\u0BB8\u0BCD\u0BAE\u0BC6\u0B9F\u0BCD\u0B9F\u0BBF\u0B95\u0BCD": "cosmetics",
+      "\u0B95\u0BBE\u0BB8\u0BCD\u0BAE\u0BC6\u0B9F\u0BBF\u0B95\u0BCD": "cosmetics",
+      "\u0B85\u0BB4\u0B95\u0BC1\u0B9A\u0BBE\u0BA4\u0BA9\u0BAE\u0BCD": "cosmetics",
+      "\u0B9A\u0BC0\u0BAA\u0BCD": "sasta",
+      "\u0B95\u0BC1\u0BB1\u0BC8\u0BA8\u0BCD\u0BA4": "sasta",
+      "\u0B87\u0BA8\u0BCD\u0BA4\u0BCB\u0BB0\u0BCD": "Indore",
+      "\u0B87\u0BA8\u0BCD\u0BA4\u0BC2\u0BB0\u0BCD": "Indore",
+      "\u0BAE\u0BCA\u0BAA\u0BC8\u0BB2\u0BCD": "mobile",
+      "\u0BB2\u0BC7\u0BAA\u0BCD\u0B9F\u0BBE\u0BAA\u0BCD": "laptop",
+      "\u0B95\u0B9F\u0BA9\u0BCD": "loan",
+      "\u0B95\u0BBE\u0BAA\u0BCD\u0BAA\u0BC0\u0B9F\u0BC1": "insurance",
+      "\u0B95\u0BBF\u0BB0\u0BC6\u0B9F\u0BBF\u0B9F\u0BCD": "credit",
+      "\u0B95\u0BBE\u0BB0\u0BCD\u0B9F\u0BC1": "card",
+      "\u0B95\u0BA3\u0B95\u0BCD\u0B95\u0BC1": "account",
+      "\u0B87\u0BB0\u0BC1\u0BA8\u0BCD\u0BA4\u0BC1": "se",
+      "\u0BB5\u0BB0\u0BC8": "tak",
+      "\u0BB5\u0BC7\u0BA3\u0BCD\u0B9F\u0BC1\u0BAE\u0BCD": "chahiye",
+      "\u0BB5\u0BC7\u0BA3\u0BC1\u0BAE\u0BCD": "chahiye",
+      "\u0B9A\u0BCA\u0BB2\u0BCD\u0BB2\u0BC1\u0B99\u0BCD\u0B95": "batao",
+      "\u0B95\u0BBE\u0B9F\u0BCD\u0B9F\u0BC1": "dikhao",
+      "\u0B9A\u0BC6\u0BA9\u0BCD\u0BA9\u0BC8": "Chennai",
+      "\u0B95\u0BCB\u0BAF\u0BAE\u0BCD\u0BAA\u0BC1\u0BA4\u0BCD\u0BA4\u0BC2\u0BB0\u0BCD": "Coimbatore",
+      "\u0BAE\u0BA4\u0BC1\u0BB0\u0BC8": "Madurai",
+      "\u0BA4\u0BBF\u0BB0\u0BC1\u0B9A\u0BCD\u0B9A\u0BBF": "Trichy",
+      "\u0B9A\u0BC7\u0BB2\u0BAE\u0BCD": "Salem",
+      "\u0BA4\u0BBF\u0BB0\u0BC1\u0BA8\u0BC6\u0BB2\u0BCD\u0BB5\u0BC7\u0BB2\u0BBF": "Tirunelveli",
+      "\u0BB5\u0BC7\u0BB2\u0BC2\u0BB0\u0BCD": "Vellore",
+      "\u0BAA\u0BC6\u0B99\u0BCD\u0B95\u0BB3\u0BC2\u0BB0\u0BC1": "Bangalore",
+      "\u0BB9\u0BC8\u0BA4\u0BB0\u0BBE\u0BAA\u0BBE\u0BA4\u0BCD": "Hyderabad",
+      "\u0BAE\u0BC1\u0BAE\u0BCD\u0BAA\u0BC8": "Mumbai",
+      "\u0B9F\u0BC6\u0BB2\u0BCD\u0BB2\u0BBF": "Delhi",
+      "\u0BAA\u0BCB\u0BAA\u0BBE\u0BB2\u0BCD": "Bhopal",
+      "\u0B95\u0BCB\u0BAF\u0BBE": "Goa",
+      "\u0BAA\u0BC1\u0BA9\u0BC7": "Pune",
+      "\u0B9C\u0BC6\u0BAF\u0BCD\u0BAA\u0BCD\u0BAA\u0BC2\u0BB0\u0BCD": "Jaipur"
+    };
+    TELUGU = {
+      ...HOTEL,
+      "\u0C39\u0C4B\u0C1F\u0C32\u0C4D\u0C32\u0C4B": "hotel",
+      "\u0C35\u0C3F\u0C2E\u0C3E\u0C28\u0C02": "flight",
+      "\u0C2C\u0C38\u0C4D\u0C38\u0C41": "bus",
+      "\u0C15\u0C4D\u0C2F\u0C3E\u0C2C\u0C4D": "cab",
+      "\u0C1F\u0C3E\u0C15\u0C4D\u0C38\u0C40": "taxi",
+      "\u0C38\u0C3F\u0C28\u0C3F\u0C2E\u0C3E": "movie",
+      "\u0C1F\u0C3F\u0C15\u0C46\u0C1F\u0C4D": "ticket",
+      "\u0C27\u0C30": "price",
+      "\u0C0E\u0C02\u0C24": "kitna",
+      "\u0C1A\u0C35\u0C15\u0C48\u0C28": "sasta",
+      "\u0C0E\u0C15\u0C4D\u0C15\u0C21": "kaha",
+      "\u0C08\u0C30\u0C4B\u0C1C\u0C41": "aaj",
+      "\u0C30\u0C47\u0C2A\u0C41": "kal",
+      "\u0C0E\u0C30\u0C4D\u0C30\u0C1C\u0C41": "parso",
+      "\u0C2A\u0C3E\u0C32\u0C41": "milk",
+      "\u0C2A\u0C3F\u0C02\u0C21\u0C3F": "flour",
+      "\u0C2C\u0C3F\u0C2F\u0C4D\u0C2F\u0C02": "rice",
+      "\u0C2A\u0C2A\u0C4D\u0C2A\u0C41": "dal",
+      "\u0C2C\u0C3F\u0C30\u0C4D\u0C2F\u0C3E\u0C28\u0C40": "biryani",
+      "\u0C1A\u0C3F\u0C15\u0C46\u0C28\u0C4D": "chicken",
+      "\u0C15\u0C3E\u0C38\u0C4D\u0C2E\u0C46\u0C1F\u0C3F\u0C15\u0C4D": "cosmetics",
+      "\u0C2E\u0C4A\u0C2C\u0C48\u0C32\u0C4D": "mobile",
+      "\u0C32\u0C4D\u0C2F\u0C3E\u0C2A\u0C4D\u0C1F\u0C3E\u0C2A\u0C4D": "laptop",
+      "\u0C15\u0C3E\u0C38\u0C4D\u0C2E\u0C46\u0C1F\u0C3F\u0C15\u0C4D\u0C38\u0C4D": "cosmetics",
+      "\u0C05\u0C02\u0C26\u0C02": "beauty",
+      "\u0C1A\u0C40\u0C2A\u0C4D": "sasta",
+      "\u0C30\u0C41\u0C23\u0C02": "loan",
+      "\u0C2C\u0C40\u0C2E\u0C3E": "insurance",
+      "\u0C15\u0C4D\u0C30\u0C46\u0C21\u0C3F\u0C1F\u0C4D": "credit",
+      "\u0C15\u0C3E\u0C30\u0C4D\u0C21\u0C41": "card",
+      "\u0C16\u0C3E\u0C24\u0C3E": "account",
+      "\u0C32\u0C4B": "me",
+      "\u0C28\u0C41\u0C02\u0C21\u0C3F": "se",
+      "\u0C35\u0C30\u0C15\u0C41": "tak",
+      "\u0C15\u0C3E\u0C35\u0C3E\u0C32\u0C3F": "chahiye",
+      "\u0C1A\u0C46\u0C2A\u0C4D\u0C2A\u0C02\u0C21\u0C3F": "batao",
+      "\u0C1A\u0C42\u0C2A\u0C3F\u0C02\u0C1A\u0C41": "dikhao",
+      "\u0C39\u0C48\u0C26\u0C30\u0C3E\u0C2C\u0C3E\u0C26\u0C4D": "Hyderabad",
+      "\u0C35\u0C3F\u0C1C\u0C2F\u0C35\u0C3E\u0C21": "Vijayawada",
+      "\u0C35\u0C3F\u0C36\u0C3E\u0C16\u0C2A\u0C1F\u0C4D\u0C28\u0C02": "Visakhapatnam",
+      "\u0C17\u0C41\u0C02\u0C1F\u0C42\u0C30\u0C41": "Guntur",
+      "\u0C35\u0C30\u0C02\u0C17\u0C32\u0C4D": "Warangal",
+      "\u0C24\u0C3F\u0C30\u0C41\u0C2A\u0C24\u0C3F": "Tirupati",
+      "\u0C2C\u0C46\u0C02\u0C17\u0C33\u0C42\u0C30\u0C41": "Bangalore",
+      "\u0C1A\u0C46\u0C28\u0C4D\u0C28\u0C48": "Chennai",
+      "\u0C2E\u0C41\u0C02\u0C2C\u0C48": "Mumbai",
+      "\u0C22\u0C3F\u0C32\u0C4D\u0C32\u0C40": "Delhi",
+      "\u0C07\u0C02\u0C21\u0C4B\u0C30\u0C4D": "Indore",
+      "\u0C2D\u0C4B\u0C2A\u0C3E\u0C32\u0C4D": "Bhopal",
+      "\u0C17\u0C4B\u0C35\u0C3E": "Goa",
+      "\u0C2A\u0C41\u0C23\u0C46": "Pune",
+      "\u0C1C\u0C48\u0C2A\u0C42\u0C30\u0C4D": "Jaipur"
+    };
+    KANNADA = {
+      ...HOTEL,
+      "\u0CB9\u0CCB\u0C9F\u0CC6\u0CB2\u0CCD\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF": "hotel",
+      "\u0CB5\u0CBF\u0CAE\u0CBE\u0CA8": "flight",
+      "\u0CAC\u0CB8\u0CCD": "bus",
+      "\u0C95\u0CCD\u0CAF\u0CBE\u0CAC\u0CCD": "cab",
+      "\u0C9F\u0CCD\u0CAF\u0CBE\u0C95\u0CCD\u0CB8\u0CBF": "taxi",
+      "\u0CB8\u0CBF\u0CA8\u0CBF\u0CAE\u0CBE": "movie",
+      "\u0C9F\u0CBF\u0C95\u0CC6\u0C9F\u0CCD": "ticket",
+      "\u0CAC\u0CC6\u0CB2\u0CC6": "price",
+      "\u0CA6\u0CB0": "price",
+      "\u0C8E\u0CB7\u0CCD\u0C9F\u0CC1": "kitna",
+      "\u0C85\u0C97\u0CCD\u0C97\u0CA6": "sasta",
+      "\u0C8E\u0CB2\u0CCD\u0CB2\u0CBF": "kaha",
+      "\u0C87\u0C82\u0CA6\u0CC1": "aaj",
+      "\u0CA8\u0CBE\u0CB3\u0CC6": "kal",
+      "\u0CB9\u0CBE\u0CB2\u0CC1": "milk",
+      "\u0CB9\u0CBF\u0C9F\u0CCD\u0C9F\u0CC1": "flour",
+      "\u0C85\u0C95\u0CCD\u0C95\u0CBF": "rice",
+      "\u0CAC\u0CC7\u0CB3\u0CC6": "dal",
+      "\u0CAC\u0CBF\u0CB0\u0CBF\u0CAF\u0CBE\u0CA8\u0CBF": "biryani",
+      "\u0C9A\u0CBF\u0C95\u0CA8\u0CCD": "chicken",
+      "\u0C95\u0CBE\u0CB8\u0CCD\u0CAE\u0CC6\u0C9F\u0CBF\u0C95\u0CCD": "cosmetics",
+      "\u0CAE\u0CCA\u0CAC\u0CC8\u0CB2\u0CCD": "mobile",
+      "\u0CB2\u0CCD\u0CAF\u0CBE\u0CAA\u0CCD\u0C9F\u0CBE\u0CAA\u0CCD": "laptop",
+      "\u0C95\u0CBE\u0CB8\u0CCD\u0CAE\u0CC6\u0C9F\u0CBF\u0C95\u0CCD\u0CB8\u0CCD": "cosmetics",
+      "\u0C85\u0C82\u0CA6": "beauty",
+      "\u0C85\u0C97\u0CCD\u0C97": "sasta",
+      "\u0CB8\u0CBE\u0CB2": "loan",
+      "\u0CB5\u0CBF\u0CAE\u0CC6": "insurance",
+      "\u0C95\u0CCD\u0CB0\u0CC6\u0CA1\u0CBF\u0C9F\u0CCD": "credit",
+      "\u0C95\u0CBE\u0CB0\u0CCD\u0CA1\u0CCD": "card",
+      "\u0C96\u0CBE\u0CA4\u0CC6": "account",
+      "\u0CA8\u0CB2\u0CCD\u0CB2\u0CBF": "me",
+      "\u0C87\u0C82\u0CA6": "se",
+      "\u0CB5\u0CB0\u0CC6\u0C97\u0CC6": "tak",
+      "\u0CAC\u0CC7\u0C95\u0CC1": "chahiye",
+      "\u0CB9\u0CC7\u0CB3\u0CBF": "batao",
+      "\u0CA4\u0CCB\u0CB0\u0CBF\u0CB8\u0CBF": "dikhao",
+      "\u0CAC\u0CC6\u0C82\u0C97\u0CB3\u0CC2\u0CB0\u0CC1": "Bangalore",
+      "\u0CAE\u0CC8\u0CB8\u0CC2\u0CB0\u0CC1": "Mysore",
+      "\u0CAE\u0C82\u0C97\u0CB3\u0CC2\u0CB0\u0CC1": "Mangalore",
+      "\u0CB9\u0CC1\u0CAC\u0CCD\u0CAC\u0CB3\u0CCD\u0CB3\u0CBF": "Hubli",
+      "\u0CAC\u0CC6\u0CB3\u0C97\u0CBE\u0CB5\u0CBF": "Belgaum",
+      "\u0C9A\u0CC6\u0CA8\u0CCD\u0CA8\u0CC8": "Chennai",
+      "\u0CB9\u0CC8\u0CA6\u0CB0\u0CBE\u0CAC\u0CBE\u0CA6\u0CCD": "Hyderabad",
+      "\u0C87\u0C82\u0CA6\u0CCB\u0CB0\u0CCD": "Indore",
+      "\u0CAD\u0CCB\u0CAA\u0CBE\u0CB2\u0CCD": "Bhopal",
+      "\u0C97\u0CCB\u0CB5\u0CBE": "Goa",
+      "\u0CAA\u0CC1\u0CA3\u0CC6": "Pune",
+      "\u0C9C\u0CC8\u0CAA\u0CC1\u0CB0": "Jaipur"
+    };
+    MALAYALAM = {
+      ...HOTEL,
+      "\u0D39\u0D4B\u0D1F\u0D4D\u0D1F\u0D32\u0D3F\u0D7D": "hotel",
+      "\u0D35\u0D3F\u0D2E\u0D3E\u0D28\u0D02": "flight",
+      "\u0D2C\u0D38\u0D4D": "bus",
+      "\u0D15\u0D4D\u0D2F\u0D3E\u0D2C\u0D4D": "cab",
+      "\u0D1F\u0D3E\u0D15\u0D4D\u0D38\u0D3F": "taxi",
+      "\u0D38\u0D3F\u0D28\u0D3F\u0D2E": "movie",
+      "\u0D1F\u0D3F\u0D15\u0D4D\u0D15\u0D31\u0D4D\u0D31\u0D4D": "ticket",
+      "\u0D35\u0D3F\u0D32": "price",
+      "\u0D0E\u0D24\u0D4D\u0D30": "kitna",
+      "\u0D35\u0D3F\u0D32\u0D15\u0D41\u0D31\u0D1E\u0D4D\u0D1E": "sasta",
+      "\u0D0E\u0D35\u0D3F\u0D1F\u0D46": "kaha",
+      "\u0D07\u0D28\u0D4D\u0D28\u0D4D": "aaj",
+      "\u0D28\u0D3E\u0D33\u0D46": "kal",
+      "\u0D2A\u0D3E\u0D7D": "milk",
+      "\u0D2E\u0D3E\u0D35\u0D4D": "flour",
+      "\u0D05\u0D30\u0D3F": "rice",
+      "\u0D2A\u0D30\u0D3F\u0D2A\u0D4D\u0D2A\u0D4D": "dal",
+      "\u0D2C\u0D3F\u0D30\u0D3F\u0D2F\u0D3E\u0D23\u0D3F": "biryani",
+      "\u0D1A\u0D3F\u0D15\u0D4D\u0D15\u0D7B": "chicken",
+      "\u0D15\u0D4B\u0D38\u0D4D\u0D2E\u0D46\u0D31\u0D4D\u0D31\u0D3F\u0D15\u0D4D": "cosmetics",
+      "\u0D2E\u0D4A\u0D2C\u0D48\u0D7D": "mobile",
+      "\u0D32\u0D3E\u0D2A\u0D4D\u0D1F\u0D4B\u0D2A\u0D4D\u0D2A\u0D4D": "laptop",
+      "\u0D15\u0D4B\u0D38\u0D4D\u0D2E\u0D46\u0D31\u0D4D\u0D31\u0D3F\u0D15\u0D4D\u0D38\u0D4D": "cosmetics",
+      "\u0D38\u0D57\u0D28\u0D4D\u0D26\u0D30\u0D4D\u0D2F\u0D02": "beauty",
+      "\u0D35\u0D3F\u0D32\u0D15\u0D41\u0D31\u0D35": "sasta",
+      "\u0D35\u0D3E\u0D2F\u0D4D\u0D2A": "loan",
+      "\u0D07\u0D7B\u0D37\u0D41\u0D31\u0D7B\u0D38\u0D4D": "insurance",
+      "\u0D15\u0D4D\u0D30\u0D46\u0D21\u0D3F\u0D31\u0D4D\u0D31\u0D4D": "credit",
+      "\u0D15\u0D3E\u0D7C\u0D21\u0D4D": "card",
+      "\u0D05\u0D15\u0D4D\u0D15\u0D57\u0D23\u0D4D\u0D1F\u0D4D": "account",
+      "\u0D07\u0D7D": "me",
+      "\u0D28\u0D3F\u0D28\u0D4D\u0D28\u0D4D": "se",
+      "\u0D35\u0D30\u0D46": "tak",
+      "\u0D35\u0D47\u0D23\u0D02": "chahiye",
+      "\u0D2A\u0D31\u0D2F\u0D42": "batao",
+      "\u0D15\u0D3E\u0D23\u0D3F\u0D15\u0D4D\u0D15\u0D42": "dikhao",
+      "\u0D15\u0D4A\u0D1A\u0D4D\u0D1A\u0D3F": "Kochi",
+      "\u0D24\u0D3F\u0D30\u0D41\u0D35\u0D28\u0D28\u0D4D\u0D24\u0D2A\u0D41\u0D30\u0D02": "Thiruvananthapuram",
+      "\u0D15\u0D4B\u0D34\u0D3F\u0D15\u0D4D\u0D15\u0D4B\u0D1F\u0D4D": "Kozhikode",
+      "\u0D24\u0D43\u0D36\u0D42\u0D7C": "Thrissur",
+      "\u0D15\u0D4B\u0D1F\u0D4D\u0D1F\u0D2F\u0D02": "Kottayam",
+      "\u0D06\u0D32\u0D2A\u0D4D\u0D2A\u0D41\u0D34": "Alappuzha",
+      "\u0D1A\u0D46\u0D28\u0D4D\u0D28\u0D48": "Chennai",
+      "\u0D2C\u0D46\u0D02\u0D17\u0D33\u0D42\u0D30\u0D41": "Bangalore",
+      "\u0D07\u0D7B\u0D21\u0D4B\u0D7C": "Indore",
+      "\u0D2D\u0D4B\u0D2A\u0D4D\u0D2A\u0D3E\u0D7D": "Bhopal",
+      "\u0D17\u0D4B\u0D35": "Goa",
+      "\u0D2A\u0D41\u0D28\u0D46": "Pune",
+      "\u0D1C\u0D2F\u0D4D\u0D2A\u0D42\u0D7C": "Jaipur"
+    };
+    ODIA = {
+      ...HOTEL,
+      "\u0B2B\u0B4D\u0B32\u0B3E\u0B07\u0B1F": "flight",
+      "\u0B2C\u0B38": "bus",
+      "\u0B15\u0B4D\u0B5F\u0B3E\u0B2C": "cab",
+      "\u0B1F\u0B4D\u0B5F\u0B3E\u0B15\u0B4D\u0B38\u0B3F": "taxi",
+      "\u0B38\u0B3F\u0B28\u0B47\u0B2E\u0B3E": "movie",
+      "\u0B1F\u0B3F\u0B15\u0B47\u0B1F": "ticket",
+      "\u0B26\u0B3E\u0B2E": "price",
+      "\u0B15\u0B47\u0B24\u0B47": "kitna",
+      "\u0B36\u0B38\u0B4D\u0B24\u0B3E": "sasta",
+      "\u0B15\u0B47\u0B09\u0B01\u0B20\u0B3F": "kaha",
+      "\u0B06\u0B1C\u0B3F": "aaj",
+      "\u0B15\u0B3E\u0B32\u0B3F": "kal",
+      "\u0B2A\u0B30\u0B26\u0B3F\u0B28": "parso",
+      "\u0B26\u0B41\u0B27": "milk",
+      "\u0B05\u0B1F\u0B3E": "flour",
+      "\u0B1A\u0B3E\u0B09\u0B33": "rice",
+      "\u0B21\u0B3E\u0B32\u0B3F": "dal",
+      "\u0B2C\u0B3F\u0B30\u0B3F\u0B5F\u0B3E\u0B28\u0B3F": "biryani",
+      "\u0B1A\u0B3F\u0B15\u0B47\u0B28": "chicken",
+      "\u0B15\u0B38\u0B2E\u0B47\u0B1F\u0B3F\u0B15": "cosmetics",
+      "\u0B2E\u0B4B\u0B2C\u0B3E\u0B07\u0B32": "mobile",
+      "\u0B32\u0B3E\u0B2A\u0B1F\u0B2A": "laptop",
+      "\u0B0B\u0B23": "loan",
+      "\u0B2C\u0B40\u0B2E\u0B3E": "insurance",
+      "\u0B15\u0B4D\u0B30\u0B47\u0B21\u0B3F\u0B1F": "credit",
+      "\u0B15\u0B3E\u0B30\u0B4D\u0B21": "card",
+      "\u0B16\u0B3E\u0B24\u0B3E": "account",
+      "\u0B30\u0B47": "me",
+      "\u0B30\u0B41": "se",
+      "\u0B2A\u0B30\u0B4D\u0B2F\u0B4D\u0B5F\u0B28\u0B4D\u0B24": "tak",
+      "\u0B26\u0B30\u0B15\u0B3E\u0B30": "chahiye",
+      "\u0B15\u0B41\u0B39": "batao",
+      "\u0B26\u0B47\u0B16\u0B3E\u0B05": "dikhao",
+      "\u0B2D\u0B41\u0B2C\u0B28\u0B47\u0B36\u0B4D\u0B71\u0B30": "Bhubaneswar",
+      "\u0B15\u0B1F\u0B15": "Cuttack",
+      "\u0B30\u0B3E\u0B09\u0B30\u0B15\u0B47\u0B32\u0B3E": "Rourkela",
+      "\u0B2A\u0B41\u0B30\u0B40": "Puri",
+      "\u0B2C\u0B3E\u0B32\u0B47\u0B36\u0B4D\u0B71\u0B30": "Balasore",
+      "\u0B38\u0B2E\u0B4D\u0B2C\u0B32\u0B2A\u0B41\u0B30": "Sambalpur"
+    };
+    URDU = {
+      ...HOTEL,
+      "\u0641\u0644\u0627\u0626\u0679": "flight",
+      "\u0637\u06CC\u0627\u0631\u06C1": "flight",
+      "\u0628\u0633": "bus",
+      "\u0679\u06CC\u06A9\u0633\u06CC": "taxi",
+      "\u0641\u0644\u0645": "movie",
+      "\u0633\u0646\u06CC\u0645\u0627": "cinema",
+      "\u0679\u06A9\u0679": "ticket",
+      "\u0642\u06CC\u0645\u062A": "price",
+      "\u0631\u06CC\u0679": "rate",
+      "\u06A9\u062A\u0646\u0627": "kitna",
+      "\u06A9\u062A\u0646\u06CC": "kitna",
+      "\u0633\u0633\u062A\u0627": "sasta",
+      "\u06A9\u06C1\u0627\u06BA": "kaha",
+      "\u0622\u062C": "aaj",
+      "\u06A9\u0644": "kal",
+      "\u067E\u0631\u0633\u0648\u06BA": "parso",
+      "\u062F\u0648\u062F\u06BE": "milk",
+      "\u0622\u0679\u0627": "flour",
+      "\u0686\u0627\u0648\u0644": "rice",
+      "\u062F\u0627\u0644": "dal",
+      "\u0628\u0631\u06CC\u0627\u0646\u06CC": "biryani",
+      "\u0686\u06A9\u0646": "chicken",
+      "\u06A9\u0627\u0633\u0645\u06CC\u0679\u06A9": "cosmetics",
+      "\u0645\u06CC\u06A9 \u0627\u067E": "makeup",
+      "\u0645\u0648\u0628\u0627\u0626\u0644": "mobile",
+      "\u0644\u06CC\u067E \u0679\u0627\u067E": "laptop",
+      "\u0642\u0631\u0636": "loan",
+      "\u0628\u06CC\u0645\u06C1": "insurance",
+      "\u06A9\u0631\u06CC\u0688\u0679": "credit",
+      "\u06A9\u0627\u0631\u0688": "card",
+      "\u0627\u06A9\u0627\u0624\u0646\u0679": "account",
+      "\u0645\u06CC\u06BA": "me",
+      "\u0633\u06D2": "se",
+      "\u062A\u06A9": "tak",
+      "\u0686\u0627\u06C1\u06CC\u06D2": "chahiye",
+      "\u0628\u062A\u0627\u0626\u06CC\u06BA": "batao",
+      "\u062F\u06A9\u06BE\u0627\u0626\u06CC\u06BA": "dikhao",
+      "\u062F\u06C1\u0644\u06CC": "Delhi",
+      "\u0645\u0645\u0628\u0626\u06CC": "Mumbai",
+      "\u062D\u06CC\u062F\u0631\u0622\u0628\u0627\u062F": "Hyderabad",
+      "\u0644\u06A9\u06BE\u0646\u0624": "Lucknow",
+      "\u062C\u06D2 \u067E\u0648\u0631": "Jaipur",
+      "\u0628\u06BE\u0648\u067E\u0627\u0644": "Bhopal",
+      "\u067E\u0679\u0646\u06C1": "Patna",
+      "\u06A9\u0627\u0646\u067E\u0648\u0631": "Kanpur"
+    };
+    DICTS = {
+      bengali: BENGALI,
+      gujarati: GUJARATI,
+      gurmukhi: GURMUKHI,
+      tamil: TAMIL,
+      telugu: TELUGU,
+      kannada: KANNADA,
+      malayalam: MALAYALAM,
+      odia: ODIA,
+      urdu: URDU
+    };
+    ROMANISED = {
+      venum: "chahiye",
+      vendum: "chahiye",
+      venam: "chahiye",
+      beku: "chahiye",
+      kavali: "chahiye",
+      kavale: "chahiye",
+      lagbe: "chahiye",
+      dorkar: "chahiye",
+      darkar: "chahiye",
+      chahije: "chahiye",
+      chahida: "chahiye",
+      pahije: "chahiye",
+      evlo: "kitna",
+      evvalavu: "kitna",
+      ethra: "kitna",
+      estu: "kitna",
+      entha: "kitna",
+      koto: "kitna",
+      kemon: "kitna",
+      ketlu: "kitna",
+      kiti: "kitna",
+      kinnu: "kitna",
+      kete: "kitna",
+      kati: "kitna",
+      enni: "kitna",
+      enti: "kitna",
+      saste: "sasta",
+      kom: "sasta",
+      kammi: "sasta",
+      agga: "sasta",
+      olavala: "sasta",
+      sosta: "sasta",
+      sastha: "sasta",
+      la: "me",
+      le: "me",
+      te: "me",
+      "e": "me",
+      madhe: "me",
+      alli: "me",
+      lo: "me",
+      me: "me",
+      il: "me",
+      irundhu: "se",
+      nundi: "se",
+      theke: "se",
+      thi: "se",
+      inda: "se",
+      pasun: "se",
+      se: "se",
+      epdi: "kaise",
+      ekkada: "kaha",
+      kothay: "kaha",
+      elli: "kaha",
+      kuthe: "kaha",
+      kahan: "kaha"
+    };
+  }
+});
+
+// server/lens/questionNormalizer.ts
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  if (!a.length || !b.length) return Math.max(a.length, b.length);
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function repairWord(word) {
+  const w = word.toLowerCase().replace(/[^a-z]/g, "");
+  const hit = TYPO_MAP[w];
+  if (!hit) return word;
+  return word.replace(new RegExp(word.replace(/[^A-Za-z0-9]/g, ""), "i"), hit);
+}
+function places() {
+  if (placeMap) return placeMap;
+  const m = /* @__PURE__ */ new Map();
+  const add = (name) => {
+    const k = name.toLowerCase();
+    if (k.length >= 4 && !m.has(k)) m.set(k, name);
+  };
+  try {
+    for (const c of INDIAN_CITIES) add(c.name);
+  } catch {
+  }
+  for (const pl of EXTRA_PLACES) add(pl);
+  placeMap = m;
+  return m;
+}
+function findPlaces(text) {
+  const found = [];
+  for (const token of String(text || "").split(/\s+/)) {
+    const raw = token.replace(/[^A-Za-z]/g, "");
+    if (raw.length < 4) continue;
+    const known = places().get(raw.toLowerCase());
+    if (known && !found.includes(known)) found.push(known);
+  }
+  return found;
+}
+function repairPlace(token) {
+  const raw = token.replace(/[^A-Za-z]/g, "");
+  if (raw.length < 4) return token;
+  const lowerRaw = raw.toLowerCase();
+  if (NOT_A_PLACE.has(lowerRaw)) return token;
+  const known = places().get(lowerRaw);
+  if (known) return token.replace(raw, known);
+  const tol = raw.length >= 7 ? 2 : raw.length >= 5 ? 1 : 0;
+  if (!tol) return token;
+  for (const [key, canonical] of places()) {
+    if (Math.abs(key.length - raw.length) > tol) continue;
+    if (key[0] !== lowerRaw[0]) continue;
+    if (levenshtein(lowerRaw, key) <= tol) return token.replace(raw, canonical);
+  }
+  return token;
+}
+function transliterateHindi(text) {
+  if (!DEVA_RE.test(text)) return { text, changed: false };
+  let changed = false;
+  const out = String(text).split(/(\s+)/).map((chunk) => {
+    if (!DEVA_RE.test(chunk)) return chunk;
+    const lead = (chunk.match(/^[^\u0900-\u097F]+/) || [""])[0];
+    const tail = (chunk.match(/[^\u0900-\u097F]+$/) || [""])[0];
+    const core = chunk.slice(lead.length, chunk.length - tail.length);
+    const hit = DEVA_TO_LATIN[core];
+    if (hit) {
+      changed = true;
+      return lead + hit + tail;
+    }
+    return chunk;
+  }).join("");
+  return { text: out, changed };
+}
+function normalizeAssistantQuestion(raw) {
+  const original = String(raw || "").trim().slice(0, 300);
+  const indic = translateIndic(original);
+  const hindi = transliterateHindi(indic.text);
+  const language = indic.script || (hindi.changed ? "hindi" : void 0);
+  let text = hindi.text;
+  text = text.replace(/[\u0900-\u0DFF\u0600-\u06FF]+/g, " ");
+  let budget;
+  const bm = text.match(BUDGET_RE);
+  if (bm) {
+    const digits = Number(bm[1].replace(/,/g, ""));
+    if (Number.isFinite(digits) && digits > 0 && (bm[2] || String(bm[1]).replace(/,/g, "").length >= 2)) {
+      budget = bm[2] ? digits * 1e3 : digits;
+    }
+    text = text.replace(BUDGET_RE, " ");
+  }
+  text = text.replace(JUNK_PHRASES, " ");
+  text = text.replace(/[₹]/g, " ").replace(/\brs\.?\b/gi, " ");
+  const repaired = [];
+  text = text.split(/(\s+)/).map((chunk) => {
+    if (!chunk.trim()) return chunk;
+    const fixed = repairWord(chunk);
+    if (fixed !== chunk) repaired.push(`${chunk}->${fixed}`);
+    return fixed;
+  }).join("");
+  text = text.split(/(\s+)/).map((chunk) => {
+    if (!chunk.trim()) return chunk;
+    const fixed = repairPlace(chunk);
+    if (fixed !== chunk) repaired.push(`${chunk}->${fixed}`);
+    return fixed;
+  }).join("");
+  let routeHint;
+  const tokens3 = text.split(/\s+/).filter(Boolean);
+  for (let i = 0; i < tokens3.length - 1; i++) {
+    const a = places().get(tokens3[i].replace(/[^A-Za-z]/g, "").toLowerCase());
+    const b = places().get(tokens3[i + 1].replace(/[^A-Za-z]/g, "").toLowerCase());
+    if (a && b && a !== b) {
+      routeHint = `${a} to ${b}`;
+      break;
+    }
+  }
+  const lower = text.toLowerCase();
+  let keywordVertical;
+  for (const group of VERTICAL_WORDS) {
+    if (group.words.some((w) => new RegExp(`(^|\\s)${w}(s|es)?(\\s|$)`, "i").test(lower))) {
+      keywordVertical = group.vertical;
+      break;
+    }
+  }
+  const unsupported = UNSUPPORTED.find((u) => u.re.test(text))?.label;
+  return { text: text.replace(/\s+/g, " ").trim(), original, transliterated: hindi.changed || indic.changed, ...language ? { language } : {}, budget, keywordVertical, repaired, ...routeHint ? { routeHint } : {}, ...unsupported ? { unsupported } : {} };
+}
+var DEVA_TO_LATIN, DEVA_RE, VERTICAL_WORDS, JUNK_PHRASES, BUDGET_RE, TYPO_MAP, UNSUPPORTED, EXTRA_PLACES, placeMap, NOT_A_PLACE;
+var init_questionNormalizer = __esm({
+  "server/lens/questionNormalizer.ts"() {
+    init_cityCorpus();
+    init_indicLexicon();
+    DEVA_TO_LATIN = {
+      // verticals / nouns
+      "\u092B\u094D\u0932\u093E\u0907\u091F": "flight",
+      "\u092B\u094D\u0932\u093E\u0907\u091F\u094D\u0938": "flights",
+      "\u0909\u0921\u093C\u093E\u0928": "flight",
+      "\u0939\u0935\u093E\u0908": "flight",
+      "\u090F\u092F\u0930\u0932\u093E\u0907\u0902\u0938": "airline",
+      "\u092C\u0938": "bus",
+      "\u092C\u0938\u0947\u0902": "bus",
+      "\u0939\u094B\u091F\u0932": "hotel",
+      "\u0939\u094B\u091F\u0932\u094D\u0938": "hotels",
+      "\u0915\u092E\u0930\u093E": "room",
+      "\u0930\u0942\u092E": "room",
+      "\u091F\u093F\u0915\u091F": "ticket",
+      "\u091F\u093F\u0915\u091F\u0947\u0902": "tickets",
+      "\u092E\u0942\u0935\u0940": "movie",
+      "\u092B\u093F\u0932\u094D\u092E": "movie",
+      "\u0938\u093F\u0928\u0947\u092E\u093E": "cinema",
+      "\u0936\u094B": "show",
+      "\u0915\u0948\u092C": "cab",
+      "\u091F\u0948\u0915\u094D\u0938\u0940": "taxi",
+      "\u0911\u091F\u094B": "auto",
+      "\u0915\u093E\u0930": "car",
+      "\u0932\u094B\u0928": "loan",
+      "\u090B\u0923": "loan",
+      "\u092C\u094D\u092F\u093E\u091C": "interest",
+      "\u0908\u090F\u092E\u0906\u0908": "emi",
+      "\u092C\u0940\u092E\u093E": "insurance",
+      "\u0907\u0902\u0936\u094D\u092F\u094B\u0930\u0947\u0902\u0938": "insurance",
+      "\u092A\u0949\u0932\u093F\u0938\u0940": "policy",
+      "\u0915\u094D\u0930\u0947\u0921\u093F\u091F": "credit",
+      "\u0915\u093E\u0930\u094D\u0921": "card",
+      "\u0921\u0947\u092C\u093F\u091F": "debit",
+      "\u091F\u0930\u094D\u092E": "term",
+      "\u0905\u0915\u093E\u0909\u0902\u091F": "account",
+      "\u0916\u093E\u0924\u093E": "account",
+      "\u092C\u0948\u0902\u0915": "bank",
+      "\u092C\u091A\u0924": "savings",
+      "\u090F\u092B\u0921\u0940": "fd",
+      "\u0917\u094D\u0930\u0949\u0938\u0930\u0940": "grocery",
+      "\u0915\u093F\u0930\u093E\u0928\u093E": "grocery",
+      "\u0926\u0942\u0927": "milk",
+      "\u0906\u091F\u093E": "flour",
+      "\u091A\u093E\u0935\u0932": "rice",
+      "\u0916\u093E\u0928\u093E": "food",
+      "\u092D\u094B\u091C\u0928": "food",
+      "\u092C\u093F\u0930\u092F\u093E\u0928\u0940": "biryani",
+      "\u092A\u093F\u091C\u094D\u091C\u093E": "pizza",
+      "\u092C\u0930\u094D\u0917\u0930": "burger",
+      "\u092A\u094D\u0930\u094B\u0921\u0915\u094D\u091F": "product",
+      "\u092E\u094B\u092C\u093E\u0907\u0932": "mobile",
+      "\u092B\u094B\u0928": "phone",
+      "\u0932\u0948\u092A\u091F\u0949\u092A": "laptop",
+      "\u091F\u0940\u0935\u0940": "tv",
+      "\u0938\u0938\u094D\u0924\u093E": "sasta",
+      "\u0938\u0938\u094D\u0924\u0947": "sasta",
+      "\u0938\u0938\u094D\u0924\u0940": "sasta",
+      "\u092E\u0939\u0902\u0917\u093E": "mehnga",
+      "\u0915\u093F\u0924\u0928\u093E": "kitna",
+      "\u0915\u093F\u0924\u0928\u0947": "kitne",
+      "\u0915\u093F\u0924\u0928\u0940": "kitni",
+      "\u0915\u094D\u092F\u093E": "kya",
+      "\u0915\u0939\u093E\u0902": "kaha",
+      "\u0915\u0939\u093E\u0901": "kaha",
+      "\u0915\u094C\u0928": "kaun",
+      "\u0915\u094C\u0928\u0938\u093E": "kaunsa",
+      "\u091A\u093E\u0939\u093F\u090F": "chahiye",
+      "\u091A\u093E\u0939\u093F\u092F\u0947": "chahiye",
+      "\u092C\u0924\u093E\u0913": "batao",
+      "\u092C\u0924\u093E\u0907\u090F": "bataiye",
+      "\u0926\u093F\u0916\u093E\u0913": "dikhao",
+      "\u0922\u0942\u0902\u0922\u094B": "dhundo",
+      "\u0916\u094B\u091C\u094B": "dhundo",
+      "\u0924\u0941\u0932\u0928\u093E": "compare",
+      "\u092E\u0941\u091D\u0947": "mujhe",
+      "\u092E\u0947\u0930\u093E": "mera",
+      "\u092E\u0947\u0930\u0940": "meri",
+      "\u0939\u092E\u0947\u0902": "hume",
+      "\u0915\u093E": "ka",
+      "\u0915\u0940": "ki",
+      "\u0915\u0947": "ke",
+      "\u0915\u094B": "ko",
+      "\u0938\u0947": "se",
+      "\u0924\u0915": "tak",
+      "\u092E\u0947\u0902": "me",
+      "\u092E\u0947": "me",
+      "\u092A\u0930": "par",
+      "\u0914\u0930": "aur",
+      "\u092F\u093E": "ya",
+      "\u0939\u0948": "hai",
+      "\u0939\u0948\u0902": "hain",
+      "\u0925\u093E": "tha",
+      "\u0939\u094B\u0917\u093E": "hoga",
+      "\u0915\u093F\u0930\u093E\u092F\u093E": "kiraya",
+      "\u092D\u093E\u0921\u093C\u093E": "bhada",
+      "\u0930\u0947\u091F": "rate",
+      "\u0926\u093E\u092E": "daam",
+      "\u0915\u0940\u092E\u0924": "keemat",
+      "\u092A\u094D\u0930\u093E\u0907\u0938": "price",
+      "\u0915\u0932": "kal",
+      "\u092A\u0930\u0938\u094B\u0902": "parso",
+      "\u0906\u091C": "aaj",
+      "\u0905\u092D\u0940": "abhi",
+      "\u0905\u0917\u0932\u0947": "agle",
+      "\u0905\u0917\u0932\u0940": "agli",
+      "\u0939\u092B\u094D\u0924\u0947": "hafte",
+      "\u0930\u093E\u0924": "raat",
+      "\u0926\u093F\u0928": "din",
+      "\u0930\u093E\u0924\u0947\u0902": "raat",
+      "\u092C\u091C\u0947": "baje",
+      "\u0932\u093F\u090F": "liye",
+      "\u0932\u093F\u092F\u0947": "liye",
+      "\u0935\u093E\u0932\u093E": "wala",
+      "\u0935\u093E\u0932\u0947": "wale",
+      "\u0938\u092C\u0938\u0947": "sabse",
+      "\u092C\u0947\u0938\u094D\u091F": "best",
+      "\u0905\u091A\u094D\u091B\u093E": "accha",
+      "\u0928\u091C\u0926\u0940\u0915": "nazdeek",
+      "\u092A\u093E\u0938": "paas",
+      "\u090F\u092F\u0930\u092A\u094B\u0930\u094D\u091F": "airport",
+      "\u0938\u094D\u091F\u0947\u0936\u0928": "station",
+      "\u0925\u093E\u0928\u093E": "thana",
+      // brand names, because a question about a product almost always names one
+      "\u0906\u0908\u092B\u094B\u0928": "iphone",
+      "\u0938\u0948\u092E\u0938\u0902\u0917": "samsung",
+      "\u0935\u0928\u092A\u094D\u0932\u0938": "oneplus",
+      "\u0930\u0947\u0921\u092E\u0940": "redmi",
+      "\u0930\u093F\u092F\u0932\u092E\u0940": "realme",
+      "\u0913\u092A\u094D\u092A\u094B": "oppo",
+      "\u0935\u0940\u0935\u094B": "vivo",
+      "\u0936\u093E\u0913\u092E\u0940": "xiaomi",
+      "\u0938\u094B\u0928\u0940": "sony",
+      "\u092C\u094B\u091F": "boat",
+      "\u0905\u092E\u0947\u091C\u093C\u0928": "amazon",
+      "\u092B\u094D\u0932\u093F\u092A\u0915\u093E\u0930\u094D\u091F": "flipkart",
+      "\u092E\u093F\u0902\u0924\u094D\u0930\u093E": "myntra",
+      "\u0905\u091C\u093F\u092F\u094B": "ajio",
+      "\u092E\u0940\u0936\u094B": "meesho",
+      "\u092C\u093F\u0917\u092C\u093E\u0938\u094D\u0915\u0947\u091F": "bigbasket",
+      "\u092C\u094D\u0932\u093F\u0902\u0915\u093F\u091F": "blinkit",
+      "\u091C\u0947\u092A\u094D\u091F\u094B": "zepto",
+      "\u0907\u0902\u0938\u094D\u091F\u093E\u092E\u093E\u0930\u094D\u091F": "instamart",
+      "\u0938\u094D\u0935\u093F\u0917\u0940": "swiggy",
+      "\u091C\u094B\u092E\u0948\u091F\u094B": "zomato",
+      "\u0921\u094B\u092E\u093F\u0928\u094B\u091C": "dominos",
+      "\u0939\u0932\u094D\u0926\u0940\u0930\u093E\u092E": "haldiram",
+      "\u092C\u0941\u0915\u092E\u093E\u092F\u0936\u094B": "bookmyshow",
+      "\u092A\u0940\u0935\u0940\u0906\u0930": "pvr",
+      "\u0907\u0928\u0949\u0915\u094D\u0938": "inox",
+      "\u0913\u092F\u094B": "oyo",
+      "\u092E\u0947\u0915\u092E\u093E\u092F\u091F\u094D\u0930\u093F\u092A": "makemytrip",
+      "\u0917\u094B\u0907\u092C\u093F\u092C\u094B": "goibibo",
+      "\u0915\u094D\u0932\u093F\u092F\u0930\u091F\u094D\u0930\u093F\u092A": "cleartrip",
+      "\u092F\u093E\u0924\u094D\u0930\u093E": "yatra",
+      "\u0909\u092C\u0930": "uber",
+      "\u0913\u0932\u093E": "ola",
+      "\u0930\u0948\u092A\u093F\u0921\u094B": "rapido",
+      "\u0907\u0902\u0921\u093F\u0917\u094B": "indigo",
+      "\u090F\u092F\u0930\u0907\u0902\u0921\u093F\u092F\u093E": "air india",
+      "\u090F\u091A\u0921\u0940\u090F\u092B\u0938\u0940": "hdfc",
+      "\u0906\u0908\u0938\u0940\u0906\u0908\u0938\u0940\u0906\u0908": "icici",
+      "\u090F\u0938\u092C\u0940\u0906\u0908": "sbi",
+      "\u090F\u0915\u094D\u0938\u093F\u0938": "axis",
+      "\u0915\u094B\u091F\u0915": "kotak",
+      "\u092C\u091C\u093E\u091C": "bajaj",
+      "\u091F\u093E\u091F\u093E": "tata",
+      "\u0932\u093E\u0907\u0938\u0947\u0902\u0938": "licence",
+      "\u090F\u0932\u0906\u0908\u0938\u0940": "lic",
+      // cities / places people actually type in Hindi
+      "\u0926\u093F\u0932\u094D\u0932\u0940": "Delhi",
+      "\u092E\u0941\u0902\u092C\u0908": "Mumbai",
+      "\u0907\u0902\u0926\u094C\u0930": "Indore",
+      "\u092D\u094B\u092A\u093E\u0932": "Bhopal",
+      "\u0917\u094B\u0935\u093E": "Goa",
+      "\u092A\u0941\u0923\u0947": "Pune",
+      "\u091C\u092F\u092A\u0941\u0930": "Jaipur",
+      "\u0932\u0916\u0928\u090A": "Lucknow",
+      "\u091A\u0947\u0928\u094D\u0928\u0908": "Chennai",
+      "\u0915\u094B\u0932\u0915\u093E\u0924\u093E": "Kolkata",
+      "\u092C\u0947\u0902\u0917\u0932\u0941\u0930\u0941": "Bangalore",
+      "\u092C\u0948\u0902\u0917\u0932\u094B\u0930": "Bangalore",
+      "\u0939\u0948\u0926\u0930\u093E\u092C\u093E\u0926": "Hyderabad",
+      "\u0905\u0939\u092E\u0926\u093E\u092C\u093E\u0926": "Ahmedabad",
+      "\u0938\u0942\u0930\u0924": "Surat",
+      "\u0928\u093E\u0917\u092A\u0941\u0930": "Nagpur",
+      "\u0909\u091C\u094D\u091C\u0948\u0928": "Ujjain",
+      "\u091C\u092C\u0932\u092A\u0941\u0930": "Jabalpur",
+      "\u092A\u091F\u0928\u093E": "Patna",
+      "\u0915\u093E\u0928\u092A\u0941\u0930": "Kanpur",
+      "\u0932\u0941\u0927\u093F\u092F\u093E\u0928\u093E": "Ludhiana",
+      "\u0906\u0917\u0930\u093E": "Agra",
+      "\u0935\u093E\u0930\u093E\u0923\u0938\u0940": "Varanasi",
+      "\u0920\u093E\u0923\u0947": "Thane",
+      "\u0928\u094B\u090F\u0921\u093E": "Noida",
+      "\u0917\u0941\u0930\u0941\u0917\u094D\u0930\u093E\u092E": "Gurugram",
+      "\u0917\u0941\u0921\u093C\u0917\u093E\u0902\u0935": "Gurugram",
+      "\u092B\u0930\u0940\u0926\u093E\u092C\u093E\u0926": "Faridabad",
+      "\u0917\u093E\u091C\u093F\u092F\u093E\u092C\u093E\u0926": "Ghaziabad",
+      "\u0926\u0941\u092C\u0908": "Dubai",
+      "\u0926\u0947\u0939\u0930\u093E\u0926\u0942\u0928": "Dehradun",
+      "\u0930\u093E\u092F\u092A\u0941\u0930": "Raipur",
+      "\u0930\u093E\u0902\u091A\u0940": "Ranchi",
+      "\u092D\u0941\u0935\u0928\u0947\u0936\u094D\u0935\u0930": "Bhubaneswar",
+      "\u0917\u0941\u0935\u093E\u0939\u093E\u091F\u0940": "Guwahati",
+      "\u0915\u094B\u091A\u094D\u091A\u093F": "Kochi",
+      "\u0915\u094B\u092F\u0902\u092C\u091F\u0942\u0930": "Coimbatore",
+      "\u092E\u0926\u0941\u0930\u0948": "Madurai",
+      "\u0935\u093F\u0936\u093E\u0916\u093E\u092A\u0924\u094D\u0924\u0928\u092E": "Visakhapatnam",
+      "\u0914\u0930\u0902\u0917\u093E\u092C\u093E\u0926": "Aurangabad",
+      "\u0928\u093E\u0938\u093F\u0915": "Nashik",
+      "\u0935\u0921\u094B\u0926\u0930\u093E": "Vadodara",
+      "\u0930\u093E\u091C\u0915\u094B\u091F": "Rajkot",
+      "\u091C\u094B\u0927\u092A\u0941\u0930": "Jodhpur",
+      "\u0909\u0926\u092F\u092A\u0941\u0930": "Udaipur",
+      "\u0915\u094B\u091F\u093E": "Kota",
+      "\u0905\u091C\u092E\u0947\u0930": "Ajmer",
+      "\u0917\u094D\u0935\u093E\u0932\u093F\u092F\u0930": "Gwalior",
+      "\u092C\u0948\u0902\u0915\u0949\u0915": "Bangkok",
+      "\u0938\u093F\u0902\u0917\u093E\u092A\u0941\u0930": "Singapore",
+      "\u0932\u0902\u0926\u0928": "London",
+      "\u0928\u094D\u092F\u0942\u092F\u0949\u0930\u094D\u0915": "New York",
+      "\u0936\u094D\u0930\u0940\u0928\u0917\u0930": "Srinagar",
+      "\u091C\u092E\u094D\u092E\u0942": "Jammu",
+      "\u0905\u092E\u0943\u0924\u0938\u0930": "Amritsar",
+      "\u091A\u0902\u0921\u0940\u0917\u0922\u093C": "Chandigarh",
+      "\u0939\u0930\u093F\u0926\u094D\u0935\u093E\u0930": "Haridwar",
+      "\u090B\u0937\u093F\u0915\u0947\u0936": "Rishikesh",
+      "\u092E\u0938\u0942\u0930\u0940": "Mussoorie",
+      "\u0936\u093F\u092E\u0932\u093E": "Shimla",
+      "\u092E\u0928\u093E\u0932\u0940": "Manali",
+      "\u0927\u0930\u094D\u092E\u0936\u093E\u0932\u093E": "Dharamshala",
+      "\u0924\u093F\u0930\u0941\u092A\u0924\u093F": "Tirupati"
+    };
+    DEVA_RE = /[\u0900-\u097F]/;
+    VERTICAL_WORDS = [
+      { vertical: "flights", words: ["flight", "flights", "airfare", "airline", "airlines", "plane", "fly", "flightticket", "flite", "fligth", "flght", "fligths"] },
+      { vertical: "hotels", words: ["hotel", "hotels", "room", "rooms", "stay", "resort", "oyo", "homestay", "guesthouse", "hotal", "hotell", "hotles"] },
+      { vertical: "bus", words: ["bus", "buses", "busticket", "volvo", "sleeper", "seater", "buss"] },
+      { vertical: "cab", words: ["cab", "cabs", "taxi", "uber", "ola", "rapido", "auto", "airporttransfer", "taxii", "cabss"] },
+      { vertical: "movies", words: ["movie", "movies", "cinema", "pvr", "inox", "showtime", "show", "ticket", "bookmyshow"] },
+      { vertical: "grocery", words: ["grocery", "groceries", "kirana", "milk", "atta", "flour", "rice", "dal", "blinkit", "zepto", "instamart", "bigbasket", "dmart"] },
+      { vertical: "food", words: ["food", "biryani", "pizza", "burger", "swiggy", "zomato", "restaurant", "thali", "dosa", "chicken", "paneer"] },
+      { vertical: "loans", words: ["loan", "loans", "emi", "interest", "carloan", "homeloan", "personalloan", "creditline"] },
+      { vertical: "insurance", words: ["insurance", "policy", "termplan", "premium", "cover", "healthinsurance", "carinsurance", "bikeinsurance"] },
+      { vertical: "creditcards", words: ["creditcard", "card", "cards", "rewardcard", "cashbackcard", "rupay"] },
+      { vertical: "account", words: ["account", "savings", "currentaccount", "zerobalance", "fd", "fixeddeposit", "rd", "recurringdeposit", "nri"] },
+      // Only CATEGORY nouns here, never brand names: "boat airdopes" or "sony wh-1000xm5" name a product but
+      // not a category, so they must keep going through the honest assumed-shopping path (assumedVertical: true).
+      { vertical: "ecommerce", words: ["cosmetic", "cosmetics", "makeup", "make-up", "beauty", "skincare", "skin", "lipstick", "kajal", "eyeliner", "foundation", "compact", "sunscreen", "serum", "shampoo", "conditioner", "facewash", "bodywash", "moisturizer", "moisturiser", "perfume", "deodorant", "nailpolish", "nail", "haircare", "grooming", "trimmer", "mobile", "phone", "smartphone", "laptop", "tablet", "tv", "television", "fridge", "refrigerator", "washingmachine", "geyser", "cooler", "shoes", "shirt", "tshirt", "jeans", "kurta", "saree", "cosmetics", "perfume", "headphones", "earbuds", "airpods", "watch", "smartwatch", "camera", "product"] }
+    ];
+    JUNK_PHRASES = /\b(kam\s*price|kam\s*rate|kam\s*rate\s*me|low\s*price|range\s*available|available\s*range|items\s*for\s*range|price\s*range|within\s*range|rate\s*list|detail\s*chahiye)\b/gi;
+    BUDGET_RE = /(?:under|below|less\s+than|upto|up\s+to|within|max|maximum|budget\s*of|se\s+kam|ke\s+andar|ke\s+nice|tak\s+ka)\s*(?:rs\.?|₹|inr)?\s*([\d,]{1,9})(k\b)?/i;
+    TYPO_MAP = {
+      hotal: "hotel",
+      hotell: "hotel",
+      hotles: "hotel",
+      hoel: "hotel",
+      hotle: "hotel",
+      flite: "flight",
+      fligth: "flight",
+      flght: "flight",
+      fligths: "flight",
+      fligts: "flight",
+      buss: "bus",
+      bxus: "bus",
+      busticket: "bus ticket",
+      cabss: "cab",
+      taxi_: "taxi",
+      txi: "taxi",
+      muvie: "movie",
+      moive: "movie",
+      movi: "movie",
+      mvies: "movies",
+      grocerry: "grocery",
+      grocry: "grocery",
+      grosery: "grocery",
+      insurnce: "insurance",
+      insuranc: "insurance",
+      insurence: "insurance",
+      lona: "loan",
+      laon: "loan",
+      creidt: "credit",
+      crad: "card",
+      acount: "account",
+      accont: "account",
+      chennai_: "chennai",
+      banglore: "bangalore",
+      bengaluru_: "bengaluru",
+      hydrabad: "hyderabad",
+      mumbi: "mumbai",
+      delhii: "delhi",
+      indor: "indore",
+      bhopl: "bhopal",
+      jaipur_: "jaipur",
+      chandigrah: "chandigarh",
+      kolkatta: "kolkata",
+      ahmedbad: "ahmedabad",
+      lucknow_: "lucknow"
+    };
+    UNSUPPORTED = [
+      { label: "train tickets (IRCTC)", re: /\b(train|trains|irctc|railway|rail\s?ticket)\b/i },
+      { label: "metro cards", re: /\bmetro\s*(card|recharge|pass)?\b/i },
+      { label: "mobile or DTH recharge", re: /\b(recharge|dth|prepaid\s+plan|postpaid\s+plan)\b/i },
+      { label: "utility bills", re: /\b(electricity|water|gas|broadband|wifi)\s*bill\b/i },
+      { label: "LPG cylinder booking", re: /\b(lpg|gas\s*cylinder|cylinder)\b/i },
+      { label: "toll or FASTag", re: /\b(fastag|toll)\b/i }
+    ];
+    EXTRA_PLACES = ["Dubai", "Bangkok", "Singapore", "London", "New York", "Abu Dhabi", "Doha", "Kathmandu", "Colombo", "Male", "Sharjah", "Muscat", "Riyadh", "Jeddah", "Toronto", "Sydney", "Melbourne", "Tokyo", "Bali", "Phuket"];
+    placeMap = null;
+    NOT_A_PLACE = /* @__PURE__ */ new Set([
+      "kahan",
+      "kaha",
+      "kitna",
+      "kitne",
+      "kitni",
+      "kaun",
+      "kaunsa",
+      "kya",
+      "sasta",
+      "saste",
+      "sasti",
+      "sabse",
+      "milega",
+      "milegi",
+      "milta",
+      "milte",
+      "chahiye",
+      "chahie",
+      "batao",
+      "bata",
+      "dikhao",
+      "dikha",
+      "dhundo",
+      "compare",
+      "today",
+      "tomorrow",
+      "tonight",
+      "kal",
+      "aaj",
+      "parso",
+      "agle",
+      "next",
+      "best",
+      "cheapest",
+      "cheaper",
+      "price",
+      "prices",
+      "rate",
+      "rates",
+      "fare",
+      "fares",
+      "under",
+      "below",
+      "above",
+      "near",
+      "from",
+      "with",
+      "without",
+      "me",
+      "se",
+      "tak",
+      "aur",
+      "hai",
+      "hain",
+      "hoga",
+      "wala",
+      "wale",
+      "ticket",
+      "tickets",
+      "flight",
+      "flights",
+      "hotel",
+      "hotels",
+      "bus",
+      "buses",
+      "cab",
+      "cabs",
+      "taxi",
+      "movie",
+      "movies",
+      "loan",
+      "loans",
+      "insurance",
+      "policy",
+      "card",
+      "cards",
+      "credit",
+      "debit",
+      "account",
+      "savings",
+      "grocery",
+      "groceries",
+      "food",
+      "product",
+      "amul",
+      "atta",
+      "aata",
+      "chawal",
+      "dal",
+      "biryani",
+      "chicken",
+      "paneer",
+      "doodh",
+      "milk",
+      "pizza",
+      "burger",
+      "thali",
+      "dosa",
+      "rice",
+      "flour",
+      "iphone",
+      "samsung",
+      "mobile",
+      "phone",
+      "laptop",
+      "shoes",
+      "shirt",
+      "watch",
+      "earbuds",
+      "karna",
+      "karni",
+      "karne",
+      "karke",
+      "karo",
+      "kare",
+      "kar",
+      "lena",
+      "leni",
+      "dena",
+      "deni",
+      "jaana",
+      "jana",
+      "aana",
+      "ana",
+      "chalo",
+      "chal",
+      "dekhna",
+      "dekh",
+      "dekhni",
+      "batana",
+      "bataye",
+      "puchna",
+      "poochna",
+      "bhejo",
+      "bhej",
+      "order",
+      "orders",
+      "book",
+      "booking",
+      "buy",
+      "sell",
+      "khareed",
+      "khareedna",
+      "kharidna",
+      "khana",
+      "khane",
+      "peena",
+      "peene",
+      "jaldi",
+      "abhi",
+      "baad",
+      "pehle",
+      "sahi",
+      "theek",
+      "accha",
+      "acha",
+      "bhai",
+      "bro",
+      "please",
+      "pls",
+      "thanks",
+      "sir",
+      "madam",
+      "kuch",
+      "koi",
+      "bhi",
+      "nahi",
+      "nai",
+      "haan",
+      "hmm",
+      "kab",
+      "kaise",
+      "kyu",
+      "kyun",
+      "kyon",
+      "jitna",
+      "utna",
+      "itna",
+      "sirf",
+      "only",
+      "also",
+      "and",
+      "or",
+      "but",
+      "my",
+      "your",
+      "our",
+      "this",
+      "that",
+      "mujhe",
+      "hume",
+      "mera",
+      "meri",
+      "apna",
+      "apni",
+      "dijiye",
+      "kijiye",
+      "chaiye",
+      "chahta",
+      "chahti",
+      "chahte",
+      "lagta",
+      "mile",
+      "mil",
+      "paisa",
+      "paise",
+      "rupees",
+      "rupaye",
+      "thousand",
+      "hazar",
+      "hazaar",
+      "lakh",
+      "crore",
+      "cosmetic",
+      "cosmetics",
+      "makeup",
+      "beauty",
+      "skincare",
+      "lipstick",
+      "perfume",
+      "shampoo",
+      "cream"
+    ]);
+  }
+});
+
 // server/lens/assistantIntent.ts
 function isoDate2(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -42783,18 +44126,31 @@ function istToday(now = /* @__PURE__ */ new Date()) {
   return new Date(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate());
 }
 function interpretAssistantQuestion(raw, now = istToday()) {
-  const text = String(raw || "").trim().slice(0, 300);
-  if (text.length < 2) return { understood: false, vertical: null, query: "", reply: 'Type or say what you want to compare, e.g. "Delhi to Mumbai flight".' };
+  const norm9 = normalizeAssistantQuestion(raw);
+  const text = norm9.text;
+  if (text.replace(/\s/g, "").length < 2) return { understood: false, vertical: null, query: "", reply: 'Type or say what you want to compare, e.g. "Delhi to Mumbai flight".' };
   const parsed = understandQuery(text);
   let vertical = parsed.vertical || null;
   const lower = text.toLowerCase();
-  const route2 = extractRoute(text);
+  const route2 = extractRoute(text) || norm9.routeHint || null;
   if (!vertical && route2) vertical = "flights";
   if (vertical === "movies" || vertical === "movie") vertical = "movies";
   if (vertical === "banking") vertical = "account";
   if (vertical === "coupons" || vertical === "giftcards") vertical = "ecommerce";
   const category = detectCategoryVertical(text);
   if (category && (!vertical || vertical === "ecommerce")) vertical = category;
+  const keyword = norm9.keywordVertical;
+  if (keyword && keyword in LABEL && (!vertical || vertical === "ecommerce" && !category)) vertical = keyword;
+  const STRONG_SUPPORTED = /\b(flight|flights|hotel|hotels|bus|buses|cab|cabs|taxi|movie|movies|loan|loans|insurance|policy|grocery|groceries|food|biryani|pizza|account|savings)\b/i;
+  const unsupportedWins = norm9.unsupported && !STRONG_SUPPORTED.test(text);
+  if (unsupportedWins) {
+    return {
+      understood: false,
+      vertical: null,
+      query: norm9.text,
+      reply: `We do not compare ${norm9.unsupported} yet. Try flights, hotels, bus, cabs, movie tickets, shopping, grocery, food delivery, loans, insurance, credit cards or bank accounts.`
+    };
+  }
   if (!vertical || !(vertical in LABEL)) {
     return { understood: false, vertical: null, query: text, reply: 'I could not tell which category that is. Try "Delhi to Mumbai flight", "hotels in Goa" or a product name.' };
   }
@@ -42810,8 +44166,20 @@ function interpretAssistantQuestion(raw, now = istToday()) {
     query = cleanCategoryQuery(text) || text.replace(FILLER, " ").replace(/\s+/g, " ").trim();
   } else {
     query = text.replace(FILLER, " ").replace(/\s+/g, " ").trim() || text;
+    if (vertical === "ecommerce") {
+      const places2 = findPlaces(text);
+      for (const pl of places2) query = query.replace(new RegExp(`\\b${pl}\\b`, "gi"), " ");
+      query = query.replace(/\b(available|availability|items?|range|stock|list|ka|ki|ke)\b/gi, " ");
+      query = query.replace(/\s+/g, " ").trim();
+      if (!query || query.length < 3 || /^(me|se|tak|ka|ki|ke|hai|hain|in|at|of)$/i.test(query)) {
+        query = places2.length ? "products" : text;
+      }
+      if (/^cosmetic$/i.test(query)) query = "cosmetics";
+      if (/^(mobile|phone)$/i.test(query)) query = "mobile phone";
+    }
   }
   if (!query) query = text;
+  const assumed = vertical === "ecommerce" && !norm9.keywordVertical;
   const when = date ? ` for ${date}` : "";
   const categoryReply = vertical === "grocery" ? `"${query}" is a grocery staple, so I am checking the 10-minute delivery apps (Blinkit, Zepto, Instamart, BigBasket, Flipkart Minutes) for the lowest price.` : vertical === "food" ? `"${query}" is a food order, so I am checking the restaurant delivery apps (Zomato, Swiggy, Domino's, EatSure\u2026) for the lowest price.` : `Opening ${LABEL[vertical]} and searching "${query}"${when}. Live prices from every site are loading.`;
   return {
@@ -42819,6 +44187,9 @@ function interpretAssistantQuestion(raw, now = istToday()) {
     vertical,
     query,
     ...date ? { date } : {},
+    ...norm9.budget ? { budget: norm9.budget } : {},
+    ...assumed ? { assumed: true } : {},
+    ...norm9.transliterated || norm9.repaired.length ? { normalized: { transliterated: norm9.transliterated, repaired: norm9.repaired } } : {},
     reply: categoryReply
   };
 }
@@ -42827,6 +44198,7 @@ var init_assistantIntent = __esm({
   "server/lens/assistantIntent.ts"() {
     init_queryUnderstanding();
     init_verticalLexicon();
+    init_questionNormalizer();
     LABEL = {
       flights: "Flights",
       hotels: "Hotels",
@@ -42856,7 +44228,8 @@ function searchable(text) {
   return !/^(ok|okay|kk|haan|han|yes|yeah|no|nahi|hi|hello|hey|thanks|thank you|thx|bye|good|nice|test)\b/i.test(t);
 }
 function buildAssistantSearch(raw, ctx = {}) {
-  const text = String(raw || "").trim().slice(0, 300);
+  const normalized = normalizeAssistantQuestion(raw);
+  const text = normalized.text;
   const intent = interpretAssistantQuestion(text);
   const withContext = (input) => ({
     ...input,
@@ -42869,7 +44242,7 @@ function buildAssistantSearch(raw, ctx = {}) {
   });
   if (intent.understood && intent.vertical) {
     return {
-      meta: { understood: true, assumedVertical: false, vertical: intent.vertical, query: intent.query, ...intent.date ? { date: intent.date } : {}, reply: intent.reply },
+      meta: { understood: true, assumedVertical: Boolean(intent.assumed), vertical: intent.vertical, query: intent.query, ...intent.date ? { date: intent.date } : {}, ...intent.budget ? { budget: intent.budget } : {}, reply: intent.assumed ? `You named a product rather than a category, so I am comparing "${intent.query}" across every shopping site. Results below.` : intent.reply },
       input: withContext({ query: intent.query, vertical: intent.vertical })
     };
   }
@@ -42995,8 +44368,13 @@ function shapeAssistantAnswer(vertical, query, rows, opts = {}) {
   const distinctSellers2 = new Set(priced.map((r) => (r.provider || "").toLowerCase()).filter(Boolean));
   const spread = priced.length > 1 && distinctSellers2.size > 1 ? priced[priced.length - 1].price - best.price : 0;
   const spreadTxt = spread > 0 ? ` Spread across sites: ${money2(spread, best.currency)}.` : "";
+  let budgetTxt = "";
+  if (opts.budget && opts.budget > 0) {
+    const fits = priced.filter((r) => r.price <= opts.budget);
+    budgetTxt = fits.length ? ` ${fits.length} of ${priced.length} priced option${priced.length === 1 ? "" : "s"} fit your ${money2(opts.budget, best.currency)} budget.` : ` Nothing is inside your ${money2(opts.budget, best.currency)} budget right now - the cheapest verified price is ${money2(best.price, best.currency)}.`;
+  }
   return {
-    reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ""} at ${money2(best.price, best.currency)}.${spreadTxt} ${rows.length} live option${rows.length === 1 ? "" : "s"} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? "" : "s"} below.`,
+    reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ""} at ${money2(best.price, best.currency)}.${spreadTxt}${budgetTxt} ${rows.length} live option${rows.length === 1 ? "" : "s"} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? "" : "s"} below.`,
     results: rows,
     count: rows.length
   };
@@ -43006,6 +44384,7 @@ var init_assistantAnswer = __esm({
   "server/lens/assistantAnswer.ts"() {
     init_assistantIntent();
     init_verticalLexicon();
+    init_questionNormalizer();
     NOISE3 = /\b(kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|rate|rates|price|prices|batao|bata|do|dikhao|dikha|chahiye|chahie|please|pls|show|tell|me|find|search|compare|check|what|is|are|the|of|for|a|an|i|want|need|looking|best|sabse|sasta|cheapest|cheap|deal|deals|offer|offers|buy|kharidna|kitne\s*ka)\b/gi;
     ACCOUNT_HINT = /\b(bank account|savings account|saving account|current account|salary account|zero balance|fixed deposit|recurring deposit|\bfd\b|\brd\b|nre account|nro account)\b/i;
     LABEL2 = {
@@ -43494,7 +44873,78 @@ function memoryNotice(mem) {
   const when = new Date(mem.lastVerifiedAt).toISOString().slice(0, 16).replace("T", " ");
   return `Last time you asked this, ${mem.rowCount} live rows came from ${mem.sellers.slice(0, 4).join(", ") || "our sources"} (verified ${when}Z). I start from those and re-check prices now.`;
 }
-var norm8, TABLE, parseJson, reliabilityMemo, RELIABILITY_TTL_MS;
+function ensureQuestionRouteTable() {
+  if (!routeTableReady) {
+    routeTableReady = (async () => {
+      await getStore().execute(`CREATE TABLE IF NOT EXISTS ${ROUTE_TABLE} (
+        sig VARCHAR(190) PRIMARY KEY,
+        vertical VARCHAR(32) NOT NULL,
+        query VARCHAR(190) NOT NULL,
+        city VARCHAR(80) NOT NULL DEFAULT '',
+        depart VARCHAR(20) NOT NULL DEFAULT '',
+        raw VARCHAR(300) NOT NULL DEFAULT '',
+        hits INT NOT NULL DEFAULT 1,
+        ok_rows INT NOT NULL DEFAULT 0,
+        last_ok_at BIGINT NOT NULL DEFAULT 0
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    })().catch((e2) => {
+      routeTableReady = null;
+      throw e2;
+    });
+  }
+  return routeTableReady;
+}
+function questionSignature(text) {
+  return String(text || "").toLowerCase().replace(/[^\p{L}\p{N}+ ]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 190);
+}
+async function recallQuestionRoute(sig) {
+  if (!sig) return null;
+  try {
+    await ensureQuestionRouteTable();
+    const rows = await getStore().query(`SELECT * FROM ${ROUTE_TABLE} WHERE sig = ? LIMIT 1`, [sig]);
+    const r = rows[0];
+    if (!r || !r.vertical || !r.query) return null;
+    const lastOkAt = Number(r.last_ok_at) || 0;
+    return {
+      vertical: String(r.vertical),
+      query: String(r.query),
+      city: String(r.city || ""),
+      depart: String(r.depart || ""),
+      hits: Number(r.hits) || 1,
+      okRows: Number(r.ok_rows) || 0,
+      lastOkAt,
+      fresh: lastOkAt > 0 && Date.now() - lastOkAt < ROUTE_TTL_MS
+    };
+  } catch (e2) {
+    log.debug("memory", "question route recall skipped", { error: String(e2) });
+    return null;
+  }
+}
+async function rememberQuestionRoute(sig, learned) {
+  if (!sig || !learned.vertical || !learned.query) return;
+  try {
+    await ensureQuestionRouteTable();
+    await getStore().execute(
+      `INSERT INTO ${ROUTE_TABLE} (sig, vertical, query, city, depart, raw, hits, ok_rows, last_ok_at)
+       VALUES (?,?,?,?,?,?,1,?,?)
+       ON DUPLICATE KEY UPDATE hits = hits + 1, vertical = VALUES(vertical), query = VALUES(query),
+         city = VALUES(city), depart = VALUES(depart), ok_rows = VALUES(ok_rows), last_ok_at = VALUES(last_ok_at)`,
+      [
+        sig,
+        learned.vertical,
+        learned.query.slice(0, 190),
+        (learned.city || "").slice(0, 80),
+        (learned.depart || "").slice(0, 20),
+        String(learned.raw || "").slice(0, 300),
+        Math.max(0, Math.min(999999, Number(learned.okRows) || 0)),
+        Date.now()
+      ]
+    );
+  } catch (e2) {
+    log.debug("memory", "question route remember skipped", { error: String(e2) });
+  }
+}
+var norm8, TABLE, parseJson, reliabilityMemo, RELIABILITY_TTL_MS, ROUTE_TABLE, routeTableReady, ROUTE_TTL_MS;
 var init_searchMemory = __esm({
   "server/lens/searchMemory.ts"() {
     init_db();
@@ -43510,6 +44960,9 @@ var init_searchMemory = __esm({
     };
     reliabilityMemo = /* @__PURE__ */ new Map();
     RELIABILITY_TTL_MS = () => Math.max(1e3, Number(process.env.T1S_RELIABILITY_TTL_MS) || 6e4);
+    ROUTE_TABLE = "assistant_question_routes";
+    routeTableReady = null;
+    ROUTE_TTL_MS = 14 * 24 * 36e5;
   }
 });
 
@@ -46742,7 +48195,9 @@ function assistantExitUrl(o, travel) {
   };
   const dateSensitive = vertical === "hotels" || vertical === "flights" || vertical === "bus";
   const rebuilt = dateSensitive && (travel.date || travel.route) ? merchantSearchFallback(seller, title, vertical, ctx) : "";
-  const rawDest = rebuilt || String(o?.sellerUrl || "") || merchantSearchFallback(seller, title, vertical, ctx);
+  const ownUrl = String(o?.sellerUrl || "");
+  const ownDeep = ownUrl && isDeepOfferUrl(vertical, ownUrl) ? ownUrl : "";
+  const rawDest = ownDeep || rebuilt || ownUrl || merchantSearchFallback(seller, title, vertical, ctx);
   return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || "") }) : "";
 }
 function offerToComparisonItem(o, reqTravel = {}) {
@@ -49122,7 +50577,7 @@ var init_routes = __esm({
       if (verdict.follow && subject) {
         return answerFollowUp(res, { subject, verdict, sessionId, text, started: started3 });
       }
-      const { meta, input } = buildAssistantSearch(text, {
+      let { meta, input } = buildAssistantSearch(text, {
         city: req.body?.city ? String(req.body.city).slice(0, 60) : void 0,
         pincode: req.body?.pincode ? String(req.body.pincode).slice(0, 10) : void 0,
         locality: req.body?.locality ? String(req.body.locality).slice(0, 120) : void 0,
@@ -49133,6 +50588,25 @@ var init_routes = __esm({
           return: String(req.body.travelDates.return || "").slice(0, 10) || void 0
         } : void 0
       });
+      const qSig = questionSignature(text);
+      if (!input) {
+        const learned = await recallQuestionRoute(qSig).catch(() => null);
+        if (learned && learned.fresh) {
+          meta = {
+            ...meta,
+            understood: true,
+            vertical: learned.vertical,
+            query: learned.query,
+            reply: `From memory: "${learned.query}" is compared as ${learned.vertical}. Live prices below.`
+          };
+          input = {
+            query: learned.query,
+            vertical: learned.vertical,
+            ...learned.city ? { city: learned.city } : {},
+            ...learned.depart ? { travelDates: { depart: learned.depart } } : {}
+          };
+        }
+      }
       if (!input) return res.json({ success: true, ...meta, results: [], count: 0, latencyMs: Date.now() - started3 });
       const searchInput = {
         query: input.query,
@@ -49238,6 +50712,16 @@ var init_routes = __esm({
         }));
         const shaped = toAssistantRows(linked, 6, { diversify: true });
         void ensureSearchMemoryTable().then(() => rememberAnswer(memKey, { rows, sellers: sourcesSucceeded.map((id) => id.replace(/^w_[a-z]+_/, "")) })).catch(() => void 0);
+        if (rows.length) {
+          void rememberQuestionRoute(qSig, {
+            vertical: String(searchInput.vertical || meta.vertical || ""),
+            query: String(searchInput.query || meta.query || ""),
+            city: String(searchInput.city || ""),
+            depart: String(searchInput.travelDates?.depart || ""),
+            raw: text,
+            okRows: rows.length
+          }).catch(() => void 0);
+        }
         const answer = shapeAssistantAnswer(
           fallbackVertical ? fallbackVertical : meta.vertical,
           meta.query,
@@ -49246,6 +50730,7 @@ var init_routes = __esm({
             pending,
             sourcesSucceeded,
             honestNotice,
+            ...meta.budget ? { budget: meta.budget } : {},
             ...fallbackVertical ? { honestNotice: `The ${meta.vertical === "grocery" ? "10-minute grocery apps" : "restaurant apps"} did not answer this time, so these are live prices from the shopping sites.` } : {}
           }
         );
@@ -55311,77 +56796,6 @@ var init_guides = __esm({
     GUIDES.push(...INTENT_GUIDES);
     GUIDE_BY_SLUG = Object.fromEntries(GUIDES.map((g) => [g.slug, g]));
     GUIDE_SLUGS = GUIDES.map((g) => g.slug);
-  }
-});
-
-// server/seo/cityCorpus.ts
-function citiesOfState(stateSlug) {
-  return INDIAN_CITIES.filter((c) => c.state === stateSlug).map((c) => c.name);
-}
-var RAW, slugify, build, INDIAN_CITIES, CITY_STATE;
-var init_cityCorpus = __esm({
-  "server/seo/cityCorpus.ts"() {
-    RAW = [
-      ["andhra-pradesh", "Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Kurnool", "Rajahmundry", "Tirupati", "Kakinada", "Kadapa", "Anantapur", "Vizianagaram", "Eluru", "Ongole", "Chittoor", "Bhimavaram", "Machilipatnam", "Tenali", "Proddatur", "Hindupur"],
-      ["arunachal-pradesh", "Itanagar", "Naharlagun", "Pasighat", "Tawang", "Ziro", "Bomdila", "Tezu"],
-      ["assam", "Guwahati", "Silchar", "Dibrugarh", "Jorhat", "Tezpur", "Nagaon", "Bongaigaon", "Tinsukia", "Dhubri", "Diphu", "Goalpara"],
-      ["bihar", "Patna", "Gaya", "Bhagalpur", "Muzaffarpur", "Darbhanga", "Purnia", "Bihar Sharif", "Arrah", "Begusarai", "Katihar", "Chhapra", "Munger", "Saharsa", "Sasaram", "Hajipur", "Motihari", "Bettiah", "Siwan", "Jamalpur"],
-      ["chhattisgarh", "Raipur", "Bhilai", "Bilaspur", "Korba", "Durg", "Rajnandgaon", "Jagdalpur", "Ambikapur", "Raigarh", "Dhamtari", "Chirmiri"],
-      ["goa", "Goa", "Panaji", "Margao", "Vasco Da Gama", "Calangute", "Candolim", "Anjuna", "Ponda", "Mapusa"],
-      ["gujarat", "Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar", "Junagadh", "Gandhinagar", "Gandhidham", "Anand", "Navsari", "Morbi", "Vapi", "Veraval", "Porbandar", "Bhuj", "Mehsana", "Palanpur", "Valsad", "Bharuch", "Godhra", "Patan", "Dahod"],
-      ["haryana", "Gurugram", "Faridabad", "Panipat", "Ambala", "Yamunanagar", "Rohtak", "Hisar", "Karnal", "Sonipat", "Panchkula", "Bhiwani", "Sirsa", "Kurukshetra", "Rewari", "Palwal", "Jind", "Kaithal"],
-      ["himachal-pradesh", "Shimla", "Manali", "Dharamshala", "Solan", "Mandi", "Kullu", "Palampur", "Kangra", "Una", "Chamba", "Hamirpur", "Baddi", "Nahan", "Keylong"],
-      ["jharkhand", "Ranchi", "Jamshedpur", "Dhanbad", "Bokaro Steel City", "Deoghar", "Hazaribagh", "Giridih", "Ramgarh", "Medininagar", "Chaibasa", "Dumka", "Sahibganj"],
-      ["karnataka", "Bengaluru", "Mysuru", "Mangaluru", "Hubballi", "Dharwad", "Belagavi", "Kalaburagi", "Davanagere", "Ballari", "Vijayapura", "Shivamogga", "Tumakuru", "Udupi", "Hassan", "Mandya", "Chikkamagaluru", "Bidar", "Raichur", "Kolar", "Bagalkot", "Gadag", "Hospet", "Karwar", "Madikeri"],
-      ["kerala", "Kochi", "Thiruvananthapuram", "Kozhikode", "Thrissur", "Kollam", "Kannur", "Alappuzha", "Palakkad", "Malappuram", "Kottayam", "Munnar", "Varkala", "Kovalam", "Wayanad", "Idukki", "Pathanamthitta", "Kasaragod", "Kannur", "Thalassery", "Nilambur"],
-      ["madhya-pradesh", "Indore", "Bhopal", "Jabalpur", "Gwalior", "Ujjain", "Sagar", "Rewa", "Satna", "Ratlam", "Dewas", "Singrauli", "Katni", "Chhindwara", "Khandwa", "Morena", "Bhind", "Vidisha", "Hoshangabad", "Shivpuri", "Damoh", "Mandsaur", "Khargone", "Neemuch", "Betul", "Sehore", "Guna", "Shahdol", "Chhatarpur", "Pithampur", "Omkareshwar", "Maheshwar"],
-      ["maharashtra", "Mumbai", "Pune", "Nagpur", "Nashik", "Thane", "Navi Mumbai", "Aurangabad", "Solapur", "Amravati", "Kolhapur", "Sangli", "Jalgaon", "Akola", "Latur", "Dhule", "Ahmednagar", "Chandrapur", "Parbhani", "Nanded", "Satara", "Ratnagiri", "Alibaug", "Lonavala", "Mahabaleshwar", "Shirdi", "Panvel", "Vasai-Virar", "Bhiwandi", "Ichalkaranji", "Nandurbar", "Wardha", "Gondia", "Yavatmal", "Buldhana", "Osmanabad", "Jalna", "Beed", "Karad", "Baramati", "Palghar", "Badlapur", "Ambernath"],
-      ["manipur", "Imphal", "Thoubal", "Churachandpur", "Bishnupur", "Kakching"],
-      ["meghalaya", "Shillong", "Tura", "Cherrapunji", "Jowai", "Nongstoin", "Williamnagar"],
-      ["mizoram", "Aizawl", "Lunglei", "Champhai", "Serchhip", "Kolasib"],
-      ["nagaland", "Kohima", "Dimapur", "Mokokchung", "Tuensang", "Wokha", "Zunheboto"],
-      ["odisha", "Bhubaneswar", "Cuttack", "Rourkela", "Berhampur", "Sambalpur", "Puri", "Balasore", "Bhadrak", "Baripada", "Jharsuguda", "Angul", "Koraput", "Rayagada", "Bargarh", "Konark"],
-      ["punjab", "Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda", "Mohali", "Hoshiarpur", "Batala", "Pathankot", "Moga", "Abohar", "Malerkotla", "Barnala", "Firozpur", "Kapurthala", "Sangrur", "Fazilka"],
-      ["rajasthan", "Jaipur", "Udaipur", "Jodhpur", "Kota", "Bikaner", "Ajmer", "Bhilwara", "Alwar", "Sikar", "Pali", "Sri Ganganagar", "Bharatpur", "Chittorgarh", "Mount Abu", "Pushkar", "Jaisalmer", "Sawai Madhopur", "Bundi", "Beawar", "Hanumangarh", "Nagaur", "Tonk", "Kishangarh", "Ranthambore"],
-      ["sikkim", "Gangtok", "Namchi", "Gyalshing", "Mangan", "Pelling", "Lachung"],
-      ["tamil-nadu", "Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tirunelveli", "Tiruppur", "Erode", "Vellore", "Thoothukudi", "Thanjavur", "Dindigul", "Kanyakumari", "Ooty", "Kumbakonam", "Nagercoil", "Hosur", "Karur", "Cuddalore", "Kanchipuram", "Rameswaram", "Pollachi", "Namakkal", "Villupuram", "Ariyalur", "Nagapattinam", "Pudukkottai", "Yercaud", "Kodaikanal", "Mahabalipuram"],
-      ["telangana", "Hyderabad", "Warangal", "Nizamabad", "Karimnagar", "Khammam", "Ramagundam", "Secunderabad", "Mahbubnagar", "Nalgonda", "Adilabad", "Siddipet", "Medak", "Suryapet", "Miryalaguda", "Jagtial"],
-      ["tripura", "Agartala", "Dharmanagar", "Kailashahar", "Belonia", "Khowai", "Ambassa"],
-      ["uttar-pradesh", "Lucknow", "Noida", "Ghaziabad", "Agra", "Varanasi", "Kanpur", "Meerut", "Prayagraj", "Bareilly", "Aligarh", "Moradabad", "Saharanpur", "Gorakhpur", "Jhansi", "Muzaffarnagar", "Mathura", "Ayodhya", "Firozabad", "Budaun", "Rampur", "Shahjahanpur", "Farrukhabad", "Hapur", "Etawah", "Mirzapur", "Bulandshahr", "Amroha", "Hardoi", "Fatehpur", "Raebareli", "Orai", "Sitapur", "Bahraich", "Unnao", "Jaunpur", "Hathras", "Banda", "Pilibhit", "Barabanki", "Gonda", "Mainpuri", "Etah", "Deoria", "Ghazipur", "Sultanpur", "Azamgarh", "Basti", "Ballia", "Greater Noida", "Vrindavan", "Sarnath", "Naimisharanya"],
-      ["uttarakhand", "Dehradun", "Haridwar", "Rishikesh", "Roorkee", "Haldwani", "Rudrapur", "Kashipur", "Nainital", "Mussoorie", "Almora", "Pithoragarh", "Kotdwar", "Ramnagar", "Kedarnath", "Badrinath", "Joshimath", "Chamoli", "Tehri", "Bageshwar"],
-      ["west-bengal", "Kolkata", "Howrah", "Durgapur", "Asansol", "Siliguri", "Bardhaman", "Malda", "Kharagpur", "Haldia", "Darjeeling", "Jalpaiguri", "Kalyani", "Krishnanagar", "Barasat", "Barrackpore", "Hugli-Chinsurah", "Raiganj", "Medinipur", "Cooch Behar", "Bankura", "Purulia", "Bolpur", "Kalimpong", "Digha", "Mandarmani"],
-      ["andaman-and-nicobar-islands", "Port Blair", "Havelock Island", "Neil Island", "Diglipur"],
-      ["chandigarh", "Chandigarh"],
-      ["dadra-and-nagar-haveli-and-daman-and-diu", "Silvassa", "Daman", "Diu"],
-      ["delhi", "Delhi", "New Delhi", "Dwarka", "Rohini"],
-      ["jammu-and-kashmir", "Srinagar", "Jammu", "Anantnag", "Baramulla", "Udhampur", "Kathua", "Sopore", "Gulmarg", "Pahalgam", "Katra", "Sonamarg"],
-      ["ladakh", "Leh", "Kargil", "Nubra Valley", "Pangong"],
-      ["lakshadweep", "Kavaratti", "Agatti", "Minicoy"],
-      ["puducherry", "Puducherry", "Karaikal", "Mahe", "Yanam", "Auroville"]
-    ];
-    slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    build = () => {
-      const seen = /* @__PURE__ */ new Set();
-      const out = [];
-      for (const [state, ...names] of RAW) {
-        const inState = /* @__PURE__ */ new Set();
-        for (const name of names) {
-          const key = name.trim().toLowerCase();
-          if (inState.has(key)) continue;
-          inState.add(key);
-          let slug5 = slugify(name);
-          if (seen.has(slug5)) slug5 = `${slug5}-${state}`;
-          if (seen.has(slug5)) continue;
-          seen.add(slug5);
-          out.push({ slug: slug5, name, state });
-        }
-      }
-      return out;
-    };
-    INDIAN_CITIES = build();
-    CITY_STATE = Object.fromEntries(
-      INDIAN_CITIES.map((c) => [c.name.trim().toLowerCase(), c.state])
-    );
   }
 });
 

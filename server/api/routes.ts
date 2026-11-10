@@ -72,7 +72,7 @@ import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows } from '../
 import {
   classifyFollowUp, readSubject, shapeFollowUpAnswer, subjectFromAnswer, writeSubject,
 } from '../lens/assistantThread';
-import { boostByReliability, ensureSearchMemoryTable, memoryNotice, recallAnswer, rememberAnswer, sellerReliability } from '../lens/searchMemory';
+import { boostByReliability, ensureSearchMemoryTable, memoryNotice, questionSignature, recallAnswer, recallQuestionRoute, rememberAnswer, rememberQuestionRoute, sellerReliability } from '../lens/searchMemory';
 import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
 import { dropImplausiblePrices } from '../lens/pricePlausibility';
 import { fixSpelling } from '../lens/spellFix';
@@ -1292,7 +1292,14 @@ function assistantExitUrl(o: any, travel: { date?: string; return?: string; city
   const rebuilt = dateSensitive && (travel.date || travel.route)
     ? merchantSearchFallback(seller, title, vertical, ctx)
     : '';
-  const rawDest = rebuilt || String(o?.sellerUrl || '') || merchantSearchFallback(seller, title, vertical, ctx);
+  // OWNER 10 Nov: "yaha v jo link aayega wo deeplink hoga". The assistant had the SAME bug that was fixed
+  // for app rows on 7 Nov: it rebuilt hotels/flights/bus exits from the request context and threw away the
+  // partner's own deep URL (property / itinerary / ticket page). The row's own deep link now wins, and the
+  // rebuilt URL is only the fallback, so a click lands on the priced item and the affiliate wrap still
+  // applies because every exit goes through createMaskingPointer -> /api/out.
+  const ownUrl = String(o?.sellerUrl || '');
+  const ownDeep = ownUrl && isDeepOfferUrl(vertical, ownUrl) ? ownUrl : '';
+  const rawDest = ownDeep || rebuilt || ownUrl || merchantSearchFallback(seller, title, vertical, ctx);
   return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || '') }) : '';
 }
 
@@ -3273,7 +3280,7 @@ apiRouter.post('/assist/answer', async (req, res) => {
     return answerFollowUp(res, { subject, verdict, sessionId, text, started });
   }
 
-  const { meta, input } = buildAssistantSearch(text, {
+  let { meta, input } = buildAssistantSearch(text, {
     city: req.body?.city ? String(req.body.city).slice(0, 60) : undefined,
     pincode: req.body?.pincode ? String(req.body.pincode).slice(0, 10) : undefined,
     locality: req.body?.locality ? String(req.body.locality).slice(0, 120) : undefined,
@@ -3284,6 +3291,29 @@ apiRouter.post('/assist/answer', async (req, res) => {
       return: String(req.body.travelDates.return || '').slice(0, 10) || undefined,
     } : undefined,
   });
+
+  // OWNER 10 Nov: remember how each question was understood. If this phrasing (or one that normalises to
+  // the same signature) was answered before, reuse that route instead of refusing - so the second time is
+  // instant and a phrasing the parser cannot read today still resolves tomorrow.
+  const qSig = questionSignature(text);
+  if (!input) {
+    const learned = await recallQuestionRoute(qSig).catch(() => null);
+    if (learned && learned.fresh) {
+      meta = {
+        ...meta,
+        understood: true,
+        vertical: learned.vertical as NonNullable<typeof meta.vertical>,
+        query: learned.query,
+        reply: `From memory: "${learned.query}" is compared as ${learned.vertical}. Live prices below.`,
+      } as typeof meta;
+      input = {
+        query: learned.query,
+        vertical: learned.vertical,
+        ...(learned.city ? { city: learned.city } : {}),
+        ...(learned.depart ? { travelDates: { depart: learned.depart } } : {}),
+      } as NonNullable<typeof input>;
+    }
+  }
 
   if (!input) return res.json({ success: true, ...meta, results: [], count: 0, latencyMs: Date.now() - started });
 
@@ -3424,6 +3454,18 @@ apiRouter.post('/assist/answer', async (req, res) => {
     void ensureSearchMemoryTable()
       .then(() => rememberAnswer(memKey, { rows, sellers: sourcesSucceeded.map((id) => id.replace(/^w_[a-z]+_/, '')) }))
       .catch(() => undefined);
+    // Learn the question -> (vertical, clean query, city, date) route only when the pass actually answered,
+    // so an empty result never teaches a wrong route.
+    if (rows.length) {
+      void rememberQuestionRoute(qSig, {
+        vertical: String(searchInput.vertical || meta.vertical || ''),
+        query: String(searchInput.query || meta.query || ''),
+        city: String(searchInput.city || ''),
+        depart: String(searchInput.travelDates?.depart || ''),
+        raw: text,
+        okRows: rows.length,
+      }).catch(() => undefined);
+    }
     const answer = shapeAssistantAnswer(
       fallbackVertical ? fallbackVertical : meta.vertical,
       meta.query,
@@ -3432,6 +3474,7 @@ apiRouter.post('/assist/answer', async (req, res) => {
         pending,
         sourcesSucceeded,
         honestNotice,
+        ...(meta.budget ? { budget: meta.budget } : {}),
         ...(fallbackVertical
           ? { honestNotice: `The ${meta.vertical === 'grocery' ? '10-minute grocery apps' : 'restaurant apps'} did not answer this time, so these are live prices from the shopping sites.` }
           : {}),

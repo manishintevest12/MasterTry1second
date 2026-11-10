@@ -24,6 +24,7 @@
  */
 import { interpretAssistantQuestion, type AssistantIntent, type AssistantVertical } from './assistantIntent';
 import { cleanCategoryQuery, detectCategoryVertical } from './verticalLexicon';
+import { normalizeAssistantQuestion } from './questionNormalizer';
 
 export interface AssistantAskContext {
   city?: string;
@@ -53,6 +54,8 @@ export interface AssistantAnswerMeta {
   vertical: AssistantVertical | null;
   query: string;
   date?: string;
+  /** Rupees, when the question said "under 3000" / "3000 se kam" — used to state fit, never to hide rows. */
+  budget?: number;
   reply: string;
 }
 
@@ -94,7 +97,10 @@ function searchable(text: string): boolean {
  * that can price literally any product) and the reply says that out loud.
  */
 export function buildAssistantSearch(raw: string, ctx: AssistantAskContext = {}): { meta: AssistantAnswerMeta; input: AssistantSearchInput | null } {
-  const text = String(raw || '').trim().slice(0, 300);
+  // Normalise FIRST (Devanagari/Tamil/etc. -> Latin, budget lifted, typos repaired) so every later step -
+  // intent, the "is there anything searchable" test, the query string - works on readable text.
+  const normalized = normalizeAssistantQuestion(raw);
+  const text = normalized.text;
   const intent: AssistantIntent = interpretAssistantQuestion(text);
 
   const withContext = (input: AssistantSearchInput): AssistantSearchInput => ({
@@ -111,7 +117,9 @@ export function buildAssistantSearch(raw: string, ctx: AssistantAskContext = {})
 
   if (intent.understood && intent.vertical) {
     return {
-      meta: { understood: true, assumedVertical: false, vertical: intent.vertical, query: intent.query, ...(intent.date ? { date: intent.date } : {}), reply: intent.reply },
+      meta: { understood: true, assumedVertical: Boolean(intent.assumed), vertical: intent.vertical, query: intent.query, ...(intent.date ? { date: intent.date } : {}), ...(intent.budget ? { budget: intent.budget } : {}), reply: intent.assumed
+          ? `You named a product rather than a category, so I am comparing "${intent.query}" across every shopping site. Results below.`
+          : intent.reply },
       input: withContext({ query: intent.query, vertical: intent.vertical }),
     };
   }
@@ -259,7 +267,7 @@ export function toAssistantRows(results: any[], limit = 6, opts: { diversify?: b
  * seller it actually saw; when there is nothing priced it says so instead of
  * inventing a number.
  */
-export function shapeAssistantAnswer(vertical: string | null, query: string, rows: AssistantRow[], opts: { pending?: boolean; sourcesSucceeded?: string[]; honestNotice?: string } = {}): { reply: string; results: AssistantRow[]; count: number } {
+export function shapeAssistantAnswer(vertical: string | null, query: string, rows: AssistantRow[], opts: { pending?: boolean; sourcesSucceeded?: string[]; honestNotice?: string; budget?: number } = {}): { reply: string; results: AssistantRow[]; count: number } {
   const label = verticalLabel(vertical);
   const priced = rows.filter((r) => r.priceAvailable).sort((a, b) => a.price - b.price);
   const best = priced[0];
@@ -286,8 +294,19 @@ export function shapeAssistantAnswer(vertical: string | null, query: string, row
   const distinctSellers = new Set(priced.map((r) => (r.provider || '').toLowerCase()).filter(Boolean));
   const spread = priced.length > 1 && distinctSellers.size > 1 ? priced[priced.length - 1].price - best.price : 0;
   const spreadTxt = spread > 0 ? ` Spread across sites: ${money(spread, best.currency)}.` : '';
+  // OWNER 10 Nov ("exact results, kisi v tarike se pooche"): when the question carried a budget
+  // ("under 3000", "3000 se kam") the answer must say plainly whether the cheapest option fits. The
+  // budget is never used to HIDE rows - a user who said 3000 still deserves to see that the cheapest
+  // real price is 3400 instead of an empty screen.
+  let budgetTxt = '';
+  if (opts.budget && opts.budget > 0) {
+    const fits = priced.filter((r) => r.price <= (opts.budget as number));
+    budgetTxt = fits.length
+      ? ` ${fits.length} of ${priced.length} priced option${priced.length === 1 ? '' : 's'} fit your ${money(opts.budget, best.currency)} budget.`
+      : ` Nothing is inside your ${money(opts.budget, best.currency)} budget right now - the cheapest verified price is ${money(best.price, best.currency)}.`;
+  }
   return {
-    reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ''} at ${money(best.price, best.currency)}.${spreadTxt} ${rows.length} live option${rows.length === 1 ? '' : 's'} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? '' : 's'} below.`,
+    reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ''} at ${money(best.price, best.currency)}.${spreadTxt}${budgetTxt} ${rows.length} live option${rows.length === 1 ? '' : 's'} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? '' : 's'} below.`,
     results: rows,
     count: rows.length,
   };

@@ -5,6 +5,7 @@
  */
 import { understandQuery } from '../query/queryUnderstanding';
 import { cleanCategoryQuery, detectCategoryVertical } from './verticalLexicon';
+import { findPlaces, normalizeAssistantQuestion } from './questionNormalizer';
 
 // OWNER 28 Oct: the assistant must cover EVERY vertical the app ships, not just
 // the travel/shopping ones. 'creditcards' and 'account' were missing, so a credit
@@ -16,6 +17,9 @@ export interface AssistantIntent {
   vertical: AssistantVertical | null;
   query: string;                    // what to put in that vertical's search box
   date?: string;                    // YYYY-MM-DD when the user said "kal", "tomorrow", "15 november"...
+  budget?: number;                  // rupees, when the question said "under 3000" / "3000 se kam"
+  assumed?: boolean;                // shopping was chosen because a product was named, not a category
+  normalized?: { transliterated: boolean; repaired: string[] }; // what was repaired, for transparency
   reply: string;                    // short human sentence shown in the chat bubble
 }
 
@@ -72,15 +76,19 @@ export function istToday(now = new Date()): Date {
 }
 
 export function interpretAssistantQuestion(raw: string, now = istToday()): AssistantIntent {
-  const text = String(raw || '').trim().slice(0, 300);
-  if (text.length < 2) return { understood: false, vertical: null, query: '', reply: 'Type or say what you want to compare, e.g. "Delhi to Mumbai flight".' };
+  // OWNER 10 Nov: every phrasing must land on the right vertical. The normalizer runs FIRST so the
+  // rest of this function only ever sees Latin text: Devanagari is transliterated, one-edit typos are
+  // repaired, and a budget ("under 3000") is lifted out so a number can never pick the category.
+  const norm = normalizeAssistantQuestion(raw);
+  const text = norm.text;
+  if (text.replace(/\s/g, '').length < 2) return { understood: false, vertical: null, query: '', reply: 'Type or say what you want to compare, e.g. "Delhi to Mumbai flight".' };
 
   const parsed = understandQuery(text);
   let vertical = (parsed.vertical as AssistantVertical | null) || null;
   const lower = text.toLowerCase();
 
   // Route-style question without a transport word defaults to flights ("delhi se mumbai kitna lagega").
-  const route = extractRoute(text);
+  const route = extractRoute(text) || norm.routeHint || null;
   if (!vertical && route) vertical = 'flights';
   if (vertical === 'movies' || (vertical as string) === 'movie') vertical = 'movies';
   // Engine aliases: 'banking' is the same vertical the UI calls 'account'.
@@ -97,6 +105,27 @@ export function interpretAssistantQuestion(raw: string, now = istToday()): Assis
   // overridden, and a bare brand/product with no category stays shopping.
   const category = detectCategoryVertical(text);
   if (category && (!vertical || vertical === 'ecommerce')) vertical = category;
+
+  // A word the user actually typed ("hotel", "bus", "iphone") outranks a guess made from filler, so the
+  // normalizer's keyword hit is used whenever the parser produced nothing - or produced shopping from a
+  // phrase that never named a product ("goa hotel 2 nights" used to become E-Commerce).
+  const keyword = norm.keywordVertical as AssistantVertical | undefined;
+  if (keyword && keyword in LABEL && (!vertical || (vertical === 'ecommerce' && !category))) vertical = keyword;
+
+  // A domain we honestly do not cover answers with what we DO cover instead of a confident wrong vertical.
+  // A weak word ("card" in "metro card recharge") must not beat an honest "we do not cover that".
+  // A typed, supported category word is the only thing that outranks the unsupported-domain guard
+  // ("train ticket delhi to jaipur" must not become flights just because it names a route).
+  const STRONG_SUPPORTED = /\b(flight|flights|hotel|hotels|bus|buses|cab|cabs|taxi|movie|movies|loan|loans|insurance|policy|grocery|groceries|food|biryani|pizza|account|savings)\b/i;
+  const unsupportedWins = norm.unsupported && !STRONG_SUPPORTED.test(text);
+  if (unsupportedWins) {
+    return {
+      understood: false,
+      vertical: null,
+      query: norm.text,
+      reply: `We do not compare ${norm.unsupported} yet. Try flights, hotels, bus, cabs, movie tickets, shopping, grocery, food delivery, loans, insurance, credit cards or bank accounts.`,
+    };
+  }
 
   if (!vertical || !(vertical in LABEL)) {
     return { understood: false, vertical: null, query: text, reply: 'I could not tell which category that is. Try "Delhi to Mumbai flight", "hotels in Goa" or a product name.' };
@@ -116,8 +145,28 @@ export function interpretAssistantQuestion(raw: string, now = istToday()): Assis
     query = cleanCategoryQuery(text) || text.replace(FILLER, ' ').replace(/\s+/g, ' ').trim();
   } else {
     query = text.replace(FILLER, ' ').replace(/\s+/g, ' ').trim() || text;
+    if (vertical === 'ecommerce') {
+      // OWNER SCREENSHOT 10 Nov: "Indore mein kam price ke Cosmetic" was sent to the shops as
+      // "Indore cosmetic", so Shopsy matched a jewellery organiser for a city it had never been asked
+      // about. A place is not part of a product name: drop it and search the product alone.
+      const places = findPlaces(text);
+      for (const pl of places) query = query.replace(new RegExp(`\\b${pl}\\b`, 'gi'), ' ');
+      query = query.replace(/\b(available|availability|items?|range|stock|list|ka|ki|ke)\b/gi, ' ');
+      query = query.replace(/\s+/g, ' ').trim();
+      // A question whose only surviving word is a particle ("me", "se") must not be sent to the shops.
+      if (!query || query.length < 3 || /^(me|se|tak|ka|ki|ke|hai|hain|in|at|of)$/i.test(query)) {
+        query = places.length ? 'products' : text;
+      }
+      // "cosmetic" is how people type it; the sellers index "cosmetics".
+      if (/^cosmetic$/i.test(query)) query = 'cosmetics';
+      if (/^(mobile|phone)$/i.test(query)) query = 'mobile phone';
+    }
   }
   if (!query) query = text;
+
+  // Shopping for a bare product name is an ASSUMPTION (the user named a thing, not a category), and the
+  // answer layer says so out loud. A typed category noun ("laptop", "headphones") is not an assumption.
+  const assumed = vertical === 'ecommerce' && !norm.keywordVertical;
 
   const when = date ? ` for ${date}` : '';
   const categoryReply =
@@ -131,6 +180,9 @@ export function interpretAssistantQuestion(raw: string, now = istToday()): Assis
     vertical,
     query,
     ...(date ? { date } : {}),
+    ...(norm.budget ? { budget: norm.budget } : {}),
+    ...(assumed ? { assumed: true } : {}),
+    ...(norm.transliterated || norm.repaired.length ? { normalized: { transliterated: norm.transliterated, repaired: norm.repaired } } : {}),
     reply: categoryReply,
   };
 }

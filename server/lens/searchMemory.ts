@@ -204,3 +204,107 @@ export function memoryNotice(mem: RememberedAnswer | null): string | undefined {
   const when = new Date(mem.lastVerifiedAt).toISOString().slice(0, 16).replace('T', ' ');
   return `Last time you asked this, ${mem.rowCount} live rows came from ${mem.sellers.slice(0, 4).join(', ') || 'our sources'} (verified ${when}Z). I start from those and re-check prices now.`;
 }
+
+/* ---------------------------------------------------------------------------------------------------
+ * QUESTION ROUTE MEMORY (owner 10 Nov: "iske andar ek mechanism bnao ki ye yaad rakhe jiss se next time
+ * results jldi aa sake").
+ *
+ * recallAnswer remembers the PRICES a search produced. This remembers how a SENTENCE was understood:
+ * "indore me kam price ke cosmetic" -> ecommerce / "cosmetics". Two effects:
+ *   1. next time the same or a similarly typed question arrives, the assistant does not have to re-parse
+ *      it from scratch - it goes straight to the same clean query, so the answer is quicker;
+ *   2. if a later phrasing of that question is one the parser cannot read, the remembered route still
+ *      answers it instead of returning "I could not pin a category".
+ * No prices are stored here, so nothing here can ever be shown as a price.
+ * --------------------------------------------------------------------------------------------------- */
+const ROUTE_TABLE = 'assistant_question_routes';
+let routeTableReady: Promise<void> | null = null;
+
+export function ensureQuestionRouteTable(): Promise<void> {
+  if (!routeTableReady) {
+    routeTableReady = (async () => {
+      await getStore().execute(`CREATE TABLE IF NOT EXISTS ${ROUTE_TABLE} (
+        sig VARCHAR(190) PRIMARY KEY,
+        vertical VARCHAR(32) NOT NULL,
+        query VARCHAR(190) NOT NULL,
+        city VARCHAR(80) NOT NULL DEFAULT '',
+        depart VARCHAR(20) NOT NULL DEFAULT '',
+        raw VARCHAR(300) NOT NULL DEFAULT '',
+        hits INT NOT NULL DEFAULT 1,
+        ok_rows INT NOT NULL DEFAULT 0,
+        last_ok_at BIGINT NOT NULL DEFAULT 0
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    })().catch((e) => { routeTableReady = null; throw e; });
+  }
+  return routeTableReady;
+}
+
+/** Stable signature for a question: lowercase, punctuation stripped, spacing collapsed. */
+export function questionSignature(text: string): string {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}+ ]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 190);
+}
+
+export interface LearnedRoute {
+  vertical: string;
+  query: string;
+  city: string;
+  depart: string;
+  hits: number;
+  okRows: number;
+  lastOkAt: number;
+  fresh: boolean;
+}
+
+/** How long a learned route stays usable. Short enough that a fixed parser supersedes it quickly. */
+const ROUTE_TTL_MS = 14 * 24 * 3600_000;
+
+export async function recallQuestionRoute(sig: string): Promise<LearnedRoute | null> {
+  if (!sig) return null;
+  try {
+    await ensureQuestionRouteTable();
+    const rows = await getStore().query<any>(`SELECT * FROM ${ROUTE_TABLE} WHERE sig = ? LIMIT 1`, [sig]);
+    const r = rows[0];
+    if (!r || !r.vertical || !r.query) return null;
+    const lastOkAt = Number(r.last_ok_at) || 0;
+    return {
+      vertical: String(r.vertical),
+      query: String(r.query),
+      city: String(r.city || ''),
+      depart: String(r.depart || ''),
+      hits: Number(r.hits) || 1,
+      okRows: Number(r.ok_rows) || 0,
+      lastOkAt,
+      fresh: lastOkAt > 0 && Date.now() - lastOkAt < ROUTE_TTL_MS,
+    };
+  } catch (e) {
+    log.debug('memory', 'question route recall skipped', { error: String(e) });
+    return null;
+  }
+}
+
+export async function rememberQuestionRoute(sig: string, learned: {
+  vertical: string; query: string; city?: string; depart?: string; raw?: string; okRows?: number;
+}): Promise<void> {
+  if (!sig || !learned.vertical || !learned.query) return;
+  try {
+    await ensureQuestionRouteTable();
+    await getStore().execute(
+      `INSERT INTO ${ROUTE_TABLE} (sig, vertical, query, city, depart, raw, hits, ok_rows, last_ok_at)
+       VALUES (?,?,?,?,?,?,1,?,?)
+       ON DUPLICATE KEY UPDATE hits = hits + 1, vertical = VALUES(vertical), query = VALUES(query),
+         city = VALUES(city), depart = VALUES(depart), ok_rows = VALUES(ok_rows), last_ok_at = VALUES(last_ok_at)`,
+      [
+        sig, learned.vertical, learned.query.slice(0, 190), (learned.city || '').slice(0, 80),
+        (learned.depart || '').slice(0, 20), String(learned.raw || '').slice(0, 300),
+        Math.max(0, Math.min(999999, Number(learned.okRows) || 0)), Date.now(),
+      ],
+    );
+  } catch (e) {
+    log.debug('memory', 'question route remember skipped', { error: String(e) });
+  }
+}
