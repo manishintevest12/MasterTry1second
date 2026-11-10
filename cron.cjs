@@ -802,6 +802,7 @@ function recordAttempt(sourceId, latencyMs) {
 }
 function recordSuccess(sourceId, latencyMs) {
   challengeOpenings.delete(sourceId);
+  openStreak.delete(sourceId);
   const h = getHealth(sourceId);
   h.totalAttempts += 1;
   h.totalSuccesses += 1;
@@ -832,10 +833,16 @@ function recordFailure(sourceId, failureClass, error) {
   h.state = h.consecutiveFailures >= CIRCUIT_THRESHOLD ? "CIRCUIT_OPEN" : "DEGRADED";
   if (h.state === "CIRCUIT_OPEN" && !wasOpen) {
     let cooldownMs = CIRCUIT_COOLDOWN_MS;
-    if (failureClass === "ACCESS_CHALLENGE") {
+    if (failureClass === "CAPABILITY_UNAVAILABLE") {
+      cooldownMs = CAPABILITY_COOLDOWN_MS;
+    } else if (failureClass === "ACCESS_CHALLENGE") {
       const n = (challengeOpenings.get(sourceId) ?? 0) + 1;
       challengeOpenings.set(sourceId, n);
       cooldownMs = CHALLENGE_COOLDOWN_STEPS_MS[Math.min(n - 1, CHALLENGE_COOLDOWN_STEPS_MS.length - 1)];
+    } else {
+      const n = (openStreak.get(sourceId) ?? 0) + 1;
+      openStreak.set(sourceId, n);
+      cooldownMs = OPEN_STREAK_STEPS_MS[Math.min(n - 1, OPEN_STREAK_STEPS_MS.length - 1)];
     }
     h.circuitOpenUntil = new Date(Date.now() + cooldownMs).toISOString();
     log.warn("Health", `Circuit OPEN for ${sourceId} after ${h.consecutiveFailures} failures (${failureClass}), cooldown ${Math.round(cooldownMs / 6e4)}min`);
@@ -857,13 +864,16 @@ async function persist(h) {
     log.debug("Health", "Persist failed (file store / no table)", { error: String(e).slice(0, 120) });
   }
 }
-var CIRCUIT_THRESHOLD, CIRCUIT_COOLDOWN_MS, CHALLENGE_COOLDOWN_STEPS_MS, challengeOpenings, health;
+var CIRCUIT_THRESHOLD, CIRCUIT_COOLDOWN_MS, CHALLENGE_COOLDOWN_STEPS_MS, OPEN_STREAK_STEPS_MS, CAPABILITY_COOLDOWN_MS, openStreak, challengeOpenings, health;
 var init_health = __esm({
   "server/sources/health.ts"() {
     init_logger();
     CIRCUIT_THRESHOLD = 3;
     CIRCUIT_COOLDOWN_MS = 6e4;
     CHALLENGE_COOLDOWN_STEPS_MS = [6e4, 5 * 6e4, 25 * 6e4, 60 * 6e4];
+    OPEN_STREAK_STEPS_MS = [6e4, 5 * 6e4, 25 * 6e4, 60 * 6e4, 6 * 60 * 6e4];
+    CAPABILITY_COOLDOWN_MS = 6 * 60 * 6e4;
+    openStreak = /* @__PURE__ */ new Map();
     challengeOpenings = /* @__PURE__ */ new Map();
     health = /* @__PURE__ */ new Map();
   }
@@ -1991,6 +2001,17 @@ async function probeProxy(candidate, target) {
   return { url: candidate.url, ok: true, ms, status, reason: "ok" };
 }
 async function runProxyDiscovery(opts = {}) {
+  if (inFlightDiscovery) {
+    log.info("ProxyDiscovery", "sweep already running - sharing it instead of probing again");
+    return inFlightDiscovery;
+  }
+  const run = runProxyDiscoveryInner(opts).finally(() => {
+    if (inFlightDiscovery === run) inFlightDiscovery = null;
+  });
+  inFlightDiscovery = run;
+  return run;
+}
+async function runProxyDiscoveryInner(opts = {}) {
   const startedAt = /* @__PURE__ */ new Date();
   const target = opts.target;
   const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();
@@ -2121,7 +2142,7 @@ async function storeValidatedProxies(rows, sourceOf) {
     return false;
   }
 }
-var import_fs4, import_path4, POOL_FILE, GATED_POOL_FILE, sourceHealth, zeroPassStreak, discoveryNotBefore, SOURCES, PROBE_TARGET;
+var import_fs4, import_path4, POOL_FILE, GATED_POOL_FILE, sourceHealth, zeroPassStreak, discoveryNotBefore, SOURCES, PROBE_TARGET, inFlightDiscovery;
 var init_proxyDiscovery = __esm({
   "server/common/proxyDiscovery.ts"() {
     import_fs4 = __toESM(require("fs"), 1);
@@ -2147,6 +2168,7 @@ var init_proxyDiscovery = __esm({
       { name: "proxy-list-download", url: "https://www.proxy-list.download/api/v1/get?type=http" }
     ];
     PROBE_TARGET = process.env.T1S_PROXY_PROBE_URL || "https://api.ipify.org?format=json";
+    inFlightDiscovery = null;
   }
 });
 
@@ -2210,7 +2232,16 @@ function gatedPoolSize(file = GATED_POOL_FILE) {
     return 0;
   }
 }
-async function healGatedSource(key, opts = {}) {
+function healGatedSource(key, opts = {}) {
+  const running = healInFlight.get(key);
+  if (running && !opts.force) return running;
+  const run = healGatedSourceInner(key, opts).finally(() => {
+    if (healInFlight.get(key) === run) healInFlight.delete(key);
+  });
+  healInFlight.set(key, run);
+  return run;
+}
+async function healGatedSourceInner(key, opts = {}) {
   const target = GATE_TARGETS[key];
   if (!target) return { source: key, ran: false, reason: "no heal target for this source", tried: 0, kept: 0 };
   const now = (opts.now || Date.now)();
@@ -2263,7 +2294,7 @@ function autoHealGatedSources(failures, deps = {}) {
   const heal = deps.heal || healGatedSource;
   return Promise.all(Array.from(keys).map((k) => heal(k).catch(() => ({ source: k, ran: false, reason: "failed", tried: 0, kept: 0 }))));
 }
-var import_node_fs3, import_node_path3, STATE_FILE, HEAL_COOLDOWN_MS, UA, HTML, JSONH, GATE_TARGETS, KEY_HINTS;
+var import_node_fs3, import_node_path3, STATE_FILE, HEAL_COOLDOWN_MS, UA, HTML, JSONH, GATE_TARGETS, KEY_HINTS, healInFlight;
 var init_gateHeal = __esm({
   "server/common/gateHeal.ts"() {
     import_node_fs3 = __toESM(require("node:fs"), 1);
@@ -2410,6 +2441,7 @@ var init_gateHeal = __esm({
       [/cleartrip/, "cleartrip"],
       [/ixigo/, "ixigo"]
     ];
+    healInFlight = /* @__PURE__ */ new Map();
   }
 });
 

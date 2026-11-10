@@ -225,7 +225,31 @@ export function gatedPoolSize(file = GATED_POOL_FILE): number {
 /**
  * Sweep + validate against one gated source. `force` ignores the cooldown (admin button).
  */
-export async function healGatedSource(
+/**
+ * In-flight de-duplication (owner 10 Nov runtime log): the cooldown is written AFTER a sweep finishes, so three
+ * searches arriving together each saw "no cooldown yet" and launched their own heal for the same host -
+ * "GateHeal expedia: no candidate passed (tried 60)" appears three times inside 14 seconds. One heal per key
+ * now runs at a time and everyone else awaits that same result.
+ */
+const healInFlight = new Map<string, Promise<GateHealResult>>();
+
+export function healGatedSource(
+  key: string,
+  opts: {
+    force?: boolean; limit?: number; discover?: typeof runProxyDiscovery;
+    now?: () => number; stateFile?: string; poolFile?: string;
+  } = {},
+): Promise<GateHealResult> {
+  const running = healInFlight.get(key);
+  if (running && !opts.force) return running;
+  const run = healGatedSourceInner(key, opts).finally(() => {
+    if (healInFlight.get(key) === run) healInFlight.delete(key);
+  });
+  healInFlight.set(key, run);
+  return run;
+}
+
+async function healGatedSourceInner(
   key: string,
   opts: {
     force?: boolean; limit?: number; discover?: typeof runProxyDiscovery;

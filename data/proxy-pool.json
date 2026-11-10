@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-02T04:33:27.823Z",
+  "updatedAt": "2026-11-10T14:32:27.291Z",
   "budgetMs": 500,
-  "probeTarget": "https://api.ipify.org?format=json",
+  "probeTarget": "a",
   "proxies": []
 }

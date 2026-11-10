@@ -16,6 +16,20 @@ const CIRCUIT_COOLDOWN_MS = 60_000;
 // Hotels.com offers were missing on production). Challenges now back off
 // exponentially: 1min -> 5min -> 25min -> 60min (cap), resetting on the first success.
 const CHALLENGE_COOLDOWN_STEPS_MS = [60_000, 5 * 60_000, 25 * 60_000, 60 * 60_000];
+
+// OWNER 10 Nov (runtime log): amazon_in reached 21 consecutive failures while every reopening still used the
+// flat 1-minute cooldown, so a dead source was probed 60 times an hour, forever - the "self-healing" ladder
+// never actually backed off. A source that keeps reopening now climbs 1m -> 5m -> 25m -> 1h -> 6h, and one
+// real success drops it straight back to the first rung.
+const OPEN_STREAK_STEPS_MS = [60_000, 5 * 60_000, 25 * 60_000, 60 * 60_000, 6 * 60 * 60_000];
+/**
+ * CAPABILITY_UNAVAILABLE means a dependency or credential is missing (Booking Demand/Apify keys, the Playwright
+ * bridge). No amount of probing fixes that, so those circuits sit out for hours instead of reopening every
+ * minute and spamming the log - they still recover on their own the moment the capability exists.
+ */
+const CAPABILITY_COOLDOWN_MS = 6 * 60 * 60_000;
+/** Per-source count of consecutive circuit OPENINGS; cleared by recordSuccess. */
+const openStreak = new Map<string, number>();
 const challengeOpenings = new Map<string, number>();
 // SELF-DETECTING PROBES (owner rule 21 Oct: strictly-mandated sources must stay
 // visible and self-heal). These sources attempt the real acquisition flow by
@@ -81,6 +95,7 @@ export function recordAttempt(sourceId: string, latencyMs: number): void {
 
 export function recordSuccess(sourceId: string, latencyMs: number): void {
   challengeOpenings.delete(sourceId); // a single success ends the challenge backoff ladder
+  openStreak.delete(sourceId);        // ...and the reopening ladder too
   const h = getHealth(sourceId);
   h.totalAttempts += 1;
   h.totalSuccesses += 1;
@@ -129,11 +144,19 @@ export function recordFailure(sourceId: string, failureClass: FailureClass, erro
     // Fresh opening only: extra failures while already open never extend or
     // shorten the existing cooldown window.
     let cooldownMs = CIRCUIT_COOLDOWN_MS;
-    if (failureClass === 'ACCESS_CHALLENGE') {
+    if (failureClass === 'CAPABILITY_UNAVAILABLE') {
+      // A missing credential/dependency is not a transient failure: stay out of the way for hours.
+      cooldownMs = CAPABILITY_COOLDOWN_MS;
+    } else if (failureClass === 'ACCESS_CHALLENGE') {
       // Step the ladder once per circuit OPENING (not per failure).
       const n = (challengeOpenings.get(sourceId) ?? 0) + 1;
       challengeOpenings.set(sourceId, n);
       cooldownMs = CHALLENGE_COOLDOWN_STEPS_MS[Math.min(n - 1, CHALLENGE_COOLDOWN_STEPS_MS.length - 1)];
+    } else {
+      // Reopening after a failed half-open probe is the expensive case: escalate instead of retrying every 60s.
+      const n = (openStreak.get(sourceId) ?? 0) + 1;
+      openStreak.set(sourceId, n);
+      cooldownMs = OPEN_STREAK_STEPS_MS[Math.min(n - 1, OPEN_STREAK_STEPS_MS.length - 1)];
     }
     h.circuitOpenUntil = new Date(Date.now() + cooldownMs).toISOString();
     log.warn('Health', `Circuit OPEN for ${sourceId} after ${h.consecutiveFailures} failures (${failureClass}), cooldown ${Math.round(cooldownMs / 60_000)}min`);

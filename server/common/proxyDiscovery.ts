@@ -231,7 +231,27 @@ export async function probeProxy(candidate: ProxyCandidate, target?: ProbeTarget
  * Discovers, probes and persists. `limit` caps how many candidates are probed so an
  * admin click can never turn into hundreds of outbound connections.
  */
+/**
+ * SINGLE-FLIGHT (owner 10 Nov runtime log): three gate-heals for different hosts fired at the same instant and
+ * each launched its own 60-proxy sweep - 13:42:37, 13:42:41 and 13:42:51 all report "probed 60, passed 0",
+ * i.e. 180 proxy probes in 14 seconds. They also clobbered the shared zero-pass streak (it reset from 7 to 1),
+ * so the backoff never grew. A sweep now runs once: concurrent callers share the in-flight run and its report.
+ */
+let inFlightDiscovery: Promise<DiscoveryReport> | null = null;
+
 export async function runProxyDiscovery(opts: { limit?: number; concurrency?: number; target?: ProbeTarget; poolFile?: string } = {}): Promise<DiscoveryReport> {
+  if (inFlightDiscovery) {
+    log.info('ProxyDiscovery', 'sweep already running - sharing it instead of probing again');
+    return inFlightDiscovery;
+  }
+  const run = runProxyDiscoveryInner(opts).finally(() => {
+    if (inFlightDiscovery === run) inFlightDiscovery = null;
+  });
+  inFlightDiscovery = run;
+  return run;
+}
+
+async function runProxyDiscoveryInner(opts: { limit?: number; concurrency?: number; target?: ProbeTarget; poolFile?: string } = {}): Promise<DiscoveryReport> {
   const startedAt = new Date();
   const target = opts.target;
   const budget = target?.maxMs && target.maxMs > 0 ? target.maxMs : proxyLatencyBudget();

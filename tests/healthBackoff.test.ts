@@ -52,16 +52,32 @@ test('health: a single success resets the challenge backoff ladder', async () =>
   assert.ok(msLeft(g.circuitOpenUntil) < 65_000 && msLeft(g.circuitOpenUntil) > 50_000, 'ladder reset after success');
 });
 
-test('health: non-challenge failures keep the flat 60s cooldown', async () => {
+test('health: a source that keeps reopening escalates 1m -> 5m -> 25m instead of hammering every minute', async () => {
+  // OWNER 10 Nov runtime log: amazon_in hit 21 consecutive failures while every reopening still used the flat
+  // 1-minute cooldown, i.e. a dead source was probed ~60x/hour forever. The ladder now backs off, and the FIRST
+  // opening is still the same 1 minute it always was.
   const h = await fresh();
   const id = sid();
-  for (let round = 0; round < 3; round++) {
+  const want = [60_000, 5 * 60_000, 25 * 60_000];
+  for (let round = 0; round < want.length; round++) {
     for (let i = 0; i < 3; i++) h.recordFailure(id, 'CONNECTION_FAILURE', 'flaky');
     const g = h.getHealth(id);
     assert.equal(g.state, 'CIRCUIT_OPEN');
     const left = msLeft(g.circuitOpenUntil);
-    assert.ok(left > 50_000 && left < 65_000, `flat 60s cooldown, got ${Math.round(left / 1000)}s`);
-    h.canAttempt(id, Date.now() + left + 1_000);
-    for (let i = 0; i < 3; i++) h.recordFailure(id, 'CONNECTION_FAILURE', 'flaky');
+    assert.ok(Math.abs(left - want[round]) < 5_000, `opening ${round + 1} should wait ${want[round] / 60_000}min, got ${Math.round(left / 1000)}s`);
+    h.canAttempt(id, Date.now() + left + 1_000); // half-open probe fails again -> next rung
   }
+  // one real success resets the ladder to the first rung
+  h.recordSuccess(id, 120);
+  for (let i = 0; i < 3; i++) h.recordFailure(id, 'CONNECTION_FAILURE', 'flaky');
+  assert.ok(Math.abs(msLeft(h.getHealth(id).circuitOpenUntil) - 60_000) < 5_000, 'ladder reset after a success');
+});
+
+test('health: a missing capability parks the circuit for hours, not a minute', async () => {
+  // Booking Demand/Apify keys and the Playwright bridge are absent: probing them every minute can never help.
+  const h = await fresh();
+  const id = sid();
+  for (let i = 0; i < 3; i++) h.recordFailure(id, 'CAPABILITY_UNAVAILABLE', 'no credentials');
+  const left = msLeft(h.getHealth(id).circuitOpenUntil);
+  assert.ok(left > 5.9 * 60 * 60_000, `expected ~6h park, got ${Math.round(left / 60_000)}min`);
 });
