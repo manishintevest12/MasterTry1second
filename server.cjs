@@ -6576,6 +6576,103 @@ var init_bookingDemand = __esm({
   }
 });
 
+// server/workers/parsers/apifySource.ts
+function apifyConfig() {
+  return {
+    token: (process.env.APIFY_TOKEN || "").trim(),
+    bookingActor: (process.env.APIFY_BOOKING_ACTOR || "").trim(),
+    currency: (process.env.APIFY_BOOKING_CURRENCY || "INR").trim().toUpperCase()
+  };
+}
+function apifyMeetsConfigured() {
+  const c = apifyConfig();
+  return Boolean(c.token && c.bookingActor);
+}
+function apifyMissingEnv() {
+  const c = apifyConfig();
+  const missing = [];
+  if (!c.token) missing.push("APIFY_TOKEN");
+  if (!c.bookingActor) missing.push("APIFY_BOOKING_ACTOR");
+  return missing;
+}
+function bookingActorInput(query) {
+  const c = apifyConfig();
+  return {
+    location: query.destination,
+    query: query.destination,
+    checkIn: query.checkin,
+    checkOut: query.checkout,
+    adults: query.adults || 2,
+    rooms: query.rooms || 1,
+    currency: c.currency,
+    maxItems: query.maxItems || 40
+  };
+}
+function coercePrice(v) {
+  if (typeof v === "number") return Number.isFinite(v) && v > 0 ? v : 0;
+  if (typeof v !== "string") return 0;
+  const m = v.replace(/[, ]/g, "").match(/([0-9]+(?:\.[0-9]+)?)/);
+  if (!m) return 0;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function firstString(...vals) {
+  for (const v of vals) if (typeof v === "string" && v.trim()) return v.trim();
+  return "";
+}
+function apifyBookingRows(items) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const it of items || []) {
+    if (!it || typeof it !== "object") continue;
+    const o = it;
+    const name = firstString(o.name, o.hotelName, o.title, o.propertyName);
+    const url = firstString(o.url, o.link, o.hotelUrl, o.bookingUrl, o.detailUrl);
+    const price2 = coercePrice(
+      o.price ?? o.pricePerNight ?? o.pricepernight ?? o.minPrice ?? o.totalPrice ?? o.priceFrom ?? o.lowestPrice
+    );
+    if (!name || price2 <= 0) continue;
+    if (!/^https?:\/\//i.test(url)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push({
+      name: name.slice(0, 160),
+      price: price2,
+      url,
+      imageUrl: firstString(o.image, o.imageUrl, o.photo, o.thumbnail) || void 0,
+      rating: Number(o.rating ?? o.reviewScore ?? 0) || void 0,
+      address: firstString(o.address, o.location) || void 0
+    });
+  }
+  return out;
+}
+async function runActorSync(actorId, input, timeoutMs = 12e4) {
+  const { token } = apifyConfig();
+  if (!token) throw new Error("APIFY_TOKEN missing");
+  if (!actorId) throw new Error("actor id missing");
+  const url = `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input ?? {}),
+      signal: ctrl.signal
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Apify ${res.status}: ${text.slice(0, 200)}`);
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+var init_apifySource = __esm({
+  "server/workers/parsers/apifySource.ts"() {
+  }
+});
+
 // server/common/cityAlias.ts
 function cityVariants(city) {
   const n = norm2(city);
@@ -7813,6 +7910,7 @@ var init_hotels = __esm({
     init_contract();
     init_httpClient();
     init_bookingDemand();
+    init_apifySource();
     init_cityAlias();
     init_oyoHotels();
     init_yatraHotels();
@@ -8204,6 +8302,54 @@ var init_hotels = __esm({
               currency: "INR"
             });
             return bookingDemandItems(payload, { checkin, checkout, city });
+          }
+        },
+        {
+          // OWNER 10 Nov ("stayapi, apify actors jaise kaam kr rahe hai same principal lga kr price lao"):
+          // Booking.com cannot be read by cURL from here - measured 10 Nov, direct AND through a proxy service
+          // both return the same 8.8KB client-rendered shell with zero property cards. The page only exists once
+          // a browser paints it, so this source lets a browser run somewhere else (an Apify actor) and takes the
+          // structured items back. Rows carry the merchant URL; the affiliate layer wraps it, and booking.com
+          // already resolves to the owner's evergreen CJ deeplink, so the click is paid.
+          sourceId: "w_hotels_booking_apify",
+          name: "Hotels worker: Booking.com rates via Apify actor (browser-rendered, CJ exit)",
+          priority: 4,
+          maxPerMinute: 2,
+          timeoutMs: 13e4,
+          run: async (ctx) => {
+            if (!apifyMeetsConfigured()) {
+              throw new AcquisitionError(
+                "CAPABILITY_UNAVAILABLE",
+                `Apify actor not configured: set ${apifyMissingEnv().join(" + ")} (APIFY_BOOKING_ACTOR is the actor id from the Apify store; APIFY_TOKEN comes from Apify settings -> Integrations).`
+              );
+            }
+            const city = cityFromQuery(ctx);
+            if (!city) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            const items = await runActorSync(process.env.APIFY_BOOKING_ACTOR.trim(), bookingActorInput({ destination: city, checkin, checkout }));
+            const rows = apifyBookingRows(items);
+            return rows.slice(0, 25).map((r) => newRawItem(ctx.source, {
+              title: r.name,
+              price: r.price,
+              currency: "INR",
+              seller: "Booking.com",
+              sellerUrl: r.url,
+              availability: "in_stock",
+              travel: { roomType: "as listed on Booking.com" },
+              attributes: {
+                ...r.imageUrl ? { image_url: r.imageUrl } : {},
+                ...r.rating ? { review_score: String(r.rating) } : {},
+                ...r.address ? { address: r.address.slice(0, 80) } : {},
+                price_scope: `nightly rate for ${checkin} to ${checkout} (as displayed by Booking.com)`,
+                via: "apify_actor"
+              },
+              evidence: {
+                sourceUrl: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}`,
+                sourceReference: r.name,
+                rawFingerprint: "",
+                extractedFields: ["title", "price", ...r.imageUrl ? ["image_url"] : [], ...r.rating ? ["review_score"] : []]
+              }
+            }));
           }
         },
         {

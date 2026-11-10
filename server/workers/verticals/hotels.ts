@@ -26,6 +26,7 @@ import { newRawItem } from '../../sources/contract';
 import type { RawSourceItem } from '../../types';
 import { AcquisitionError } from '../../common/httpClient';
 import { bookingDemandConfigured, bookingDemandSearch, bookingDemandItems } from '../parsers/bookingDemand';
+import { apifyBookingRows, apifyMeetsConfigured, apifyMissingEnv, bookingActorInput, runActorSync } from '../parsers/apifySource';
 import { cityVariants, slugOf, canonicalCity } from '../../common/cityAlias';
 
 import {
@@ -543,6 +544,52 @@ export const hotelsWorker: VerticalWorker = {
           currency: 'INR',
         });
         return bookingDemandItems(payload, { checkin, checkout, city });
+      },
+    },
+    {
+      // OWNER 10 Nov ("stayapi, apify actors jaise kaam kr rahe hai same principal lga kr price lao"):
+      // Booking.com cannot be read by cURL from here - measured 10 Nov, direct AND through a proxy service
+      // both return the same 8.8KB client-rendered shell with zero property cards. The page only exists once
+      // a browser paints it, so this source lets a browser run somewhere else (an Apify actor) and takes the
+      // structured items back. Rows carry the merchant URL; the affiliate layer wraps it, and booking.com
+      // already resolves to the owner's evergreen CJ deeplink, so the click is paid.
+      sourceId: 'w_hotels_booking_apify',
+      name: 'Hotels worker: Booking.com rates via Apify actor (browser-rendered, CJ exit)',
+      priority: 4,
+      maxPerMinute: 2,
+      timeoutMs: 130_000,
+      run: async (ctx) => {
+        if (!apifyMeetsConfigured()) {
+          throw new AcquisitionError('CAPABILITY_UNAVAILABLE',
+            `Apify actor not configured: set ${apifyMissingEnv().join(' + ')} (APIFY_BOOKING_ACTOR is the actor id from the Apify store; APIFY_TOKEN comes from Apify settings -> Integrations).`);
+        }
+        const city = cityFromQuery(ctx);
+        if (!city) return [];
+        const { checkin, checkout } = stayDates(ctx.query);
+        const items = await runActorSync(process.env.APIFY_BOOKING_ACTOR!.trim(), bookingActorInput({ destination: city, checkin, checkout }));
+        const rows = apifyBookingRows(items);
+        return rows.slice(0, 25).map((r) => newRawItem(ctx.source, {
+          title: r.name,
+          price: r.price,
+          currency: 'INR',
+          seller: 'Booking.com',
+          sellerUrl: r.url,
+          availability: 'in_stock',
+          travel: { roomType: 'as listed on Booking.com' },
+          attributes: {
+            ...(r.imageUrl ? { image_url: r.imageUrl } : {}),
+            ...(r.rating ? { review_score: String(r.rating) } : {}),
+            ...(r.address ? { address: r.address.slice(0, 80) } : {}),
+            price_scope: `nightly rate for ${checkin} to ${checkout} (as displayed by Booking.com)`,
+            via: 'apify_actor',
+          },
+          evidence: {
+            sourceUrl: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}`,
+            sourceReference: r.name,
+            rawFingerprint: '',
+            extractedFields: ['title', 'price', ...(r.imageUrl ? ['image_url'] : []), ...(r.rating ? ['review_score'] : [])],
+          },
+        }));
       },
     },
     {
