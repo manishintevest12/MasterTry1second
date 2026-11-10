@@ -31167,6 +31167,19 @@ function cuelinksMerchantUrl(dest) {
   if (!cuelinksWrapAll() && !cuelinksAllowList().has(domain)) return null;
   return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
+function domainMatches(domain, listed) {
+  return domain === listed || domain.endsWith(`.${listed}`);
+}
+function pickForDomain(map, domain) {
+  if (Object.prototype.hasOwnProperty.call(map, domain)) return map[domain];
+  const hit = Object.keys(map).filter((k) => domainMatches(domain, k)).sort((a, b) => b.length - a.length)[0];
+  return hit ? map[hit] : null;
+}
+function builtinTemplate(spec, domain) {
+  const tpl = spec.builtin ? pickForDomain(spec.builtin, domain) : null;
+  if (!tpl) return null;
+  return tpl.startsWith("https://") && tpl.includes("{DESTINATION}") ? tpl : null;
+}
 function envTemplateMap(name) {
   const raw = (process.env[name] || "").trim();
   if (!raw.startsWith("{")) return {};
@@ -31188,17 +31201,19 @@ function envList(name) {
 }
 function envNetworkFor(domain) {
   for (const spec of ENV_NETWORKS) {
-    if (envList(spec.merchantsEnv).includes(domain)) return spec.network;
-    if (envTemplateMap(spec.templateEnv + "S")[domain]) return spec.network;
+    if (builtinTemplate(spec, domain)) return spec.network;
+    if (envList(spec.merchantsEnv).some((d) => domainMatches(domain, d))) return spec.network;
+    if (pickForDomain(envTemplateMap(spec.templateEnv + "S"), domain)) return spec.network;
   }
   return null;
 }
 function envTemplateNetworkFor(domain, dest) {
   for (const spec of ENV_NETWORKS) {
-    const listed = envList(spec.merchantsEnv).includes(domain);
-    const perDomain = envTemplateMap(spec.templateEnv + "S")[domain];
-    if (!listed && !perDomain) continue;
-    const tpl = perDomain || (process.env[spec.templateEnv] || "").trim();
+    const builtin = builtinTemplate(spec, domain);
+    const listed = envList(spec.merchantsEnv).some((d) => domainMatches(domain, d));
+    const perDomain = pickForDomain(envTemplateMap(spec.templateEnv + "S"), domain);
+    if (!listed && !perDomain && !builtin) continue;
+    const tpl = perDomain || (process.env[spec.templateEnv] || "").trim() || builtin || "";
     if (!tpl.startsWith("https://") || !tpl.includes("{DESTINATION}")) return null;
     return { network: spec.network, url: tpl.replace("{DESTINATION}", encodeURIComponent(dest)) };
   }
@@ -31370,7 +31385,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   }
   return "";
 }
-var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_MERCHANTS, ENV_NETWORKS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
+var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_MERCHANTS, CJ_EVERGREEN, ENV_NETWORKS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
@@ -31385,10 +31400,14 @@ var init_deeplink = __esm({
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
     CUELINKS_BASE_MERCHANTS = ["makemytrip.com", "goibibo.com", "shopsy.in"];
     CUELINKS_MERCHANTS = new Set(CUELINKS_BASE_MERCHANTS);
+    CJ_EVERGREEN = {
+      "booking.com": "https://www.dpbolvw.net/click-101903513-17293139?url={DESTINATION}"
+    };
     ENV_NETWORKS = [
       { network: "admitad", merchantsEnv: "ADMITAD_MERCHANTS", templateEnv: "ADMITAD_LINK_TEMPLATE" },
       { network: "vcommission", merchantsEnv: "VCOMMISSION_MERCHANTS", templateEnv: "VCOMMISSION_LINK_TEMPLATE" },
-      { network: "inrdeals", merchantsEnv: "INRDEALS_MERCHANTS", templateEnv: "INRDEALS_LINK_TEMPLATE" }
+      { network: "inrdeals", merchantsEnv: "INRDEALS_MERCHANTS", templateEnv: "INRDEALS_LINK_TEMPLATE" },
+      { network: "cj", merchantsEnv: "CJ_MERCHANTS", templateEnv: "CJ_LINK_TEMPLATE", builtin: CJ_EVERGREEN }
     ];
     AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
     ALREADY_TRACKED_HOSTS = /(^|\.)(linksredirect\.com|fktr\.in|myntr\.it|earnkaro\.com|ekaro\.[a-z.]+|affiliaters\.in|bitli\.in|linkinr\.[a-z.]+|vcommission\.com|inr\.deals|cuelinks\.com|cashkaro\.com|amzn\.to|go\.redirectingat\.com|sjv\.io|linksynergy\.com|clicweb|pxf\.io|dl\.flipkart\.com)$/i;

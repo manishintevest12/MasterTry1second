@@ -138,13 +138,58 @@ export function cuelinksMerchantUrl(dest: string): string | null {
 
 
 /** One extra network = one merchant allow-list + one template. Fail-closed on both. */
-interface EnvNetworkSpec { network: string; merchantsEnv: string; templateEnv: string }
+interface EnvNetworkSpec {
+  network: string;
+  merchantsEnv: string;
+  templateEnv: string;
+  /** Templates baked into the build, used when no env template is set (evergreen partner links). */
+  builtin?: Record<string, string>;
+}
+
+/**
+ * OWNER 10 Nov: "booking.com ka deeplink, evergreen wala link hai isko add kro jiss se booking.com pr
+ * deeplink ho ske" - he handed over the CJ (Commission Junction) click link
+ * https://www.dpbolvw.net/click-101903513-17293139 plus its 1x1 image pixel. Verified end to end from
+ * here: that URL with ?url=<destination> walks dpbolvw.net -> cj.dotomi.com -> emjcd.com and lands on
+ * the EXACT Booking.com property page with aid=8133105 and
+ * label=affnetcj-17293139_pub-8098022_site-101903513, i.e. real CJ attribution, not a bare homepage hop.
+ * CJ is a network of its own, so it gets its own layer: book a hotel and Booking.com is paid via CJ,
+ * never via Cuelinks/Admitad. The image pixel is a browser-side tag and is NOT needed here - the click
+ * link already carries the tracking, and our exits never render third-party pixels.
+ * Booking.com stays evergreen because the CJ click id does not rotate; more CJ merchants can be added
+ * later through CJ_MERCHANTS / CJ_LINK_TEMPLATES with no deploy.
+ */
+const CJ_EVERGREEN: Record<string, string> = {
+  'booking.com': 'https://www.dpbolvw.net/click-101903513-17293139?url={DESTINATION}',
+};
 
 const ENV_NETWORKS: EnvNetworkSpec[] = [
   { network: 'admitad', merchantsEnv: 'ADMITAD_MERCHANTS', templateEnv: 'ADMITAD_LINK_TEMPLATE' },
   { network: 'vcommission', merchantsEnv: 'VCOMMISSION_MERCHANTS', templateEnv: 'VCOMMISSION_LINK_TEMPLATE' },
   { network: 'inrdeals', merchantsEnv: 'INRDEALS_MERCHANTS', templateEnv: 'INRDEALS_LINK_TEMPLATE' },
+  { network: 'cj', merchantsEnv: 'CJ_MERCHANTS', templateEnv: 'CJ_LINK_TEMPLATE', builtin: CJ_EVERGREEN },
 ];
+
+/** Domain match that also covers subdomains: hotels.booking.com matches a booking.com entry. */
+function domainMatches(domain: string, listed: string): boolean {
+  return domain === listed || domain.endsWith(`.${listed}`);
+}
+
+/** Finds the listed/builtin entry that covers this domain, subdomains included. */
+function pickForDomain<T>(map: Record<string, T>, domain: string): T | null {
+  if (Object.prototype.hasOwnProperty.call(map, domain)) return map[domain];
+  const hit = Object.keys(map)
+    .filter((k) => domainMatches(domain, k))
+    .sort((a, b) => b.length - a.length)[0];
+  return hit ? map[hit] : null;
+}
+
+/** Built-in (evergreen) template for a domain, if this network ships one. */
+function builtinTemplate(spec: EnvNetworkSpec, domain: string): string | null {
+  const tpl = spec.builtin ? pickForDomain(spec.builtin, domain) : null;
+  if (!tpl) return null;
+  return tpl.startsWith('https://') && tpl.includes('{DESTINATION}') ? tpl : null;
+}
 
 /**
  * Per-domain template map, e.g. VCOMMISSION_LINK_TEMPLATES='{"ajio.com":"https://track.vcommission.com/click?campaign_id=10364&pub_id=132657&deeplink={DESTINATION}"}'.
@@ -179,8 +224,9 @@ function envList(name: string): string[] {
 /** Which env network claims this domain, if any (no link building). */
 export function envNetworkFor(domain: string): string | null {
   for (const spec of ENV_NETWORKS) {
-    if (envList(spec.merchantsEnv).includes(domain)) return spec.network;
-    if (envTemplateMap(spec.templateEnv + 'S')[domain]) return spec.network;
+    if (builtinTemplate(spec, domain)) return spec.network;
+    if (envList(spec.merchantsEnv).some((d) => domainMatches(domain, d))) return spec.network;
+    if (pickForDomain(envTemplateMap(spec.templateEnv + 'S'), domain)) return spec.network;
   }
   return null;
 }
@@ -188,10 +234,11 @@ export function envNetworkFor(domain: string): string | null {
 /** Builds the tracking URL for the env network that claims this domain, or null. */
 function envTemplateNetworkFor(domain: string, dest: string): { network: string; url: string } | null {
   for (const spec of ENV_NETWORKS) {
-    const listed = envList(spec.merchantsEnv).includes(domain);
-    const perDomain = envTemplateMap(spec.templateEnv + 'S')[domain];
-    if (!listed && !perDomain) continue;
-    const tpl = perDomain || (process.env[spec.templateEnv] || '').trim();
+    const builtin = builtinTemplate(spec, domain);
+    const listed = envList(spec.merchantsEnv).some((d) => domainMatches(domain, d));
+    const perDomain = pickForDomain(envTemplateMap(spec.templateEnv + 'S'), domain);
+    if (!listed && !perDomain && !builtin) continue;
+    const tpl = perDomain || (process.env[spec.templateEnv] || '').trim() || builtin || '';
     if (!tpl.startsWith('https://') || !tpl.includes('{DESTINATION}')) return null; // fail closed
     return { network: spec.network, url: tpl.replace('{DESTINATION}', encodeURIComponent(dest)) };
   }
