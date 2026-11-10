@@ -29,6 +29,33 @@ export interface PageSnapshot {
   updatedAt: string;
 }
 
+/**
+ * Where a page points (city / query), so the catalogue lookup can ask for the RIGHT rows instead of any
+ * row in that vertical.
+ *
+ * WHY THIS EXISTS (owner 10 Nov: "jo bacha hai usko fix kro", measured on production): /hotels/indore and
+ * /flights rendered a "Latest verified prices" block, but /hotels/mumbai, /cabs/noida and /ecommerce/mobiles
+ * rendered none (0 rupee tokens in the served HTML) even though their titles promise live prices. The lookup
+ * was vertical-only, ignored the city in the URL and then filtered by text tokens, so a hotel row whose title
+ * is "Taj Palace" (no city in the title) could never match /hotels/mumbai. findCatalogueOffers already
+ * supports city and queryTerms filters, so the fix is to derive them from the path.
+ */
+export function pagePlacement(path: string): { city?: string; queryTerms?: string[] } {
+  const clean = (path || '/').replace(/\/+$/, '');
+  if (clean === '' || clean === '/') return {};
+  if (/^\/(product|best|guides|answers)\b/.test(clean)) return {};
+  const segs = clean.split('/').filter(Boolean);
+  if (segs.length !== 2) return {};
+  const tail = decodeURIComponent(segs[1]);
+  // Route pages (chennai-to-madurai-bus) and multi-word slugs are not cities; a city slug is a single
+  // place name such as noida, mumbai, new-delhi.
+  if (/-to-/.test(tail) || /-bus$/.test(tail)) {
+    return { queryTerms: tail.split('-').filter((t) => t.length > 2 && t !== 'to' && t !== 'bus') };
+  }
+  const title = tail.split('-').filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  return { city: title, queryTerms: [title] };
+}
+
 const SNAPSHOT_TTL_MS = 10 * 60_000;
 const MAX_ROWS = 6;
 const cache = new Map<string, { at: number; snap: PageSnapshot | null }>();
@@ -176,10 +203,34 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
     const verticals = prod ? ['ecommerce', 'grocery'] : (route?.vertical ? [route.vertical] : []);
     if (verticals.length) {
       const { findCatalogueOffers } = await import('../catalogue/catalogueService');
-      const rows = (await Promise.all(verticals.map((v) => findCatalogueOffers(v, { limit: 120 }).catch(() => [])))).flat();
+      const where = prod ? {} : pagePlacement(key);
+      const rows = (await Promise.all(
+        verticals.map((v) => findCatalogueOffers(v, { limit: prod ? 120 : 200, ...where }).catch(() => [])),
+      )).flat();
+      // A city page whose city-filtered read is empty must not borrow another city's prices: try the
+      // wider vertical read only when the page is not city-scoped, and let selectSnapshotRows' token
+      // match decide (it already rejects rows that do not belong to the page).
+      // ECOMMERCE pages (/ecommerce/mobiles) hold their rows in the PRODUCT catalogue, so a plain
+      // vertical read comes back empty and the page rendered no prices at all on production. Ask the
+      // product catalogue with the page's own query terms before giving up.
+      if (!rows.length && !prod && verticals[0] === 'ecommerce' && where.queryTerms?.length) {
+        const { findProductCatalogueRows } = await import('../catalogue/productCatalogue');
+        const prodRows = await findProductCatalogueRows('ecommerce', {
+          query: where.queryTerms.join(' '), limit: 200,
+        }).catch(() => []);
+        rows.push(...(prodRows as any[]));
+      }
+      if (!rows.length && !prod && where.city) {
+        const wider = (await findCatalogueOffers(verticals[0], { limit: 200 }).catch(() => [])) as any[];
+        rows.push(...wider);
+      }
       const candidates: SnapshotRow[] = rows
         .map((r: any) => ({
-          title: String(r.title || ''),
+          // location_city/area are part of the row's identity on a city page: a hotel row titled
+          // "Taj Palace" with location_city "Mumbai" belongs on /hotels/mumbai even though the title
+          // never says Mumbai.
+          title: [String(r.title || ''), String(r.location_area || ''), String(r.location_city || '')]
+            .filter(Boolean).join(' · '),
           seller: String(r.seller || r.vendor || ''),
           price: Number(r.effective_price ?? r.mandatory_total ?? 0) || 0,
           url: r.seller_url || null,

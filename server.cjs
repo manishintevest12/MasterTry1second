@@ -58068,11 +58068,25 @@ var init_render = __esm({
 var liveSnapshot_exports = {};
 __export(liveSnapshot_exports, {
   clearSnapshotCache: () => clearSnapshotCache,
+  pagePlacement: () => pagePlacement,
   renderSnapshotHtml: () => renderSnapshotHtml,
   selectSnapshotRows: () => selectSnapshotRows,
   snapshotForPath: () => snapshotForPath,
   snapshotJsonLd: () => snapshotJsonLd
 });
+function pagePlacement(path18) {
+  const clean4 = (path18 || "/").replace(/\/+$/, "");
+  if (clean4 === "" || clean4 === "/") return {};
+  if (/^\/(product|best|guides|answers)\b/.test(clean4)) return {};
+  const segs = clean4.split("/").filter(Boolean);
+  if (segs.length !== 2) return {};
+  const tail = decodeURIComponent(segs[1]);
+  if (/-to-/.test(tail) || /-bus$/.test(tail)) {
+    return { queryTerms: tail.split("-").filter((t) => t.length > 2 && t !== "to" && t !== "bus") };
+  }
+  const title = tail.split("-").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  return { city: title, queryTerms: [title] };
+}
 function placementTokens(path18) {
   const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path18.replace(/\/+$/, ""));
   if (prod) {
@@ -58175,9 +58189,27 @@ async function snapshotForPath(path18) {
     const verticals = prod ? ["ecommerce", "grocery"] : route2?.vertical ? [route2.vertical] : [];
     if (verticals.length) {
       const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
-      const rows = (await Promise.all(verticals.map((v) => findCatalogueOffers2(v, { limit: 120 }).catch(() => [])))).flat();
+      const where = prod ? {} : pagePlacement(key);
+      const rows = (await Promise.all(
+        verticals.map((v) => findCatalogueOffers2(v, { limit: prod ? 120 : 200, ...where }).catch(() => []))
+      )).flat();
+      if (!rows.length && !prod && verticals[0] === "ecommerce" && where.queryTerms?.length) {
+        const { findProductCatalogueRows: findProductCatalogueRows2 } = await Promise.resolve().then(() => (init_productCatalogue(), productCatalogue_exports));
+        const prodRows = await findProductCatalogueRows2("ecommerce", {
+          query: where.queryTerms.join(" "),
+          limit: 200
+        }).catch(() => []);
+        rows.push(...prodRows);
+      }
+      if (!rows.length && !prod && where.city) {
+        const wider = await findCatalogueOffers2(verticals[0], { limit: 200 }).catch(() => []);
+        rows.push(...wider);
+      }
       const candidates = rows.map((r) => ({
-        title: String(r.title || ""),
+        // location_city/area are part of the row's identity on a city page: a hotel row titled
+        // "Taj Palace" with location_city "Mumbai" belongs on /hotels/mumbai even though the title
+        // never says Mumbai.
+        title: [String(r.title || ""), String(r.location_area || ""), String(r.location_city || "")].filter(Boolean).join(" \xB7 "),
         seller: String(r.seller || r.vendor || ""),
         price: Number(r.effective_price ?? r.mandatory_total ?? 0) || 0,
         url: r.seller_url || null
