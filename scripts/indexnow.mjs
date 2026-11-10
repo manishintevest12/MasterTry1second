@@ -15,8 +15,25 @@ const ENDPOINTS = ['https://api.indexnow.org/indexnow', 'https://www.bing.com/in
 
 const dry = process.argv.includes('--dry-run');
 
-const xml = await fetch(`${ORIGIN}/sitemap.xml`).then((r) => r.text());
-const urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1].trim());
+/**
+ * /sitemap.xml is a <sitemapindex> of /sitemap-core.xml, /sitemap-cities.xml and /sitemap-products.xml, so a
+ * plain <loc> scrape of the top file yields three sitemap URLs instead of pages (that is exactly what happened
+ * after the split). Read the index, then every child, and submit the real page URLs.
+ */
+const locs = (xml) => [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1].trim());
+const rootXml = await fetch(`${ORIGIN}/sitemap.xml`).then((r) => r.text());
+let urls = locs(rootXml);
+if (/<sitemapindex/.test(rootXml)) {
+  const children = urls.filter((u) => u.endsWith('.xml'));
+  const pages = [];
+  for (const child of children) {
+    const childXml = await fetch(child).then((r) => r.text()).catch(() => '');
+    pages.push(...locs(childXml));
+  }
+  urls = pages;
+  console.log(`sitemap index: ${children.length} files`);
+}
+urls = [...new Set(urls)];
 if (!urls.length) {
   console.error('No URLs found in the sitemap. Is the site up?');
   process.exit(1);
