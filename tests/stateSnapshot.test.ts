@@ -39,3 +39,12 @@ test('a state page never shows one city twice before the others appear', () => {
   assert.deepEqual(picked.map((r) => r.title), ['Hotel D · Mumbai', 'Hotel B · Pune', 'Hotel A · Mumbai']);
   assert.equal(selectSnapshotRows(mumbai, '/best/hotels/maharashtra', 6).length, 1, 'the single-page rule still dedupes by seller');
 });
+
+test('the answer page HTML has the anchor the price block is inserted into', async () => {
+  const { resolveAnswerPage, renderAnswerHtml } = await import('../server/seo/answerPages');
+  const page = resolveAnswerPage('/best/hotels/maharashtra');
+  assert.ok(page, 'state answer page resolves');
+  const html = renderAnswerHtml(page!);
+  assert.ok(html.includes('</main>'), 'the server route inserts the verified-price block before </main>');
+  assert.ok(html.includes('</head>'), 'and the ItemList JSON-LD before </head>');
+});

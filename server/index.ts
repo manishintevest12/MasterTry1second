@@ -294,7 +294,7 @@ export async function createApp(): Promise<express.Express> {
   // to agents that ask for text/markdown. Registered before the catch-all so real HTML always wins.
   {
     const { resolveAnswerPage, renderAnswerHtml, renderAnswerMarkdown } = await import('./seo/answerPages');
-    app.get(['/answers', '/best', '/best/:vertical', '/best/:vertical/:state'], (req: Request, res: Response) => {
+    app.get(['/answers', '/best', '/best/:vertical', '/best/:vertical/:state'], async (req: Request, res: Response) => {
       const page = resolveAnswerPage(req.path);
       if (!page) {
         res.status(404).type('text/plain').send('Answer page not found');
@@ -307,7 +307,20 @@ export async function createApp(): Promise<express.Express> {
         res.type('text/markdown; charset=utf-8').send(renderAnswerMarkdown(page));
         return;
       }
-      res.type('text/html; charset=utf-8').send(renderAnswerHtml(page));
+      // OWNER 10 Nov: the state answer pages were the only big section with no price data at all, and the
+      // snapshot built for them (liveSnapshot state branch) never reached the HTML because these pages are
+      // rendered here, not through the SPA shell. Inject the same verified-price block plus its ItemList
+      // JSON-LD. A state with no verified row gets no block, never a placeholder.
+      let html = renderAnswerHtml(page);
+      try {
+        const { snapshotForPath, renderSnapshotHtml, snapshotJsonLd } = await import('./seo/liveSnapshot');
+        const snap = await snapshotForPath(req.path);
+        const block = renderSnapshotHtml(snap);
+        const ld = snapshotJsonLd(snap, req.path);
+        if (block) html = html.replace('</main>', `<section class="answer-prices">${block}</section></main>`);
+        if (ld) html = html.replace('</head>', `<script type="application/ld+json">${ld}</script>\n</head>`);
+      } catch { /* the answer page still renders without prices */ }
+      res.type('text/html; charset=utf-8').send(html);
     });
   }
 
