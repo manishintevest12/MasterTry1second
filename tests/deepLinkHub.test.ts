@@ -28,6 +28,31 @@ test('an unreadable partner is offered as an affiliate-routed hub with no price'
   assert.match(booking!.reason, /202|shell/i);
 });
 
+test('the whole market is covered: cleartrip, expedia and the rest get hubs too (owner 10 Nov)', () => {
+  const hotels = buildIntentHubs({ vertical: 'hotels', title: 'hotels in Indore', rows: [], city: 'Indore' });
+  const hotelSellers = hotels.map((h) => h.seller);
+  for (const want of ['Booking.com', 'Expedia', 'Cleartrip']) assert.ok(hotelSellers.includes(want), `${want} hotel hub present`);
+  const flights = buildIntentHubs({ vertical: 'flights', title: 'Indore to Delhi', rows: [] });
+  const flightSellers = flights.map((h) => h.seller);
+  for (const want of ['Expedia', 'Cleartrip', 'MakeMyTrip', 'Goibibo', 'Yatra', 'IndiGo', 'Akasa Air']) assert.ok(flightSellers.includes(want), `${want} flight hub present`);
+  const bus = buildIntentHubs({ vertical: 'bus', title: 'Indore to Ujjain', rows: [] });
+  assert.equal(bus[0].seller, 'RedBus', 'bus specialists lead the bus hub list');
+  assert.ok(bus.some((h) => h.seller === 'AbhiBus'));
+  // every hub is a real https exit and none is priced
+  for (const list of [hotels, flights, bus]) for (const h of list) {
+    assert.match(h.url, /^https:\/\//);
+    assert.equal('primaryPrice' in h, false);
+  }
+});
+
+test('hub list is capped so the feed stays readable, gated partners first', () => {
+  const hubs = buildIntentHubs({ vertical: 'hotels', title: 'hotels in Indore', rows: [], city: 'Indore' });
+  assert.ok(hubs.length <= 8, `cap respected, got ${hubs.length}`);
+  assert.equal(hubs[0].seller, 'Booking.com', 'the measured wall leads');
+  const many = buildIntentHubs({ vertical: 'flights', title: 'Indore to Delhi', rows: [] });
+  assert.equal(many[0].seller, 'Booking.com Flights', 'gated flight walls lead');
+});
+
 test('airline walls get hubs on flights and taxi on cab, hotels do not leak flights hubs', () => {
   const flights = buildIntentHubs({ vertical: 'flights', title: 'Indore to Delhi', rows: [] });
   assert.ok(flights.some((h) => h.domain === 'goindigo.in'));

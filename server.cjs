@@ -38052,6 +38052,19 @@ var init_readPathCache = __esm({
 });
 
 // server/search/deepLinkHub.ts
+function fallbackFor(m, vertical, ctx) {
+  const path18 = m.path?.[vertical] ?? "";
+  if (m.domain === "booking.com" && vertical === "hotels") {
+    const q3 = new URLSearchParams({ ss: ctx.city || "India", selected_currency: "INR", lang: "en-gb" });
+    if (ctx.depart) q3.set("checkin", ctx.depart);
+    if (ctx.returnDate) q3.set("checkout", ctx.returnDate);
+    return `https://www.booking.com/searchresults.html?${q3.toString()}`;
+  }
+  if (m.domain === "agoda.com") return `https://www.agoda.com/search?q=${encodeURIComponent(ctx.city || "India")}`;
+  const base = `https://www.${m.domain}/${path18}`;
+  if (!path18) return `https://www.${m.domain}/`;
+  return /\.html?$/.test(path18) || path18.includes("searchresults") ? base : `${base.replace(/\/+$/, "")}/`;
+}
 function sellersPresent(rows) {
   const out = /* @__PURE__ */ new Set();
   for (const r of rows || []) {
@@ -38076,8 +38089,10 @@ function buildIntentHubs(input) {
   const merchants = GATED_HUB_MERCHANTS[String(input.vertical || "").toLowerCase()];
   if (!merchants?.length) return [];
   const present = sellersPresent(input.rows);
+  const limit = Number(process.env.T1S_HUB_LIMIT || 8);
   const hubs = [];
   for (const m of merchants) {
+    if (hubs.length >= limit) break;
     if (hasPartner(present, m)) continue;
     let url = "";
     try {
@@ -38198,60 +38213,73 @@ async function attachIntentHubs(response, input) {
     return response;
   }
 }
-var GATED_HUB_MERCHANTS, norm6;
+var MERCHANTS, GATED_HUB_MERCHANTS, norm6;
 var init_deepLinkHub = __esm({
   "server/search/deepLinkHub.ts"() {
     init_catalogueService();
     init_merchantLinks();
-    GATED_HUB_MERCHANTS = {
-      hotels: [
-        {
-          seller: "Booking.com",
-          domain: "booking.com",
-          reason: "booking.com serves a 202 client shell; no property-card HTML to parse",
-          fallbackUrl: ({ city, depart, returnDate }) => {
-            const q3 = new URLSearchParams({ ss: city || "India", selected_currency: "INR", lang: "en-gb" });
-            if (depart) q3.set("checkin", depart);
-            if (returnDate) q3.set("checkout", returnDate);
-            return `https://www.booking.com/searchresults.html?${q3.toString()}`;
-          }
-        },
-        {
-          seller: "Agoda",
-          domain: "agoda.com",
-          reason: "agoda answers only for some city/date combinations",
-          fallbackUrl: ({ city }) => `https://www.agoda.com/search?city=${encodeURIComponent(city || "India")}`
+    MERCHANTS = [
+      // ---- measured walls: these can never be read server-side ----
+      { seller: "Booking.com", domain: "booking.com", verticals: ["hotels"], gated: "booking.com serves a 202 client shell; no property-card HTML to parse", path: { hotels: "searchresults.html" } },
+      { seller: "Booking.com Flights", domain: "booking.com", verticals: ["flights"], gated: "flights.booking.com serves a 202 shell from our egress", path: { flights: "flights/index.en-gb.html" } },
+      { seller: "Booking.com Taxi", domain: "booking.com", verticals: ["cab"], gated: "taxi.booking.com answers 405 Human Verification", path: { cab: "taxi/index.en-gb.html" } },
+      { seller: "IndiGo", domain: "goindigo.in", verticals: ["flights"], gated: "IndiGo API is Akamai-gated and needs a SkyPlus session token", path: { flights: "booking.html" } },
+      { seller: "Akasa Air", domain: "akasaair.com", verticals: ["flights"], gated: "Akasa IBE answers nginx 403 without an authorised Cognito bearer" },
+      // ---- the rest of the market: hub when this search produced no row from them ----
+      { seller: "RedBus", domain: "redbus.in", verticals: ["bus"] },
+      { seller: "AbhiBus", domain: "abhibus.com", verticals: ["bus"] },
+      { seller: "ZingBus", domain: "zingbus.com", verticals: ["bus"] },
+      { seller: "Expedia", domain: "expedia.co.in", verticals: ["hotels", "flights"], path: { hotels: "Hotel-Search", flights: "Flights" } },
+      { seller: "Cleartrip", domain: "cleartrip.com", verticals: ["hotels", "flights"], path: { hotels: "hotels", flights: "flights" } },
+      { seller: "MakeMyTrip", domain: "makemytrip.com", verticals: ["hotels", "flights", "bus"], path: { hotels: "hotels", flights: "flights", bus: "bus-tickets" } },
+      { seller: "Goibibo", domain: "goibibo.com", verticals: ["hotels", "flights"], path: { hotels: "hotels", flights: "flights" } },
+      { seller: "Agoda", domain: "agoda.com", verticals: ["hotels"], path: { hotels: "search" } },
+      { seller: "Yatra", domain: "yatra.com", verticals: ["hotels", "flights", "bus"], path: { hotels: "hotels", flights: "flights", bus: "bus" } },
+      { seller: "Ixigo", domain: "ixigo.com", verticals: ["hotels", "flights"], path: { hotels: "hotels", flights: "flights" } },
+      { seller: "EaseMyTrip", domain: "easemytrip.com", verticals: ["hotels", "flights"], path: { hotels: "hotels", flights: "flights.html" } },
+      { seller: "Hotels.com", domain: "hotels.com", verticals: ["hotels"] },
+      { seller: "Airbnb", domain: "airbnb.co.in", verticals: ["hotels"] },
+      { seller: "OYO", domain: "oyorooms.com", verticals: ["hotels"] },
+      { seller: "Trivago", domain: "trivago.in", verticals: ["hotels"] },
+      { seller: "SpiceJet", domain: "spicejet.com", verticals: ["flights"] },
+      { seller: "Air India", domain: "airindia.com", verticals: ["flights"] },
+      { seller: "Air India Express", domain: "airindiaexpress.com", verticals: ["flights"] },
+      { seller: "Qatar Airways", domain: "qatarairways.com", verticals: ["flights"] },
+      { seller: "Emirates", domain: "emirates.com", verticals: ["flights"] },
+      { seller: "Cathay Pacific", domain: "cathaypacific.com", verticals: ["flights"] },
+      { seller: "British Airways", domain: "britishairways.com", verticals: ["flights"] },
+      { seller: "SriLankan Airlines", domain: "srilankan.com", verticals: ["flights"] },
+      { seller: "Singapore Airlines", domain: "singaporeair.com", verticals: ["flights"] },
+      { seller: "Alliance Air", domain: "allianceair.in", verticals: ["flights"] },
+      { seller: "Fly91", domain: "fly91.in", verticals: ["flights"] },
+      { seller: "Star Air", domain: "starair.in", verticals: ["flights"] },
+      { seller: "Kiwi.com", domain: "kiwi.com", verticals: ["flights"] },
+      { seller: "BudgetAir", domain: "budgetair.co.in", verticals: ["flights"] },
+      { seller: "Gotogate", domain: "gotogate.co.in", verticals: ["flights"] },
+      { seller: "FlightNetwork", domain: "flightnetwork.com", verticals: ["flights"] },
+      { seller: "Aertrip", domain: "aertrip.com", verticals: ["flights"] },
+      { seller: "Uber", domain: "uber.com", verticals: ["cab"], path: { cab: "" } },
+      { seller: "Ola", domain: "olacabs.com", verticals: ["cab"] },
+      { seller: "Rapido", domain: "rapido.bike", verticals: ["cab"] },
+      { seller: "Meru", domain: "meru.in", verticals: ["cab"] },
+      { seller: "Savaari", domain: "savaari.com", verticals: ["cab"] },
+      { seller: "Bharat Taxi", domain: "bharattaxi.com", verticals: ["cab"] }
+    ];
+    GATED_HUB_MERCHANTS = (() => {
+      const out = { hotels: [], flights: [], cab: [], bus: [] };
+      for (const m of MERCHANTS) {
+        for (const v of m.verticals) {
+          out[v].push({
+            seller: m.seller,
+            domain: m.domain,
+            reason: m.gated || `no priced row from ${m.seller} for this search; the exit is affiliate-routed`,
+            fallbackUrl: (ctx) => fallbackFor(m, v, ctx)
+          });
         }
-      ],
-      flights: [
-        {
-          seller: "Booking.com Flights",
-          domain: "booking.com",
-          reason: "flights.booking.com serves a 202 shell from our egress",
-          fallbackUrl: () => "https://www.booking.com/flights/index.en-gb.html"
-        },
-        {
-          seller: "IndiGo",
-          domain: "goindigo.in",
-          reason: "IndiGo API is Akamai-gated and needs a SkyPlus session token",
-          fallbackUrl: () => "https://www.goindigo.in/"
-        },
-        {
-          seller: "Akasa Air",
-          domain: "akasaair.com",
-          reason: "Akasa IBE answers nginx 403 without an authorised Cognito bearer",
-          fallbackUrl: () => "https://www.akasaair.com/"
-        }
-      ],
-      cab: [
-        {
-          seller: "Booking.com Taxi",
-          domain: "booking.com",
-          reason: "taxi.booking.com answers 405 Human Verification",
-          fallbackUrl: () => "https://www.booking.com/taxi/index.en-gb.html"
-        }
-      ]
-    };
+      }
+      for (const v of Object.keys(out)) out[v].sort((a, b) => Number(Boolean(b.reason.includes("serves") || b.reason.includes("403") || b.reason.includes("405") || b.reason.includes("Akamai"))) - Number(Boolean(a.reason.includes("serves") || a.reason.includes("403") || a.reason.includes("405") || a.reason.includes("Akamai"))));
+      return out;
+    })();
     norm6 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   }
 });
@@ -41729,7 +41757,7 @@ function extractUrl(text) {
 }
 function merchantFor(host) {
   const h = host.replace(/^www\./, "").toLowerCase();
-  for (const [re, name] of MERCHANTS) if (re.test(h)) return name;
+  for (const [re, name] of MERCHANTS2) if (re.test(h)) return name;
   return h;
 }
 function titleFromSlug(u) {
@@ -41922,13 +41950,13 @@ async function resolveProductFromLink(rawUrl) {
   if (slugTitle) return { title: slugTitle, titleSource: "url-slug", merchant, domain, pagePrice: null, image: null, fetchStatus };
   return { title: null, titleSource: "none", merchant, domain, pagePrice: null, image: null, fetchStatus };
 }
-var cheerio6, MERCHANTS, JUNK_SLUG, TYPED_FILLER, GENERIC_TITLE_RE, ERROR_TITLE_RE;
+var cheerio6, MERCHANTS2, JUNK_SLUG, TYPED_FILLER, GENERIC_TITLE_RE, ERROR_TITLE_RE;
 var init_productLink = __esm({
   "server/lens/productLink.ts"() {
     cheerio6 = __toESM(require("cheerio"), 1);
     init_curlCffiFetch();
     init_sameProduct();
-    MERCHANTS = [
+    MERCHANTS2 = [
       [/(^|\.)amazon\.(in|com)$/, "Amazon India"],
       [/(^|\.)flipkart\.com$/, "Flipkart"],
       [/(^|\.)myntra\.com$/, "Myntra"],

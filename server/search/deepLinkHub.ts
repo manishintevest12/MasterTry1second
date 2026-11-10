@@ -36,59 +36,103 @@ interface HubMerchant {
   fallbackUrl: (ctx: { city?: string; depart?: string; returnDate?: string; title?: string }) => string;
 }
 
+type Vert = 'hotels' | 'flights' | 'cab' | 'bus';
+
+interface MerchantDef {
+  seller: string;
+  domain: string;
+  verticals: Vert[];
+  /** Present only when the merchant is measured unreadable from our egress; else it is a plain silent partner. */
+  gated?: string;
+  /** Merchant search surface per vertical (path only, host comes from domain). */
+  path?: Partial<Record<Vert, string>>;
+}
+
 /**
- * Partners measured as unreadable from our egress (see the rescue-ladder probe logs) but monetisable the
- * moment a user lands on their site. Extend per vertical; order is display order.
+ * OWNER 10 Nov: "cleartrip aur baki bache hue v add kr do like expedia and all" - the hub list now covers every
+ * partner Try1Second can monetise in travel, not just the three walls we measured. Gated partners are ordered
+ * first (they can NEVER be a live row), then the silent rest: a merchant that simply returned nothing for this
+ * search still gets a clickable, affiliate-routed exit, which is exactly the deep-link-first idea.
  */
-export const GATED_HUB_MERCHANTS: Record<string, HubMerchant[]> = {
-  hotels: [
-    {
-      seller: 'Booking.com',
-      domain: 'booking.com',
-      reason: 'booking.com serves a 202 client shell; no property-card HTML to parse',
-      fallbackUrl: ({ city, depart, returnDate }) => {
-        const q = new URLSearchParams({ ss: city || 'India', selected_currency: 'INR', lang: 'en-gb' });
-        if (depart) q.set('checkin', depart);
-        if (returnDate) q.set('checkout', returnDate);
-        return `https://www.booking.com/searchresults.html?${q.toString()}`;
-      },
-    },
-    {
-      seller: 'Agoda',
-      domain: 'agoda.com',
-      reason: 'agoda answers only for some city/date combinations',
-      fallbackUrl: ({ city }) => `https://www.agoda.com/search?city=${encodeURIComponent(city || 'India')}`,
-    },
-  ],
-  flights: [
-    {
-      seller: 'Booking.com Flights',
-      domain: 'booking.com',
-      reason: 'flights.booking.com serves a 202 shell from our egress',
-      fallbackUrl: () => 'https://www.booking.com/flights/index.en-gb.html',
-    },
-    {
-      seller: 'IndiGo',
-      domain: 'goindigo.in',
-      reason: 'IndiGo API is Akamai-gated and needs a SkyPlus session token',
-      fallbackUrl: () => 'https://www.goindigo.in/',
-    },
-    {
-      seller: 'Akasa Air',
-      domain: 'akasaair.com',
-      reason: 'Akasa IBE answers nginx 403 without an authorised Cognito bearer',
-      fallbackUrl: () => 'https://www.akasaair.com/',
-    },
-  ],
-  cab: [
-    {
-      seller: 'Booking.com Taxi',
-      domain: 'booking.com',
-      reason: 'taxi.booking.com answers 405 Human Verification',
-      fallbackUrl: () => 'https://www.booking.com/taxi/index.en-gb.html',
-    },
-  ],
-};
+const MERCHANTS: MerchantDef[] = [
+  // ---- measured walls: these can never be read server-side ----
+  { seller: 'Booking.com', domain: 'booking.com', verticals: ['hotels'], gated: 'booking.com serves a 202 client shell; no property-card HTML to parse', path: { hotels: 'searchresults.html' } },
+  { seller: 'Booking.com Flights', domain: 'booking.com', verticals: ['flights'], gated: 'flights.booking.com serves a 202 shell from our egress', path: { flights: 'flights/index.en-gb.html' } },
+  { seller: 'Booking.com Taxi', domain: 'booking.com', verticals: ['cab'], gated: 'taxi.booking.com answers 405 Human Verification', path: { cab: 'taxi/index.en-gb.html' } },
+  { seller: 'IndiGo', domain: 'goindigo.in', verticals: ['flights'], gated: 'IndiGo API is Akamai-gated and needs a SkyPlus session token', path: { flights: 'booking.html' } },
+  { seller: 'Akasa Air', domain: 'akasaair.com', verticals: ['flights'], gated: 'Akasa IBE answers nginx 403 without an authorised Cognito bearer' },
+  // ---- the rest of the market: hub when this search produced no row from them ----
+  { seller: 'RedBus', domain: 'redbus.in', verticals: ['bus'] },
+  { seller: 'AbhiBus', domain: 'abhibus.com', verticals: ['bus'] },
+  { seller: 'ZingBus', domain: 'zingbus.com', verticals: ['bus'] },
+  { seller: 'Expedia', domain: 'expedia.co.in', verticals: ['hotels', 'flights'], path: { hotels: 'Hotel-Search', flights: 'Flights' } },
+  { seller: 'Cleartrip', domain: 'cleartrip.com', verticals: ['hotels', 'flights'], path: { hotels: 'hotels', flights: 'flights' } },
+  { seller: 'MakeMyTrip', domain: 'makemytrip.com', verticals: ['hotels', 'flights', 'bus'], path: { hotels: 'hotels', flights: 'flights', bus: 'bus-tickets' } },
+  { seller: 'Goibibo', domain: 'goibibo.com', verticals: ['hotels', 'flights'], path: { hotels: 'hotels', flights: 'flights' } },
+  { seller: 'Agoda', domain: 'agoda.com', verticals: ['hotels'], path: { hotels: 'search' } },
+  { seller: 'Yatra', domain: 'yatra.com', verticals: ['hotels', 'flights', 'bus'], path: { hotels: 'hotels', flights: 'flights', bus: 'bus' } },
+  { seller: 'Ixigo', domain: 'ixigo.com', verticals: ['hotels', 'flights'], path: { hotels: 'hotels', flights: 'flights' } },
+  { seller: 'EaseMyTrip', domain: 'easemytrip.com', verticals: ['hotels', 'flights'], path: { hotels: 'hotels', flights: 'flights.html' } },
+  { seller: 'Hotels.com', domain: 'hotels.com', verticals: ['hotels'] },
+  { seller: 'Airbnb', domain: 'airbnb.co.in', verticals: ['hotels'] },
+  { seller: 'OYO', domain: 'oyorooms.com', verticals: ['hotels'] },
+  { seller: 'Trivago', domain: 'trivago.in', verticals: ['hotels'] },
+  { seller: 'SpiceJet', domain: 'spicejet.com', verticals: ['flights'] },
+  { seller: 'Air India', domain: 'airindia.com', verticals: ['flights'] },
+  { seller: 'Air India Express', domain: 'airindiaexpress.com', verticals: ['flights'] },
+  { seller: 'Qatar Airways', domain: 'qatarairways.com', verticals: ['flights'] },
+  { seller: 'Emirates', domain: 'emirates.com', verticals: ['flights'] },
+  { seller: 'Cathay Pacific', domain: 'cathaypacific.com', verticals: ['flights'] },
+  { seller: 'British Airways', domain: 'britishairways.com', verticals: ['flights'] },
+  { seller: 'SriLankan Airlines', domain: 'srilankan.com', verticals: ['flights'] },
+  { seller: 'Singapore Airlines', domain: 'singaporeair.com', verticals: ['flights'] },
+  { seller: 'Alliance Air', domain: 'allianceair.in', verticals: ['flights'] },
+  { seller: 'Fly91', domain: 'fly91.in', verticals: ['flights'] },
+  { seller: 'Star Air', domain: 'starair.in', verticals: ['flights'] },
+  { seller: 'Kiwi.com', domain: 'kiwi.com', verticals: ['flights'] },
+  { seller: 'BudgetAir', domain: 'budgetair.co.in', verticals: ['flights'] },
+  { seller: 'Gotogate', domain: 'gotogate.co.in', verticals: ['flights'] },
+  { seller: 'FlightNetwork', domain: 'flightnetwork.com', verticals: ['flights'] },
+  { seller: 'Aertrip', domain: 'aertrip.com', verticals: ['flights'] },
+  { seller: 'Uber', domain: 'uber.com', verticals: ['cab'], path: { cab: '' } },
+  { seller: 'Ola', domain: 'olacabs.com', verticals: ['cab'] },
+  { seller: 'Rapido', domain: 'rapido.bike', verticals: ['cab'] },
+  { seller: 'Meru', domain: 'meru.in', verticals: ['cab'] },
+  { seller: 'Savaari', domain: 'savaari.com', verticals: ['cab'] },
+  { seller: 'Bharat Taxi', domain: 'bharattaxi.com', verticals: ['cab'] },
+];
+
+function fallbackFor(m: MerchantDef, vertical: Vert, ctx: { city?: string; depart?: string; returnDate?: string }): string {
+  const path = m.path?.[vertical] ?? '';
+  if (m.domain === 'booking.com' && vertical === 'hotels') {
+    const q = new URLSearchParams({ ss: ctx.city || 'India', selected_currency: 'INR', lang: 'en-gb' });
+    if (ctx.depart) q.set('checkin', ctx.depart);
+    if (ctx.returnDate) q.set('checkout', ctx.returnDate);
+    return `https://www.booking.com/searchresults.html?${q.toString()}`;
+  }
+  if (m.domain === 'agoda.com') return `https://www.agoda.com/search?q=${encodeURIComponent(ctx.city || 'India')}`;
+  const base = `https://www.${m.domain}/${path}`;
+  if (!path) return `https://www.${m.domain}/`;
+  // A file path (index.html, flights.html) never takes a trailing slash.
+  return /\.html?$/.test(path) || path.includes('searchresults') ? base : `${base.replace(/\/+$/, '')}/`;
+}
+
+export const GATED_HUB_MERCHANTS: Record<string, HubMerchant[]> = (() => {
+  const out: Record<string, HubMerchant[]> = { hotels: [], flights: [], cab: [], bus: [] };
+  for (const m of MERCHANTS) {
+    for (const v of m.verticals) {
+      out[v].push({
+        seller: m.seller,
+        domain: m.domain,
+        reason: m.gated || `no priced row from ${m.seller} for this search; the exit is affiliate-routed`,
+        fallbackUrl: (ctx) => fallbackFor(m, v, ctx),
+      });
+    }
+  }
+  // Gated partners stay first: they can never appear as a live row, so their hub is the only way in.
+  for (const v of Object.keys(out)) out[v].sort((a, b) => Number(Boolean(b.reason.includes('serves') || b.reason.includes('403') || b.reason.includes('405') || b.reason.includes('Akamai'))) - Number(Boolean(a.reason.includes('serves') || a.reason.includes('403') || a.reason.includes('405') || a.reason.includes('Akamai'))));
+  return out;
+})();
 
 const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -129,8 +173,10 @@ export function buildIntentHubs(input: {
   const merchants = GATED_HUB_MERCHANTS[String(input.vertical || '').toLowerCase()];
   if (!merchants?.length) return [];
   const present = sellersPresent(input.rows);
+  const limit = Number(process.env.T1S_HUB_LIMIT || 8);
   const hubs: IntentHub[] = [];
   for (const m of merchants) {
+    if (hubs.length >= limit) break;
     if (hasPartner(present, m)) continue;
     let url = '';
     try {
