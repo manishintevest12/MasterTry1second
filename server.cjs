@@ -31089,11 +31089,13 @@ var init_merchantLinks = __esm({
 // server/affiliate/deeplink.ts
 var deeplink_exports = {};
 __export(deeplink_exports, {
+  affiliateNetworkFor: () => affiliateNetworkFor,
   amazonAssociatesUrl: () => amazonAssociatesUrl,
   buildSecureDeeplink: () => buildSecureDeeplink,
   createMaskingPointer: () => createMaskingPointer,
   cuelinksKnownMerchants: () => cuelinksKnownMerchants,
   cuelinksMerchantUrl: () => cuelinksMerchantUrl,
+  envNetworkFor: () => envNetworkFor,
   looksAlreadyTracked: () => looksAlreadyTracked,
   merchantSearchFallback: () => merchantSearchFallback,
   recordPointerClick: () => recordPointerClick,
@@ -31165,6 +31167,37 @@ function cuelinksMerchantUrl(dest) {
   if (!cuelinksWrapAll() && !cuelinksAllowList().has(domain)) return null;
   return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
+function envList(name) {
+  return (process.env[name] || "").split(",").map((d) => d.trim().toLowerCase().replace(/^www\./, "")).filter(Boolean);
+}
+function envNetworkFor(domain) {
+  for (const spec of ENV_NETWORKS) {
+    if (envList(spec.merchantsEnv).includes(domain)) return spec.network;
+  }
+  return null;
+}
+function envTemplateNetworkFor(domain, dest) {
+  for (const spec of ENV_NETWORKS) {
+    if (!envList(spec.merchantsEnv).includes(domain)) continue;
+    const tpl = (process.env[spec.templateEnv] || "").trim();
+    if (!tpl.startsWith("https://") || !tpl.includes("{DESTINATION}")) return null;
+    return { network: spec.network, url: tpl.replace("{DESTINATION}", encodeURIComponent(dest)) };
+  }
+  return null;
+}
+function affiliateNetworkFor(domain) {
+  const d = domain.toLowerCase().replace(/^www\./, "");
+  const envNet = envNetworkFor(d);
+  if (envNet) return envNet;
+  if (AMAZON_DOMAINS.test(d)) return "amazon-associates";
+  if (cuelinksAllowList().has(d) || cuelinksWrapAll()) return "cuelinks";
+  try {
+    if (linkinrCampaignFor(`https://${d}/`)) return "linkinr";
+  } catch {
+  }
+  if (Boolean((process.env.EKARO_API_KEY || "").trim())) return "ekaro";
+  return null;
+}
 function amazonAssociatesUrl(dest) {
   const tag = settings.amazonAssociates?.tag;
   if (!tag) return null;
@@ -31228,6 +31261,8 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
     }
   } catch {
   }
+  const envNet = envTemplateNetworkFor(domain, targetUrl);
+  if (envNet) return { trackingUrl: envNet.url, network: envNet.network, matchedProfile: "env_template" };
   const cuelinks = cuelinksMerchantUrl(targetUrl);
   if (cuelinks) return { trackingUrl: cuelinks, network: "cuelinks", matchedProfile: "cuelinks_fallback" };
   const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
@@ -31316,12 +31351,13 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   }
   return "";
 }
-var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_MERCHANTS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
+var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_MERCHANTS, ENV_NETWORKS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
     import_crypto23 = __toESM(require("crypto"), 1);
     init_settings();
+    init_linkinr();
     init_linkinr();
     init_ekaro();
     init_logger();
@@ -31330,6 +31366,11 @@ var init_deeplink = __esm({
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
     CUELINKS_BASE_MERCHANTS = ["makemytrip.com", "goibibo.com", "shopsy.in"];
     CUELINKS_MERCHANTS = new Set(CUELINKS_BASE_MERCHANTS);
+    ENV_NETWORKS = [
+      { network: "admitad", merchantsEnv: "ADMITAD_MERCHANTS", templateEnv: "ADMITAD_LINK_TEMPLATE" },
+      { network: "vcommission", merchantsEnv: "VCOMMISSION_MERCHANTS", templateEnv: "VCOMMISSION_LINK_TEMPLATE" },
+      { network: "inrdeals", merchantsEnv: "INRDEALS_MERCHANTS", templateEnv: "INRDEALS_LINK_TEMPLATE" }
+    ];
     AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
     ALREADY_TRACKED_HOSTS = /(^|\.)(linksredirect\.com|fktr\.in|myntr\.it|earnkaro\.com|ekaro\.[a-z.]+|affiliaters\.in|bitli\.in|linkinr\.[a-z.]+|vcommission\.com|inr\.deals|cuelinks\.com|cashkaro\.com|amzn\.to|go\.redirectingat\.com|sjv\.io|linksynergy\.com|clicweb|pxf\.io|dl\.flipkart\.com)$/i;
   }

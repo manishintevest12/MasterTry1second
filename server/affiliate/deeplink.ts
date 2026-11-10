@@ -16,6 +16,7 @@
 import { IATA } from '../common/airportLookup';
 import crypto from 'crypto';
 import { settings } from '../common/settings';
+import { linkinrCampaignFor } from './linkinr';
 import { linkinrTrackingUrl, linkinrDeepTrackingUrl } from './linkinr';
 import { ekaroTrackingUrl } from './ekaro';
 import { log } from '../common/logger';
@@ -24,7 +25,7 @@ import { getStore } from '../common/db';
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
   network: string | null;   // null = direct
-  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'already_tracked' | 'direct';
+  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'env_template' | 'cuelinks_fallback' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'already_tracked' | 'direct';
 }
 
 const AFFILIATE_TTL_SEC = 24 * 60 * 60; // pointers live one day
@@ -135,6 +136,61 @@ export function cuelinksMerchantUrl(dest: string): string | null {
   return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
 
+
+/** One extra network = one merchant allow-list + one template. Fail-closed on both. */
+interface EnvNetworkSpec { network: string; merchantsEnv: string; templateEnv: string }
+
+const ENV_NETWORKS: EnvNetworkSpec[] = [
+  { network: 'admitad', merchantsEnv: 'ADMITAD_MERCHANTS', templateEnv: 'ADMITAD_LINK_TEMPLATE' },
+  { network: 'vcommission', merchantsEnv: 'VCOMMISSION_MERCHANTS', templateEnv: 'VCOMMISSION_LINK_TEMPLATE' },
+  { network: 'inrdeals', merchantsEnv: 'INRDEALS_MERCHANTS', templateEnv: 'INRDEALS_LINK_TEMPLATE' },
+];
+
+function envList(name: string): string[] {
+  return (process.env[name] || '')
+    .split(',')
+    .map((d) => d.trim().toLowerCase().replace(/^www\./, ''))
+    .filter(Boolean);
+}
+
+/** Which env network claims this domain, if any (no link building). */
+export function envNetworkFor(domain: string): string | null {
+  for (const spec of ENV_NETWORKS) {
+    if (envList(spec.merchantsEnv).includes(domain)) return spec.network;
+  }
+  return null;
+}
+
+/** Builds the tracking URL for the env network that claims this domain, or null. */
+function envTemplateNetworkFor(domain: string, dest: string): { network: string; url: string } | null {
+  for (const spec of ENV_NETWORKS) {
+    if (!envList(spec.merchantsEnv).includes(domain)) continue;
+    const tpl = (process.env[spec.templateEnv] || '').trim();
+    if (!tpl.startsWith('https://') || !tpl.includes('{DESTINATION}')) return null; // fail closed
+    return { network: spec.network, url: tpl.replace('{DESTINATION}', encodeURIComponent(dest)) };
+  }
+  return null;
+}
+
+/**
+ * Pure, DB-free routing preview: which layer WOULD pay for this domain right now, using only what is
+ * configured in the environment and the static maps. The coverage report uses this so it can be
+ * regenerated without touching production MySQL. It deliberately answers "who pays today", not
+ * "which layer wins after admin overrides" - admin rows live in the DB and always outrank this.
+ */
+export function affiliateNetworkFor(domain: string): string | null {
+  const d = domain.toLowerCase().replace(/^www\./, '');
+  const envNet = envNetworkFor(d);
+  if (envNet) return envNet;
+  if (AMAZON_DOMAINS.test(d)) return 'amazon-associates';
+  if (cuelinksAllowList().has(d) || cuelinksWrapAll()) return 'cuelinks';
+  // LinkInR campaigns are a static sheet inside the module (no env gate needed).
+  try { if (linkinrCampaignFor(`https://${d}/`) ) return 'linkinr'; } catch { /* ignore */ }
+  // Ekaro/EarnKaro can only convert when its key exists; otherwise it is an honest direct hop.
+  if (Boolean((process.env.EKARO_API_KEY || '').trim())) return 'ekaro';
+  return null;
+}
+
 const AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
 
 /**
@@ -222,6 +278,16 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
       return { trackingUrl: url, network: String(r.network_id || 'direct'), matchedProfile: 'affiliate_links' };
     }
   } catch { /* fall through */ }
+  // 2.5 OWNER 10 Nov: "jitne v cuelinks se hai wo cuelinks se commission de, jitne direct hai wo
+  // direct se de, aur jo admitad, inrdeals, earnkaro wagera se hai unko waha se dene do". Each extra
+  // network is driven by a merchant allow-list plus one template, so a merchant is routed to the
+  // network it was actually joined on and never double-counted:
+  //   ADMITAD_MERCHANTS + ADMITAD_LINK_TEMPLATE
+  //   VCOMMISSION_MERCHANTS + VCOMMISSION_LINK_TEMPLATE
+  //   INRDEALS_MERCHANTS + INRDEALS_LINK_TEMPLATE
+  // (Cuelinks stays network 3 below; Ekaro/EarnKaro stays 3.7; direct stays last.)
+  const envNet = envTemplateNetworkFor(domain, targetUrl);
+  if (envNet) return { trackingUrl: envNet.url, network: envNet.network, matchedProfile: 'env_template' };
   // 3. Cuelinks known-merchant campaigns (publisher 278473): monetized linkkit
   //    deeplink for every joined merchant — makemytrip.com today.
   const cuelinks = cuelinksMerchantUrl(targetUrl);

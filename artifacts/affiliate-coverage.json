@@ -1,0 +1,663 @@
+{
+  "generatedAt": "2026-11-10T05:09:16.271Z",
+  "total": 130,
+  "covered": 21,
+  "uncovered": 109,
+  "byNetwork": {
+    "linkinr": 17,
+    "amazon-associates": 1,
+    "cuelinks": 3
+  },
+  "rows": [
+    {
+      "domain": "abhibus.com",
+      "verticals": "bus, other",
+      "network": null
+    },
+    {
+      "domain": "accor.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "aertrip.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "airbnb.co.in",
+      "verticals": "hotels, other",
+      "network": null
+    },
+    {
+      "domain": "airindiaexpress.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "akasaair.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "allianceair.in",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "americanexpress.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "aubank.in",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "bajajfinserv.in",
+      "verticals": "loans",
+      "network": null
+    },
+    {
+      "domain": "bankbazaar.com",
+      "verticals": "account, creditcards, insurance, loans, other",
+      "network": null
+    },
+    {
+      "domain": "bharattaxi.com",
+      "verticals": "cab, other",
+      "network": null
+    },
+    {
+      "domain": "bigbasket.com",
+      "verticals": "grocery, other",
+      "network": null
+    },
+    {
+      "domain": "blinkit.com",
+      "verticals": "grocery, other",
+      "network": null
+    },
+    {
+      "domain": "bobcard.co.in",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "booking.com",
+      "verticals": "hotels, other",
+      "network": null
+    },
+    {
+      "domain": "bookmyshow.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "britishairways.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "budgetair.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "cardinsider.com",
+      "verticals": "creditcards, other",
+      "network": null
+    },
+    {
+      "domain": "cathaypacific.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "cinepolisindia.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "coverfox.com",
+      "verticals": "insurance",
+      "network": null
+    },
+    {
+      "domain": "district.in",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "dominos.co.in",
+      "verticals": "food, other",
+      "network": null
+    },
+    {
+      "domain": "easemytrip.com",
+      "verticals": "flights, hotels, other",
+      "network": null
+    },
+    {
+      "domain": "eatsure.com",
+      "verticals": "food",
+      "network": null
+    },
+    {
+      "domain": "emirates.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "expedia.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "fabhotels.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "flightnetwork.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "flightsmojo.in",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "flixcart.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "fly91.in",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "flybig.in",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "fourseasons.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "getditto.com",
+      "verticals": "insurance",
+      "network": null
+    },
+    {
+      "domain": "godigit.com",
+      "verticals": "insurance",
+      "network": null
+    },
+    {
+      "domain": "goindigo.in",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "gotogate.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "groww.in",
+      "verticals": "account",
+      "network": null
+    },
+    {
+      "domain": "hdfcbank.com",
+      "verticals": "loans",
+      "network": null
+    },
+    {
+      "domain": "hdfcergo.com",
+      "verticals": "insurance",
+      "network": null
+    },
+    {
+      "domain": "hilton.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "hsbc.co.in",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "hyatt.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "ihg.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "indrive.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "indriverapp.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "insurancedekho.com",
+      "verticals": "insurance",
+      "network": null
+    },
+    {
+      "domain": "itchotels.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "ixigo.com",
+      "verticals": "bus, flights, hotels, other",
+      "network": null
+    },
+    {
+      "domain": "kempinski.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "kiwi.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "komoot.io",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "kotak.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "kreditbee.in",
+      "verticals": "loans",
+      "network": null
+    },
+    {
+      "domain": "lemontreehotels.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "marriott.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "meru.in",
+      "verticals": "cab",
+      "network": null
+    },
+    {
+      "domain": "mi.com",
+      "verticals": "ecommerce, other",
+      "network": null
+    },
+    {
+      "domain": "moneyview.in",
+      "verticals": "loans",
+      "network": null
+    },
+    {
+      "domain": "navi.com",
+      "verticals": "loans",
+      "network": null
+    },
+    {
+      "domain": "oberoigroup.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "olacabs.com",
+      "verticals": "cab",
+      "network": null
+    },
+    {
+      "domain": "openstreetmap.org",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "orchidhotel.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "ovenstory.in",
+      "verticals": "food",
+      "network": null
+    },
+    {
+      "domain": "oyorooms.com",
+      "verticals": "hotels, other",
+      "network": null
+    },
+    {
+      "domain": "paisabazaar.com",
+      "verticals": "account, creditcards, loans, other",
+      "network": null
+    },
+    {
+      "domain": "pizzahut.co.in",
+      "verticals": "food, other",
+      "network": null
+    },
+    {
+      "domain": "policybazaar.com",
+      "verticals": "insurance, loans",
+      "network": null
+    },
+    {
+      "domain": "pvrinox.com",
+      "verticals": "movies",
+      "network": null
+    },
+    {
+      "domain": "qatarairways.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "quickride.in",
+      "verticals": "cab, other",
+      "network": null
+    },
+    {
+      "domain": "radissonhotels.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "rapido.bike",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "rblbank.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "redbus.in",
+      "verticals": "bus, other",
+      "network": null
+    },
+    {
+      "domain": "reliancedigital.in",
+      "verticals": "ecommerce, other",
+      "network": null
+    },
+    {
+      "domain": "royalorchidhotels.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "saffronstays.com",
+      "verticals": "hotels, other",
+      "network": null
+    },
+    {
+      "domain": "savaari.com",
+      "verticals": "cab, other",
+      "network": null
+    },
+    {
+      "domain": "sc.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "shangri-la.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "singaporeair.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "skypicker.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "snapdeal.com",
+      "verticals": "ecommerce",
+      "network": null
+    },
+    {
+      "domain": "spicejet.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "srilankan.com",
+      "verticals": "flights, other",
+      "network": null
+    },
+    {
+      "domain": "starair.in",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "sunnsandhotels.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "swiggy.com",
+      "verticals": "food, grocery, other",
+      "network": null
+    },
+    {
+      "domain": "tajhotels.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "theleela.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "theparkhotels.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "ticketnew.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "toingit.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "treebohotels.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "ubereats.com",
+      "verticals": "food",
+      "network": null
+    },
+    {
+      "domain": "via.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "wikidata.org",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "yesbank.in",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "zepto.com",
+      "verticals": "grocery, other",
+      "network": null
+    },
+    {
+      "domain": "zeptonow.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "zerodha.com",
+      "verticals": "account",
+      "network": null
+    },
+    {
+      "domain": "zingbus.com",
+      "verticals": "bus, other",
+      "network": null
+    },
+    {
+      "domain": "zomato.com",
+      "verticals": "food, other",
+      "network": null
+    },
+    {
+      "domain": "zostel.com",
+      "verticals": "other",
+      "network": null
+    },
+    {
+      "domain": "agoda.com",
+      "verticals": "hotels, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "airindia.com",
+      "verticals": "other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "ajio.com",
+      "verticals": "ecommerce, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "amazon.in",
+      "verticals": "ecommerce, grocery, other",
+      "network": "amazon-associates"
+    },
+    {
+      "domain": "cleartrip.com",
+      "verticals": "flights, hotels, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "croma.com",
+      "verticals": "ecommerce, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "flipkart.com",
+      "verticals": "ecommerce, grocery, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "sbicard.com",
+      "verticals": "other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "goibibo.com",
+      "verticals": "hotels, other",
+      "network": "cuelinks"
+    },
+    {
+      "domain": "jiomart.com",
+      "verticals": "ecommerce, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "lenovo.com",
+      "verticals": "ecommerce, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "makemytrip.com",
+      "verticals": "bus, hotels, other",
+      "network": "cuelinks"
+    },
+    {
+      "domain": "myntra.com",
+      "verticals": "ecommerce, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "nykaa.com",
+      "verticals": "ecommerce, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "oppo.com",
+      "verticals": "ecommerce, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "realme.com",
+      "verticals": "ecommerce, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "shopsy.in",
+      "verticals": "ecommerce, other",
+      "network": "cuelinks"
+    },
+    {
+      "domain": "acko.com",
+      "verticals": "insurance",
+      "network": "linkinr"
+    },
+    {
+      "domain": "tatacliq.com",
+      "verticals": "ecommerce, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "uber.com",
+      "verticals": "cab, other",
+      "network": "linkinr"
+    },
+    {
+      "domain": "yatra.com",
+      "verticals": "bus, flights, hotels, other",
+      "network": "linkinr"
+    }
+  ]
+}

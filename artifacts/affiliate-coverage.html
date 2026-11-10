@@ -1,0 +1,110 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Try1Second — Affiliate Network Coverage & Partnership Gaps</title>
+<style>
+@page{size:A4;margin:16mm 14mm}
+body{font:10.4pt/1.5 "Segoe UI",-apple-system,Roboto,Arial,sans-serif;color:#0f172a;margin:0}
+h1{font-size:21pt;margin:0 0 4px;letter-spacing:-.4px}
+h2{font-size:13pt;margin:20px 0 6px;border-bottom:2px solid #e7000b;padding-bottom:3px}
+h3{font-size:10.6pt;margin:12px 0 4px}
+.count{font-weight:400;color:#64748b;font-size:9pt}
+.sub{color:#64748b;font-size:9.4pt;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:8.9pt;margin-bottom:8px}
+th{text-align:left;background:#f1f5f9}
+th,td{border:1px solid #e2e8f0;padding:4px 5px;vertical-align:top}
+tr{page-break-inside:avoid}
+.kpi{display:flex;gap:10px;margin:10px 0}
+.kpi div{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:8px 9px}
+.kpi b{display:block;font-size:15pt;line-height:1.1}
+.kpi span{font-size:8.2pt;color:#64748b;text-transform:uppercase;letter-spacing:.06em}
+.note{background:#fff7ed;border-left:3px solid #f59e0b;padding:8px 10px;font-size:9.2pt;margin:8px 0}
+.ok{color:#047857;font-weight:700}
+footer{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:7px;font-size:8.2pt;color:#64748b}
+</style></head><body>
+<h1>Affiliate Network Coverage &amp; Partnership Gaps</h1>
+<div class="sub">10 November 2026 · har merchant ka routing code aur environment se nikala gaya (affiliateNetworkFor) · try1second.com</div>
+
+<div class="kpi">
+  <div><span>Merchant domains scan kiye</span><b>130</b></div>
+  <div><span>Kisi network se covered</span><b class="ok">21</b></div>
+  <div><span>Kahin se nahi (targets)</span><b>109</b></div>
+</div>
+
+<div class="note"><b>Routing kaise kaam karta hai ab:</b> har exit pehle admin override dekhta hai, phir Amazon tag, phir
+wahi network jo us merchant ko claim karta hai — Admitad (<code>ADMITAD_MERCHANTS</code> + <code>ADMITAD_LINK_TEMPLATE</code>),
+VCommission, INRDeals, Cuelinks, LinkInR, Ekaro/EarnKaro — aur agar koi nahi, to seedha merchant.
+Ek merchant sirf ek hi network se paisa deta hai, isliye double attribution nahi hota.
+Admin dashboard (<code>affiliate_configs</code>) se kisi bhi merchant ko manually kisi bhi network pe override kar sakte hain.</div>
+
+<h2>1. Abhi kaun paisa de raha hai (21)</h2>
+<table><thead><tr><th style="width:40%">Merchant</th><th style="width:22%">Network</th><th>Vertical</th></tr></thead><tr><td>agoda.com</td><td>linkinr</td><td>hotels, other</td></tr><tr><td>airindia.com</td><td>linkinr</td><td>other</td></tr><tr><td>ajio.com</td><td>linkinr</td><td>ecommerce, other</td></tr><tr><td>amazon.in</td><td>amazon-associates</td><td>ecommerce, grocery, other</td></tr><tr><td>cleartrip.com</td><td>linkinr</td><td>flights, hotels, other</td></tr><tr><td>croma.com</td><td>linkinr</td><td>ecommerce, other</td></tr><tr><td>flipkart.com</td><td>linkinr</td><td>ecommerce, grocery, other</td></tr><tr><td>sbicard.com</td><td>linkinr</td><td>other</td></tr><tr><td>goibibo.com</td><td>cuelinks</td><td>hotels, other</td></tr><tr><td>jiomart.com</td><td>linkinr</td><td>ecommerce, other</td></tr><tr><td>lenovo.com</td><td>linkinr</td><td>ecommerce, other</td></tr><tr><td>makemytrip.com</td><td>cuelinks</td><td>bus, hotels, other</td></tr><tr><td>myntra.com</td><td>linkinr</td><td>ecommerce, other</td></tr><tr><td>nykaa.com</td><td>linkinr</td><td>ecommerce, other</td></tr><tr><td>oppo.com</td><td>linkinr</td><td>ecommerce, other</td></tr><tr><td>realme.com</td><td>linkinr</td><td>ecommerce, other</td></tr><tr><td>shopsy.in</td><td>cuelinks</td><td>ecommerce, other</td></tr><tr><td>acko.com</td><td>linkinr</td><td>insurance</td></tr><tr><td>tatacliq.com</td><td>linkinr</td><td>ecommerce, other</td></tr><tr><td>uber.com</td><td>linkinr</td><td>cab, other</td></tr><tr><td>yatra.com</td><td>linkinr</td><td>bus, flights, hotels, other</td></tr></table>
+
+<h2>2. Jo kahin se nahi hai — partnership target list (109)</h2>
+<p>Ye domains engine exit kar sakta hai, par abhi kisi joined affiliate network me nahi hain, isliye in par click ₹0 dega.
+Vertical-wise grouped hain, saath me har category ke liye pursue karne ka raasta.</p>
+
+  <h3>other <span class="count">52 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>accor.com</td><td>manual review</td></tr><tr><td>aertrip.com</td><td>manual review</td></tr><tr><td>airindiaexpress.com</td><td>manual review</td></tr><tr><td>americanexpress.com</td><td>manual review</td></tr><tr><td>aubank.in</td><td>manual review</td></tr><tr><td>bobcard.co.in</td><td>manual review</td></tr><tr><td>bookmyshow.com</td><td>manual review</td></tr><tr><td>cinepolisindia.com</td><td>manual review</td></tr><tr><td>district.in</td><td>manual review</td></tr><tr><td>fabhotels.com</td><td>manual review</td></tr><tr><td>flightnetwork.com</td><td>manual review</td></tr><tr><td>flightsmojo.in</td><td>manual review</td></tr><tr><td>flixcart.com</td><td>manual review</td></tr><tr><td>flybig.in</td><td>manual review</td></tr><tr><td>fourseasons.com</td><td>manual review</td></tr><tr><td>gotogate.com</td><td>manual review</td></tr><tr><td>hilton.com</td><td>manual review</td></tr><tr><td>hsbc.co.in</td><td>manual review</td></tr><tr><td>hyatt.com</td><td>manual review</td></tr><tr><td>ihg.com</td><td>manual review</td></tr><tr><td>indrive.com</td><td>manual review</td></tr><tr><td>indriverapp.com</td><td>manual review</td></tr><tr><td>itchotels.com</td><td>manual review</td></tr><tr><td>kempinski.com</td><td>manual review</td></tr><tr><td>kiwi.com</td><td>manual review</td></tr><tr><td>komoot.io</td><td>manual review</td></tr><tr><td>kotak.com</td><td>manual review</td></tr><tr><td>lemontreehotels.com</td><td>manual review</td></tr><tr><td>marriott.com</td><td>manual review</td></tr><tr><td>oberoigroup.com</td><td>manual review</td></tr><tr><td>openstreetmap.org</td><td>manual review</td></tr><tr><td>orchidhotel.com</td><td>manual review</td></tr><tr><td>radissonhotels.com</td><td>manual review</td></tr><tr><td>rapido.bike</td><td>manual review</td></tr><tr><td>rblbank.com</td><td>manual review</td></tr><tr><td>royalorchidhotels.com</td><td>manual review</td></tr><tr><td>sc.com</td><td>manual review</td></tr><tr><td>shangri-la.com</td><td>manual review</td></tr><tr><td>skypicker.com</td><td>manual review</td></tr><tr><td>starair.in</td><td>manual review</td></tr><tr><td>sunnsandhotels.com</td><td>manual review</td></tr><tr><td>tajhotels.com</td><td>manual review</td></tr><tr><td>theleela.com</td><td>manual review</td></tr><tr><td>theparkhotels.com</td><td>manual review</td></tr><tr><td>ticketnew.com</td><td>manual review</td></tr><tr><td>toingit.com</td><td>manual review</td></tr><tr><td>treebohotels.com</td><td>manual review</td></tr><tr><td>via.com</td><td>manual review</td></tr><tr><td>wikidata.org</td><td>manual review</td></tr><tr><td>yesbank.in</td><td>manual review</td></tr><tr><td>zeptonow.com</td><td>manual review</td></tr><tr><td>zostel.com</td><td>manual review</td></tr>
+  </table>
+  <h3>flights <span class="count">14 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>akasaair.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>allianceair.in</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>britishairways.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>budgetair.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>cathaypacific.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>easemytrip.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>emirates.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>expedia.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>fly91.in</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>goindigo.in</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>qatarairways.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>singaporeair.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>spicejet.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr><tr><td>srilankan.com</td><td>Cuelinks/Admitad me airline+OTA campaign, warna direct partner program (airline ka apna program rarely)</td></tr>
+  </table>
+  <h3>food <span class="count">7 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>dominos.co.in</td><td>Aggregator affiliate approve nahi karte — ads only</td></tr><tr><td>eatsure.com</td><td>Aggregator affiliate approve nahi karte — ads only</td></tr><tr><td>ovenstory.in</td><td>Aggregator affiliate approve nahi karte — ads only</td></tr><tr><td>pizzahut.co.in</td><td>Aggregator affiliate approve nahi karte — ads only</td></tr><tr><td>swiggy.com</td><td>Aggregator affiliate approve nahi karte — ads only</td></tr><tr><td>ubereats.com</td><td>Aggregator affiliate approve nahi karte — ads only</td></tr><tr><td>zomato.com</td><td>Aggregator affiliate approve nahi karte — ads only</td></tr>
+  </table>
+  <h3>insurance <span class="count">6 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>coverfox.com</td><td>PolicyBazaar/Coverfox/InsuranceDekho/Ditto publisher (CPL)</td></tr><tr><td>getditto.com</td><td>PolicyBazaar/Coverfox/InsuranceDekho/Ditto publisher (CPL)</td></tr><tr><td>godigit.com</td><td>PolicyBazaar/Coverfox/InsuranceDekho/Ditto publisher (CPL)</td></tr><tr><td>hdfcergo.com</td><td>PolicyBazaar/Coverfox/InsuranceDekho/Ditto publisher (CPL)</td></tr><tr><td>insurancedekho.com</td><td>PolicyBazaar/Coverfox/InsuranceDekho/Ditto publisher (CPL)</td></tr><tr><td>policybazaar.com</td><td>PolicyBazaar/Coverfox/InsuranceDekho/Ditto publisher (CPL)</td></tr>
+  </table>
+  <h3>loans <span class="count">5 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>bajajfinserv.in</td><td>BankBazaar/Paisabazaar publisher program (CPL) — sabse high payout</td></tr><tr><td>hdfcbank.com</td><td>BankBazaar/Paisabazaar publisher program (CPL) — sabse high payout</td></tr><tr><td>kreditbee.in</td><td>BankBazaar/Paisabazaar publisher program (CPL) — sabse high payout</td></tr><tr><td>moneyview.in</td><td>BankBazaar/Paisabazaar publisher program (CPL) — sabse high payout</td></tr><tr><td>navi.com</td><td>BankBazaar/Paisabazaar publisher program (CPL) — sabse high payout</td></tr>
+  </table>
+  <h3>cab <span class="count">5 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>bharattaxi.com</td><td>CPA nahi milta — referral/CPL deal ya ads only</td></tr><tr><td>meru.in</td><td>CPA nahi milta — referral/CPL deal ya ads only</td></tr><tr><td>olacabs.com</td><td>CPA nahi milta — referral/CPL deal ya ads only</td></tr><tr><td>quickride.in</td><td>CPA nahi milta — referral/CPL deal ya ads only</td></tr><tr><td>savaari.com</td><td>CPA nahi milta — referral/CPL deal ya ads only</td></tr>
+  </table>
+  <h3>bus <span class="count">4 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>abhibus.com</td><td>redBus/AbhiBus/zingbus Cuelinks ya Admitad campaign</td></tr><tr><td>ixigo.com</td><td>redBus/AbhiBus/zingbus Cuelinks ya Admitad campaign</td></tr><tr><td>redbus.in</td><td>redBus/AbhiBus/zingbus Cuelinks ya Admitad campaign</td></tr><tr><td>zingbus.com</td><td>redBus/AbhiBus/zingbus Cuelinks ya Admitad campaign</td></tr>
+  </table>
+  <h3>hotels <span class="count">4 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>airbnb.co.in</td><td>Booking.com affiliate, Agoda partners, Expedia via Impact; OYO/chain hotels direct</td></tr><tr><td>booking.com</td><td>Booking.com affiliate, Agoda partners, Expedia via Impact; OYO/chain hotels direct</td></tr><tr><td>oyorooms.com</td><td>Booking.com affiliate, Agoda partners, Expedia via Impact; OYO/chain hotels direct</td></tr><tr><td>saffronstays.com</td><td>Booking.com affiliate, Agoda partners, Expedia via Impact; OYO/chain hotels direct</td></tr>
+  </table>
+  <h3>account <span class="count">4 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>bankbazaar.com</td><td>BankBazaar/Groww/Zerodha referral</td></tr><tr><td>groww.in</td><td>BankBazaar/Groww/Zerodha referral</td></tr><tr><td>paisabazaar.com</td><td>BankBazaar/Groww/Zerodha referral</td></tr><tr><td>zerodha.com</td><td>BankBazaar/Groww/Zerodha referral</td></tr>
+  </table>
+  <h3>grocery <span class="count">3 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>bigbasket.com</td><td>BigBasket/Zepto/Blinkit: network campaign (kam), warna ads only</td></tr><tr><td>blinkit.com</td><td>BigBasket/Zepto/Blinkit: network campaign (kam), warna ads only</td></tr><tr><td>zepto.com</td><td>BigBasket/Zepto/Blinkit: network campaign (kam), warna ads only</td></tr>
+  </table>
+  <h3>ecommerce <span class="count">3 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>mi.com</td><td>Cuelinks/Admitad campaign ya direct program (Flipkart Affiliate, Amazon Associates)</td></tr><tr><td>reliancedigital.in</td><td>Cuelinks/Admitad campaign ya direct program (Flipkart Affiliate, Amazon Associates)</td></tr><tr><td>snapdeal.com</td><td>Cuelinks/Admitad campaign ya direct program (Flipkart Affiliate, Amazon Associates)</td></tr>
+  </table>
+  <h3>creditcards <span class="count">1 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>cardinsider.com</td><td>BankBazaar/Paisabazaar/SBICard direct + cardinsider network</td></tr>
+  </table>
+  <h3>movies <span class="count">1 merchants</span></h3>
+  <table><thead><tr><th style="width:34%">Merchant domain</th><th>Kaise pursue karein</th></tr></thead>
+  <tr><td>pvrinox.com</td><td>BookMyShow/PVR/District network campaign</td></tr>
+  </table>
+
+<h2>3. Agla kadam</h2>
+<ol>
+<li><b>Finance pehle</b> (16 domains): BankBazaar/Paisabazaar/PolicyBazaar publisher programs — CPA sabse zyada.</li>
+<li><b>Travel/OTA</b> (22 domains): Cuelinks/Admitad me campaign join, phir domain <code>CUELINKS_EXTRA_MERCHANTS</code> ya us network ke <code>*_MERCHANTS</code> me daal dein.</li>
+<li><b>Chain hotels</b> (Marriott/Hilton/Accor/ITC/Taj): inke apne partner programs hain (Impact/partner portals) — direct onboarding better hai.</li>
+<li><b>Airlines</b>: koi public affiliate nahi — in par sirf ads, isliye affiliate effort waste na karein.</li>
+<li><b>Har join ke baad</b> wahi domain env me add karein — dobara code deploy nahi chahiye.</li>
+</ol>
+
+<footer>Report generated 10 Nov 2026 from the live routing code (server/affiliate/deeplink.ts: affiliateNetworkFor) + current environment.
+Ek caveat: admin <code>affiliate_configs</code> rows production MySQL me hain aur yahan readable nahi hain, isliye jis merchant ka wahan manual row hai
+wo paid ho sakta hai chahe yahan "none" dikhe. Baaki saare layers (Cuelinks allow-list, Amazon tag, LinkInR sheet, Ekaro key, env networks) exact hain.</footer>
+</body></html>
