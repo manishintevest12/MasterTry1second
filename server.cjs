@@ -58022,18 +58022,22 @@ async function snapshotForPath(path18) {
       const [, vertical, stateSlug] = stateMatch;
       const { ANSWER_STATES: ANSWER_STATES2 } = await Promise.resolve().then(() => (init_answerStates(), answerStates_exports));
       const state = ANSWER_STATES2.find((st) => st.slug === stateSlug);
-      const cities = (state?.cities || []).slice(0, 4);
+      const cities = (state?.cities || []).slice(0, 12);
       if (state && cities.length) {
         const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
-        const perCity = await Promise.all(cities.map(async (city) => {
+        const groups = [];
+        for (const city of cities) {
+          if (groups.filter((g) => g.length).length >= 4) break;
           const rows = await findCatalogueOffers2(vertical, { city, limit: 40 }).catch(() => []);
-          return rows.map((r) => ({
+          const group = rows.map((r) => ({
             title: `${String(r.title || "")} \xB7 ${city}`,
             seller: String(r.seller || r.vendor || ""),
             price: Number(r.effective_price ?? r.mandatory_total ?? 0) || 0,
             url: r.seller_url || null
           })).filter((r) => r.price > 0 && r.title.trim() !== `\xB7 ${city}` && r.seller);
-        }));
+          if (group.length) groups.push(group);
+        }
+        const perCity = groups;
         const picked = pickCityDiverseRows(perCity, MAX_ROWS);
         if (picked.length) {
           snap = { rows: picked, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), heading: `Latest verified prices in ${state.name}` };

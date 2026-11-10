@@ -245,12 +245,19 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
       const [, vertical, stateSlug] = stateMatch;
       const { ANSWER_STATES } = await import('./answerStates');
       const state = ANSWER_STATES.find((st) => st.slug === stateSlug);
-      const cities = (state?.cities || []).slice(0, 4);
+      const cities = (state?.cities || []).slice(0, 12);
       if (state && cities.length) {
         const { findCatalogueOffers } = await import('../catalogue/catalogueService');
-        const perCity = await Promise.all(cities.map(async (city) => {
+        // VERIFIED 10 Nov after the guard fix: Maharashtra and Uttar Pradesh render 6 rows each, while Kerala
+        // and Karnataka still render nothing. The catalogue only holds a handful of cities, so reading the first
+        // four cities of a state can miss every city we have rows for (Kerala's first four are not the ones in
+        // MySQL). Walk the state's city list instead and stop once four CITIES WITH ROWS are collected, so a
+        // state page shows everything we actually verify instead of depending on alphabet/corpus order.
+        const groups: any[][] = [];
+        for (const city of cities) {
+          if (groups.filter((g) => g.length).length >= 4) break;
           const rows = await findCatalogueOffers(vertical, { city, limit: 40 }).catch(() => []);
-          return (rows as any[])
+          const group = (rows as any[])
             .map((r) => ({
               title: `${String(r.title || '')} · ${city}`,
               seller: String(r.seller || r.vendor || ''),
@@ -258,7 +265,9 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
               url: r.seller_url || null,
             }))
             .filter((r) => r.price > 0 && r.title.trim() !== `· ${city}` && r.seller);
-        }));
+          if (group.length) groups.push(group);
+        }
+        const perCity = groups;
         const picked = pickCityDiverseRows(perCity, MAX_ROWS);
         if (picked.length) {
           snap = { rows: picked, updatedAt: new Date().toISOString(), heading: `Latest verified prices in ${state.name}` };
