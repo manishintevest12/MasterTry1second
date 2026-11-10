@@ -50,6 +50,7 @@ import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from 
 import { isDeepOfferUrl } from '../affiliate/merchantLinks';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback } from '../affiliate/deeplink';
 import { isCabAppScheme } from '../affiliate/cabLinks';
+import { APP_CAMPAIGNS, appInstallExitEnabled, appInstallTrackingUrl, appCampaignFor } from '../affiliate/appCampaigns';
 import { createInterstitialPointer, isInAppWebView, adBlockHtml } from '../redirect/interstitial';
 import { directAppTarget, androidIntentUrl, isAndroid, keepsWebviewExit } from '../affiliate/appTargets';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
@@ -1562,6 +1563,29 @@ let _lastEmergencyWarmAt = 0;
 // live site was still serving an OLD frontend bundle, so there was no way to prove a fix was
 // actually deployed. This answers in one line which bundle the server is serving and when it
 // started - compare `bundle` with the script tag in the page source after a restart.
+// APP-INSTALL CAMPAIGNS (owner standing rule: the admin surface must list every automated affiliate link).
+// EaseMyTrip's only Cuelinks campaign is a CPI-Android install (172.5/acquisition), so its website exit earns
+// nothing while the install link does - this endpoint makes both facts visible instead of hiding them.
+apiRouter.get('/affiliate/app-campaigns', (_req, res) => {
+  res.json({
+    ok: true,
+    exits_enabled: (process.env.T1S_APP_INSTALL_EXITS || '').trim() || null,
+    campaigns: APP_CAMPAIGNS.map((c) => ({
+      key: c.key,
+      name: c.name,
+      campaign_id: c.campaignId,
+      campaign_type: c.campaignType,
+      payout: c.payout,
+      payout_currency: c.payoutCurrency,
+      payout_type: c.payoutType,
+      domains: c.domains,
+      store_url: c.storeUrl,
+      install_link: appInstallTrackingUrl(c, 'admin-preview'),
+      exit_live: appInstallExitEnabled(c.key),
+    })),
+  });
+});
+
 apiRouter.get('/version', async (_req, res) => {
   let bundle: string | null = null;
   let html: string | null = null;

@@ -40231,6 +40231,56 @@ var init_spendLens = __esm({
   }
 });
 
+// server/affiliate/appCampaigns.ts
+function cuelinksCid() {
+  const fromEnv = (process.env.CUELINKS_CID || "").trim();
+  return fromEnv || "326794";
+}
+function appInstallExitEnabled(key) {
+  const raw = (process.env.T1S_APP_INSTALL_EXITS || "").trim().toLowerCase();
+  if (!raw || raw === "0" || raw === "off") return false;
+  if (raw === "1" || raw === "on" || raw === "all") return true;
+  return raw.split(",").map((s) => s.trim()).includes(key.toLowerCase());
+}
+function appInstallTrackingUrl(campaign, subId) {
+  const params = new URLSearchParams({
+    cid: cuelinksCid(),
+    source: "api",
+    url: campaign.storeUrl
+  });
+  if (subId) params.set("subid", subId);
+  return `https://linksredirect.com/?${params.toString()}`;
+}
+var APP_CAMPAIGNS;
+var init_appCampaigns = __esm({
+  "server/affiliate/appCampaigns.ts"() {
+    APP_CAMPAIGNS = [
+      {
+        key: "easemytrip",
+        domains: ["easemytrip.com"],
+        name: "EaseMyTrip App",
+        campaignId: 80705,
+        campaignType: "CPI - Android",
+        payout: 172.5,
+        payoutCurrency: "INR",
+        payoutType: "Per Acquisition",
+        storeUrl: "https://play.google.com/store/apps/details?id=com.easemytrip.android"
+      },
+      {
+        key: "jiomart",
+        domains: ["jiomart.com"],
+        name: "JioMart App",
+        campaignId: 5405,
+        campaignType: "CPI - Android",
+        payout: 0.95,
+        payoutCurrency: "INR",
+        payoutType: "Per Sale",
+        storeUrl: "https://play.google.com/store/apps/details?id=com.jiomart.app"
+      }
+    ];
+  }
+});
+
 // server/api/cachedSections.ts
 async function cachedSection(key, build, ttlMs = DEFAULT_TTL_MS) {
   const hit = CACHE2.get(key);
@@ -47059,6 +47109,7 @@ var init_routes = __esm({
     init_merchantLinks();
     init_deeplink();
     init_cabLinks();
+    init_appCampaigns();
     init_interstitial();
     init_appTargets();
     init_cabDeeplink();
@@ -47713,6 +47764,25 @@ var init_routes = __esm({
       w_hotels_wikidata: "Wikidata (CC0)"
     };
     _lastEmergencyWarmAt = 0;
+    apiRouter.get("/affiliate/app-campaigns", (_req, res) => {
+      res.json({
+        ok: true,
+        exits_enabled: (process.env.T1S_APP_INSTALL_EXITS || "").trim() || null,
+        campaigns: APP_CAMPAIGNS.map((c) => ({
+          key: c.key,
+          name: c.name,
+          campaign_id: c.campaignId,
+          campaign_type: c.campaignType,
+          payout: c.payout,
+          payout_currency: c.payoutCurrency,
+          payout_type: c.payoutType,
+          domains: c.domains,
+          store_url: c.storeUrl,
+          install_link: appInstallTrackingUrl(c, "admin-preview"),
+          exit_live: appInstallExitEnabled(c.key)
+        }))
+      });
+    });
     apiRouter.get("/version", async (_req, res) => {
       let bundle = null;
       let html = null;
