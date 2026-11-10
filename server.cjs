@@ -31745,7 +31745,17 @@ function cuelinksMerchantUrl(dest, tier = "all") {
   } catch {
     return null;
   }
-  if (tier === "approved") {
+  if (tier === "applied") {
+    const applied = /* @__PURE__ */ new Set([...CUELINKS_APPROVED_ONLY, ...CUELINKS_APPLIED_ONLY]);
+    let hit = applied.has(domain);
+    if (!hit) {
+      for (const d of applied) if (domain.endsWith(`.${d}`)) {
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) return null;
+  } else if (tier === "approved") {
     const approved = new Set(CUELINKS_APPROVED_ONLY);
     for (const d of (process.env.CUELINKS_EXTRA_MERCHANTS || "").split(",")) {
       const v = d.trim().toLowerCase().replace(/^www\./, "");
@@ -31898,6 +31908,8 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
   const cuelinksApproved = cuelinksMerchantUrl(targetUrl, "approved");
   if (cuelinksApproved) return { trackingUrl: cuelinksApproved, network: "cuelinks", matchedProfile: "cuelinks_approved" };
+  const cuelinksApplied = cuelinksMerchantUrl(targetUrl, "applied");
+  if (cuelinksApplied) return { trackingUrl: cuelinksApplied, network: "cuelinks", matchedProfile: "cuelinks_applied" };
   const linkinr = cabBookLink ? null : await linkinrDeepTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: "linkinr", matchedProfile: "linkinr" };
   const cuelinks = cuelinksMerchantUrl(targetUrl, "all");
@@ -31985,7 +31997,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   }
   return "";
 }
-var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_APPROVED_ONLY, CUELINKS_MERCHANTS, CJ_EVERGREEN, ENV_NETWORKS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
+var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_APPLIED_ONLY, CUELINKS_APPROVED_ONLY, CUELINKS_MERCHANTS, CJ_EVERGREEN, ENV_NETWORKS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
@@ -32044,6 +32056,7 @@ var init_deeplink = __esm({
       "bajajfinserv.in",
       "moneyview.in"
     ];
+    CUELINKS_APPLIED_ONLY = ["myntra.com", "ajio.com", "flipkart.com", "abhibus.com", "agoda.com"];
     CUELINKS_APPROVED_ONLY = ["makemytrip.com", "goibibo.com", "shopsy.in", "cleartrip.com", "nykaa.com", "croma.com", "easemytrip.com"];
     CUELINKS_MERCHANTS = new Set(CUELINKS_BASE_MERCHANTS);
     CJ_EVERGREEN = {

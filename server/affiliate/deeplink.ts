@@ -25,7 +25,7 @@ import { getStore } from '../common/db';
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
   network: string | null;   // null = direct
-  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'env_template' | 'cuelinks_fallback' | 'cuelinks_approved' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'already_tracked' | 'direct';
+  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'env_template' | 'cuelinks_fallback' | 'cuelinks_approved' | 'cuelinks_applied' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'already_tracked' | 'direct';
 }
 
 const AFFILIATE_TTL_SEC = 24 * 60 * 60; // pointers live one day
@@ -143,6 +143,9 @@ function cuelinksOnlyJoined(): boolean {
   return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ONLY_JOINED || '').trim());
 }
 
+/** Applied on Cuelinks and either approved or awaiting approval (pays on approval, deep path always kept). */
+const CUELINKS_APPLIED_ONLY = ['myntra.com', 'ajio.com', 'flipkart.com', 'abhibus.com', 'agoda.com'];
+
 /** Approved-on-this-account domains only, used when CUELINKS_ONLY_JOINED=1. */
 const CUELINKS_APPROVED_ONLY = ['makemytrip.com', 'goibibo.com', 'shopsy.in', 'cleartrip.com', 'nykaa.com', 'croma.com', 'easemytrip.com'];
 
@@ -163,12 +166,21 @@ export function cuelinksKnownMerchants(): string[] { return [...cuelinksAllowLis
 /** Build a working Cuelinks linkkit deeplink: verified format
  *  https://linksredirect.com/?cid=<campaign>&subid=<publisher>&source=<site>&url=<encoded>
  *  (the old type=nl&campaign= format 301'd to the Cuelinks homepage — dead). */
-export function cuelinksMerchantUrl(dest: string, tier: 'approved' | 'all' = 'all'): string | null {
+export function cuelinksMerchantUrl(dest: string, tier: 'approved' | 'applied' | 'all' = 'all'): string | null {
   const c = settings.cuelinks;
   if (!c.publisherId) return null;
   let domain: string;
   try { domain = new URL(dest).hostname.toLowerCase().replace(/^www\./, ''); } catch { return null; }
-  if (tier === 'approved') {
+  if (tier === 'applied') {
+    // Approved OR awaiting approval. Both keep the exact deep path, and the pending ones start paying the day
+    // Cuelinks approves them - which is what the owner asked for ("ajio, myntra wagera tho hai cuelinks pr").
+    // These win over LinkInR because LinkInR drops the destination URL (ajio/flipkart exits land on a generic
+    // campaign page), while a Cuelinks hop preserves it.
+    const applied = new Set<string>([...CUELINKS_APPROVED_ONLY, ...CUELINKS_APPLIED_ONLY]);
+    let hit = applied.has(domain);
+    if (!hit) for (const d of applied) if (domain.endsWith(`.${d}`)) { hit = true; break; }
+    if (!hit) return null;
+  } else if (tier === 'approved') {
     // Only merchants measured as ACCESS APPROVED on this publisher account (they actually pay today).
     // Used ahead of LinkInR so a confirmed flat payout (mmt 112.5, goibibo 210, cleartrip 67.5, EMT 172.5,
     // nykaa 4.2%, croma 3.38%) is never handed to another network.
@@ -432,6 +444,8 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   // generic network, so they are claimed before LinkInR ("each merchant paid by the network it was joined on").
   const cuelinksApproved = cuelinksMerchantUrl(targetUrl, 'approved');
   if (cuelinksApproved) return { trackingUrl: cuelinksApproved, network: 'cuelinks', matchedProfile: 'cuelinks_approved' };
+  const cuelinksApplied = cuelinksMerchantUrl(targetUrl, 'applied');
+  if (cuelinksApplied) return { trackingUrl: cuelinksApplied, network: 'cuelinks', matchedProfile: 'cuelinks_applied' };
   const linkinr = cabBookLink ? null : await linkinrDeepTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: 'linkinr', matchedProfile: 'linkinr' };
   // 3.5 every other merchant we have applied for on Cuelinks (measured 10 Nov: an un-approved campaign is a pure

@@ -68,6 +68,9 @@ test('every merchant the owner has applied for is wrapped, and the deep path sur
     const u = cuelinksMerchantUrl(dest, 'all');
     assert.ok(u && u.includes(encodeURIComponent(dest)), `${dest} must be wrapped with its deep path`);
     assert.equal(cuelinksMerchantUrl(dest, 'approved'), null, `${dest} is not approved yet`);
+    // applied tier (approved + pending) is what the click chain uses before LinkInR, because LinkInR drops
+    // the destination URL and these merchants must keep their deep path
+    if (/myntra|ajio|flipkart/.test(dest)) assert.ok(cuelinksMerchantUrl(dest, 'applied'), `${dest} on applied tier`);
   }
   // an approved merchant is claimed by the approved tier so a confirmed flat payout is never handed to LinkInR
   assert.ok(cuelinksMerchantUrl('https://www.cleartrip.com/flights', 'approved'));

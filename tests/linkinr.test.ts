@@ -57,10 +57,14 @@ test('deeplink priority: direct partners win, LinkInR covers the rest', async ()
   // 10 Nov they are claimed by the APPROVED tier so LinkInR cannot take a confirmed payout away.
   const mmt = await buildSecureDeeplink('https://www.makemytrip.com/hotels/x');
   assert.equal(mmt.matchedProfile, 'cuelinks_approved');
-  // Merchants with no direct partner now earn: LinkInR layer.
+  // Agoda is applied on Cuelinks (pending approval), so it is claimed by the APPLIED tier which keeps its deep
+  // path - LinkInR would drop the destination and land the user on a generic campaign page.
   const agoda = await buildSecureDeeplink('https://www.agoda.com/hotels/x');
-  assert.equal(agoda.matchedProfile, 'linkinr');
-  assert.equal(agoda.network, 'linkinr');
+  assert.equal(agoda.matchedProfile, 'cuelinks_applied');
+  assert.equal(agoda.network, 'cuelinks');
+  // A merchant LinkInR actually holds (and Cuelinks does not) still earns through LinkInR.
+  const yatra = await buildSecureDeeplink('https://hotel.yatra.com/nxt-ui/search?checkIn=2026-11-20&city=Indore');
+  assert.equal(yatra.matchedProfile, 'linkinr');
   // Unknown destination stays an honest direct hop.
   const other = await buildSecureDeeplink('https://unknown-merchant.example.com/p');
   assert.equal(other.matchedProfile, 'direct');
