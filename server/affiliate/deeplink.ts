@@ -21,11 +21,12 @@ import { linkinrTrackingUrl, linkinrDeepTrackingUrl } from './linkinr';
 import { ekaroTrackingUrl } from './ekaro';
 import { log } from '../common/logger';
 import { getStore } from '../common/db';
+import { gromoLinkFor, gromoClickUrl, isGromoUrl } from './gromo';
 
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
   network: string | null;   // null = direct
-  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'env_template' | 'cuelinks_fallback' | 'cuelinks_approved' | 'cuelinks_applied' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'already_tracked' | 'direct';
+  matchedProfile: 'affiliate_configs' | 'gromo_advisor' | 'affiliate_links' | 'amazon_associates' | 'env_template' | 'cuelinks_fallback' | 'cuelinks_approved' | 'cuelinks_applied' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'already_tracked' | 'direct';
 }
 
 const AFFILIATE_TTL_SEC = 24 * 60 * 60; // pointers live one day
@@ -384,6 +385,8 @@ export function affiliateNetworkFor(domain: string): string | null {
   const envNet = envNetworkFor(d);
   if (envNet) return envNet;
   if (AMAZON_DOMAINS.test(d)) return 'amazon-associates';
+  // GroMo advisor link for a mapped banking product (finance domains only - travel is never touched).
+  try { if (gromoLinkFor(d, d)) return 'gromo'; } catch { /* ignore */ }
   if (cuelinksAllowList().has(d) || cuelinksWrapAll()) return 'cuelinks';
   // LinkInR campaigns are a static sheet inside the module (no env gate needed).
   try { if (linkinrCampaignFor(`https://${d}/`) ) return 'linkinr'; } catch { /* ignore */ }
@@ -462,6 +465,16 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
       return { trackingUrl: url, network: String(r.network || 'direct'), matchedProfile: 'affiliate_configs' };
     }
   } catch { /* table absent — fall through */ }
+  // 1.4 GroMo advisor link (owner 10 Nov: "gromo humera partner hai wo pura banking products deta hai").
+  // GroMo is a landing link per banking product (https://sales.gromo.in/ac/<CODE>), so it cannot carry the
+  // issuer's deep path - and for a finance "Apply Now" it does not need to: that landing page IS the tracked
+  // application. Runs after the admin override (so a manual template still wins) and before every network
+  // fallback, because a GroMo lead pays where an unapproved Cuelinks wrap pays nothing.
+  const gromoHint = (opts.companySlug || domain.split('.')[0] || '').trim();
+  const gromoLink = gromoLinkFor(gromoHint, domain, targetUrl) || gromoLinkFor(domain, domain, targetUrl);
+  if (gromoLink) {
+    return { trackingUrl: gromoClickUrl(gromoLink, gromoHint), network: 'gromo', matchedProfile: 'gromo_advisor' };
+  }
   // 1.5 Amazon Associates: our own store tag on the exact amazon.* product URL.
   // Runs after admin affiliate_configs (explicit admin override still wins) and
   // before network fallbacks: a direct amazon.in link must never route through

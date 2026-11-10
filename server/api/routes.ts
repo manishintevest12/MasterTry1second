@@ -1573,6 +1573,28 @@ let _lastEmergencyWarmAt = 0;
 // APP-INSTALL CAMPAIGNS (owner standing rule: the admin surface must list every automated affiliate link).
 // EaseMyTrip's only Cuelinks campaign is a CPI-Android install (172.5/acquisition), so its website exit earns
 // nothing while the install link does - this endpoint makes both facts visible instead of hiding them.
+// GROMMO ADVISOR LINKS (owner 10 Nov: "gromo humera partner hai wo pura banking products deta hai pr waha
+// aise link milta hai"). GroMo hands out one landing link PER banking product
+// (https://sales.gromo.in/ac/<CODE>), so unlike a network template it can never be generated from a seller
+// URL. This endpoint is the admin's honest view of which finance merchants already have an advisor link and
+// which are still falling through to another network, so the gap is visible without reading the code.
+apiRouter.get('/affiliate/gromo-links', authMiddleware, requireAdmin, async (_req, res) => {
+  try {
+    const { gromoCoverage, gromoLinkMap } = await import('../affiliate/gromo');
+    const { affiliateNetworkFor } = await import('../affiliate/deeplink');
+    const links = gromoLinkMap();
+    const sample = ['axisbank.com', 'hdfcbank.com', 'icicibank.com', 'kotak.com', 'sbicard.com', 'bajajfinserv.in'];
+    res.json({
+      ok: true,
+      ...gromoCoverage(),
+      links,
+      routing: sample.map((d) => ({ domain: d, network: affiliateNetworkFor(d) || 'direct' })),
+    });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e?.message || 'Could not read GroMo links' });
+  }
+});
+
 apiRouter.get('/affiliate/app-campaigns', (_req, res) => {
   res.json({
     ok: true,

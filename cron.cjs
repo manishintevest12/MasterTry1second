@@ -28688,6 +28688,12 @@ var init_ekaro = __esm({
   }
 });
 
+// server/affiliate/gromo.ts
+var init_gromo = __esm({
+  "server/affiliate/gromo.ts"() {
+  }
+});
+
 // server/affiliate/merchantLinks.ts
 var LINK_MEMO_MAX, LINK_MEMO_TTL_MS;
 var init_merchantLinks = __esm({
@@ -28709,6 +28715,7 @@ var init_deeplink = __esm({
     init_ekaro();
     init_logger();
     init_db();
+    init_gromo();
     init_merchantLinks();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
     CUELINKS_BASE_MERCHANTS = [

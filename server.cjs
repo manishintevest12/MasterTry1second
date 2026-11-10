@@ -31530,6 +31530,153 @@ var init_ekaro = __esm({
   }
 });
 
+// server/affiliate/gromo.ts
+var gromo_exports = {};
+__export(gromo_exports, {
+  gromoClickUrl: () => gromoClickUrl,
+  gromoCoverage: () => gromoCoverage,
+  gromoLinkFor: () => gromoLinkFor,
+  gromoLinkMap: () => gromoLinkMap,
+  isFinanceDomain: () => isFinanceDomain,
+  isGromoUrl: () => isGromoUrl
+});
+function keyVariants(key) {
+  const raw = String(key || "").toLowerCase();
+  const compact = raw.replace(/[^a-z0-9]/g, "");
+  const words2 = raw.replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  const out = /* @__PURE__ */ new Set([compact]);
+  if (words2[0]) out.add(words2[0].replace(/[^a-z0-9]/g, ""));
+  for (const suffix of ["creditcard", "creditcards", "card", "cards", "bank", "loan", "insurance"]) {
+    if (compact.endsWith(suffix) && compact.length > suffix.length + 2) {
+      out.add(compact.slice(0, -suffix.length));
+    }
+  }
+  return [...out].filter(Boolean);
+}
+function isGromoUrl(url) {
+  try {
+    const u = new URL(String(url || ""));
+    if (u.protocol !== "https:") return false;
+    return u.hostname.toLowerCase() === "sales.gromo.in" || /(^|\.)gromo\.in$/i.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+function envLinks() {
+  const raw = (process.env.GROMO_LINKS || "").trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    const out = {};
+    for (const [k, v] of Object.entries(parsed || {})) {
+      if (typeof v === "string" && isGromoUrl(v)) out[String(k).toLowerCase()] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function gromoLinkMap() {
+  return { ...BUILTIN_LINKS, ...envLinks() };
+}
+function isFinanceDomain(domain) {
+  const d = String(domain || "").toLowerCase().replace(/^www\./, "");
+  return FINANCE_DOMAINS.some((f) => d === f || d.endsWith(`.${f}`));
+}
+function gromoLinkFor(merchant, domain = "", targetUrl = "") {
+  const map = gromoLinkMap();
+  const envKeys = envLinks();
+  for (const v of keyVariants(merchant)) {
+    const hit = map[v];
+    if (!hit || !isGromoUrl(hit)) continue;
+    const ctx = BUILTIN_CONTEXT[v];
+    if (ctx && !envKeys[v] && targetUrl && !ctx.test(targetUrl)) continue;
+    return hit;
+  }
+  const defaultLink = (process.env.GROMO_DEFAULT_LINK || "").trim();
+  if (defaultLink && isGromoUrl(defaultLink) && isFinanceDomain(domain)) return defaultLink;
+  return null;
+}
+function gromoClickUrl(link, subid = "") {
+  if (!isGromoUrl(link)) return "";
+  const param = (process.env.GROMO_SUBID_PARAM || "").trim();
+  if (!param || !subid) return link;
+  try {
+    const u = new URL(link);
+    u.searchParams.set(param, subid);
+    return u.toString();
+  } catch {
+    return link;
+  }
+}
+function gromoCoverage() {
+  return {
+    keys: Object.keys(gromoLinkMap()).sort(),
+    defaultConfigured: Boolean((process.env.GROMO_DEFAULT_LINK || "").trim()),
+    financeDomains: FINANCE_DOMAINS.length
+  };
+}
+var FINANCE_DOMAINS, BUILTIN_LINKS, BUILTIN_CONTEXT;
+var init_gromo = __esm({
+  "server/affiliate/gromo.ts"() {
+    FINANCE_DOMAINS = [
+      "axisbank.com",
+      "hdfcbank.com",
+      "icicibank.com",
+      "kotak.com",
+      "kotak811.com",
+      "sbi.co.in",
+      "sbicard.com",
+      "idfcfirstbank.com",
+      "federalbank.co.in",
+      "aubank.in",
+      "indusind.com",
+      "yesbank.in",
+      "rblbank.com",
+      "bobcard.co.in",
+      "bobfinancial.com",
+      "hsbc.co.in",
+      "sc.com",
+      "americanexpress.com",
+      "amexindia.com",
+      "citibank.co.in",
+      "bandhanbank.com",
+      "equitas.bank.in",
+      "ujjivansfb.in",
+      "bajajfinserv.in",
+      "tatacapital.com",
+      "hdfcergo.com",
+      "icicilombard.com",
+      "godigit.com",
+      "acko.com",
+      "zurichkotak.com",
+      "policybazaar.com",
+      "paisabazaar.com",
+      "bankbazaar.com",
+      "coverfox.com",
+      "insurancedekho.com",
+      "cardinsider.com",
+      "kredit.pe",
+      "kreditbee.in",
+      "moneyview.in",
+      "navi.com",
+      "groww.in",
+      "zerodha.com"
+    ];
+    BUILTIN_LINKS = {
+      axis: "https://sales.gromo.in/ac/CCiv1ofkx2",
+      axisbank: "https://sales.gromo.in/ac/CCiv1ofkx2",
+      axisbankcreditcard: "https://sales.gromo.in/ac/CCiv1ofkx2"
+    };
+    BUILTIN_CONTEXT = {
+      // the Axis link the owner pasted is a CREDIT CARD application; an Axis loan/account row must not use it
+      axis: /card|credit|cc[-_/]|apply/i,
+      axisbank: /card|credit|cc[-_/]|apply/i,
+      axisbankcreditcard: /card|credit|cc[-_/]|apply/i
+    };
+  }
+});
+
 // server/affiliate/merchantLinks.ts
 function dates(d) {
   const s = String(d || "");
@@ -32026,6 +32173,10 @@ function affiliateNetworkFor(domain) {
   const envNet = envNetworkFor(d);
   if (envNet) return envNet;
   if (AMAZON_DOMAINS.test(d)) return "amazon-associates";
+  try {
+    if (gromoLinkFor(d, d)) return "gromo";
+  } catch {
+  }
   if (cuelinksAllowList().has(d) || cuelinksWrapAll()) return "cuelinks";
   try {
     if (linkinrCampaignFor(`https://${d}/`)) return "linkinr";
@@ -32081,6 +32232,11 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
       return { trackingUrl: url, network: String(r.network || "direct"), matchedProfile: "affiliate_configs" };
     }
   } catch {
+  }
+  const gromoHint = (opts.companySlug || domain.split(".")[0] || "").trim();
+  const gromoLink = gromoLinkFor(gromoHint, domain, targetUrl) || gromoLinkFor(domain, domain, targetUrl);
+  if (gromoLink) {
+    return { trackingUrl: gromoClickUrl(gromoLink, gromoHint), network: "gromo", matchedProfile: "gromo_advisor" };
   }
   const amz = amazonAssociatesUrl(targetUrl);
   if (amz) return { trackingUrl: amz, network: "amazon-associates", matchedProfile: "amazon_associates" };
@@ -32202,6 +32358,7 @@ var init_deeplink = __esm({
     init_ekaro();
     init_logger();
     init_db();
+    init_gromo();
     init_merchantLinks();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
     CUELINKS_BASE_MERCHANTS = [
@@ -49489,6 +49646,22 @@ var init_routes = __esm({
       w_hotels_wikidata: "Wikidata (CC0)"
     };
     _lastEmergencyWarmAt = 0;
+    apiRouter.get("/affiliate/gromo-links", authMiddleware, requireAdmin, async (_req, res) => {
+      try {
+        const { gromoCoverage: gromoCoverage2, gromoLinkMap: gromoLinkMap2 } = await Promise.resolve().then(() => (init_gromo(), gromo_exports));
+        const { affiliateNetworkFor: affiliateNetworkFor2 } = await Promise.resolve().then(() => (init_deeplink(), deeplink_exports));
+        const links = gromoLinkMap2();
+        const sample2 = ["axisbank.com", "hdfcbank.com", "icicibank.com", "kotak.com", "sbicard.com", "bajajfinserv.in"];
+        res.json({
+          ok: true,
+          ...gromoCoverage2(),
+          links,
+          routing: sample2.map((d) => ({ domain: d, network: affiliateNetworkFor2(d) || "direct" }))
+        });
+      } catch (e2) {
+        res.status(500).json({ ok: false, error: e2?.message || "Could not read GroMo links" });
+      }
+    });
     apiRouter.get("/affiliate/app-campaigns", (_req, res) => {
       res.json({
         ok: true,
