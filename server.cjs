@@ -31533,6 +31533,7 @@ var init_ekaro = __esm({
 // server/affiliate/gromo.ts
 var gromo_exports = {};
 __export(gromo_exports, {
+  GROMO_VERTICALS: () => GROMO_VERTICALS,
   gromoAdvisorLink: () => gromoAdvisorLink,
   gromoClickUrl: () => gromoClickUrl,
   gromoCoverage: () => gromoCoverage,
@@ -31599,7 +31600,10 @@ function skippedDomain(domain) {
   if (!d) return false;
   return (process.env.GROMO_SKIP_DOMAINS || "").split(",").map((x) => x.trim().toLowerCase().replace(/^www\./, "")).filter(Boolean).some((skip) => d === skip || d.endsWith(`.${skip}`));
 }
-function gromoLinkFor(merchant, domain = "", _targetUrl = "") {
+function isGromoVertical(vertical) {
+  return GROMO_VERTICALS.includes(String(vertical || "").toLowerCase().replace(/[^a-z]/g, ""));
+}
+function gromoLinkFor(merchant, domain = "", _targetUrl = "", vertical = "") {
   const d = String(domain || "").toLowerCase().replace(/^www\./, "");
   if (skippedDomain(d)) return null;
   const map = gromoLinkMap();
@@ -31607,7 +31611,8 @@ function gromoLinkFor(merchant, domain = "", _targetUrl = "") {
     const hit = map[v];
     if (hit && isGromoUrl(hit)) return hit;
   }
-  if (isAggregatorDomain(d) || !isFinanceDomain(d)) return null;
+  const verticalOk = isGromoVertical(vertical);
+  if (isAggregatorDomain(d) || !isFinanceDomain(d) && !verticalOk) return null;
   return gromoAdvisorLink();
 }
 function isAggregatorDomain(domain) {
@@ -31634,7 +31639,7 @@ function gromoCoverage() {
     financeDomains: FINANCE_DOMAINS.length
   };
 }
-var FINANCE_DOMAINS, BUILTIN_ADVISOR_LINK, AGGREGATOR_DOMAINS;
+var FINANCE_DOMAINS, BUILTIN_ADVISOR_LINK, AGGREGATOR_DOMAINS, GROMO_VERTICALS;
 var init_gromo = __esm({
   "server/affiliate/gromo.ts"() {
     FINANCE_DOMAINS = [
@@ -31679,7 +31684,58 @@ var init_gromo = __esm({
       "moneyview.in",
       "navi.com",
       "groww.in",
-      "zerodha.com"
+      "zerodha.com",
+      // INSURANCE (owner 10 Nov: GroMo must cover insurance too - insurers, not the aggregators we exclude)
+      "starhealth.in",
+      "nivabupa.com",
+      "careinsurance.com",
+      "bajajallianz.com",
+      "tataaig.com",
+      "reliancegeneral.co.in",
+      "newindia.co.in",
+      "orientalinsurance.org.in",
+      "uiic.co.in",
+      "maxlifeinsurance.com",
+      "hdfclife.com",
+      "sbilife.co.in",
+      "iciciprulife.com",
+      "licindia.in",
+      "kotaklife.com",
+      "adityabirlacapital.com",
+      "cholainsurance.com",
+      "sbigeneral.in",
+      "futuregenerali.in",
+      "libertyinsurance.co.in",
+      "shriramgi.com",
+      // LENDERS / NBFC (loans)
+      "poonawallahousing.com",
+      "iifl.com",
+      "incredfinance.com",
+      "kissht.com",
+      "lendbox.in",
+      "prefrem.in",
+      "dmifinance.in",
+      "ramfincorp.com",
+      "fibe.in",
+      "creditmantri.com",
+      "paysense.in",
+      "stashfin.com",
+      "protium.co.in",
+      "ugrocapital.com",
+      "lendingkart.com",
+      "indifi.com",
+      // ACCOUNTS (neobanks / payments banks alongside the .bank.in rule)
+      "fi.money",
+      "jupiter.money",
+      "sliceit.com",
+      "cred.club",
+      "freo.money",
+      "airtelpayments.bank.in",
+      "paytmbank.in",
+      "indiapostbank.in",
+      "fino.bank.in",
+      "au.bank.in",
+      "dbs.com"
     ];
     BUILTIN_ADVISOR_LINK = "https://sales.gromo.in/ac/CCiv1ofkx2";
     AGGREGATOR_DOMAINS = [
@@ -31694,6 +31750,7 @@ var init_gromo = __esm({
       "getditto.com",
       "emergencypaisa.com"
     ];
+    GROMO_VERTICALS = ["creditcards", "creditcard", "account", "accounts", "banking", "savings", "insurance", "loans", "loan"];
   }
 });
 
@@ -32042,7 +32099,8 @@ function createMaskingPointer(destination, opts = {}) {
   } catch {
     return "";
   }
-  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {} }));
+  const vertical = String(opts.vertical || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 16);
+  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {}, ...vertical ? { v: vertical } : {} }));
   const sig = import_crypto23.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
@@ -32055,7 +32113,12 @@ function resolveMaskingPointer(token) {
   try {
     const j = JSON.parse(unb64url(payload));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
-    return { destination: String(j.d), offerId: j.o ? String(j.o) : void 0, trusted: j.t === 1 };
+    return {
+      destination: String(j.d),
+      offerId: j.o ? String(j.o) : void 0,
+      trusted: j.t === 1,
+      vertical: j.v ? String(j.v) : void 0
+    };
   } catch {
     return null;
   }
@@ -32254,7 +32317,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   } catch {
   }
   const gromoHint = (opts.companySlug || domain.split(".")[0] || "").trim();
-  const gromoLink = gromoLinkFor(gromoHint, domain, targetUrl) || gromoLinkFor(domain, domain, targetUrl);
+  const gromoLink = gromoLinkFor(gromoHint, domain, targetUrl, opts.vertical) || gromoLinkFor(domain, domain, targetUrl, opts.vertical);
   if (gromoLink) {
     return { trackingUrl: gromoClickUrl(gromoLink, gromoHint), network: "gromo", matchedProfile: "gromo_advisor" };
   }
@@ -48470,7 +48533,7 @@ function assistantExitUrl(o, travel) {
   const ownUrl = String(o?.sellerUrl || "");
   const ownDeep = ownUrl && isDeepOfferUrl(vertical, ownUrl) ? ownUrl : "";
   const rawDest = ownDeep || rebuilt || ownUrl || merchantSearchFallback(seller, title, vertical, ctx);
-  return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || "") }) : "";
+  return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || ""), vertical: String(o?.vertical || "") }) : "";
 }
 function offerToComparisonItem(o, reqTravel = {}) {
   const price2 = Number(
@@ -51467,7 +51530,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
           `<!doctype html><html><head><meta charset="utf-8"><title>Link not verified</title></head><body style="font-family:system-ui,sans-serif;text-align:center;padding-top:15vh;color:#0f172a"><h2 style="font-weight:700">This link couldn't be verified</h2><p style="color:#475569">For your safety we didn't open it (${check.reason}).</p><p><a href="/" style="color:#e11d48;font-weight:700">Search again on Try1Second</a></p></body></html>`
         );
       }
-      const dl = await buildSecureDeeplink(freshDestination);
+      const dl = await buildSecureDeeplink(freshDestination, { vertical: resolved.vertical });
       await recordPointerClick(freshDestination, resolved.offerId, dl.network);
       if (isInAppWebView(req.headers["user-agent"])) {
         res.redirect(302, dl.trackingUrl);

@@ -26,6 +26,18 @@ const FINANCE_DOMAINS = [
   'tatacapital.com', 'hdfcergo.com', 'icicilombard.com', 'godigit.com', 'acko.com', 'zurichkotak.com',
   'policybazaar.com', 'paisabazaar.com', 'bankbazaar.com', 'coverfox.com', 'insurancedekho.com',
   'cardinsider.com', 'kredit.pe', 'kreditbee.in', 'moneyview.in', 'navi.com', 'groww.in', 'zerodha.com',
+  // INSURANCE (owner 10 Nov: GroMo must cover insurance too - insurers, not the aggregators we exclude)
+  'starhealth.in', 'nivabupa.com', 'careinsurance.com', 'bajajallianz.com', 'tataaig.com', 'reliancegeneral.co.in',
+  'newindia.co.in', 'orientalinsurance.org.in', 'uiic.co.in', 'maxlifeinsurance.com', 'hdfclife.com',
+  'sbilife.co.in', 'iciciprulife.com', 'licindia.in', 'kotaklife.com', 'adityabirlacapital.com',
+  'cholainsurance.com', 'sbigeneral.in', 'futuregenerali.in', 'libertyinsurance.co.in', 'shriramgi.com',
+  // LENDERS / NBFC (loans)
+  'poonawallahousing.com', 'iifl.com', 'incredfinance.com', 'kissht.com', 'lendbox.in', 'prefrem.in',
+  'dmifinance.in', 'ramfincorp.com', 'fibe.in', 'creditmantri.com', 'paysense.in', 'stashfin.com',
+  'protium.co.in', 'ugrocapital.com', 'lendingkart.com', 'indifi.com',
+  // ACCOUNTS (neobanks / payments banks alongside the .bank.in rule)
+  'fi.money', 'jupiter.money', 'sliceit.com', 'cred.club', 'freo.money', 'airtelpayments.bank.in',
+  'paytmbank.in', 'indiapostbank.in', 'fino.bank.in', 'au.bank.in', 'dbs.com',
 ];
 
 /** The owner's own GroMo advisor link for the Axis Bank credit card (given 10 Nov). Env overrides it. */
@@ -137,7 +149,18 @@ function skippedDomain(domain: string): boolean {
     .some((skip) => d === skip || d.endsWith(`.${skip}`));
 }
 
-export function gromoLinkFor(merchant: string, domain = '', _targetUrl = ''): string | null {
+/**
+ * The four verticals the owner named on 10 Nov: "gromo ab credit card, account, insurance, loan inn sb mai
+ * add kro". Inside them the advisor link is the exit even when the seller host is unmapped, because GroMo
+ * carries those product families; outside them nothing changes.
+ */
+export const GROMO_VERTICALS = ['creditcards', 'creditcard', 'account', 'accounts', 'banking', 'savings', 'insurance', 'loans', 'loan'];
+
+function isGromoVertical(vertical: string): boolean {
+  return GROMO_VERTICALS.includes(String(vertical || '').toLowerCase().replace(/[^a-z]/g, ''));
+}
+
+export function gromoLinkFor(merchant: string, domain = '', _targetUrl = '', vertical = ''): string | null {
   const d = String(domain || '').toLowerCase().replace(/^www\./, '');
   // An issuer the owner pinned back to its own paying campaign is never taken by GroMo.
   if (skippedDomain(d)) return null;
@@ -147,8 +170,10 @@ export function gromoLinkFor(merchant: string, domain = '', _targetUrl = ''): st
     const hit = map[v];
     if (hit && isGromoUrl(hit)) return hit;
   }
-  // 2. the owner's advisor link, which covers every GroMo product, on finance-family domains only
-  if (isAggregatorDomain(d) || !isFinanceDomain(d)) return null;
+  // 2. the owner's advisor link, which covers every GroMo product: on finance-family domains, and in every
+  //    finance VERTICAL the owner named (a brand-new insurer/NBFC host is covered by the vertical itself).
+  const verticalOk = isGromoVertical(vertical);
+  if (isAggregatorDomain(d) || (!isFinanceDomain(d) && !verticalOk)) return null;
   return gromoAdvisorLink();
 }
 

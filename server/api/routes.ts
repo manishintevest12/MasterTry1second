@@ -1300,7 +1300,9 @@ function assistantExitUrl(o: any, travel: { date?: string; return?: string; city
   const ownUrl = String(o?.sellerUrl || '');
   const ownDeep = ownUrl && isDeepOfferUrl(vertical, ownUrl) ? ownUrl : '';
   const rawDest = ownDeep || rebuilt || ownUrl || merchantSearchFallback(seller, title, vertical, ctx);
-  return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || '') }) : '';
+  // The vertical rides the pointer so /api/out can route it honestly (GroMo for the four finance
+  // verticals the owner named, the merchant's own network everywhere else).
+  return rawDest ? createMaskingPointer(rawDest, { offerId: String(o?.id || ''), vertical: String(o?.vertical || '') }) : '';
 }
 
 export function offerToComparisonItem(o: any, reqTravel: { date?: string; return?: string; city?: string; route?: string } = {}) {
@@ -4194,7 +4196,7 @@ apiRouter.get('/out', async (req, res) => {
       `<p style="color:#475569">For your safety we didn't open it (${check.reason}).</p>` +
       `<p><a href="/" style="color:#e11d48;font-weight:700">Search again on Try1Second</a></p></body></html>`);
   }
-  const dl = await buildSecureDeeplink(freshDestination);
+  const dl = await buildSecureDeeplink(freshDestination, { vertical: resolved.vertical });
   await recordPointerClick(freshDestination, resolved.offerId, dl.network);
   // Monetizable exit (owner 23 Oct): real browsers land on the /redirect
   // interstitial (4s countdown + AdSense above the fold), then hop to the

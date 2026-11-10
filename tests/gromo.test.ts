@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gromoLinkFor, gromoClickUrl, isGromoUrl, isFinanceDomain, isAggregatorDomain, gromoCoverage, gromoAdvisorLink } from '../server/affiliate/gromo';
-import { buildSecureDeeplink, affiliateNetworkFor } from '../server/affiliate/deeplink';
+import { buildSecureDeeplink, affiliateNetworkFor, createMaskingPointer, resolveMaskingPointer } from '../server/affiliate/deeplink';
 
 /**
  * OWNER 10 Nov: "gromo ke saare products add kr do, wahi link jo diya tha - ussi mein mera id hint hai".
@@ -83,4 +83,48 @@ test('coverage surfaces the advisor link for the admin view', () => {
   const c = gromoCoverage();
   assert.equal(c.advisorLink, ADVISOR);
   assert.ok(c.financeDomains > 20);
+});
+
+/**
+ * OWNER 10 Nov: "gromo ab credit card, account, insurance, loan inn sb mai add kro" - GroMo must serve all
+ * four finance verticals, including a seller host nobody has mapped yet (a new insurer/NBFC).
+ */
+test('every one of the four finance verticals routes to the GroMo advisor link, even on an unmapped host', async () => {
+  for (const [url, vertical] of [
+    ['https://brand-new-insurer.example/health-plan', 'insurance'],
+    ['https://another-new-nbfc.example/personal-loan', 'loans'],
+    ['https://new-fintech.example/credit-card', 'creditcards'],
+    ['https://some-neobank.example/savings-account', 'account'],
+  ] as [string, string][]) {
+    const r = await buildSecureDeeplink(url, { vertical });
+    assert.equal(r.network, 'gromo', `${vertical} must exit through GroMo`);
+    assert.equal(r.trackingUrl, ADVISOR);
+  }
+});
+
+test('a travel or ecommerce vertical on the same host shape never gets the GroMo link', async () => {
+  for (const vertical of ['hotels', 'flights', 'bus', 'ecommerce', 'grocery', 'food', 'movies', 'cabs']) {
+    const r = await buildSecureDeeplink('https://www.makemytrip.com/hotels/', { vertical });
+    assert.notEqual(r.network, 'gromo', vertical);
+  }
+});
+
+test('an aggregator inside a finance vertical keeps its own network, not GroMo', async () => {
+  const r = await buildSecureDeeplink('https://www.policybazaar.com/health-insurance/', { vertical: 'insurance' });
+  assert.equal(r.network, 'cuelinks');
+});
+
+test('insurer, lender and neobank hosts are covered without the vertical hint', () => {
+  for (const d of ['starhealth.in', 'nivabupa.com', 'bajajallianz.com', 'tataaig.com', 'licindia.in', 'hdfclife.com',
+    'poonawallahousing.com', 'incredfinance.com', 'kissht.com', 'lendingkart.com', 'fi.money', 'jupiter.money',
+    'cred.club', 'sliceit.com']) {
+    assert.equal(gromoLinkFor(d, d), ADVISOR, d);
+  }
+});
+
+test('the click pointer carries the vertical so /api/out can route it', () => {
+  const token = createMaskingPointer('https://brand-new-insurer.example/plan', { offerId: 'x1', vertical: 'insurance' });
+  const back = resolveMaskingPointer(token.replace('/api/out?t=', ''));
+  assert.equal(back?.vertical, 'insurance');
+  assert.equal(back?.destination, 'https://brand-new-insurer.example/plan');
 });

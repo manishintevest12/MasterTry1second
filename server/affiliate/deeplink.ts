@@ -41,7 +41,7 @@ function secret(): string {
 function b64url(s: string): string { return Buffer.from(s, 'utf8').toString('base64url'); }
 function unb64url(s: string): string { return Buffer.from(s, 'base64url').toString('utf8'); }
 
-export function createMaskingPointer(destination: string, opts: { offerId?: string; trusted?: boolean } = {}): string {
+export function createMaskingPointer(destination: string, opts: { offerId?: string; trusted?: boolean; vertical?: string } = {}): string {
   const dest = String(destination || '').trim();
   // Never mint a pointer the click endpoint would refuse — a non-HTTP / malformed
   // destination yields '' so cards render without a dead-end link instead of
@@ -54,12 +54,16 @@ export function createMaskingPointer(destination: string, opts: { offerId?: stri
   // `t: 1` stamps trusted PROVENANCE (coupon/affiliate registry feed or admin partner):
   // click-time validation then permits merchant bridge pages that carry url= params
   // (e.g. a registry merchant whose landing page forwards to the vendor).
-  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2000), o: (opts.offerId || '').slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1000, ...(opts.trusted ? { t: 1 } : {}) }));
+  // `v` keeps the VERTICAL on the click. Owner 10 Nov: GroMo must serve credit cards, accounts, insurance and
+  // loans - and a finance row's seller can be a host we have never mapped (a new insurer, a new NBFC), so the
+  // vertical the user was actually browsing is the reliable signal at click time, not the domain alone.
+  const vertical = String(opts.vertical || '').toLowerCase().replace(/[^a-z]/g, '').slice(0, 16);
+  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2000), o: (opts.offerId || '').slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1000, ...(opts.trusted ? { t: 1 } : {}), ...(vertical ? { v: vertical } : {}) }));
   const sig = crypto.createHmac('sha256', secret()).update(payload).digest('base64url').slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
 
-export function resolveMaskingPointer(token: string): { destination: string; offerId?: string; trusted?: boolean } | null {
+export function resolveMaskingPointer(token: string): { destination: string; offerId?: string; trusted?: boolean; vertical?: string } | null {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ''));
   if (!m) return null;
   const [payload, sig] = [m[1], m[2]];
@@ -68,7 +72,12 @@ export function resolveMaskingPointer(token: string): { destination: string; off
   try {
     const j = JSON.parse(unb64url(payload));
     if (!j?.d || typeof j.d !== 'string' || Number(j.e) < Date.now()) return null;
-    return { destination: String(j.d), offerId: j.o ? String(j.o) : undefined, trusted: j.t === 1 };
+    return {
+      destination: String(j.d),
+      offerId: j.o ? String(j.o) : undefined,
+      trusted: j.t === 1,
+      vertical: j.v ? String(j.v) : undefined,
+    };
   } catch { return null; }
 }
 
@@ -428,7 +437,7 @@ export function looksAlreadyTracked(url: string): boolean {
   try { return ALREADY_TRACKED_HOSTS.test(new URL(url).hostname.toLowerCase()); } catch { return false; }
 }
 
-export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug?: string } = {}): Promise<SecureDeeplinkResult> { 
+export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug?: string; vertical?: string } = {}): Promise<SecureDeeplinkResult> { 
   // Already-tracked link: pass through untouched (never double-monetize).
   if (looksAlreadyTracked(targetUrl)) {
     return { trackingUrl: targetUrl, network: 'already_tracked', matchedProfile: 'already_tracked' };
@@ -471,7 +480,7 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   // application. Runs after the admin override (so a manual template still wins) and before every network
   // fallback, because a GroMo lead pays where an unapproved Cuelinks wrap pays nothing.
   const gromoHint = (opts.companySlug || domain.split('.')[0] || '').trim();
-  const gromoLink = gromoLinkFor(gromoHint, domain, targetUrl) || gromoLinkFor(domain, domain, targetUrl);
+  const gromoLink = gromoLinkFor(gromoHint, domain, targetUrl, opts.vertical) || gromoLinkFor(domain, domain, targetUrl, opts.vertical);
   if (gromoLink) {
     return { trackingUrl: gromoClickUrl(gromoLink, gromoHint), network: 'gromo', matchedProfile: 'gromo_advisor' };
   }
