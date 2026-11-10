@@ -924,6 +924,18 @@ function gateRowsForDate<T extends Record<string, any>>(
  * gets its rows, so web and app can never disagree again: no price, no card; wrong date, no card;
  * and "N sources verified" only counts shops whose row survives.
  */
+/**
+ * The partner row must survive EVERY exit from the search handler, including the early ones that return
+ * cached / last-known-good / last-chance rows without passing through finaliseLiveAnswer (owner 10 Nov:
+ * "gromo abhi v ni aa raha ... app and site dono pr"). Applied on every branch that ships results.
+ */
+function withPartnerRow(response: any, vertical: string): any {
+  try {
+    if (response && Array.isArray(response.results)) response.results = withGromoRow(response.results as any[], String(vertical));
+  } catch { /* a partner row must never break an answer */ }
+  return response;
+}
+
 function finaliseLiveAnswer(response: any, vertical: string, dates: any, query?: string): any {
   if (!response) return response;
   // OWNER 9 Nov: account TYPE must scope the feed (demat must not answer savings), and a film the site
@@ -1113,6 +1125,8 @@ apiRouter.post('/search', async (req, res) => {
       if (!finalGate.rows.length) (response as any).state = { ...((response as any).state || {}), pendingRefresh: true };
       response = reconcileResponseSources(response);
     }
+    // The shared finaliser is not on this path, so the advisor row is added here for the four finance verticals.
+    response = withPartnerRow(response, String(input.vertical));
   }
   if (!response) {
     const fallback = await lastChanceRows(input, 600);
@@ -1128,7 +1142,7 @@ apiRouter.post('/search', async (req, res) => {
       return res.json({
         ...fallback,
         // Owner 28 Oct (server-level, no app rebuild): bare flight rows trail.
-        results: orderFlightRowsLast(fallbackGate.rows, String(input.vertical)),
+        results: withGromoRow(orderFlightRowsLast(fallbackGate.rows, String(input.vertical)), String(input.vertical)),
         pendingRefresh: true,
         honestNotice: 'Showing our last verified prices while live sources keep scanning. They update here automatically.',
         latencyMs: Date.now() - searchStart,
@@ -1138,7 +1152,7 @@ apiRouter.post('/search', async (req, res) => {
     const lkgGateB = lkgTimeout ? gateRowsForDate(lkgTimeout.rows as any[], String(input.vertical), input.travelDates) : null;
     if (lkgTimeout && lkgGateB && lkgGateB.rows.length) {
       return res.json({
-        results: lkgGateB.rows,
+        results: withGromoRow(lkgGateB.rows, String(input.vertical)),
         ...lkgTimeout,
         pendingRefresh: true,
         honestNotice: 'Showing our last verified prices for this search while live sources keep scanning. They update here automatically.',

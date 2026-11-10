@@ -48572,6 +48572,13 @@ function gateRowsForDate(rows, vertical, dates2) {
     droppedOn: { ...g.droppedOn, ...priced.dropped ? { unpriced: priced.dropped } : {} }
   };
 }
+function withPartnerRow(response, vertical) {
+  try {
+    if (response && Array.isArray(response.results)) response.results = withGromoRow(response.results, String(vertical));
+  } catch {
+  }
+  return response;
+}
 function finaliseLiveAnswer(response, vertical, dates2, query) {
   if (!response) return response;
   if ((vertical === "account" || vertical === "banking") && query) {
@@ -49754,6 +49761,7 @@ var init_routes = __esm({
           if (!finalGate.rows.length) response.state = { ...response.state || {}, pendingRefresh: true };
           response = reconcileResponseSources(response);
         }
+        response = withPartnerRow(response, String(input.vertical));
       }
       if (!response) {
         const fallback = await lastChanceRows(input, 600);
@@ -49770,7 +49778,7 @@ var init_routes = __esm({
           return res.json({
             ...fallback,
             // Owner 28 Oct (server-level, no app rebuild): bare flight rows trail.
-            results: orderFlightRowsLast(fallbackGate.rows, String(input.vertical)),
+            results: withGromoRow(orderFlightRowsLast(fallbackGate.rows, String(input.vertical)), String(input.vertical)),
             pendingRefresh: true,
             honestNotice: "Showing our last verified prices while live sources keep scanning. They update here automatically.",
             latencyMs: Date.now() - searchStart
@@ -49780,7 +49788,7 @@ var init_routes = __esm({
         const lkgGateB = lkgTimeout ? gateRowsForDate(lkgTimeout.rows, String(input.vertical), input.travelDates) : null;
         if (lkgTimeout && lkgGateB && lkgGateB.rows.length) {
           return res.json({
-            results: lkgGateB.rows,
+            results: withGromoRow(lkgGateB.rows, String(input.vertical)),
             ...lkgTimeout,
             pendingRefresh: true,
             honestNotice: "Showing our last verified prices for this search while live sources keep scanning. They update here automatically.",

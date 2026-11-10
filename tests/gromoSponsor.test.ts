@@ -92,3 +92,15 @@ test('/api/search and /api/scrape/live both get the row through finaliseLiveAnsw
   assert.match(fn, /withGromoRow\(/, 'the shared finaliser injects it, so both endpoints inherit it');
   assert.ok(src.includes("import { withGromoRow } from '../marketing/financeSponsor';"), 'static import, no await in a sync finaliser');
 });
+
+test('every early exit of the search handler also ships the advisor row', async () => {
+  const src = readFileSync('server/api/routes.ts', 'utf8');
+  const start = src.indexOf("apiRouter.post('/search'");
+  const end = src.indexOf("apiRouter.post('/scrape/live'") > start ? src.indexOf("apiRouter.post('/scrape/live'") : src.length;
+  const handler = src.slice(start, end);
+  // Measured 10 Nov: creditcards and insurance answered through the cached / last-known-good branch and never
+  // reached finaliseLiveAnswer, so the row was missing on exactly the two verticals the owner named.
+  assert.match(handler, /withPartnerRow\(response, String\(input\.vertical\)\)/, 'main path');
+  assert.match(handler, /withGromoRow\(orderFlightRowsLast\(fallbackGate\.rows/, 'last-chance rows');
+  assert.match(handler, /withGromoRow\(lkgGateB\.rows/, 'last-known-good rows');
+});
