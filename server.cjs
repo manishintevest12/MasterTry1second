@@ -40237,6 +40237,8 @@ function cuelinksCid() {
   return fromEnv || "326794";
 }
 function appInstallExitEnabled(key) {
+  const blocked = APP_CAMPAIGNS.find((c) => c.key === key.toLowerCase() && c.installExitAllowed === false);
+  if (blocked) return false;
   const raw = (process.env.T1S_APP_INSTALL_EXITS || "").trim().toLowerCase();
   if (!raw || raw === "0" || raw === "off") return false;
   if (raw === "1" || raw === "on" || raw === "all") return true;
@@ -40264,7 +40266,8 @@ var init_appCampaigns = __esm({
         payout: 172.5,
         payoutCurrency: "INR",
         payoutType: "Per Acquisition",
-        storeUrl: "https://play.google.com/store/apps/details?id=com.easemytrip.android"
+        storeUrl: "https://play.google.com/store/apps/details?id=com.easemytrip.android",
+        installExitAllowed: false
       },
       {
         key: "jiomart",
@@ -47779,7 +47782,8 @@ var init_routes = __esm({
           domains: c.domains,
           store_url: c.storeUrl,
           install_link: appInstallTrackingUrl(c, "admin-preview"),
-          exit_live: appInstallExitEnabled(c.key)
+          exit_live: appInstallExitEnabled(c.key),
+          exit_blocked_by_owner: c.installExitAllowed === false
         }))
       });
     });

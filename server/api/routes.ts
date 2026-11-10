@@ -1582,6 +1582,7 @@ apiRouter.get('/affiliate/app-campaigns', (_req, res) => {
       store_url: c.storeUrl,
       install_link: appInstallTrackingUrl(c, 'admin-preview'),
       exit_live: appInstallExitEnabled(c.key),
+      exit_blocked_by_owner: c.installExitAllowed === false,
     })),
   });
 });

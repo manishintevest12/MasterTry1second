@@ -26,13 +26,13 @@ test('tracked install link keeps cid + source=api + the store url, and carries o
 });
 
 test('app-install exits are opt-in, Android only, and never touch the website exit', () => {
-  const dest = 'https://www.easemytrip.com/hotels/';
+  const dest = 'https://www.jiomart.com/groceries';
   delete process.env.T1S_APP_INSTALL_EXITS;
-  assert.equal(appInstallExitEnabled('easemytrip'), false);
+  assert.equal(appInstallExitEnabled('jiomart'), false);
   assert.equal(appInstallExit(dest, { isAndroid: true }), null, 'off by default');
-  process.env.T1S_APP_INSTALL_EXITS = 'easemytrip';
-  assert.equal(appInstallExitEnabled('easemytrip'), true);
-  assert.equal(appInstallExitEnabled('jiomart'), false, 'per-merchant, not global');
+  process.env.T1S_APP_INSTALL_EXITS = 'jiomart';
+  assert.equal(appInstallExitEnabled('jiomart'), true);
+  assert.equal(appInstallExitEnabled('easemytrip'), false, 'EMT is owner-blocked, per-merchant only');
   assert.ok(appInstallExit(dest, { isAndroid: true }), 'android gets the install link when enabled');
   assert.equal(appInstallExit(dest, { isAndroid: false }), null, 'desktop keeps the merchant site');
   delete process.env.T1S_APP_INSTALL_EXITS;
@@ -49,8 +49,26 @@ test('the Flutter app counts as Android even though its UA is Dart/... ', async 
   assert.equal(appLikeAndroid('Dart/3.5 (dart:io)'), true, 'app requests must count');
   assert.equal(appLikeAndroid('Try1Second/1.8.79'), true);
   assert.equal(appLikeAndroid('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605'), false);
-  process.env.T1S_APP_INSTALL_EXITS = 'easemytrip';
-  assert.ok(appInstallExitForUserAgent('Dart/3.5 (dart:io)', 'https://www.easemytrip.com/hotels/'));
-  assert.equal(appInstallExitForUserAgent('Mozilla/5.0 (Windows NT 10.0) Chrome/120', 'https://www.easemytrip.com/hotels/'), null);
+  process.env.T1S_APP_INSTALL_EXITS = 'jiomart';
+  assert.ok(appInstallExitForUserAgent('Dart/3.5 (dart:io)', 'https://www.jiomart.com/groceries'));
+  assert.equal(appInstallExitForUserAgent('Mozilla/5.0 (Windows NT 10.0) Chrome/120', 'https://www.jiomart.com/groceries'), null);
   delete process.env.T1S_APP_INSTALL_EXITS;
+});
+
+test("owner 10 Nov: EaseMyTrip keeps its deeplink - the install link is never an exit for it", async () => {
+  const { buildSecureDeeplink } = await import('../server/affiliate/deeplink');
+  const dest = 'https://www.easemytrip.com/hotels/';
+  // even when the env tries to switch every campaign on
+  for (const flag of ['easemytrip', 'all', 'on']) {
+    process.env.T1S_APP_INSTALL_EXITS = flag;
+    assert.equal(appInstallExitEnabled('easemytrip'), false, `flag "${flag}" must not enable EMT installs`);
+    assert.equal(appInstallExit(dest, { isAndroid: true }), null, 'no install redirect for EMT, ever');
+  }
+  delete process.env.T1S_APP_INSTALL_EXITS;
+  // and the merchant exit itself still carries the exact deep path
+  const r: any = await buildSecureDeeplink(dest);
+  assert.ok(String(r.trackingUrl).includes(encodeURIComponent(dest)), 'EMT deep link must survive');
+  // the campaign stays visible for reporting only
+  const c = APP_CAMPAIGNS.find((x) => x.key === 'easemytrip')!;
+  assert.equal(c.installExitAllowed, false);
 });

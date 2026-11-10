@@ -33,6 +33,12 @@ export interface AppCampaign {
   payoutType: string;
   /** Store listing the campaign points at. */
   storeUrl: string;
+  /**
+   * Owner 10 Nov 14:11: "ni emt deeplink rkho install wala incude mt kro". EaseMyTrip must always exit to the
+   * merchant with its own deep product path; the install campaign may stay visible for reporting but its link
+   * must never be used for an exit, even if T1S_APP_INSTALL_EXITS names it (or is set to 'all').
+   */
+  installExitAllowed?: boolean;
 }
 
 export const APP_CAMPAIGNS: AppCampaign[] = [
@@ -46,6 +52,7 @@ export const APP_CAMPAIGNS: AppCampaign[] = [
     payoutCurrency: 'INR',
     payoutType: 'Per Acquisition',
     storeUrl: 'https://play.google.com/store/apps/details?id=com.easemytrip.android',
+    installExitAllowed: false,
   },
   {
     key: 'jiomart',
@@ -67,6 +74,9 @@ function cuelinksCid(): string {
 
 /** True when the owner has switched app-install exits on for this merchant. */
 export function appInstallExitEnabled(key: string): boolean {
+  // A campaign the owner has ruled out can never be switched on by an env value.
+  const blocked = APP_CAMPAIGNS.find((c) => c.key === key.toLowerCase() && c.installExitAllowed === false);
+  if (blocked) return false;
   const raw = (process.env.T1S_APP_INSTALL_EXITS || '').trim().toLowerCase();
   if (!raw || raw === '0' || raw === 'off') return false;
   if (raw === '1' || raw === 'on' || raw === 'all') return true;
