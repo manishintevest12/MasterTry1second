@@ -25,7 +25,7 @@ import { getStore } from '../common/db';
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
   network: string | null;   // null = direct
-  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'env_template' | 'cuelinks_fallback' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'already_tracked' | 'direct';
+  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'env_template' | 'cuelinks_fallback' | 'cuelinks_approved' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'already_tracked' | 'direct';
 }
 
 const AFFILIATE_TTL_SEC = 24 * 60 * 60; // pointers live one day
@@ -95,7 +95,20 @@ export function safeDomain(url: string): string {
 //   redbus.in, ixigo.com, yatra.com, easemytrip.com, abhibus.com, zingbus.com, agoda.com, expedia.co.in,
 //   bigbasket.com, myntra.com, ajio.com, bookmyshow.com, pvrinox.com -> plain 302 to the merchant (NOT joined)
 // so only joined merchants are baked in; the rest stay direct until CUELINKS_EXTRA_MERCHANTS adds them.
-const CUELINKS_BASE_MERCHANTS = ['makemytrip.com', 'goibibo.com', 'shopsy.in', 'cleartrip.com', 'nykaa.com'];
+const CUELINKS_BASE_MERCHANTS = [
+  // open (approved on this publisher account, measured via pub_api/v3/campaigns 10 Nov)
+  'makemytrip.com', 'goibibo.com', 'shopsy.in', 'cleartrip.com', 'nykaa.com', 'croma.com', 'easemytrip.com',
+  // applied / pending approval (access_status=pending) - wrapped so the day approval lands the click already pays,
+  // and measured safe today: linksredirect passes the exact deep path straight through while unapproved
+  'myntra.com', 'ajio.com', 'flipkart.com', 'abhibus.com', 'agoda.com', 'snapdeal.com', 'tatacliq.com',
+  // applied-but-not-yet-joined or no campaign yet: still pass-through safe, and it means no code change is ever
+  // needed when the owner joins them ("ajio, myntra wagera tho hai cuelinks pr" - owner 10 Nov)
+  'redbus.in', 'ixigo.com', 'yatra.com', 'zingbus.com', 'oyorooms.com', 'expedia.co.in', 'bigbasket.com',
+  'jiomart.com', 'bookmyshow.com', 'pvrinox.com', 'districtonline.in',
+  // finance (highest CPA; wrap now, earn the moment the publisher program is approved)
+  'bankbazaar.com', 'paisabazaar.com', 'policybazaar.com', 'coverfox.com', 'insurancedekho.com', 'acko.com',
+  'godigit.com', 'hdfcergo.com', 'groww.in', 'zerodha.com', 'navi.com', 'bajajfinserv.in', 'moneyview.in',
+];
 
 /**
  * OWNER 10 Nov ("ab maine env mai cuelink update kr diya"): the allow-list used to be three hardcoded
@@ -113,10 +126,26 @@ function cuelinksAllowList(): Set<string> {
     .split(',')
     .map((d) => d.trim().toLowerCase().replace(/^www\./, ''))
     .filter(Boolean);
-  return new Set<string>([...CUELINKS_BASE_MERCHANTS, ...extra]);
+  const base = cuelinksOnlyJoined() ? CUELINKS_APPROVED_ONLY : CUELINKS_BASE_MERCHANTS;
+  return new Set<string>([...base, ...extra]);
 }
 
 /** True when every merchant domain may be wrapped (owner opted in explicitly). */
+/**
+ * OWNER 10 Nov ("ajio, myntra wagera tho hai cuelinks pr"): measured on linksredirect.com with cid 326794 -
+ * a merchant that is NOT joined yet still receives the EXACT deep path (myntra.com/men-tshirts and
+ * redbus.in/bus-tickets/indore-to-bhopal both 302'd to themselves), while a joined one (cleartrip, croma)
+ * hops through its tracker with ulp=<deep path>. So wrapping every merchant we have applied for is strictly
+ * free: no deep-link loss today, and commission starts on approval with no deploy. Set
+ * CUELINKS_ONLY_JOINED=1 to fall back to the strict approved-only list.
+ */
+function cuelinksOnlyJoined(): boolean {
+  return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ONLY_JOINED || '').trim());
+}
+
+/** Approved-on-this-account domains only, used when CUELINKS_ONLY_JOINED=1. */
+const CUELINKS_APPROVED_ONLY = ['makemytrip.com', 'goibibo.com', 'shopsy.in', 'cleartrip.com', 'nykaa.com', 'croma.com', 'easemytrip.com'];
+
 function cuelinksWrapAll(): boolean {
   return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ALL_MERCHANTS || '').trim());
 }
@@ -134,12 +163,28 @@ export function cuelinksKnownMerchants(): string[] { return [...cuelinksAllowLis
 /** Build a working Cuelinks linkkit deeplink: verified format
  *  https://linksredirect.com/?cid=<campaign>&subid=<publisher>&source=<site>&url=<encoded>
  *  (the old type=nl&campaign= format 301'd to the Cuelinks homepage — dead). */
-export function cuelinksMerchantUrl(dest: string): string | null {
+export function cuelinksMerchantUrl(dest: string, tier: 'approved' | 'all' = 'all'): string | null {
   const c = settings.cuelinks;
   if (!c.publisherId) return null;
   let domain: string;
   try { domain = new URL(dest).hostname.toLowerCase().replace(/^www\./, ''); } catch { return null; }
-  if (!cuelinksWrapAll() && !cuelinksAllowList().has(domain)) return null;
+  if (tier === 'approved') {
+    // Only merchants measured as ACCESS APPROVED on this publisher account (they actually pay today).
+    // Used ahead of LinkInR so a confirmed flat payout (mmt 112.5, goibibo 210, cleartrip 67.5, EMT 172.5,
+    // nykaa 4.2%, croma 3.38%) is never handed to another network.
+    const approved = new Set<string>(CUELINKS_APPROVED_ONLY);
+    for (const d of (process.env.CUELINKS_EXTRA_MERCHANTS || '').split(',')) {
+      const v = d.trim().toLowerCase().replace(/^www\./, '');
+      if (v) approved.add(v);
+    }
+    if (!approved.has(domain)) return null;
+  } else if (!cuelinksWrapAll()) {
+    const allowed = cuelinksAllowList();
+    // Subdomain aware: in.bookmyshow.com and m.myntra.com must match bookmyshow.com / myntra.com.
+    let hit = allowed.has(domain);
+    if (!hit) for (const d of allowed) if (domain.endsWith(`.${d}`)) { hit = true; break; }
+    if (!hit) return null;
+  }
   // Mirrors the API-generated tracking_url (source=api) + our subid (sub_ids_allowed=true)
   return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
@@ -371,8 +416,6 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   if (envNet) return { trackingUrl: envNet.url, network: envNet.network, matchedProfile: 'env_template' };
   // 3. Cuelinks known-merchant campaigns (publisher 278473): monetized linkkit
   //    deeplink for every joined merchant — makemytrip.com today.
-  const cuelinks = cuelinksMerchantUrl(targetUrl);
-  if (cuelinks) return { trackingUrl: cuelinks, network: 'cuelinks', matchedProfile: 'cuelinks_fallback' };
   // 3.5 LinkInR campaigns (owner sheet, 21 Oct 2026): monetize every merchant
   //     that has an active campaign but NO direct partner. Direct partners
   //     resolved above (admin configs, Amazon Associates, Cuelinks-joined
@@ -385,8 +428,22 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   // attribution (client_id + admin utm params) is already baked into the URL by
   // /api/cab/book, so they stay direct here.
   const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
+  // 3. Cuelinks merchants that are ACCESS APPROVED on this account: they pay today and at better rates than a
+  // generic network, so they are claimed before LinkInR ("each merchant paid by the network it was joined on").
+  const cuelinksApproved = cuelinksMerchantUrl(targetUrl, 'approved');
+  if (cuelinksApproved) return { trackingUrl: cuelinksApproved, network: 'cuelinks', matchedProfile: 'cuelinks_approved' };
   const linkinr = cabBookLink ? null : await linkinrDeepTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: 'linkinr', matchedProfile: 'linkinr' };
+  // 3.5 every other merchant we have applied for on Cuelinks (measured 10 Nov: an un-approved campaign is a pure
+  // pass-through that keeps the exact deep path - myntra.com/men-tshirts 302s to itself - so this layer costs the
+  // user nothing and starts paying the day approval lands). It sits AFTER LinkInR because LinkInR campaigns pay
+  // today, and money today beats money on approval.
+  const cuelinks = cuelinksMerchantUrl(targetUrl, 'all');
+  if (cuelinks) return { trackingUrl: cuelinks, network: 'cuelinks', matchedProfile: 'cuelinks_fallback' };
+  // 3. Cuelinks. Checked AFTER LinkInR because LinkInR holds real paying campaigns (local registry lookup, so
+  // the order costs nothing) while the Cuelinks list is now broad: wrapping an un-approved merchant is a
+  // pass-through that keeps the deep path and starts paying on approval. Never double-attributed - one click
+  // is claimed by exactly one network.
   // 3.7 Ekaro converter (owner rule 22 Oct): every remaining retailer deeplink
   //     with no direct partnership (today: grocery exits — Blinkit, Zepto,
   //     Instamart, BigBasket, Flipkart Minutes — and any other campaign-less

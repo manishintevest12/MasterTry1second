@@ -88,3 +88,22 @@ test('every seller a page names is a real source in the codebase', async () => {
   const named = ['redbus', 'abhibus', 'zingbus', 'makemytrip', 'goibibo', 'yatra', 'cleartrip', 'aertrip', 'oyo', 'agoda', 'booking', 'easemytrip', 'kiwi', 'gotogate', 'flightnetwork', 'budgetair', 'blinkit', 'zepto', 'bigbasket', 'bookmyshow', 'ticketnew', 'district', 'indigo', 'akasa', 'ixigo'];
   for (const n of named) assert.ok(code.includes(n), `${n} is named on a page but not a source in server/`);
 });
+
+test('movie city pages carry city-specific substance instead of the shared template (report page 2)', async () => {
+  const { resolveSeoPage } = await import('../server/seo/data');
+  const { MOVIE_CITY_CONTENT } = await import('../server/seo/movieCities');
+  const b = resolveSeoPage('/movies/bengaluru') as any;
+  const n = resolveSeoPage('/movies/noida') as any;
+  assert.ok(b && n, 'both city pages resolve');
+  assert.notEqual(b.title, n.title, 'titles must differ per city');
+  assert.ok(/Kannada/.test(b.intro.join(' ')), 'Bengaluru page names its language market');
+  assert.ok(!/Kannada/.test(n.intro.join(' ')), 'Noida page must not borrow Bengaluru copy');
+  assert.ok(b.faqs.length >= 4, 'movie city pages answer real questions');
+  // every city we claim facts for must stay a real city we generate
+  for (const slug of Object.keys(MOVIE_CITY_CONTENT)) {
+    assert.ok(resolveSeoPage(`/movies/${slug}`), `${slug} must have a live page`);
+  }
+  // hotels must be untouched by the movie enrichment
+  const h = resolveSeoPage('/hotels/bengaluru') as any;
+  assert.ok(h.title.includes('Hotels in Bengaluru'), 'hotel city title unchanged');
+});

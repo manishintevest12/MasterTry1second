@@ -17,6 +17,7 @@ export const SEO_HOST = 'https://www.try1second.com';
 
 import { GUIDE_SLUGS } from './guides';
 import { ANSWER_STATES } from './answerStates';
+import { MOVIE_CITY_CONTENT } from './movieCities';
 
 export interface SeoFaq { q: string; a: string }
 export interface SeoPage {
@@ -645,21 +646,48 @@ export function resolveSeoPage(path: string): SeoPage | null {
       hotels: 'hotel rates', cabs: 'cab fares', grocery: 'grocery prices', food: 'food delivery prices', movies: 'movie ticket prices',
     };
     const noun = nounMap[head] || vmeta.label.toLowerCase();
+    // OWNER 10 Nov (report page 2): the movies cluster is our nearest page-1 win, and its city pages were a
+    // template with the city name swapped in - the classic thin-content shape. A city we hold real facts for
+    // gets that substance; every other city keeps the honest generic copy.
+    const movie = head === 'movies' ? MOVIE_CITY_CONTENT[tail] : undefined;
+    const movieIntro = movie
+      ? [
+          `${c} cinema listings sell the same showtime on more than one platform, and each platform adds its own convenience fee on top of the ticket. This page compares those prices for ${c} per show, so the cheapest seat is visible before you pay.`,
+          `Multiplexes in ${c} routinely screen ${movie.languages.join(', ')} releases, and each language is priced as a separate product. ${movie.market}`,
+          `Prices in ${c} move hour to hour. We show what each source reports right now with direct links, so the deal you see is the deal you get.`,
+        ]
+      : [
+          `This page compares live ${noun} for ${c}. One search asks every major provider serving the city at once, and the results land in a single lowest-first list.`,
+          `Prices in ${c} move hour to hour. We show what each source reports right now with direct links, so the deal you see is the deal you get.`,
+          `${cityList()} and 30+ other cities are covered the same way - change city anytime from inside the app.`,
+        ];
+    const movieFaqs = movie
+      ? [
+          { q: `Which languages can I book in ${c} cinemas?`, a: `Multiplexes in ${c} routinely screen ${movie.languages.join(', ')} releases. Each language version is priced separately, so compare the exact language show you want.` },
+          { q: `Why is the same film priced differently across ${c} cinemas?`, a: movie.market },
+          { q: `What should I check before paying for a ticket in ${c}?`, a: movie.checks.join(' ') },
+          { q: `How do you get ${c} prices?`, a: `Live queries to every booking platform that serves ${c} at search time - no stale listings, no manual uploads.` },
+        ]
+      : [
+          { q: `How do you get ${c} prices?`, a: `Live queries to every provider that serves ${c} at search time - no stale listings, no manual uploads.` },
+          { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` },
+        ];
+
     const others = CITIES.filter((x) => x.slug !== tail).slice(0, 6);
     return {
       path: clean,
-      title: `${vmeta.label} in ${c} — Compare Live Prices | Try1Second`,
-      description: `Compare live ${noun} in ${c} across every major provider in one second. All of ${c}\u2019s prices side by side, lowest first.`,
-      h1: `${vmeta.label} in ${c} — Live Price Comparison`,
-      intro: [
-        `This page compares live ${noun} for ${c}. One search asks every major provider serving the city at once, and the results land in a single lowest-first list.`,
-        `Prices in ${c} move hour to hour. We show what each source reports right now with direct links, so the deal you see is the deal you get.`,
-        `${cityList()} and 30+ other cities are covered the same way — change city anytime from inside the app.`,
-      ],
-      faqs: [
-        { q: `How do you get ${c} prices?`, a: `Live queries to every provider that serves ${c} at search time — no stale listings, no manual uploads.` },
-        { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` },
-      ],
+      title: head === 'movies' && movie
+        ? `Movie Ticket Prices in ${c} \u2014 Compare Every Platform | Try1Second`
+        : `${vmeta.label} in ${c} \u2014 Compare Live Prices | Try1Second`,
+      description: head === 'movies' && movie
+        ? `Compare movie ticket prices in ${c} across every booking platform, per show. Cinemas screening ${movie.languages.slice(0, 3).join(', ')} releases, seat classes and fees compared live.`
+        : `Compare live ${noun} in ${c} across every major provider in one second. All of ${c}\u2019s prices side by side, lowest first.`,
+      h1: head === 'movies' && movie
+        ? `Movie Ticket Price Comparison in ${c}`
+        : `${vmeta.label} in ${c} \u2014 Live Price Comparison`,
+      intro: movieIntro,
+      ...(movie ? { body: [`Before you pay in ${c}: ${movie.checks.join(' ')}`] } : {}),
+      faqs: movieFaqs,
       breadcrumbs: [{ name: 'Home', path: '/' }, { name: vmeta.label, path: `/${head}` }, { name: c, path: clean }],
       links: [
         { label: `${vmeta.label} home`, href: `/${head}` },

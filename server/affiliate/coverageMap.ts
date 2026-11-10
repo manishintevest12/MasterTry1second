@@ -89,14 +89,16 @@ export async function resolveEffective(rows: { slug: string; company_domain: str
     if (AMAZON_DOMAINS.test(domain) && amzTag) {
       return { slug: r.slug, effective_source: 'amazon_associates' as CoverageSource, effective_id_masked: maskId(amzTag), effective_label: 'Amazon Associates tag' };
     }
+    // A merchant the owner marked monetization='adsense' has no affiliate program at all, so it must be reported
+    // as AdSense before any network is credited (owner rule: never claim a partner pays when it does not).
+    if (String(r.monetization || '').toLowerCase() === 'adsense') {
+      return { slug: r.slug, effective_source: 'adsense' as CoverageSource, effective_id_masked: '', effective_label: 'AdSense (no affiliate program)' };
+    }
     if (cuelinksOn && cuelinksPub && (cueSet.size === 0 || cueSet.has(domain))) {
       return { slug: r.slug, effective_source: 'cuelinks' as CoverageSource, effective_id_masked: maskId(cuelinksPub), effective_label: 'Cuelinks publisher' };
     }
     if (linkinrOn && linkinrDomains.has(domain)) {
       return { slug: r.slug, effective_source: 'linkinr' as CoverageSource, effective_id_masked: maskId(linkinrDomains.get(domain) || ''), effective_label: `LinkInR: ${linkinrDomains.get(domain)}` };
-    }
-    if (String(r.monetization || '').toLowerCase() === 'adsense') {
-      return { slug: r.slug, effective_source: 'adsense' as CoverageSource, effective_id_masked: '', effective_label: 'AdSense (no affiliate program)' };
     }
     if (ekaroOn) {
       return { slug: r.slug, effective_source: 'ekaro' as CoverageSource, effective_id_masked: '', effective_label: 'Ekaro attempt at click' };

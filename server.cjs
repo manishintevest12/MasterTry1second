@@ -31724,7 +31724,11 @@ function safeDomain(url) {
 }
 function cuelinksAllowList() {
   const extra = (process.env.CUELINKS_EXTRA_MERCHANTS || "").split(",").map((d) => d.trim().toLowerCase().replace(/^www\./, "")).filter(Boolean);
-  return /* @__PURE__ */ new Set([...CUELINKS_BASE_MERCHANTS, ...extra]);
+  const base = cuelinksOnlyJoined() ? CUELINKS_APPROVED_ONLY : CUELINKS_BASE_MERCHANTS;
+  return /* @__PURE__ */ new Set([...base, ...extra]);
+}
+function cuelinksOnlyJoined() {
+  return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ONLY_JOINED || "").trim());
 }
 function cuelinksWrapAll() {
   return /^(1|true|yes|on)$/i.test((process.env.CUELINKS_ALL_MERCHANTS || "").trim());
@@ -31732,7 +31736,7 @@ function cuelinksWrapAll() {
 function cuelinksKnownMerchants() {
   return [...cuelinksAllowList()];
 }
-function cuelinksMerchantUrl(dest) {
+function cuelinksMerchantUrl(dest, tier = "all") {
   const c = settings.cuelinks;
   if (!c.publisherId) return null;
   let domain;
@@ -31741,7 +31745,24 @@ function cuelinksMerchantUrl(dest) {
   } catch {
     return null;
   }
-  if (!cuelinksWrapAll() && !cuelinksAllowList().has(domain)) return null;
+  if (tier === "approved") {
+    const approved = new Set(CUELINKS_APPROVED_ONLY);
+    for (const d of (process.env.CUELINKS_EXTRA_MERCHANTS || "").split(",")) {
+      const v = d.trim().toLowerCase().replace(/^www\./, "");
+      if (v) approved.add(v);
+    }
+    if (!approved.has(domain)) return null;
+  } else if (!cuelinksWrapAll()) {
+    const allowed = cuelinksAllowList();
+    let hit = allowed.has(domain);
+    if (!hit) {
+      for (const d of allowed) if (domain.endsWith(`.${d}`)) {
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) return null;
+  }
   return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
 function domainMatches(domain, listed) {
@@ -31874,11 +31895,13 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   }
   const envNet = envTemplateNetworkFor(domain, targetUrl);
   if (envNet) return { trackingUrl: envNet.url, network: envNet.network, matchedProfile: "env_template" };
-  const cuelinks = cuelinksMerchantUrl(targetUrl);
-  if (cuelinks) return { trackingUrl: cuelinks, network: "cuelinks", matchedProfile: "cuelinks_fallback" };
   const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
+  const cuelinksApproved = cuelinksMerchantUrl(targetUrl, "approved");
+  if (cuelinksApproved) return { trackingUrl: cuelinksApproved, network: "cuelinks", matchedProfile: "cuelinks_approved" };
   const linkinr = cabBookLink ? null : await linkinrDeepTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: "linkinr", matchedProfile: "linkinr" };
+  const cuelinks = cuelinksMerchantUrl(targetUrl, "all");
+  if (cuelinks) return { trackingUrl: cuelinks, network: "cuelinks", matchedProfile: "cuelinks_fallback" };
   if (!cabBookLink) {
     const ekaro = await ekaroTrackingUrl(targetUrl);
     if (ekaro) return { trackingUrl: ekaro, network: "ekaro", matchedProfile: "ekaro_converter" };
@@ -31962,7 +31985,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   }
   return "";
 }
-var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_MERCHANTS, CJ_EVERGREEN, ENV_NETWORKS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
+var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_APPROVED_ONLY, CUELINKS_MERCHANTS, CJ_EVERGREEN, ENV_NETWORKS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
@@ -31975,7 +31998,53 @@ var init_deeplink = __esm({
     init_db();
     init_merchantLinks();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
-    CUELINKS_BASE_MERCHANTS = ["makemytrip.com", "goibibo.com", "shopsy.in", "cleartrip.com", "nykaa.com"];
+    CUELINKS_BASE_MERCHANTS = [
+      // open (approved on this publisher account, measured via pub_api/v3/campaigns 10 Nov)
+      "makemytrip.com",
+      "goibibo.com",
+      "shopsy.in",
+      "cleartrip.com",
+      "nykaa.com",
+      "croma.com",
+      "easemytrip.com",
+      // applied / pending approval (access_status=pending) - wrapped so the day approval lands the click already pays,
+      // and measured safe today: linksredirect passes the exact deep path straight through while unapproved
+      "myntra.com",
+      "ajio.com",
+      "flipkart.com",
+      "abhibus.com",
+      "agoda.com",
+      "snapdeal.com",
+      "tatacliq.com",
+      // applied-but-not-yet-joined or no campaign yet: still pass-through safe, and it means no code change is ever
+      // needed when the owner joins them ("ajio, myntra wagera tho hai cuelinks pr" - owner 10 Nov)
+      "redbus.in",
+      "ixigo.com",
+      "yatra.com",
+      "zingbus.com",
+      "oyorooms.com",
+      "expedia.co.in",
+      "bigbasket.com",
+      "jiomart.com",
+      "bookmyshow.com",
+      "pvrinox.com",
+      "districtonline.in",
+      // finance (highest CPA; wrap now, earn the moment the publisher program is approved)
+      "bankbazaar.com",
+      "paisabazaar.com",
+      "policybazaar.com",
+      "coverfox.com",
+      "insurancedekho.com",
+      "acko.com",
+      "godigit.com",
+      "hdfcergo.com",
+      "groww.in",
+      "zerodha.com",
+      "navi.com",
+      "bajajfinserv.in",
+      "moneyview.in"
+    ];
+    CUELINKS_APPROVED_ONLY = ["makemytrip.com", "goibibo.com", "shopsy.in", "cleartrip.com", "nykaa.com", "croma.com", "easemytrip.com"];
     CUELINKS_MERCHANTS = new Set(CUELINKS_BASE_MERCHANTS);
     CJ_EVERGREEN = {
       "booking.com": "https://www.dpbolvw.net/click-101903513-17293139?url={DESTINATION}"
@@ -51045,14 +51114,14 @@ async function resolveEffective(rows) {
     if (AMAZON_DOMAINS2.test(domain) && amzTag) {
       return { slug: r.slug, effective_source: "amazon_associates", effective_id_masked: maskId(amzTag), effective_label: "Amazon Associates tag" };
     }
+    if (String(r.monetization || "").toLowerCase() === "adsense") {
+      return { slug: r.slug, effective_source: "adsense", effective_id_masked: "", effective_label: "AdSense (no affiliate program)" };
+    }
     if (cuelinksOn && cuelinksPub && (cueSet.size === 0 || cueSet.has(domain))) {
       return { slug: r.slug, effective_source: "cuelinks", effective_id_masked: maskId(cuelinksPub), effective_label: "Cuelinks publisher" };
     }
     if (linkinrOn && linkinrDomains.has(domain)) {
       return { slug: r.slug, effective_source: "linkinr", effective_id_masked: maskId(linkinrDomains.get(domain) || ""), effective_label: `LinkInR: ${linkinrDomains.get(domain)}` };
-    }
-    if (String(r.monetization || "").toLowerCase() === "adsense") {
-      return { slug: r.slug, effective_source: "adsense", effective_id_masked: "", effective_label: "AdSense (no affiliate program)" };
     }
     if (ekaroOn) {
       return { slug: r.slug, effective_source: "ekaro", effective_id_masked: "", effective_label: "Ekaro attempt at click" };
@@ -54923,6 +54992,123 @@ var init_answerStates = __esm({
   }
 });
 
+// server/seo/movieCities.ts
+var MOVIE_CITY_CONTENT;
+var init_movieCities = __esm({
+  "server/seo/movieCities.ts"() {
+    MOVIE_CITY_CONTENT = {
+      bengaluru: {
+        languages: ["Kannada", "English", "Hindi", "Tamil", "Telugu"],
+        market: "Bengaluru screens more languages in one week than most Indian cities, so the same multiplex runs a Kannada release, an English title and a Hindi or Telugu film on adjacent screens, each priced separately by language and screen.",
+        checks: [
+          "A Kannada release and its Hindi version can run at different prices in the same building, so compare the exact language show.",
+          "Screens in the city centre and on the Outer Ring Road price the same film differently, so compare the cinema rather than only the showtime.",
+          "Late-night and first-day-first-show slots are usually priced above a weekday afternoon show in the same hall."
+        ]
+      },
+      noida: {
+        languages: ["Hindi", "English", "Punjabi"],
+        market: "Noida multiplexes price the same Hindi release differently from Delhi and Gurugram halls a few kilometres away, so the NCR city you search changes the ticket total before any fee is added.",
+        checks: [
+          "Compare Noida halls with the Delhi and Gurugram ones you would realistically travel to, because the gap between them can exceed the convenience fee.",
+          "Malls along the Noida Expressway and in the older sectors have different seat mixes, so check whether the price quoted is for a recliner or a regular seat.",
+          "Metro-accessible halls fill earlier on weekends, which pushes the cheap seats out first."
+        ]
+      },
+      mumbai: {
+        languages: ["Hindi", "Marathi", "English"],
+        market: "Mumbai has the widest spread between a single-screen hall and a premium multiplex in the same neighbourhood, so seat category matters more here than in most cities.",
+        checks: [
+          "A single-screen hall and a multiplex in the same area can differ by a large margin for the same film, so compare both before booking.",
+          "Marathi and Hindi releases often run on different screens with separate pricing, so confirm the language on the listing.",
+          "Evening shows in South Mumbai and Bandra carry the city\u2019s highest seat prices; a matinee or a suburban hall is usually cheaper."
+        ]
+      },
+      delhi: {
+        languages: ["Hindi", "English", "Punjabi"],
+        market: "Delhi spans single-screen halls and premium multiplexes across a wide area, so the cinema you pick changes the ticket price more than the film does.",
+        checks: [
+          "Compare halls in the same part of the city; travelling across Delhi for a cheaper ticket can cost more than the saving.",
+          "Premium formats such as large-format screens are priced well above a standard screen for the same show.",
+          "Weekend evening shows sell out first, so the cheap seat categories go before the expensive ones."
+        ]
+      },
+      chennai: {
+        languages: ["Tamil", "English", "Hindi", "Telugu"],
+        market: "Chennai prices Tamil releases and English titles on separate screens with separate demand, and opening-week shows carry a premium that fades within days.",
+        checks: [
+          "Compare the same Tamil film across halls, because screen count and demand differ sharply by area.",
+          "First-week shows are priced above the second week for the same film and screen.",
+          "Check whether the listing is a Tamil or a dubbed version before comparing prices."
+        ]
+      },
+      hyderabad: {
+        languages: ["Telugu", "Hindi", "English", "Tamil"],
+        market: "Hyderabad multiplexes lean heavily on Telugu releases, and a big-ticket Telugu film can price well above a Hindi or English title on the same weekend.",
+        checks: [
+          "Compare single-screen and multiplex prices for the same Telugu release, because the gap is wide in this city.",
+          "Premium large-format screens charge a separate price for the same showtime.",
+          "Opening-weekend shows are the most expensive; the following week is usually cheaper for the same seat class."
+        ]
+      },
+      kolkata: {
+        languages: ["Bengali", "Hindi", "English"],
+        market: "Kolkata runs Bengali and Hindi releases side by side, and older single-screen halls keep prices well below the multiplexes for the same film.",
+        checks: [
+          "Compare a Bengali release at a single-screen hall with the multiplex price before assuming the multiplex is the only option.",
+          "Confirm the language and whether the show is dubbed, since both can run at different prices.",
+          "Afternoon shows are consistently cheaper than evening shows in the same hall."
+        ]
+      },
+      pune: {
+        languages: ["Marathi", "Hindi", "English"],
+        market: "Pune prices Marathi, Hindi and English releases separately, and the same film costs less in the older city-centre halls than in the new malls on the outskirts.",
+        checks: [
+          "Compare halls in the same part of Pune instead of the whole city, since travel time eats the difference.",
+          "Marathi releases usually open on more screens here, so seat availability is better than for a limited English release.",
+          "Weekend evening shows are priced above weekday shows for the same screen."
+        ]
+      },
+      ahmedabad: {
+        languages: ["Gujarati", "Hindi", "English"],
+        market: "Ahmedabad runs a strong Gujarati slate alongside Hindi and English films, and Gujarati releases are often the cheapest way to see a film on a big screen here.",
+        checks: [
+          "Compare Gujarati and Hindi shows of different films to see which screen class is cheapest that day.",
+          "Check whether the listing is a Gujarati original or a dubbed version before comparing.",
+          "Multiplexes on the SG Highway corridor price above the older city-centre halls."
+        ]
+      },
+      jaipur: {
+        languages: ["Hindi", "English"],
+        market: "Jaipur multiplexes price Hindi releases above English titles on the same weekend, and single-screen halls undercut both.",
+        checks: [
+          "Compare the single-screen hall and the multiplex for the same Hindi film; the difference is usually larger than the convenience fee.",
+          "Weekend evening shows carry the highest price; a weekday afternoon show in the same hall is the cheapest.",
+          "Check the seat category, since premium seats in the same hall can cost well above a regular seat."
+        ]
+      },
+      lucknow: {
+        languages: ["Hindi", "English"],
+        market: "Lucknow prices Hindi releases as the main draw, with English films running on fewer screens and often at lower demand.",
+        checks: [
+          "Compare halls in Hazratganj and the newer malls, because both price the same film differently.",
+          "Check whether the show is a morning or evening slot; the same seat class is priced lower earlier in the day.",
+          "Confirm the seat category before paying, since premium recliners are a separate price band."
+        ]
+      },
+      kochi: {
+        languages: ["Malayalam", "Tamil", "Hindi", "English"],
+        market: "Kochi screens Malayalam releases first and in the greatest number, so Malayalam titles usually have the most showtimes and the widest price range.",
+        checks: [
+          "Compare Malayalam and Tamil or Hindi shows separately, since they are priced as different products.",
+          "Multiplexes in the city and in the suburbs price the same Malayalam film differently.",
+          "Opening-week shows cost more than the second week for the same screen and seat."
+        ]
+      }
+    };
+  }
+});
+
 // server/seo/data.ts
 function seoVerticals() {
   return VERTICALS2.map((v) => ({ slug: v.slug, label: v.label, title: v.title, description: v.description, h1: v.h1, intro: v.intro, faqs: v.faqs }));
@@ -55213,21 +55399,34 @@ function resolveSeoPage(path18) {
       movies: "movie ticket prices"
     };
     const noun = nounMap[head3] || vmeta.label.toLowerCase();
+    const movie = head3 === "movies" ? MOVIE_CITY_CONTENT[tail] : void 0;
+    const movieIntro = movie ? [
+      `${c} cinema listings sell the same showtime on more than one platform, and each platform adds its own convenience fee on top of the ticket. This page compares those prices for ${c} per show, so the cheapest seat is visible before you pay.`,
+      `Multiplexes in ${c} routinely screen ${movie.languages.join(", ")} releases, and each language is priced as a separate product. ${movie.market}`,
+      `Prices in ${c} move hour to hour. We show what each source reports right now with direct links, so the deal you see is the deal you get.`
+    ] : [
+      `This page compares live ${noun} for ${c}. One search asks every major provider serving the city at once, and the results land in a single lowest-first list.`,
+      `Prices in ${c} move hour to hour. We show what each source reports right now with direct links, so the deal you see is the deal you get.`,
+      `${cityList()} and 30+ other cities are covered the same way - change city anytime from inside the app.`
+    ];
+    const movieFaqs = movie ? [
+      { q: `Which languages can I book in ${c} cinemas?`, a: `Multiplexes in ${c} routinely screen ${movie.languages.join(", ")} releases. Each language version is priced separately, so compare the exact language show you want.` },
+      { q: `Why is the same film priced differently across ${c} cinemas?`, a: movie.market },
+      { q: `What should I check before paying for a ticket in ${c}?`, a: movie.checks.join(" ") },
+      { q: `How do you get ${c} prices?`, a: `Live queries to every booking platform that serves ${c} at search time - no stale listings, no manual uploads.` }
+    ] : [
+      { q: `How do you get ${c} prices?`, a: `Live queries to every provider that serves ${c} at search time - no stale listings, no manual uploads.` },
+      { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` }
+    ];
     const others = CITIES.filter((x) => x.slug !== tail).slice(0, 6);
     return {
       path: clean4,
-      title: `${vmeta.label} in ${c} \u2014 Compare Live Prices | Try1Second`,
-      description: `Compare live ${noun} in ${c} across every major provider in one second. All of ${c}\u2019s prices side by side, lowest first.`,
-      h1: `${vmeta.label} in ${c} \u2014 Live Price Comparison`,
-      intro: [
-        `This page compares live ${noun} for ${c}. One search asks every major provider serving the city at once, and the results land in a single lowest-first list.`,
-        `Prices in ${c} move hour to hour. We show what each source reports right now with direct links, so the deal you see is the deal you get.`,
-        `${cityList()} and 30+ other cities are covered the same way \u2014 change city anytime from inside the app.`
-      ],
-      faqs: [
-        { q: `How do you get ${c} prices?`, a: `Live queries to every provider that serves ${c} at search time \u2014 no stale listings, no manual uploads.` },
-        { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` }
-      ],
+      title: head3 === "movies" && movie ? `Movie Ticket Prices in ${c} \u2014 Compare Every Platform | Try1Second` : `${vmeta.label} in ${c} \u2014 Compare Live Prices | Try1Second`,
+      description: head3 === "movies" && movie ? `Compare movie ticket prices in ${c} across every booking platform, per show. Cinemas screening ${movie.languages.slice(0, 3).join(", ")} releases, seat classes and fees compared live.` : `Compare live ${noun} in ${c} across every major provider in one second. All of ${c}\u2019s prices side by side, lowest first.`,
+      h1: head3 === "movies" && movie ? `Movie Ticket Price Comparison in ${c}` : `${vmeta.label} in ${c} \u2014 Live Price Comparison`,
+      intro: movieIntro,
+      ...movie ? { body: [`Before you pay in ${c}: ${movie.checks.join(" ")}`] } : {},
+      faqs: movieFaqs,
       breadcrumbs: [{ name: "Home", path: "/" }, { name: vmeta.label, path: `/${head3}` }, { name: c, path: clean4 }],
       links: [
         { label: `${vmeta.label} home`, href: `/${head3}` },
@@ -55312,6 +55511,7 @@ var init_data = __esm({
   "server/seo/data.ts"() {
     init_guides();
     init_answerStates();
+    init_movieCities();
     SEO_HOST = "https://www.try1second.com";
     CITIES = [
       { slug: "mumbai", name: "Mumbai" },

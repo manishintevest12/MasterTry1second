@@ -53,9 +53,10 @@ test('deeplink priority: direct partners win, LinkInR covers the rest', async ()
   const amz = await buildSecureDeeplink('https://www.amazon.in/dp/B0X');
   assert.equal(amz.matchedProfile, 'amazon_associates');
   assert.ok(amz.trackingUrl.includes('tag=try1second-21'));
-  // MakeMyTrip/Goibibo stay on Cuelinks (joined direct partner, deep deeplink).
+  // MakeMyTrip/Goibibo stay on Cuelinks (joined direct partner, deep deeplink, flat payout per sale). Since
+  // 10 Nov they are claimed by the APPROVED tier so LinkInR cannot take a confirmed payout away.
   const mmt = await buildSecureDeeplink('https://www.makemytrip.com/hotels/x');
-  assert.equal(mmt.matchedProfile, 'cuelinks_fallback');
+  assert.equal(mmt.matchedProfile, 'cuelinks_approved');
   // Merchants with no direct partner now earn: LinkInR layer.
   const agoda = await buildSecureDeeplink('https://www.agoda.com/hotels/x');
   assert.equal(agoda.matchedProfile, 'linkinr');

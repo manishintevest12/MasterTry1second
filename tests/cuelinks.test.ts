@@ -40,7 +40,8 @@ test('Goibibo deeplinks route through the publisher cid (owner request 15 Oct)',
 
 test('unknown merchants stay direct — never invented', () => {
   assert.equal(cuelinksMerchantUrl('https://www.google.com/search?q=x'), null);
-  assert.equal(cuelinksMerchantUrl('https://yatra.com/hotels/'), null); // not joined yet
+  // Owner 10 Nov: applied-for merchants are wrapped on the broad tier (pass-through that keeps the deep path).
+  assert.ok(String(cuelinksMerchantUrl('https://yatra.com/hotels/') || '').includes(encodeURIComponent('https://yatra.com/hotels/'))); // not joined yet
   assert.equal(cuelinksMerchantUrl('not a url'), null);
 });
 
