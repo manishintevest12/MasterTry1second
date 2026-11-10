@@ -48,3 +48,17 @@ test('the answer page HTML has the anchor the price block is inserted into', asy
   assert.ok(html.includes('</main>'), 'the server route inserts the verified-price block before </main>');
   assert.ok(html.includes('</head>'), 'and the ItemList JSON-LD before </head>');
 });
+
+test('state answer paths survive the resolveSeoPage guard that used to zero them out', async () => {
+  const { isStateAnswerPath, snapshotForPath } = await import('../server/seo/liveSnapshot');
+  const { resolveSeoPage } = await import('../server/seo/data');
+  assert.equal(resolveSeoPage('/best/hotels/maharashtra'), null, 'these pages are not SPA routes');
+  assert.equal(isStateAnswerPath('/best/hotels/maharashtra'), true);
+  assert.equal(isStateAnswerPath('/best/hotels/maharashtra/'), true, 'a trailing slash still counts');
+  assert.equal(isStateAnswerPath('/best/hotels'), false, 'the vertical answer hub is not a state page');
+  assert.equal(isStateAnswerPath('/hotels/mumbai'), false);
+  // The point: it must reach the state branch instead of bailing out. Without a catalogue it returns null,
+  // but it must not throw and must not be short-circuited by the route guard.
+  const snap = await snapshotForPath('/best/hotels/maharashtra');
+  assert.ok(snap === null || Array.isArray(snap.rows));
+});

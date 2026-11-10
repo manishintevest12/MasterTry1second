@@ -218,9 +218,19 @@ export function snapshotJsonLd(snapshot: PageSnapshot | null, path: string): str
  * Catalogue-backed snapshot for a path, cached for 10 minutes. Returns null when the
  * page is not an indexable SEO page, or when we hold no verified row for it.
  */
+/**
+ * /best/<vertical>/<state> pages are answered by resolveAnswerPage(), NOT by resolveSeoPage(), so the guard
+ * below used to return null before the state branch could ever run - that is why the state price block shipped
+ * twice and never appeared in production HTML.
+ */
+export function isStateAnswerPath(path: string): boolean {
+  return /^\/best\/[a-z0-9-]+\/[a-z0-9-]+$/.test((path || '').replace(/\/+$/, ''));
+}
+
 export async function snapshotForPath(path: string): Promise<PageSnapshot | null> {
-  const page = resolveSeoPage(path);
-  if (!page) return null;
+  const stateAnswer = isStateAnswerPath(path);
+  const page = stateAnswer ? null : resolveSeoPage(path);
+  if (!page && !stateAnswer) return null;
   const key = (path || '/').replace(/\/+$/, '') || '/';
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < (hit.ttl ?? SNAPSHOT_TTL_MS)) return hit.snap;
