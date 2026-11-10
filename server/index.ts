@@ -30,8 +30,19 @@ function agentLinkHeaderCached(): string {
   return agentLinkHeaderCache;
 }
 
+import { securityHeaders, apiRateLimit, securityTxt } from './security/security';
+
 export async function createApp(): Promise<express.Express> {
   const app = express();
+  // OWNER 10 Nov ("security v increase kro site ki"): HSTS, nosniff, framing, referrer, permissions and a
+  // report-only CSP on every response, plus a per-client budget on the expensive search endpoints.
+  // See server/security/security.ts for why nothing here can change how the page renders.
+  app.use(securityHeaders);
+  app.get('/.well-known/security.txt', (_req: any, res: any) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(securityTxt());
+  });
   // OWNER 27 Oct: expose nothing. Express advertises "X-Powered-By: Express" on every
   // response, which tells a scanner exactly what stack to attack; the Server header is
   // blanked for the same reason.
@@ -59,6 +70,10 @@ export async function createApp(): Promise<express.Express> {
   // produced at all: the body parser repairs whatever the phone sends instead of rejecting it, and
   // public read endpoints answer a 200 retry envelope instead of 4xx/5xx (see gracefulPublicStatus).
   app.use(lenientJsonBody('256kb'));
+  // 90 searches per minute per client per endpoint family: a live sweep is one request, the app polls the
+  // same in-flight answer, and a person cannot start 90 searches a minute by hand - so a real user never
+  // sees this, while a script that tries to use the engine as a free API gets a 429 with Retry-After.
+  app.use(apiRateLimit({ limit: 90, windowMs: 60_000 }));
   // OWNER 9 Nov: the machine resources must be advertised on EVERY public response, not only on the
   // SPA catch-all - the legal/SEO pages are their own routes and were missing the header. One
   // middleware covers them all; /api is skipped because it is not content.

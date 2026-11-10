@@ -339,6 +339,8 @@ function verticalBySlug(slug: string): VerticalMeta | undefined {
   return VERTICALS.find((v) => v.slug === slug.replace(/\/$/, ''));
 }
 
+import { brandPage, BRAND_PAGE_PATH } from './brandPage';
+
 function routeSlug(a: string, b: string, noun: string): string {
   return `${a}-to-${b}-${noun}`;
 }
@@ -352,6 +354,8 @@ export function listSeoPaths(): string[] {
   // sitemap lists every one of them instead of a lone '/privacy' that answered the SPA shell.
   const paths: string[] = [
     ...guidePaths,
+    // OWNER 10 Nov: the spaced brand spelling gets its own page, so it is a real URL in the index.
+    BRAND_PAGE_PATH,
     '/',
     '/about',
     '/privacy-policy',
@@ -434,6 +438,8 @@ export function resolveAppRoute(path: string): { vertical?: string; query?: stri
 
 export function resolveSeoPage(path: string): SeoPage | null {
   let clean = path.split('?')[0].replace(/\/+$/, '') || '/';
+  // OWNER 10 Nov ("try 1 second" search showed nothing): the spaced brand spelling answers its own page.
+  if (clean === BRAND_PAGE_PATH) return brandPage();
   // Vertical aliases (owner 28 Oct): /movie, /cab and /account are what the app's own
   // ids, sitemap links and users type. They must answer with the same page as the
   // marketing spelling instead of falling back to the generic shell.
@@ -529,6 +535,8 @@ export function resolveSeoPage(path: string): SeoPage | null {
         ...VERTICALS.map((v) => ({ label: `Best ${v.label.toLowerCase()} comparison in India`, href: `/best/${v.slug}` })),
         ...intentLinksFor(''),
         { label: 'Compare answers for every vertical and state', href: '/answers' },
+              // OWNER 10 Nov: the spaced brand page is reachable from the home page's own link block.
+        { label: 'Try 1 Second (the site spelled out)', href: '/try-1-second' },
       ],
     };
   }

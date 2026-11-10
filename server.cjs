@@ -2201,16 +2201,16 @@ var init_curlCffiFetch = __esm({
 // server/common/httpClient.ts
 function takeToken(sourceId, maxPerMinute) {
   const now = Date.now();
-  const b = buckets.get(sourceId) || { tokens: maxPerMinute, lastRefill: now };
+  const b = buckets2.get(sourceId) || { tokens: maxPerMinute, lastRefill: now };
   const refill = (now - b.lastRefill) / 6e4 * maxPerMinute;
   b.tokens = Math.min(maxPerMinute, b.tokens + refill);
   b.lastRefill = now;
   if (b.tokens < 1) {
-    buckets.set(sourceId, b);
+    buckets2.set(sourceId, b);
     return false;
   }
   b.tokens -= 1;
-  buckets.set(sourceId, b);
+  buckets2.set(sourceId, b);
   return true;
 }
 async function acquireSlot(sourceId, maxConcurrency, globalCap) {
@@ -2374,7 +2374,7 @@ async function httpHealthCheck(url, sourceId) {
     return { healthy: false, latencyMs: 0, failureClass: e2.failureClass || "UNKNOWN" };
   }
 }
-var acquisitionWarnDedupe, AcquisitionError, buckets, inflightPerSource, globalInflight, DEFAULT_UA;
+var acquisitionWarnDedupe, AcquisitionError, buckets2, inflightPerSource, globalInflight, DEFAULT_UA;
 var init_httpClient = __esm({
   "server/common/httpClient.ts"() {
     init_settings();
@@ -2388,7 +2388,7 @@ var init_httpClient = __esm({
         this.httpStatus = httpStatus;
       }
     };
-    buckets = /* @__PURE__ */ new Map();
+    buckets2 = /* @__PURE__ */ new Map();
     inflightPerSource = /* @__PURE__ */ new Map();
     globalInflight = 0;
     DEFAULT_UA = "Try1SecondBot/1.0 (+https://try1second.com; compatible; direct HTTP acquisition; contact via site)";
@@ -26670,7 +26670,7 @@ var init_cinepolis = __esm({
 
 // server/workers/parsers/district.ts
 function districtPriceBands(body) {
-  const buckets2 = [];
+  const buckets3 = [];
   const bandRe = /\u20b9\s?([\d,]+)\s?-\s?\u20b9\s?([\d,]+)/g;
   let m;
   while ((m = bandRe.exec(body)) !== null) {
@@ -26678,9 +26678,9 @@ function districtPriceBands(body) {
     if (!/price_[0-9_]+/.test(win)) continue;
     const sc = win.match(/sessionCount\\?"?:\s*(\d+)/);
     const sessions = sc ? Number(sc[1]) : 0;
-    buckets2.push({ lo: Number(m[1].replace(/,/g, "")), hi: Number(m[2].replace(/,/g, "")), sessions });
+    buckets3.push({ lo: Number(m[1].replace(/,/g, "")), hi: Number(m[2].replace(/,/g, "")), sessions });
   }
-  const live = buckets2.filter((b) => b.sessions > 0);
+  const live = buckets3.filter((b) => b.sessions > 0);
   if (!live.length) return null;
   live.sort((a, b) => a.lo - b.lo);
   const firstPriced = live.find((b) => b.lo > 0);
@@ -55556,6 +55556,67 @@ var init_movieCities = __esm({
   }
 });
 
+// server/seo/brandPage.ts
+function brandPage() {
+  return {
+    path: BRAND_PAGE_PATH,
+    // The exact query is the title. This is the one page where that is the right choice.
+    title: "Try 1 Second \u2014 Live Price Comparison in India (try1second.com)",
+    description: "Try 1 Second is Try1Second (try1second.com): one search compares live flight, hotel, bus, cab, shopping, grocery and movie prices in India, lowest first.",
+    h1: "Try 1 Second \u2014 what try1second.com is and what it compares",
+    intro: [
+      "Try 1 Second is the spaced spelling of Try1Second, the price comparison site at try1second.com. One search asks the sellers serving your city for their live price at the same moment, and every answer lands in a single lowest-first list with a direct link to the seller where that price actually is.",
+      "The site compares thirteen verticals: flights, hotels, bus tickets, cabs, online shopping, grocery, food delivery, movie tickets, loans, insurance, credit cards, bank accounts and banking products. Comparison is free for the user; the site earns from ads and affiliate commissions paid by sellers, and no seller can buy a better position in the list.",
+      "Try 1 Second is not an aggregator that resells inventory. Every row is one real seller with its own price and its own checkout, so the fare or price you see is the one you pay on that seller's page."
+    ],
+    faqs: [
+      {
+        q: 'Is "Try 1 Second" the same website as try1second.com?',
+        a: 'Yes. Try1Second, "Try 1 Second", "Try1 Second" and "T1S" all mean this site, try1second.com. The domain is written without spaces because domains cannot contain them.'
+      },
+      {
+        q: 'Is Try 1 Second the same as the "1 Second Everyday" video app?',
+        a: 'No. "1 Second Everyday" is a video diary app for filming one second a day. Try 1 Second (try1second.com) is an Indian price comparison website for flights, hotels, bus tickets, cabs, shopping, grocery, food delivery, movie tickets, loans, insurance, credit cards and bank accounts. The two are unrelated.'
+      },
+      {
+        q: "What can I compare on Try 1 Second?",
+        a: "Flights, hotels, bus tickets, cabs, ecommerce products, grocery, food delivery, movie tickets, loans, insurance, credit cards, bank accounts and banking products, across the cities and states we cover in India."
+      },
+      {
+        q: "Does Try 1 Second charge users anything?",
+        a: "No. Comparison is free and no account is needed to see prices. Booking or buying happens on the seller's own site at the seller's own price."
+      },
+      {
+        q: "Why is the site called Try 1 Second?",
+        a: "Because a single search is meant to answer in about a second: one request reaches every seller in the vertical at once instead of you opening each site in turn."
+      }
+    ],
+    breadcrumbs: [
+      { name: "Home", path: "/" },
+      { name: "Try 1 Second", path: BRAND_PAGE_PATH }
+    ],
+    links: [
+      { label: "Flight price comparison", href: "/flights" },
+      { label: "Hotel price comparison", href: "/hotels" },
+      { label: "Bus ticket price comparison", href: "/bus" },
+      { label: "Cab fare comparison", href: "/cabs" },
+      { label: "Grocery price comparison", href: "/grocery" },
+      { label: "Movie ticket price comparison", href: "/movies" },
+      { label: "Loans and insurance comparison", href: "/best/loans" },
+      { label: "All comparison answers", href: "/answers" },
+      { label: "About Try1Second", href: "/about" },
+      { label: "Contact", href: "/contact" }
+    ]
+  };
+}
+var BRAND_PAGE_PATH, BRAND_FACT_LINE;
+var init_brandPage = __esm({
+  "server/seo/brandPage.ts"() {
+    BRAND_PAGE_PATH = "/try-1-second";
+    BRAND_FACT_LINE = `Try1Second (also written "Try 1 Second", "Try1 Second", "T1S", try1second.com) is an independent Indian metasearch engine that compares live prices for flights, hotels, bus, cabs, ecommerce, grocery, food delivery, movies, loans, insurance, credit cards, bank accounts and banking products, ranking every seller's own offer lowest first. It is unrelated to the "1 Second Everyday" video app.`;
+  }
+});
+
 // server/seo/data.ts
 function seoVerticals() {
   return VERTICALS2.map((v) => ({ slug: v.slug, label: v.label, title: v.title, description: v.description, h1: v.h1, intro: v.intro, faqs: v.faqs }));
@@ -55570,6 +55631,8 @@ function listSeoPaths() {
   const guidePaths = GUIDE_SLUGS.map((s) => `/guides/${s}`);
   const paths = [
     ...guidePaths,
+    // OWNER 10 Nov: the spaced brand spelling gets its own page, so it is a real URL in the index.
+    BRAND_PAGE_PATH,
     "/",
     "/about",
     "/privacy-policy",
@@ -55656,6 +55719,7 @@ function resolveAppRoute(path18) {
 }
 function resolveSeoPage(path18) {
   let clean4 = path18.split("?")[0].replace(/\/+$/, "") || "/";
+  if (clean4 === BRAND_PAGE_PATH) return brandPage();
   const ALIAS = {
     movie: "movies",
     cab: "cabs",
@@ -55746,7 +55810,9 @@ function resolveSeoPage(path18) {
         ...VERTICALS2.map((v) => ({ label: `${v.label} comparison`, href: `/${v.slug}` })),
         ...VERTICALS2.map((v) => ({ label: `Best ${v.label.toLowerCase()} comparison in India`, href: `/best/${v.slug}` })),
         ...intentLinksFor(""),
-        { label: "Compare answers for every vertical and state", href: "/answers" }
+        { label: "Compare answers for every vertical and state", href: "/answers" },
+        // OWNER 10 Nov: the spaced brand page is reachable from the home page's own link block.
+        { label: "Try 1 Second (the site spelled out)", href: "/try-1-second" }
       ]
     };
   }
@@ -55961,6 +56027,7 @@ var init_data = __esm({
     init_answerStates();
     init_cityCorpus();
     init_movieCities();
+    init_brandPage();
     SEO_HOST = "https://www.try1second.com";
     CITIES = INDIAN_CITIES.map((c) => ({ slug: c.slug, name: c.name }));
     TOP_CITIES = ["mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "pune", "ahmedabad"];
@@ -56541,7 +56608,46 @@ function robotsText() {
     "Disallow: /*?ref=",
     // referral codes — keep crawl budget on content
     "",
+    // OWNER 10 Nov: "saare ai v humere site k bata paye" - name the crawlers instead of trusting a wildcard,
+    // so every major assistant has an explicit allowance to read the site for answers (ai-input=yes) while
+    // training stays declined by the Content-Signal below.
     "User-agent: GPTBot",
+    "Allow: /",
+    "",
+    "User-agent: OAI-SearchBot",
+    "Allow: /",
+    "",
+    "User-agent: ChatGPT-User",
+    "Allow: /",
+    "",
+    "User-agent: ClaudeBot",
+    "Allow: /",
+    "",
+    "User-agent: Claude-Web",
+    "Allow: /",
+    "",
+    "User-agent: PerplexityBot",
+    "Allow: /",
+    "",
+    "User-agent: Perplexity-User",
+    "Allow: /",
+    "",
+    "User-agent: Google-Extended",
+    "Allow: /",
+    "",
+    "User-agent: Applebot",
+    "Allow: /",
+    "",
+    "User-agent: Applebot-Extended",
+    "Allow: /",
+    "",
+    "User-agent: CCBot",
+    "Allow: /",
+    "",
+    "User-agent: Bingbot",
+    "Allow: /",
+    "",
+    "User-agent: DuckDuckBot",
     "Allow: /",
     "",
     // OWNER 9 Nov ("Content Signals declared"): state plainly how this content may be used, so an
@@ -56551,6 +56657,8 @@ function robotsText() {
     "",
     `Sitemap: ${SEO_HOST}/sitemap.xml`,
     `# Machine index: ${SEO_HOST}/llms.txt`,
+    `# Brand page for the spaced spelling: ${SEO_HOST}/try-1-second`,
+    `# Security contact: ${SEO_HOST}/.well-known/security.txt`,
     ""
   ].join("\n");
 }
@@ -56701,9 +56809,9 @@ ${body}
 </urlset>
 `;
 }
-function sitemapIndexXml(buckets2, today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) {
+function sitemapIndexXml(buckets3, today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) {
   const order = ["core", "cities", "products"];
-  const body = order.filter((b) => (buckets2[b] || 0) > 0).map((b) => [
+  const body = order.filter((b) => (buckets3[b] || 0) > 0).map((b) => [
     "  <sitemap>",
     `    <loc>${SEO_HOST}/sitemap-${b}.xml</loc>`,
     `    <lastmod>${b === "core" ? RELEASE_DATE : today2}</lastmod>`,
@@ -57064,6 +57172,12 @@ function llmsText() {
   lines.push("");
   lines.push(`> ${SUMMARY}`);
   lines.push("");
+  lines.push("## Brand");
+  lines.push("");
+  lines.push(`- ${BRAND_FACT_LINE}`);
+  lines.push(`- Canonical brand page for the spaced spelling: ${SEO_HOST}${BRAND_PAGE_PATH}`);
+  lines.push('- Same site, different spellings: "Try1Second", "Try 1 Second", "Try1 Second", "T1S", try1second.com.');
+  lines.push("");
   lines.push("## How to use this site");
   lines.push("");
   lines.push("- Every page is public and needs no login. Read the HTML, or ask for `text/markdown` in the Accept header.");
@@ -57231,6 +57345,7 @@ var CONTACT_EMAIL, SAME_AS, BUSINESS_TELEPHONE, BUSINESS_ADDRESS, BUSINESS_LEGAL
 var init_agentReady = __esm({
   "server/seo/agentReady.ts"() {
     init_data();
+    init_brandPage();
     init_guides();
     init_legalPages();
     CONTACT_EMAIL = "info@try1second.com";
@@ -58814,6 +58929,85 @@ function canonicalWwwUrl(originalUrl) {
   return `https://www.${APEX_HOST}${originalUrl || "/"}`;
 }
 
+// server/security/security.ts
+function securityHeaders(req, res, next) {
+  const secure = req.secure || String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https";
+  if (secure) res.setHeader("Strict-Transport-Security", "max-age=31536000");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), usb=(), payment=(), geolocation=(self)");
+  res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+  res.setHeader(
+    "Content-Security-Policy-Report-Only",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+      "style-src 'self' 'unsafe-inline' https:",
+      "img-src 'self' data: https:",
+      "font-src 'self' data: https:",
+      "connect-src 'self' https:",
+      "frame-src 'self' https:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self' https:"
+    ].join("; ")
+  );
+  next();
+}
+var buckets = /* @__PURE__ */ new Map();
+var lastSweep = Date.now();
+function clientKey(req) {
+  return String(req.ip || req.socket?.remoteAddress || "unknown");
+}
+var defaultMatch = (path18, method) => method !== "GET" && (path18.startsWith("/api/search") || path18.startsWith("/api/scrape") || path18.startsWith("/api/out") || path18.startsWith("/api/lead"));
+function apiRateLimit(opts) {
+  const match = opts.match || defaultMatch;
+  return (req, res, next) => {
+    try {
+      const path18 = String(req.path || "");
+      if (!match(path18, String(req.method || "GET").toUpperCase())) return next();
+      const now = Date.now();
+      const key = `${clientKey(req)}|${path18.split("/").slice(0, 3).join("/")}`;
+      const refillPerMs = opts.limit / opts.windowMs;
+      let b = buckets.get(key);
+      if (!b) {
+        b = { tokens: opts.limit, updated: now };
+        buckets.set(key, b);
+      }
+      b.tokens = Math.min(opts.limit, b.tokens + (now - b.updated) * refillPerMs);
+      b.updated = now;
+      if (b.tokens < 1) {
+        const retryAfter = Math.max(1, Math.ceil((1 - b.tokens) / refillPerMs / 1e3));
+        res.setHeader("Retry-After", String(retryAfter));
+        res.status(429).json({ error: "Too many requests", retryAfterSeconds: retryAfter });
+        return;
+      }
+      b.tokens -= 1;
+      if (now - lastSweep > 3e5) {
+        lastSweep = now;
+        for (const [k, v] of buckets) if (now - v.updated > 6e5) buckets.delete(k);
+      }
+      next();
+    } catch {
+      next();
+    }
+  };
+}
+function securityTxt() {
+  const expires = new Date(Date.now() + 365 * 864e5).toISOString().replace(/\.\d{3}Z$/, "Z");
+  return [
+    "# Security policy for try1second.com",
+    "# Report a vulnerability privately. Please do not open a public issue first.",
+    "Contact: mailto:info@try1second.com",
+    "Expires: " + expires,
+    "Preferred-Languages: en, hi",
+    "Canonical: https://www.try1second.com/.well-known/security.txt",
+    ""
+  ].join("\n");
+}
+
 // server/index.ts
 var __dirname2 = process.cwd();
 var agentLinkHeaderCache = null;
@@ -58825,6 +59019,12 @@ function agentLinkHeaderCached() {
 }
 async function createApp() {
   const app = (0, import_express5.default)();
+  app.use(securityHeaders);
+  app.get("/.well-known/security.txt", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(securityTxt());
+  });
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
     res.removeHeader("X-Powered-By");
@@ -58843,6 +59043,7 @@ async function createApp() {
     next();
   });
   app.use(lenientJsonBody("256kb"));
+  app.use(apiRateLimit({ limit: 90, windowMs: 6e4 }));
   app.use((req, res, next) => {
     if (!String(req.path || "").startsWith("/api")) {
       try {

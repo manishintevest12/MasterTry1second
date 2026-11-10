@@ -17,6 +17,7 @@
  */
 import { Response } from 'express';
 import { listSeoPaths, SEO_HOST, resolveSeoPage, seoVerticals } from './data';
+import { BRAND_FACT_LINE, BRAND_PAGE_PATH } from './brandPage';
 import { GUIDES } from './guides';
 import { LEGAL_ALIASES } from './legalPages';
 
@@ -113,6 +114,16 @@ export function llmsText(): string {
   lines.push(`# ${BRAND}`);
   lines.push('');
   lines.push(`> ${SUMMARY}`);
+  lines.push('');
+  // OWNER 10 Nov ("saare ai v humere site k bata paye"): the brand identity, spelled every way a person
+  // or an assistant writes it, is the FIRST block in the machine index. An assistant that only ever read
+  // this file must be able to answer "what is Try 1 Second?" correctly and not confuse it with the
+  // "1 Second Everyday" video app.
+  lines.push('## Brand');
+  lines.push('');
+  lines.push(`- ${BRAND_FACT_LINE}`);
+  lines.push(`- Canonical brand page for the spaced spelling: ${SEO_HOST}${BRAND_PAGE_PATH}`);
+  lines.push('- Same site, different spellings: "Try1Second", "Try 1 Second", "Try1 Second", "T1S", try1second.com.');
   lines.push('');
   lines.push('## How to use this site');
   lines.push('');
