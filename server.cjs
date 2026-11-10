@@ -35495,7 +35495,7 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto24, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES, TRUSTED_TRACKING_HOSTS;
+var import_crypto24, CuelinksAdapter, TemplateAdapter, NETWORKS, BLOCKED_SCHEMES, TRUSTED_TRACKING_HOSTS;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
     import_crypto24 = __toESM(require("crypto"), 1);
@@ -35522,7 +35522,24 @@ var init_affiliateNetwork = __esm({
         return null;
       }
     };
-    NETWORKS = [new CuelinksAdapter()];
+    TemplateAdapter = class {
+      constructor(id, name, envKey) {
+        this.id = id;
+        this.name = name;
+        this.envKey = envKey;
+      }
+      buildDeepLink(destinationUrl, _vendorDomain) {
+        const template = (process.env[this.envKey] || "").trim();
+        if (!template || !template.startsWith("https://") || !template.includes("{DESTINATION}")) return null;
+        return template.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
+      }
+    };
+    NETWORKS = [
+      new CuelinksAdapter(),
+      new TemplateAdapter("admitad", "Admitad", "ADMITAD_LINK_TEMPLATE"),
+      new TemplateAdapter("vcommission", "VCommission", "VCOMMISSION_LINK_TEMPLATE"),
+      new TemplateAdapter("inrdeals", "INRDeals", "INRDEALS_LINK_TEMPLATE")
+    ];
     BLOCKED_SCHEMES = /^(?!https?:$).+:$/i;
     TRUSTED_TRACKING_HOSTS = new RegExp(
       "^([a-z0-9-]+\\.)*(" + [

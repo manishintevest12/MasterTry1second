@@ -51,7 +51,43 @@ class CuelinksAdapter implements AffiliateNetwork {
   }
 }
 
-const NETWORKS: AffiliateNetwork[] = [new CuelinksAdapter()];
+/**
+ * Template-driven adapter for the other two networks the owner has decided on (10 Nov: "cuelinks,
+ * admitad, vcommission ye sb ka decision already humne de diya hai ... inrdeals wagera ka v hoga").
+ *
+ * Admitad, VCommission and INRDeals all hand out a per-campaign tracking base and expect the final
+ * destination appended as `ulp` (Admitad) or `url` (VCommission) or `deeplink` (INRDeals). Rather than
+ * hardcode three shapes that could change, each network is driven by one environment template with a
+ * {DESTINATION} placeholder, so the owner pastes the link the dashboard gives them and it starts
+ * working with no code change. Fail-closed: no template -> the adapter returns null and the next
+ * network (or the plain destination) is used. Nothing is invented, and a template that is not https
+ * is ignored rather than trusted.
+ */
+class TemplateAdapter implements AffiliateNetwork {
+  readonly id: string;
+  readonly name: string;
+  private readonly envKey: string;
+
+  constructor(id: string, name: string, envKey: string) {
+    this.id = id;
+    this.name = name;
+    this.envKey = envKey;
+  }
+
+  buildDeepLink(destinationUrl: string, _vendorDomain: string): string | null {
+    const template = (process.env[this.envKey] || '').trim();
+    if (!template || !template.startsWith('https://') || !template.includes('{DESTINATION}')) return null;
+    return template.replace('{DESTINATION}', encodeURIComponent(destinationUrl));
+  }
+}
+
+/** Order matters: the first network that can mint a link wins, so attribution is never doubled. */
+const NETWORKS: AffiliateNetwork[] = [
+  new CuelinksAdapter(),
+  new TemplateAdapter('admitad', 'Admitad', 'ADMITAD_LINK_TEMPLATE'),
+  new TemplateAdapter('vcommission', 'VCommission', 'VCOMMISSION_LINK_TEMPLATE'),
+  new TemplateAdapter('inrdeals', 'INRDeals', 'INRDEALS_LINK_TEMPLATE'),
+];
 
 /** Attach configured deep links to offers (or leave null — raw destination still reachable). */
 export async function attachAffiliateDeepLinks(offers: NormalizedOffer[]): Promise<NormalizedOffer[]> {

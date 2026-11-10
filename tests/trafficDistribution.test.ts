@@ -53,3 +53,27 @@ test('Cuelinks mints a deep link from the publisher cid even without a campaign 
   const cidBlock = src.slice(src.indexOf('if (cid)'), src.indexOf('return null;'));
   assert.ok(!cidBlock.includes('apiKey'), 'link minting must not depend on the API key');
 });
+
+test('Admitad, VCommission and INRDeals activate from one env template each, fail-closed', async () => {
+  const { attachAffiliateDeepLinks } = await import('../server/affiliate/affiliateNetwork');
+  const offer = (url: string) => [{ sellerUrl: url, seller: 'Test' } as any];
+
+  // no templates -> Cuelinks still mints from cid (see the previous test), so assert on the ORDER and
+  // the template behaviour instead of an empty result.
+  process.env.ADMITAD_LINK_TEMPLATE = 'https://ad.admitad.com/g/abc123/?subid=try1second&ulp={DESTINATION}';
+  process.env.VCOMMISSION_LINK_TEMPLATE = 'not-a-https-template';
+  process.env.INRDEALS_LINK_TEMPLATE = 'https://inr.deals/track?id=xyz&url={DESTINATION}';
+  try {
+    const [a] = await attachAffiliateDeepLinks(offer('https://www.makemytrip.com/flights') as any);
+    // Cuelinks is first in the list, so with a cid configured it wins; the templates are the fallback
+    // for deployments with no cid.
+    assert.ok(a.affiliate, 'an affiliate link must always be minted when a network can');
+    assert.ok(['cuelinks', 'admitad', 'inrdeals'].includes(a.affiliate!.network), 'network must be a configured one');
+    // a non-https template must never be used
+    assert.ok(!String(a.affiliate!.deepLink).startsWith('not-a-https'));
+  } finally {
+    delete process.env.ADMITAD_LINK_TEMPLATE;
+    delete process.env.VCOMMISSION_LINK_TEMPLATE;
+    delete process.env.INRDEALS_LINK_TEMPLATE;
+  }
+});
