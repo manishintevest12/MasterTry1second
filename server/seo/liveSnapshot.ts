@@ -27,6 +27,8 @@ export interface SnapshotRow {
 export interface PageSnapshot {
   rows: SnapshotRow[];
   updatedAt: string;
+  /** Optional block heading, used where the page is not a single city/route (state answers). */
+  heading?: string;
 }
 
 /**
@@ -58,13 +60,39 @@ export function pagePlacement(path: string): { city?: string; queryTerms?: strin
 
 const SNAPSHOT_TTL_MS = 10 * 60_000;
 const MAX_ROWS = 6;
-const cache = new Map<string, { at: number; snap: PageSnapshot | null }>();
+const cache = new Map<string, { at: number; snap: PageSnapshot | null; ttl?: number }>();
 
 const esc = (s: string) => String(s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+
+/**
+ * A state answer page must show the state, not one city twice: take the cheapest row of each city first,
+ * then fill the remaining slots with the next cheapest rows overall. Each row keeps its city label.
+ */
+export function pickCityDiverseRows(groups: SnapshotRow[][], max = MAX_ROWS): SnapshotRow[] {
+  const out: SnapshotRow[] = [];
+  const used = new Set<string>();
+  const key = (r: SnapshotRow) => `${r.seller.toLowerCase().trim()}|${r.title.toLowerCase().trim()}`;
+  const sorted = groups.map((g) => [...g].sort((a, b) => a.price - b.price));
+  for (const g of sorted) {
+    const first = g[0];
+    if (!first || used.has(key(first))) continue;
+    used.add(key(first));
+    out.push(first);
+    if (out.length >= max) return out;
+  }
+  const rest = sorted.flat().sort((a, b) => a.price - b.price);
+  for (const r of rest) {
+    if (used.has(key(r))) continue;
+    used.add(key(r));
+    out.push(r);
+    if (out.length >= max) break;
+  }
+  return out;
+}
 
 /** Words that identify where a row belongs (a route, a city) — used to keep the list relevant. */
 function placementTokens(path: string): string[] {
@@ -141,7 +169,9 @@ export function selectSnapshotRows(candidates: SnapshotRow[], path: string, max 
 }
 
 /** Static HTML for the snapshot block. Returns '' when there is nothing honest to show. */
-export function renderSnapshotHtml(snapshot: PageSnapshot | null, heading = 'Latest verified prices'): string {
+export function renderSnapshotHtml(snapshot: PageSnapshot | null, heading?: string): string {
+  if (!snapshot) return '';
+  heading = heading || snapshot.heading || 'Latest verified prices';
   if (!snapshot || !snapshot.rows.length) return '';
   const items = snapshot.rows.map((r) => `
     <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
@@ -193,8 +223,43 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
   if (!page) return null;
   const key = (path || '/').replace(/\/+$/, '') || '/';
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) return hit.snap;
+  if (hit && Date.now() - hit.at < (hit.ttl ?? SNAPSHOT_TTL_MS)) return hit.snap;
   let snap: PageSnapshot | null = null;
+  // STATE ANSWER PAGES (/best/<vertical>/<state>) held no price data at all, which is why all 481 of them
+  // sat at zero impressions while the city pages around them earned some. They are state-LEVEL queries, so
+  // they must not borrow one city's prices: read the state's own cities (up to four) and label every row with
+  // the city it came from. Cached for an hour because crawlers visit these in bulk.
+  const stateMatch = /^\/best\/([a-z0-9-]+)\/([a-z0-9-]+)$/.exec(key);
+  if (stateMatch) {
+    try {
+      const [, vertical, stateSlug] = stateMatch;
+      const { ANSWER_STATES } = await import('./answerStates');
+      const state = ANSWER_STATES.find((st) => st.slug === stateSlug);
+      const cities = (state?.cities || []).slice(0, 4);
+      if (state && cities.length) {
+        const { findCatalogueOffers } = await import('../catalogue/catalogueService');
+        const perCity = await Promise.all(cities.map(async (city) => {
+          const rows = await findCatalogueOffers(vertical, { city, limit: 40 }).catch(() => []);
+          return (rows as any[])
+            .map((r) => ({
+              title: `${String(r.title || '')} · ${city}`,
+              seller: String(r.seller || r.vendor || ''),
+              price: Number(r.effective_price ?? r.mandatory_total ?? 0) || 0,
+              url: r.seller_url || null,
+            }))
+            .filter((r) => r.price > 0 && r.title.trim() !== `· ${city}` && r.seller);
+        }));
+        const picked = pickCityDiverseRows(perCity, MAX_ROWS);
+        if (picked.length) {
+          snap = { rows: picked, updatedAt: new Date().toISOString(), heading: `Latest verified prices in ${state.name}` };
+        }
+      }
+    } catch {
+      snap = null;
+    }
+    cache.set(key, { at: Date.now(), snap, ttl: 60 * 60_000 });
+    return snap;
+  }
   try {
     const route = resolveAppRoute(path);
     const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(key);

@@ -55138,6 +55138,10 @@ var init_guides = __esm({
 });
 
 // server/seo/answerStates.ts
+var answerStates_exports = {};
+__export(answerStates_exports, {
+  ANSWER_STATES: () => ANSWER_STATES
+});
 var ANSWER_STATES;
 var init_answerStates = __esm({
   "server/seo/answerStates.ts"() {
@@ -58096,6 +58100,7 @@ var liveSnapshot_exports = {};
 __export(liveSnapshot_exports, {
   clearSnapshotCache: () => clearSnapshotCache,
   pagePlacement: () => pagePlacement,
+  pickCityDiverseRows: () => pickCityDiverseRows,
   renderSnapshotHtml: () => renderSnapshotHtml,
   selectSnapshotRows: () => selectSnapshotRows,
   snapshotForPath: () => snapshotForPath,
@@ -58113,6 +58118,27 @@ function pagePlacement(path18) {
   }
   const title = tail.split("-").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   return { city: title, queryTerms: [title] };
+}
+function pickCityDiverseRows(groups, max = MAX_ROWS) {
+  const out = [];
+  const used = /* @__PURE__ */ new Set();
+  const key = (r) => `${r.seller.toLowerCase().trim()}|${r.title.toLowerCase().trim()}`;
+  const sorted = groups.map((g) => [...g].sort((a, b) => a.price - b.price));
+  for (const g of sorted) {
+    const first = g[0];
+    if (!first || used.has(key(first))) continue;
+    used.add(key(first));
+    out.push(first);
+    if (out.length >= max) return out;
+  }
+  const rest = sorted.flat().sort((a, b) => a.price - b.price);
+  for (const r of rest) {
+    if (used.has(key(r))) continue;
+    used.add(key(r));
+    out.push(r);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 function placementTokens(path18) {
   const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path18.replace(/\/+$/, ""));
@@ -58163,7 +58189,9 @@ function selectSnapshotRows(candidates, path18, max = MAX_ROWS, bySlug = false) 
   }
   return out;
 }
-function renderSnapshotHtml(snapshot, heading = "Latest verified prices") {
+function renderSnapshotHtml(snapshot, heading) {
+  if (!snapshot) return "";
+  heading = heading || snapshot.heading || "Latest verified prices";
   if (!snapshot || !snapshot.rows.length) return "";
   const items = snapshot.rows.map((r) => `
     <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
@@ -58208,8 +58236,37 @@ async function snapshotForPath(path18) {
   if (!page) return null;
   const key = (path18 || "/").replace(/\/+$/, "") || "/";
   const hit = cache10.get(key);
-  if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) return hit.snap;
+  if (hit && Date.now() - hit.at < (hit.ttl ?? SNAPSHOT_TTL_MS)) return hit.snap;
   let snap = null;
+  const stateMatch = /^\/best\/([a-z0-9-]+)\/([a-z0-9-]+)$/.exec(key);
+  if (stateMatch) {
+    try {
+      const [, vertical, stateSlug] = stateMatch;
+      const { ANSWER_STATES: ANSWER_STATES2 } = await Promise.resolve().then(() => (init_answerStates(), answerStates_exports));
+      const state = ANSWER_STATES2.find((st) => st.slug === stateSlug);
+      const cities = (state?.cities || []).slice(0, 4);
+      if (state && cities.length) {
+        const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+        const perCity = await Promise.all(cities.map(async (city) => {
+          const rows = await findCatalogueOffers2(vertical, { city, limit: 40 }).catch(() => []);
+          return rows.map((r) => ({
+            title: `${String(r.title || "")} \xB7 ${city}`,
+            seller: String(r.seller || r.vendor || ""),
+            price: Number(r.effective_price ?? r.mandatory_total ?? 0) || 0,
+            url: r.seller_url || null
+          })).filter((r) => r.price > 0 && r.title.trim() !== `\xB7 ${city}` && r.seller);
+        }));
+        const picked = pickCityDiverseRows(perCity, MAX_ROWS);
+        if (picked.length) {
+          snap = { rows: picked, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), heading: `Latest verified prices in ${state.name}` };
+        }
+      }
+    } catch {
+      snap = null;
+    }
+    cache10.set(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
+    return snap;
+  }
   try {
     const route2 = resolveAppRoute(path18);
     const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(key);
