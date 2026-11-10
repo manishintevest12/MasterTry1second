@@ -442,6 +442,12 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   if (looksAlreadyTracked(targetUrl)) {
     return { trackingUrl: targetUrl, network: 'already_tracked', matchedProfile: 'already_tracked' };
   }
+  // The GroMo advisor URL is ALREADY the tracked application landing (it carries the advisor code), so it must
+  // never be handed to a network afterwards. Without this the featured-partner card's click would be treated as
+  // an unmapped host and could fall into a Cuelinks wrap that pays nothing.
+  if (isGromoUrl(targetUrl)) {
+    return { trackingUrl: targetUrl, network: 'gromo', matchedProfile: 'gromo_advisor' };
+  }
   const domain = safeDomain(targetUrl);
   const store = getStore();
   // 1. Admin-managed affiliate_configs (slug, exact domain, or registrable-domain

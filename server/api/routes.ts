@@ -3702,7 +3702,14 @@ apiRouter.get('/ads', async (req, res) => {
       // travel/e-commerce offers whose clicks already go through the masked /api/out pointer, so the
       // ad is both relevant and monetised. Nothing is invented - zero matching deals means no slot.
       const verticalName = requested.slice('vertical_'.length);
-      const house = await houseSponsorFor(verticalName);
+      // OWNER 10 Nov ("gromo sites pr ni dikh raha loan, account, credit card, insurance vertical mai aur
+      // naa hi app pr"): the advisor link only ever rode a ROW exit, and finance rows are aggregator pages
+      // that are deliberately excluded from the wrap, so it never appeared anywhere. The finance verticals
+      // now get a featured-partner card FIRST (real image, masked /api/out tap target); the deals strip and
+      // the shared slot stay as the fallback for everything else.
+      const { gromoFinanceSponsor } = await import('../marketing/financeSponsor');
+      const finance = gromoFinanceSponsor(verticalName);
+      const house = finance || (await houseSponsorFor(verticalName));
       if (house) {
         slot = house;
       } else {

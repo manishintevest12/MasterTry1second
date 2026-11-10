@@ -32324,6 +32324,9 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   if (looksAlreadyTracked(targetUrl)) {
     return { trackingUrl: targetUrl, network: "already_tracked", matchedProfile: "already_tracked" };
   }
+  if (isGromoUrl(targetUrl)) {
+    return { trackingUrl: targetUrl, network: "gromo", matchedProfile: "gromo_advisor" };
+  }
   const domain = safeDomain(targetUrl);
   const store7 = getStore();
   try {
@@ -47520,6 +47523,55 @@ var init_productCatalogue = __esm({
   }
 });
 
+// server/marketing/financeSponsor.ts
+var financeSponsor_exports = {};
+__export(financeSponsor_exports, {
+  GROMO_BANNER_DEFAULT: () => GROMO_BANNER_DEFAULT,
+  gromoBannerUrl: () => gromoBannerUrl,
+  gromoFinanceSponsor: () => gromoFinanceSponsor,
+  isFinanceVertical: () => isFinanceVertical
+});
+function gromoBannerUrl() {
+  const raw = String(process.env.T1S_GROMO_BANNER_URL || "").trim();
+  const url = /^https:\/\//.test(raw) ? raw : GROMO_BANNER_DEFAULT;
+  return url;
+}
+function isFinanceVertical(vertical) {
+  const v = String(vertical || "").toLowerCase().trim();
+  return GROMO_VERTICALS.includes(v);
+}
+function gromoFinanceSponsor(vertical) {
+  const v = String(vertical || "").toLowerCase().trim();
+  if (!isFinanceVertical(v)) return null;
+  const advisor = gromoAdvisorLink();
+  if (!advisor) return null;
+  const clickUrl = gromoClickUrl(advisor, `vertical_${v}`);
+  const pointer = createMaskingPointer(clickUrl, { vertical: v });
+  if (!pointer) return null;
+  return {
+    provider: "t1s_house",
+    vertical: v,
+    partner: "gromo",
+    deals: [
+      {
+        merchant: "GroMo",
+        title: "Credit card, loan, insurance ya savings account: certified advisor se apply karo",
+        discount: "Free expert guidance",
+        image: gromoBannerUrl(),
+        url: pointer
+      }
+    ]
+  };
+}
+var GROMO_BANNER_DEFAULT;
+var init_financeSponsor = __esm({
+  "server/marketing/financeSponsor.ts"() {
+    init_gromo();
+    init_deeplink();
+    GROMO_BANNER_DEFAULT = "https://base44.app/api/apps/6ac8c95404695b89e61bf5c4/files/mp/public/6ac8c95404695b89e61bf5c4/1acf6eac3_gromo-advisor-card.jpg";
+  }
+});
+
 // server/marketing/adSafety.ts
 var adSafety_exports = {};
 __export(adSafety_exports, {
@@ -51191,7 +51243,9 @@ var init_routes = __esm({
         let slot2 = await getAdSlot2(requested);
         if (!slot2 && requested.startsWith("vertical_") && requested !== "vertical_feed") {
           const verticalName = requested.slice("vertical_".length);
-          const house = await houseSponsorFor(verticalName);
+          const { gromoFinanceSponsor: gromoFinanceSponsor2 } = await Promise.resolve().then(() => (init_financeSponsor(), financeSponsor_exports));
+          const finance = gromoFinanceSponsor2(verticalName);
+          const house = finance || await houseSponsorFor(verticalName);
           if (house) {
             slot2 = house;
           } else {
