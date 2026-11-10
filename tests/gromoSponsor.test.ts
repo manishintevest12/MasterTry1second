@@ -65,3 +65,30 @@ test('the advisor landing link is never re-wrapped by a network on click', async
   assert.equal(r.network, 'gromo');
   assert.equal(r.trackingUrl, 'https://sales.gromo.in/ac/CCiv1ofkx2');
 });
+
+test('the advisor is a RESULT ROW too, so every client version renders it (owner 10 Nov, third report)', async () => {
+  const { gromoResultRow, withGromoRow } = await import('../server/marketing/financeSponsor');
+  for (const v of ['loans', 'creditcards', 'insurance', 'account']) {
+    const row: any = gromoResultRow(v);
+    assert.ok(row, `${v} needs a row`);
+    assert.equal(row.seller, 'GroMo');
+    assert.equal(row.isSponsored, true);
+    assert.equal(row.vertical, v);
+    assert.match(row.sellerUrl, /^\/api\/out\?t=/);
+    assert.match(row.attributes.image_url, /^https:\/\//);
+    assert.equal(row.prices.priceAvailable, false, 'no fare is invented for an advisor');
+    const rows = withGromoRow([{ id: 'a' }, { id: 'b' }], v);
+    assert.equal(rows[0].id, row.id, 'row is first');
+    assert.equal(rows.length, 3, 'nothing else is dropped');
+    assert.equal(withGromoRow([{ id: row.id }], v).length, 1, 'never duplicated');
+  }
+  assert.equal(gromoResultRow('flights'), null);
+  assert.deepEqual(withGromoRow([{ id: 'x' }], 'hotels'), [{ id: 'x' }]);
+});
+
+test('/api/search and /api/scrape/live both get the row through finaliseLiveAnswer', async () => {
+  const src = readFileSync('server/api/routes.ts', 'utf8');
+  const fn = src.slice(src.indexOf('function finaliseLiveAnswer'), src.indexOf('async function lastChanceRows'));
+  assert.match(fn, /withGromoRow\(/, 'the shared finaliser injects it, so both endpoints inherit it');
+  assert.ok(src.includes("import { withGromoRow } from '../marketing/financeSponsor';"), 'static import, no await in a sync finaliser');
+});

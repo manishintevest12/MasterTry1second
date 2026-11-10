@@ -64,3 +64,66 @@ export function gromoFinanceSponsor(vertical: string): any | null {
     ],
   };
 }
+
+/**
+ * OWNER 10 Nov, THIRD report the same evening, after the /api/ads slot was deployed and verified live:
+ * "gromo abhi v ni aa raha muje w chaiye kaise v app and site dono pr loan, credit card, insurance,
+ * account section mai."
+ *
+ * The slot is real and /api/ads answers active for all four verticals, but a slot is an extra surface each
+ * client must choose to draw, and an older installed APK never asks for it. A RESULT ROW cannot be missed:
+ * every client version renders results, on the site and in the app, with no rebuild anywhere.
+ *
+ * So the advisor also becomes one honest row: it says who it is (GroMo, certified advisor), what it covers,
+ * carries the partner art, and its tap target is the masked /api/out pointer to the advisor link. No price is
+ * invented for it (a finance advisor has no fare); the row states "Free guidance" instead.
+ */
+export function gromoResultRow(vertical: string): any | null {
+  const v = String(vertical || '').toLowerCase().trim();
+  if (!isFinanceVertical(v)) return null;
+  const advisor = gromoAdvisorLink();
+  if (!advisor) return null;
+  const pointer = createMaskingPointer(gromoClickUrl(advisor, `row_${v}`), { vertical: v });
+  if (!pointer) return null;
+  const banner = gromoBannerUrl();
+  return {
+    id: `gromo-advisor-${v}`,
+    canonicalEntityId: null,
+    canonicalVariantId: null,
+    vertical: v,
+    title: 'GroMo advisor: credit card, loan, insurance ya savings account apply karwao',
+    seller: 'GroMo',
+    vendor: 'GroMo',
+    sellerUrl: pointer,
+    isSponsored: true,
+    sponsoredBadge: 'Partner',
+    confidence: 1,
+    rank: 0,
+    rankReasons: ['partner'],
+    matchState: 'verified',
+    validationStatus: 'verified',
+    freshnessStatus: 'live',
+    location: null,
+    prices: { currency: 'INR', effectivePrice: null, priceAvailable: false, note: 'Free guidance' },
+    attributes: {
+      products: 'Credit card · Loan · Insurance · Savings account',
+      'how it works': 'Certified advisor, free guidance',
+      badge: 'Partner',
+      image_url: banner,
+      logo: banner,
+    },
+    identifiers: {},
+    availability: 'available',
+    provenance: 'affiliate_configs',
+    affiliate: { network: 'gromo', matchedProfile: 'gromo_advisor', deepLink: pointer, trackingUrl: pointer, vertical: v },
+  };
+}
+
+/** Puts the advisor row first, exactly once, and never for a non-finance vertical. */
+export function withGromoRow<T>(rows: T[], vertical: string): T[] {
+  const row = gromoResultRow(vertical);
+  if (!row) return rows;
+  const id = row.id;
+  const kept = (Array.isArray(rows) ? rows : []).filter((r: any) => r && r.id !== id && (r as any).id !== 'gromo-advisor');
+  return [row as any, ...kept];
+}

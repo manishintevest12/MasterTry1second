@@ -172,6 +172,10 @@ export const ComparisonFeed: React.FC = () => {
   // so cheapest/best flip to descending for them (never for rupee rows).
   const rateUp = (it: any) => vertical === 'account' && String(it.unit || '').startsWith('%');
   const sorted = [...filtered].sort((a, b) => {
+    // Partner row (GroMo advisor on the four finance verticals) stays pinned at the top: it is labelled and
+    // carries no price, so the cheapest-only ordering below would otherwise bury it at the bottom.
+    const sp = (x: any) => (x.isSponsored ? 1 : 0);
+    if (sp(a) !== sp(b)) return sp(b) - sp(a);
     if (rateUp(a) && rateUp(b) && (effectiveSort === 'cheapest' || effectiveSort === 'best')) {
       return (b.primaryPrice || 0) - (a.primaryPrice || 0);
     }

@@ -46441,6 +46441,104 @@ var init_mmtAutosuggest = __esm({
   }
 });
 
+// server/marketing/financeSponsor.ts
+var financeSponsor_exports = {};
+__export(financeSponsor_exports, {
+  GROMO_BANNER_DEFAULT: () => GROMO_BANNER_DEFAULT,
+  gromoBannerUrl: () => gromoBannerUrl,
+  gromoFinanceSponsor: () => gromoFinanceSponsor,
+  gromoResultRow: () => gromoResultRow,
+  isFinanceVertical: () => isFinanceVertical,
+  withGromoRow: () => withGromoRow
+});
+function gromoBannerUrl() {
+  const raw = String(process.env.T1S_GROMO_BANNER_URL || "").trim();
+  const url = /^https:\/\//.test(raw) ? raw : GROMO_BANNER_DEFAULT;
+  return url;
+}
+function isFinanceVertical(vertical) {
+  const v = String(vertical || "").toLowerCase().trim();
+  return GROMO_VERTICALS.includes(v);
+}
+function gromoFinanceSponsor(vertical) {
+  const v = String(vertical || "").toLowerCase().trim();
+  if (!isFinanceVertical(v)) return null;
+  const advisor = gromoAdvisorLink();
+  if (!advisor) return null;
+  const clickUrl = gromoClickUrl(advisor, `vertical_${v}`);
+  const pointer = createMaskingPointer(clickUrl, { vertical: v });
+  if (!pointer) return null;
+  return {
+    provider: "t1s_house",
+    vertical: v,
+    partner: "gromo",
+    deals: [
+      {
+        merchant: "GroMo",
+        title: "Credit card, loan, insurance ya savings account: certified advisor se apply karo",
+        discount: "Free expert guidance",
+        image: gromoBannerUrl(),
+        url: pointer
+      }
+    ]
+  };
+}
+function gromoResultRow(vertical) {
+  const v = String(vertical || "").toLowerCase().trim();
+  if (!isFinanceVertical(v)) return null;
+  const advisor = gromoAdvisorLink();
+  if (!advisor) return null;
+  const pointer = createMaskingPointer(gromoClickUrl(advisor, `row_${v}`), { vertical: v });
+  if (!pointer) return null;
+  const banner = gromoBannerUrl();
+  return {
+    id: `gromo-advisor-${v}`,
+    canonicalEntityId: null,
+    canonicalVariantId: null,
+    vertical: v,
+    title: "GroMo advisor: credit card, loan, insurance ya savings account apply karwao",
+    seller: "GroMo",
+    vendor: "GroMo",
+    sellerUrl: pointer,
+    isSponsored: true,
+    sponsoredBadge: "Partner",
+    confidence: 1,
+    rank: 0,
+    rankReasons: ["partner"],
+    matchState: "verified",
+    validationStatus: "verified",
+    freshnessStatus: "live",
+    location: null,
+    prices: { currency: "INR", effectivePrice: null, priceAvailable: false, note: "Free guidance" },
+    attributes: {
+      products: "Credit card \xB7 Loan \xB7 Insurance \xB7 Savings account",
+      "how it works": "Certified advisor, free guidance",
+      badge: "Partner",
+      image_url: banner,
+      logo: banner
+    },
+    identifiers: {},
+    availability: "available",
+    provenance: "affiliate_configs",
+    affiliate: { network: "gromo", matchedProfile: "gromo_advisor", deepLink: pointer, trackingUrl: pointer, vertical: v }
+  };
+}
+function withGromoRow(rows, vertical) {
+  const row = gromoResultRow(vertical);
+  if (!row) return rows;
+  const id = row.id;
+  const kept = (Array.isArray(rows) ? rows : []).filter((r) => r && r.id !== id && r.id !== "gromo-advisor");
+  return [row, ...kept];
+}
+var GROMO_BANNER_DEFAULT;
+var init_financeSponsor = __esm({
+  "server/marketing/financeSponsor.ts"() {
+    init_gromo();
+    init_deeplink();
+    GROMO_BANNER_DEFAULT = "https://base44.app/api/apps/6ac8c95404695b89e61bf5c4/files/mp/public/6ac8c95404695b89e61bf5c4/1acf6eac3_gromo-advisor-card.jpg";
+  }
+});
+
 // src/data/quickAppsData.ts
 var quickAppsData_exports = {};
 __export(quickAppsData_exports, {
@@ -47523,55 +47621,6 @@ var init_productCatalogue = __esm({
   }
 });
 
-// server/marketing/financeSponsor.ts
-var financeSponsor_exports = {};
-__export(financeSponsor_exports, {
-  GROMO_BANNER_DEFAULT: () => GROMO_BANNER_DEFAULT,
-  gromoBannerUrl: () => gromoBannerUrl,
-  gromoFinanceSponsor: () => gromoFinanceSponsor,
-  isFinanceVertical: () => isFinanceVertical
-});
-function gromoBannerUrl() {
-  const raw = String(process.env.T1S_GROMO_BANNER_URL || "").trim();
-  const url = /^https:\/\//.test(raw) ? raw : GROMO_BANNER_DEFAULT;
-  return url;
-}
-function isFinanceVertical(vertical) {
-  const v = String(vertical || "").toLowerCase().trim();
-  return GROMO_VERTICALS.includes(v);
-}
-function gromoFinanceSponsor(vertical) {
-  const v = String(vertical || "").toLowerCase().trim();
-  if (!isFinanceVertical(v)) return null;
-  const advisor = gromoAdvisorLink();
-  if (!advisor) return null;
-  const clickUrl = gromoClickUrl(advisor, `vertical_${v}`);
-  const pointer = createMaskingPointer(clickUrl, { vertical: v });
-  if (!pointer) return null;
-  return {
-    provider: "t1s_house",
-    vertical: v,
-    partner: "gromo",
-    deals: [
-      {
-        merchant: "GroMo",
-        title: "Credit card, loan, insurance ya savings account: certified advisor se apply karo",
-        discount: "Free expert guidance",
-        image: gromoBannerUrl(),
-        url: pointer
-      }
-    ]
-  };
-}
-var GROMO_BANNER_DEFAULT;
-var init_financeSponsor = __esm({
-  "server/marketing/financeSponsor.ts"() {
-    init_gromo();
-    init_deeplink();
-    GROMO_BANNER_DEFAULT = "https://base44.app/api/apps/6ac8c95404695b89e61bf5c4/files/mp/public/6ac8c95404695b89e61bf5c4/1acf6eac3_gromo-advisor-card.jpg";
-  }
-});
-
 // server/marketing/adSafety.ts
 var adSafety_exports = {};
 __export(adSafety_exports, {
@@ -48570,6 +48619,10 @@ function finaliseLiveAnswer(response, vertical, dates2, query) {
     response.results = gated.rows;
     if (!gated.rows.length) response.pendingRefresh = true;
   }
+  try {
+    response.results = withGromoRow(response.results || [], String(vertical));
+  } catch {
+  }
   return reconcileResponseSources(response);
 }
 async function lastChanceRows(input, ms = 500) {
@@ -49198,6 +49251,7 @@ var init_routes = __esm({
     init_mmtAutosuggest();
     init_bookmyshow();
     init_badRequestLog();
+    init_financeSponsor();
     init_merchantCrispLogo();
     apiRouter = (0, import_express2.Router)();
     clientDiag = [];

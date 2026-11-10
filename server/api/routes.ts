@@ -110,6 +110,7 @@ interface ClientDiagEntry {
 }
 const clientDiag: ClientDiagEntry[] = [];
 import { listBadRequests } from '../common/badRequestLog';
+import { withGromoRow } from '../marketing/financeSponsor';
 apiRouter.post('/client-diag', (req, res) => {
   const b = req.body || {};
   const clip = (v: unknown, n: number) => String(v ?? '').slice(0, n);
@@ -969,6 +970,15 @@ function finaliseLiveAnswer(response: any, vertical: string, dates: any, query?:
     response.results = gated.rows;
     if (!gated.rows.length) response.pendingRefresh = true;
   }
+  // OWNER 10 Nov, third report ("gromo abhi v ni aa raha ... app and site dono pr loan, credit card,
+  // insurance, account section mai"): a slot in /api/ads is a surface each client must opt into, and an
+  // installed APK older than v1.8.79 never asks for it. A result ROW is rendered by every client version on
+  // both platforms, so the advisor rides the rows for the four finance verticals. Injected AFTER the date and
+  // route gates (it carries no date and no route, so no gate should judge it) and always for these verticals,
+  // even when the live sweep answered empty.
+  try {
+    response.results = withGromoRow((response.results || []) as any[], String(vertical));
+  } catch { /* never break an answer for a partner row */ }
   return reconcileResponseSources(response);
 }
 
