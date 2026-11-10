@@ -6517,6 +6517,65 @@ var init_mmtHotelLanding = __esm({
   }
 });
 
+// server/workers/parsers/bookingDemand.ts
+function bookingDemandConfig() {
+  const affiliateId = (process.env.BOOKING_DEMAND_AFFILIATE_ID || "").trim();
+  const token = (process.env.BOOKING_DEMAND_TOKEN || "").trim();
+  if (!affiliateId || !token) return null;
+  const base = (process.env.BOOKING_DEMAND_API_BASE || "https://demandapi.booking.com/3.3").trim().replace(/\/$/, "");
+  return { affiliateId, token, base };
+}
+function bookingDemandConfigured() {
+  return bookingDemandConfig() !== null;
+}
+async function bookingDemandSearch(body, fetchImpl = fetch) {
+  const cfg = bookingDemandConfig();
+  if (!cfg) throw new Error("BOOKING_DEMAND_NOT_CONFIGURED");
+  const res = await fetchImpl(`${cfg.base}/accommodations/search`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "X-Affiliate-Id": cfg.affiliateId,
+      Authorization: `Bearer ${cfg.token}`
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`booking demand HTTP ${res.status}`);
+  return res.json();
+}
+function bookingDemandItems(payload, opts = {}) {
+  const list = payload?.data?.accommodations || payload?.data?.result || payload?.accommodations || payload?.result || [];
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const raw of list) {
+    const price2 = Number(
+      raw?.price?.book?.amount ?? raw?.price?.display?.amount ?? raw?.price?.total ?? raw?.price ?? raw?.booking?.price ?? 0
+    );
+    if (!Number.isFinite(price2) || price2 <= 0) continue;
+    const name = String(raw?.name || raw?.accommodation?.name || raw?.property?.name || "").trim();
+    if (!name) continue;
+    const url = String(raw?.url || raw?.deeplink || raw?.accommodation?.url || "").trim();
+    out.push({
+      title: name,
+      provider: "Booking.com",
+      price: price2,
+      currency: String(raw?.price?.book?.currency || raw?.price?.currency || "INR"),
+      url,
+      checkin: opts.checkin,
+      checkout: opts.checkout,
+      city: opts.city,
+      sourceId: opts.sourceId || "w_hotels_booking_demand",
+      rawId: raw?.id || raw?.accommodation?.id || null
+    });
+  }
+  return out;
+}
+var init_bookingDemand = __esm({
+  "server/workers/parsers/bookingDemand.ts"() {
+  }
+});
+
 // server/common/cityAlias.ts
 function cityVariants(city) {
   const n = norm2(city);
@@ -7753,6 +7812,7 @@ var init_hotels = __esm({
     init_curlCffiFetch();
     init_contract();
     init_httpClient();
+    init_bookingDemand();
     init_cityAlias();
     init_oyoHotels();
     init_yatraHotels();
@@ -8112,6 +8172,38 @@ var init_hotels = __esm({
             const stays = parseAirbnbStays(results);
             if (stays.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Airbnb results had no parseable stays");
             return parseAirbnbOffers(stays, ctx.source, city);
+          }
+        },
+        {
+          // OWNER 10 Nov ("booking.com ka demand api ... kro"): Booking.com Demand API source.
+          // Demand API access is a Managed Affiliate Partner approval, so there is nothing to scrape and
+          // nothing to invent: with BOOKING_DEMAND_AFFILIATE_ID + BOOKING_DEMAND_TOKEN present this returns
+          // real priced Booking.com hotels (and the CJ exit already pays on the click), and without them it
+          // raises NOT_CONFIGURED so the admin dashboard shows exactly what is missing instead of an empty
+          // result. Verify the response shape once on the first authenticated call before enabling live.
+          sourceId: "w_hotels_booking_demand",
+          name: "Hotels worker: Booking.com Demand API (managed affiliate partner feed)",
+          priority: 3,
+          maxPerMinute: 2,
+          timeoutMs: 25e3,
+          run: async (ctx) => {
+            if (!bookingDemandConfigured()) {
+              throw new AcquisitionError("CAPABILITY_UNAVAILABLE", "Booking.com Demand API credentials missing: apply for Managed Affiliate Partner access, then set BOOKING_DEMAND_AFFILIATE_ID and BOOKING_DEMAND_TOKEN (X-Affiliate-Id + token per Booking.com docs).");
+            }
+            const q3 = ctx.query || {};
+            const city = String(q3.cityName || q3.city || q3.destination || q3.rawQuery || "").trim();
+            const checkin = q3?.travelDates?.checkin || q3?.travelDates?.from || new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const checkout = q3?.travelDates?.checkout || q3?.travelDates?.to || new Date(Date.now() + 9 * 864e5).toISOString().slice(0, 10);
+            const payload = await bookingDemandSearch({
+              booker: { country: "in", platform: "desktop", travel_purpose: "leisure" },
+              checkin,
+              checkout,
+              city_name: city,
+              guests: { number_of_adults: 2, number_of_rooms: 1 },
+              extras: ["deals"],
+              currency: "INR"
+            });
+            return bookingDemandItems(payload, { checkin, checkout, city });
           }
         },
         {

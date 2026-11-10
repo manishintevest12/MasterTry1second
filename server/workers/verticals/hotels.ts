@@ -25,6 +25,7 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
 import type { RawSourceItem } from '../../types';
 import { AcquisitionError } from '../../common/httpClient';
+import { bookingDemandConfigured, bookingDemandSearch, bookingDemandItems } from '../parsers/bookingDemand';
 import { cityVariants, slugOf, canonicalCity } from '../../common/cityAlias';
 
 import {
@@ -510,6 +511,38 @@ export const hotelsWorker: VerticalWorker = {
         const stays = parseAirbnbStays(results);
         if (stays.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Airbnb results had no parseable stays');
         return parseAirbnbOffers(stays, ctx.source, city);
+      },
+    },
+    {
+      // OWNER 10 Nov ("booking.com ka demand api ... kro"): Booking.com Demand API source.
+      // Demand API access is a Managed Affiliate Partner approval, so there is nothing to scrape and
+      // nothing to invent: with BOOKING_DEMAND_AFFILIATE_ID + BOOKING_DEMAND_TOKEN present this returns
+      // real priced Booking.com hotels (and the CJ exit already pays on the click), and without them it
+      // raises NOT_CONFIGURED so the admin dashboard shows exactly what is missing instead of an empty
+      // result. Verify the response shape once on the first authenticated call before enabling live.
+      sourceId: 'w_hotels_booking_demand',
+      name: 'Hotels worker: Booking.com Demand API (managed affiliate partner feed)',
+      priority: 3,
+      maxPerMinute: 2,
+      timeoutMs: 25_000,
+      run: async (ctx) => {
+        if (!bookingDemandConfigured()) {
+          throw new AcquisitionError('CAPABILITY_UNAVAILABLE', 'Booking.com Demand API credentials missing: apply for Managed Affiliate Partner access, then set BOOKING_DEMAND_AFFILIATE_ID and BOOKING_DEMAND_TOKEN (X-Affiliate-Id + token per Booking.com docs).');
+        }
+        const q: any = ctx.query || {};
+        const city = String(q.cityName || q.city || q.destination || q.rawQuery || '').trim();
+        const checkin = q?.travelDates?.checkin || q?.travelDates?.from || new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const checkout = q?.travelDates?.checkout || q?.travelDates?.to || new Date(Date.now() + 9 * 86400_000).toISOString().slice(0, 10);
+        const payload = await bookingDemandSearch({
+          booker: { country: 'in', platform: 'desktop', travel_purpose: 'leisure' },
+          checkin,
+          checkout,
+          city_name: city,
+          guests: { number_of_adults: 2, number_of_rooms: 1 },
+          extras: ['deals'],
+          currency: 'INR',
+        });
+        return bookingDemandItems(payload, { checkin, checkout, city });
       },
     },
     {
