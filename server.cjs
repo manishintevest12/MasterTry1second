@@ -7803,6 +7803,24 @@ function cityFromQuery(ctx) {
   }
   return null;
 }
+function stampStayDates(items, checkin, checkout) {
+  return items.map((it) => ({
+    ...it,
+    travel: { ...it.travel || {}, date: checkin, checkIn: checkin, checkOut: checkout },
+    attributes: { ...it.attributes || {}, check_in: checkin, check_out: checkout }
+  }));
+}
+async function withBudget(p, ms, label) {
+  let timer;
+  const guard = new Promise((_, rej) => {
+    timer = setTimeout(() => rej(new AcquisitionError("SERVER_ERROR", `${label} exceeded ${ms}ms budget`)), ms);
+  });
+  try {
+    return await Promise.race([p, guard]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function stayDates(q3) {
   const dep = q3?.travelDates?.depart;
   const ret = q3?.travelDates?.return;
@@ -8143,11 +8161,12 @@ var init_hotels = __esm({
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
+            const stay = stayDates(ctx.query);
             let items = [];
             let url = "";
             let lastStatus = 0;
             for (const variant of cityVariants(city)) {
-              url = `https://www.ixigo.com/hotels/${ixigoHotelsSlug(variant)}`;
+              url = `https://www.ixigo.com/hotels/${ixigoHotelsSlug(variant)}?checkInDate=${stay.checkin}&checkOutDate=${stay.checkout}`;
               const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
               lastStatus = r.status;
               if (r.status === 404) continue;
@@ -8157,7 +8176,7 @@ var init_hotels = __esm({
             }
             if (!items.length && lastStatus === 404) throw new AcquisitionError("NOT_FOUND", `Ixigo has no hotels page for "${city}"`, 404);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `No Ixigo hotels parsed for "${city}" (slug may not exist for this city)`);
-            return items;
+            return stampStayDates(items, stay.checkin, stay.checkout);
           }
         },
         {
@@ -8269,7 +8288,7 @@ var init_hotels = __esm({
             if (results.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Airbnb deferred state had no stays");
             const stays = parseAirbnbStays(results);
             if (stays.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Airbnb results had no parseable stays");
-            return parseAirbnbOffers(stays, ctx.source, city);
+            return stampStayDates(parseAirbnbOffers(stays, ctx.source, city), checkin, checkout);
           }
         },
         {
@@ -8392,7 +8411,8 @@ var init_hotels = __esm({
             const city = cityFromQuery(ctx);
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
-            return expediaGroupSearch(ctx, "expedia.com", "safari", city, checkin, checkout);
+            const items = await withBudget(expediaGroupSearch(ctx, "expedia.com", "safari", city, checkin, checkout), 18e3, "Expedia");
+            return stampStayDates(items, checkin, checkout);
           }
         },
         {
@@ -8407,12 +8427,12 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let items;
             try {
-              items = await expediaGroupSearch(ctx, "hotels.com", "safari17_0", city, checkin, checkout);
+              items = await withBudget(expediaGroupSearch(ctx, "hotels.com", "safari17_0", city, checkin, checkout), 16e3, "Hotels.com");
             } catch (e2) {
               if (String(e2?.failureClass) !== "ACCESS_CHALLENGE" && String(e2?.failureClass) !== "RATE_LIMITED") throw e2;
-              items = await expediaGroupSearch(ctx, "hotels.com", "chrome_android", city, checkin, checkout);
+              items = await withBudget(expediaGroupSearch(ctx, "hotels.com", "chrome_android", city, checkin, checkout), 14e3, "Hotels.com (android key)");
             }
-            return items;
+            return stampStayDates(items, checkin, checkout);
           }
         },
         {
@@ -8420,8 +8440,8 @@ var init_hotels = __esm({
           name: "Hotels worker: OpenStreetMap hotel discovery (worldwide)",
           priority: 20,
           maxPerMinute: 6,
-          timeoutMs: 45e3,
-          // 3 mirrors x 12s must fit inside the task budget
+          timeoutMs: 12e3,
+          // OWNER 10 Nov: OSM rows carry no price, so they can never render under No Price No Card - it must not hold the sweep for 45s
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city) return [];
@@ -8707,10 +8727,13 @@ var init_hotels = __esm({
             };
             const hotels = [];
             let total = null;
+            const deadline = Date.now() + Number(process.env.T1S_YATRA_HOTELS_BUDGET_MS || 22e3);
             for (let page = 1; page <= 3; page++) {
+              const left = deadline - Date.now();
+              if (left < 3e3) break;
               const r = await cffiFetch(yatraPageSearchUrl(city, checkin, checkout, page), {
                 impersonate: "chrome",
-                timeoutMs: 45e3,
+                timeoutMs: Math.min(12e3, left),
                 headers
               });
               if (r.status !== 200) {
@@ -36159,7 +36182,7 @@ async function backfillFlightTimes(offers, opts = {}) {
     if (keys.length >= HARVEST_KEY_LIMIT) break;
   }
   if (!keys.length) return out;
-  const learned = await withBudget(
+  const learned = await withBudget2(
     Promise.all(keys.map((k) => harvestOnce(k.from, k.to, k.date))).then((r) => r.reduce((a, b) => a + b, 0)),
     budgetMs,
     0
@@ -36202,7 +36225,7 @@ function noteFlightTimeDrop(vertical, dropped, remaining) {
     sample: dropped.slice(0, 3).map((d) => `${d.seller}: ${d.title}`.slice(0, 70))
   });
 }
-var HARVEST_OK_TTL_MS, HARVEST_FAIL_TTL_MS, HARVEST_TIMEOUT_MS, HARVEST_KEY_LIMIT, harvestCache, harvestInflight, slug4, isPresenceRow, withBudget;
+var HARVEST_OK_TTL_MS, HARVEST_FAIL_TTL_MS, HARVEST_TIMEOUT_MS, HARVEST_KEY_LIMIT, harvestCache, harvestInflight, slug4, isPresenceRow, withBudget2;
 var init_flightTimeBackfill = __esm({
   "server/search/flightTimeBackfill.ts"() {
     init_curlCffiFetch();
@@ -36217,7 +36240,7 @@ var init_flightTimeBackfill = __esm({
     harvestInflight = /* @__PURE__ */ new Map();
     slug4 = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, "_");
     isPresenceRow = (offer) => String(offer?.id || "").startsWith("presence_") || String(offer?.attributes?.price_basis || "") === "live_fares_unavailable";
-    withBudget = (p, ms, fallback) => new Promise((resolve) => {
+    withBudget2 = (p, ms, fallback) => new Promise((resolve) => {
       const timer = setTimeout(() => resolve(fallback), ms);
       if (typeof timer.unref === "function") timer.unref();
       p.then(

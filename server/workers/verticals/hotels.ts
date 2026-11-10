@@ -80,6 +80,36 @@ export function cityFromQuery(ctx: { query: any }): string | null {
   return null;
 }
 
+/**
+ * OWNER 10 Nov ("hotels vertical mai goibibo, makemytrip, airbnb ye sb tha abhi kuch websites hi dikh raha
+ * hai"): measured with scripts/probeHotelSellers.ts, 17 hotel tasks ran for Indore 21-22 Nov - Ixigo (50 rows),
+ * Airbnb (17) and Expedia (49) all returned PRICED rows but no travel date, so the strict date gate dropped every
+ * one of them and only Agoda/OYO/EasyMyTrip survived. Those three sources search BY DATE (their request carries
+ * checkin/checkout), so the date is known and not guessed: stamping it back is honest. Cleartrip's SEO SRP takes
+ * no date at all (verified: the body is byte-identical with and without ?checkin=), so it is deliberately NOT
+ * stamped - its rate is a city listing, not a fare for the requested stay.
+ */
+export function stampStayDates(items: any[], checkin: string, checkout: string): any[] {
+  return items.map((it) => ({
+    ...it,
+    travel: { ...(it.travel || {}), date: checkin, checkIn: checkin, checkOut: checkout },
+    attributes: { ...(it.attributes || {}), check_in: checkin, check_out: checkout },
+  }));
+}
+
+/** Internal deadline so a slow source reports a failure instead of eating the whole hotel sweep. */
+async function withBudget<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: any;
+  const guard = new Promise<never>((_, rej) => {
+    timer = setTimeout(() => rej(new AcquisitionError('SERVER_ERROR', `${label} exceeded ${ms}ms budget`)), ms);
+  });
+  try {
+    return await Promise.race([p, guard]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function stayDates(q: any): { checkin: string; checkout: string } {
   const dep = q?.travelDates?.depart;
   const ret = q?.travelDates?.return;
@@ -386,11 +416,14 @@ export const hotelsWorker: VerticalWorker = {
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city || city.length < 3) return [];
+        const stay = stayDates(ctx.query);
         let items: any[] = [];
         let url = '';
         let lastStatus = 0;
         for (const variant of cityVariants(city)) {
-          url = `https://www.ixigo.com/hotels/${ixigoHotelsSlug(variant)}`;
+          // Ixigo honours checkInDate/checkOutDate on its SEO page (verified: the dated and undated bodies
+          // differ and the dated one carries the requested stay), so its rows become dated-honest.
+          url = `https://www.ixigo.com/hotels/${ixigoHotelsSlug(variant)}?checkInDate=${stay.checkin}&checkOutDate=${stay.checkout}`;
           const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
           lastStatus = r.status;
           if (r.status === 404) continue; // this spelling has no page: try the next alias
@@ -400,7 +433,7 @@ export const hotelsWorker: VerticalWorker = {
         }
         if (!items.length && lastStatus === 404) throw new AcquisitionError('NOT_FOUND', `Ixigo has no hotels page for "${city}"`, 404);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `No Ixigo hotels parsed for "${city}" (slug may not exist for this city)`);
-        return items;
+        return stampStayDates(items, stay.checkin, stay.checkout);
       },
     },
     {
@@ -511,7 +544,7 @@ export const hotelsWorker: VerticalWorker = {
         if (results.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Airbnb deferred state had no stays');
         const stays = parseAirbnbStays(results);
         if (stays.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Airbnb results had no parseable stays');
-        return parseAirbnbOffers(stays, ctx.source, city);
+        return stampStayDates(parseAirbnbOffers(stays, ctx.source, city), checkin, checkout);
       },
     },
     {
@@ -633,7 +666,8 @@ export const hotelsWorker: VerticalWorker = {
         const city = cityFromQuery(ctx);
         if (!city) return [];
         const { checkin, checkout } = stayDates(ctx.query);
-        return expediaGroupSearch(ctx, 'expedia.com', 'safari', city, checkin, checkout);
+        const items = await withBudget(expediaGroupSearch(ctx, 'expedia.com', 'safari', city, checkin, checkout), 18_000, 'Expedia');
+        return stampStayDates(items, checkin, checkout);
       },
     },
     {
@@ -648,13 +682,13 @@ export const hotelsWorker: VerticalWorker = {
         const { checkin, checkout } = stayDates(ctx.query);
         let items: Awaited<ReturnType<typeof expediaGroupSearch>>;
         try {
-          items = await expediaGroupSearch(ctx, 'hotels.com', 'safari17_0', city, checkin, checkout);
+          items = await withBudget(expediaGroupSearch(ctx, 'hotels.com', 'safari17_0', city, checkin, checkout), 16_000, 'Hotels.com');
         } catch (e: any) {
           // Akamai rate-samples the SRP edge; the mobile-Android JA3 is a second key.
           if (String(e?.failureClass) !== 'ACCESS_CHALLENGE' && String(e?.failureClass) !== 'RATE_LIMITED') throw e;
-          items = await expediaGroupSearch(ctx, 'hotels.com', 'chrome_android', city, checkin, checkout);
+          items = await withBudget(expediaGroupSearch(ctx, 'hotels.com', 'chrome_android', city, checkin, checkout), 14_000, 'Hotels.com (android key)');
         }
-        return items;
+        return stampStayDates(items, checkin, checkout);
       },
     },
     {
@@ -662,7 +696,7 @@ export const hotelsWorker: VerticalWorker = {
       name: 'Hotels worker: OpenStreetMap hotel discovery (worldwide)',
       priority: 20,
       maxPerMinute: 6,
-      timeoutMs: 45_000, // 3 mirrors x 12s must fit inside the task budget
+      timeoutMs: 12_000, // OWNER 10 Nov: OSM rows carry no price, so they can never render under No Price No Card - it must not hold the sweep for 45s
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city) return [];
@@ -916,9 +950,15 @@ export const hotelsWorker: VerticalWorker = {
         };
         const hotels: ReturnType<typeof parseYatraHotels> = [];
         let total: number | null = null;
+        // OWNER 10 Nov: Yatra never appeared in the hotel answer because three 45s page fetches could outlive
+        // the whole hotel sweep (measured: the task was still running at 45s). One shared deadline now bounds
+        // the loop, and each page fetch gets only what is left of it.
+        const deadline = Date.now() + Number(process.env.T1S_YATRA_HOTELS_BUDGET_MS || 22_000);
         for (let page = 1; page <= 3; page++) { // up to 30 offers per search
+          const left = deadline - Date.now();
+          if (left < 3_000) break;
           const r = await cffiFetch(yatraPageSearchUrl(city, checkin, checkout, page), {
-            impersonate: 'chrome', timeoutMs: 45_000, headers,
+            impersonate: 'chrome', timeoutMs: Math.min(12_000, left), headers,
           });
           if (r.status !== 200) {
             if (page === 1) throw new AcquisitionError('SERVER_ERROR', `Yatra pageSearch HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
