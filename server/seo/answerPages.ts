@@ -146,6 +146,16 @@ function verticalPage(slug: string): AnswerPage | null {
   };
 }
 
+/** "in Mumbai, Pune, Nagpur, Nashik and Thane plus 37 more cities" - long state lists stay readable. */
+function nationalCitiesPhrase(named: string[], restCount: number, stateName: string): string {
+  if (!named.length) return `across ${stateName}`;
+  if (named.length === 1 && !restCount) return `in ${named[0]}`;
+  const head = `${named.slice(0, -1).join(', ')}${named.length > 1 ? ' and ' : ''}${named[named.length - 1]}`;
+  return restCount > 0
+    ? `in ${head} and ${restCount} more cities in ${stateName}`
+    : `in ${head}`;
+}
+
 function statePage(slug: string, state: AnswerState): AnswerPage | null {
   const meta = seoVerticals().find((v) => v.slug === slug);
   if (!meta) return null;
@@ -154,9 +164,11 @@ function statePage(slug: string, state: AnswerState): AnswerPage | null {
   const sellers = sellersFor(slug, label);
   const who = sellerSentence(sellers);
   const cities = state.cities;
-  const cityPhrase = cities.length
-    ? `in ${cities.slice(0, -1).join(', ')}${cities.length > 1 ? ' and ' : ''}${cities[cities.length - 1]}`
-    : `across ${state.name}`;
+  // The corpus now holds the whole state (Maharashtra alone has 42 places), so every sentence that names
+  // cities must stay readable: five names plus a count, never a 42-item list.
+  const named = cities.slice(0, 5);
+  const restCount = Math.max(0, cities.length - named.length);
+  const cityPhrase = nationalCitiesPhrase(named, restCount, state.name);
   return {
     path: `/best/${slug}/${state.slug}`,
     kind: 'state',
@@ -167,7 +179,7 @@ function statePage(slug: string, state: AnswerState): AnswerPage | null {
     body: [
       `${BRAND} is an independent comparison engine, not a ${low} seller. That matters in ${state.name}: a single seller only shows its own price, while a comparison shows whether one of the ${sellers.length || 'several'} sellers we scan is cheaper for the same ${low} on the same date.`,
       cities.length
-        ? `Coverage in ${state.name} includes ${cities.join(', ')}. Pick your city and date on the ${low} page and the live scan runs for your exact search, not for a generic state page.`
+        ? `Coverage in ${state.name} includes ${named.join(', ')}${restCount ? ` and ${restCount} more cities` : ''}. Pick your city and date on the ${low} page and the live scan runs for your exact search, not for a generic state page.`
         : `We compare ${low} options for every part of ${state.name}; enter your city or route on the ${low} page and the live scan runs for your exact search.`,
       `Every returned row carries the seller's real price and a booking link. Rows without a genuine positive price are removed rather than shown as placeholders, so an empty result means no verified price was returned, not a broken page.`,
     ],
@@ -184,7 +196,7 @@ function statePage(slug: string, state: AnswerState): AnswerPage | null {
       {
         q: `Does ${BRAND} cover ${state.name}?`,
         a: cities.length
-          ? `Yes. ${BRAND} runs live ${low} comparisons for ${cities.join(', ')} and for other cities in ${state.name} when you enter them.`
+          ? `Yes. ${BRAND} runs live ${low} comparisons for ${named.join(', ')}${restCount ? ` and ${restCount} more cities in ${state.name}` : ''}, and for any other place in ${state.name} you type in.`
           : `Yes. Enter your city or route for ${state.name} and ${BRAND} runs the live ${low} comparison for that exact search.`,
       },
       {

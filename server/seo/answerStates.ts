@@ -1,3 +1,5 @@
+import { citiesOfState } from './cityCorpus';
+
 /**
  * Indian states + union territories covered by the answer-page layer (/best/<vertical>/<state>).
  * Dependency-free on purpose: server/seo/data.ts imports it to build sitemap URLs, and
@@ -10,7 +12,7 @@ export interface AnswerState { name: string; slug: string; cities: string[] }
  * city in the corpus still gets a page (it is a state-LEVEL query), it just links to the vertical instead
  * of city pages.
  */
-export const ANSWER_STATES: AnswerState[] = [
+const BASE_STATES: AnswerState[] = [
   { name: 'Andhra Pradesh', slug: 'andhra-pradesh', cities: ['Vijayawada', 'Visakhapatnam'] },
   { name: 'Arunachal Pradesh', slug: 'arunachal-pradesh', cities: [] },
   { name: 'Assam', slug: 'assam', cities: ['Guwahati'] },
@@ -48,3 +50,13 @@ export const ANSWER_STATES: AnswerState[] = [
   { name: 'Lakshadweep', slug: 'lakshadweep', cities: [] },
   { name: 'Puducherry', slug: 'puducherry', cities: [] },
 ];
+
+/**
+ * OWNER 10 Nov ("sb city sb place pr kro kissi ko v mt leave kro"): the state answer pages used to carry a
+ * handful of hand-typed cities while the corpus now covers every place. Deriving the list here means a state
+ * page links every city it actually has pages for, and a new city can never appear in one layer only.
+ */
+export const ANSWER_STATES: AnswerState[] = BASE_STATES.map((st) => ({
+  ...st,
+  cities: citiesOfState(st.slug),
+}));

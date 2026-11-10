@@ -40285,10 +40285,10 @@ var init_appCampaigns = __esm({
 });
 
 // server/api/cachedSections.ts
-async function cachedSection(key, build, ttlMs = DEFAULT_TTL_MS) {
+async function cachedSection(key, build2, ttlMs = DEFAULT_TTL_MS) {
   const hit = CACHE2.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.value;
-  const value = await build();
+  const value = await build2();
   CACHE2.set(key, { expiresAt: Date.now() + ttlMs, value });
   return value;
 }
@@ -41536,8 +41536,8 @@ async function couponItems() {
   const rows = await fetchAffiliateRows(600);
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  const build = rows.filter((r) => r.coupon_code).map(async (row) => ({ row, logo: await resolveMerchantLogo(row) }));
-  for (const { row, logo } of await Promise.all(build)) {
+  const build2 = rows.filter((r) => r.coupon_code).map(async (row) => ({ row, logo: await resolveMerchantLogo(row) }));
+  for (const { row, logo } of await Promise.all(build2)) {
     const item = itemFromAffiliate(row, logo);
     if (!item) continue;
     const key = `${item.merchant.toLowerCase()}|${item.badge || ""}`;
@@ -55137,15 +55137,87 @@ var init_guides = __esm({
   }
 });
 
+// server/seo/cityCorpus.ts
+function citiesOfState(stateSlug) {
+  return INDIAN_CITIES.filter((c) => c.state === stateSlug).map((c) => c.name);
+}
+var RAW, slugify, build, INDIAN_CITIES, CITY_STATE;
+var init_cityCorpus = __esm({
+  "server/seo/cityCorpus.ts"() {
+    RAW = [
+      ["andhra-pradesh", "Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Kurnool", "Rajahmundry", "Tirupati", "Kakinada", "Kadapa", "Anantapur", "Vizianagaram", "Eluru", "Ongole", "Chittoor", "Bhimavaram", "Machilipatnam", "Tenali", "Proddatur", "Hindupur"],
+      ["arunachal-pradesh", "Itanagar", "Naharlagun", "Pasighat", "Tawang", "Ziro", "Bomdila", "Tezu"],
+      ["assam", "Guwahati", "Silchar", "Dibrugarh", "Jorhat", "Tezpur", "Nagaon", "Bongaigaon", "Tinsukia", "Dhubri", "Diphu", "Goalpara"],
+      ["bihar", "Patna", "Gaya", "Bhagalpur", "Muzaffarpur", "Darbhanga", "Purnia", "Bihar Sharif", "Arrah", "Begusarai", "Katihar", "Chhapra", "Munger", "Saharsa", "Sasaram", "Hajipur", "Motihari", "Bettiah", "Siwan", "Jamalpur"],
+      ["chhattisgarh", "Raipur", "Bhilai", "Bilaspur", "Korba", "Durg", "Rajnandgaon", "Jagdalpur", "Ambikapur", "Raigarh", "Dhamtari", "Chirmiri"],
+      ["goa", "Goa", "Panaji", "Margao", "Vasco Da Gama", "Calangute", "Candolim", "Anjuna", "Ponda", "Mapusa"],
+      ["gujarat", "Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar", "Junagadh", "Gandhinagar", "Gandhidham", "Anand", "Navsari", "Morbi", "Vapi", "Veraval", "Porbandar", "Bhuj", "Mehsana", "Palanpur", "Valsad", "Bharuch", "Godhra", "Patan", "Dahod"],
+      ["haryana", "Gurugram", "Faridabad", "Panipat", "Ambala", "Yamunanagar", "Rohtak", "Hisar", "Karnal", "Sonipat", "Panchkula", "Bhiwani", "Sirsa", "Kurukshetra", "Rewari", "Palwal", "Jind", "Kaithal"],
+      ["himachal-pradesh", "Shimla", "Manali", "Dharamshala", "Solan", "Mandi", "Kullu", "Palampur", "Kangra", "Una", "Chamba", "Hamirpur", "Baddi", "Nahan", "Keylong"],
+      ["jharkhand", "Ranchi", "Jamshedpur", "Dhanbad", "Bokaro Steel City", "Deoghar", "Hazaribagh", "Giridih", "Ramgarh", "Medininagar", "Chaibasa", "Dumka", "Sahibganj"],
+      ["karnataka", "Bengaluru", "Mysuru", "Mangaluru", "Hubballi", "Dharwad", "Belagavi", "Kalaburagi", "Davanagere", "Ballari", "Vijayapura", "Shivamogga", "Tumakuru", "Udupi", "Hassan", "Mandya", "Chikkamagaluru", "Bidar", "Raichur", "Kolar", "Bagalkot", "Gadag", "Hospet", "Karwar", "Madikeri"],
+      ["kerala", "Kochi", "Thiruvananthapuram", "Kozhikode", "Thrissur", "Kollam", "Kannur", "Alappuzha", "Palakkad", "Malappuram", "Kottayam", "Munnar", "Varkala", "Kovalam", "Wayanad", "Idukki", "Pathanamthitta", "Kasaragod", "Kannur", "Thalassery", "Nilambur"],
+      ["madhya-pradesh", "Indore", "Bhopal", "Jabalpur", "Gwalior", "Ujjain", "Sagar", "Rewa", "Satna", "Ratlam", "Dewas", "Singrauli", "Katni", "Chhindwara", "Khandwa", "Morena", "Bhind", "Vidisha", "Hoshangabad", "Shivpuri", "Damoh", "Mandsaur", "Khargone", "Neemuch", "Betul", "Sehore", "Guna", "Shahdol", "Chhatarpur", "Pithampur", "Omkareshwar", "Maheshwar"],
+      ["maharashtra", "Mumbai", "Pune", "Nagpur", "Nashik", "Thane", "Navi Mumbai", "Aurangabad", "Solapur", "Amravati", "Kolhapur", "Sangli", "Jalgaon", "Akola", "Latur", "Dhule", "Ahmednagar", "Chandrapur", "Parbhani", "Nanded", "Satara", "Ratnagiri", "Alibaug", "Lonavala", "Mahabaleshwar", "Shirdi", "Panvel", "Vasai-Virar", "Bhiwandi", "Ichalkaranji", "Nandurbar", "Wardha", "Gondia", "Yavatmal", "Buldhana", "Osmanabad", "Jalna", "Beed", "Karad", "Baramati", "Palghar", "Badlapur", "Ambernath"],
+      ["manipur", "Imphal", "Thoubal", "Churachandpur", "Bishnupur", "Kakching"],
+      ["meghalaya", "Shillong", "Tura", "Cherrapunji", "Jowai", "Nongstoin", "Williamnagar"],
+      ["mizoram", "Aizawl", "Lunglei", "Champhai", "Serchhip", "Kolasib"],
+      ["nagaland", "Kohima", "Dimapur", "Mokokchung", "Tuensang", "Wokha", "Zunheboto"],
+      ["odisha", "Bhubaneswar", "Cuttack", "Rourkela", "Berhampur", "Sambalpur", "Puri", "Balasore", "Bhadrak", "Baripada", "Jharsuguda", "Angul", "Koraput", "Rayagada", "Bargarh", "Konark"],
+      ["punjab", "Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda", "Mohali", "Hoshiarpur", "Batala", "Pathankot", "Moga", "Abohar", "Malerkotla", "Barnala", "Firozpur", "Kapurthala", "Sangrur", "Fazilka"],
+      ["rajasthan", "Jaipur", "Udaipur", "Jodhpur", "Kota", "Bikaner", "Ajmer", "Bhilwara", "Alwar", "Sikar", "Pali", "Sri Ganganagar", "Bharatpur", "Chittorgarh", "Mount Abu", "Pushkar", "Jaisalmer", "Sawai Madhopur", "Bundi", "Beawar", "Hanumangarh", "Nagaur", "Tonk", "Kishangarh", "Ranthambore"],
+      ["sikkim", "Gangtok", "Namchi", "Gyalshing", "Mangan", "Pelling", "Lachung"],
+      ["tamil-nadu", "Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tirunelveli", "Tiruppur", "Erode", "Vellore", "Thoothukudi", "Thanjavur", "Dindigul", "Kanyakumari", "Ooty", "Kumbakonam", "Nagercoil", "Hosur", "Karur", "Cuddalore", "Kanchipuram", "Rameswaram", "Pollachi", "Namakkal", "Villupuram", "Ariyalur", "Nagapattinam", "Pudukkottai", "Yercaud", "Kodaikanal", "Mahabalipuram"],
+      ["telangana", "Hyderabad", "Warangal", "Nizamabad", "Karimnagar", "Khammam", "Ramagundam", "Secunderabad", "Mahbubnagar", "Nalgonda", "Adilabad", "Siddipet", "Medak", "Suryapet", "Miryalaguda", "Jagtial"],
+      ["tripura", "Agartala", "Dharmanagar", "Kailashahar", "Belonia", "Khowai", "Ambassa"],
+      ["uttar-pradesh", "Lucknow", "Noida", "Ghaziabad", "Agra", "Varanasi", "Kanpur", "Meerut", "Prayagraj", "Bareilly", "Aligarh", "Moradabad", "Saharanpur", "Gorakhpur", "Jhansi", "Muzaffarnagar", "Mathura", "Ayodhya", "Firozabad", "Budaun", "Rampur", "Shahjahanpur", "Farrukhabad", "Hapur", "Etawah", "Mirzapur", "Bulandshahr", "Amroha", "Hardoi", "Fatehpur", "Raebareli", "Orai", "Sitapur", "Bahraich", "Unnao", "Jaunpur", "Hathras", "Banda", "Pilibhit", "Barabanki", "Gonda", "Mainpuri", "Etah", "Deoria", "Ghazipur", "Sultanpur", "Azamgarh", "Basti", "Ballia", "Greater Noida", "Vrindavan", "Sarnath", "Naimisharanya"],
+      ["uttarakhand", "Dehradun", "Haridwar", "Rishikesh", "Roorkee", "Haldwani", "Rudrapur", "Kashipur", "Nainital", "Mussoorie", "Almora", "Pithoragarh", "Kotdwar", "Ramnagar", "Kedarnath", "Badrinath", "Joshimath", "Chamoli", "Tehri", "Bageshwar"],
+      ["west-bengal", "Kolkata", "Howrah", "Durgapur", "Asansol", "Siliguri", "Bardhaman", "Malda", "Kharagpur", "Haldia", "Darjeeling", "Jalpaiguri", "Kalyani", "Krishnanagar", "Barasat", "Barrackpore", "Hugli-Chinsurah", "Raiganj", "Medinipur", "Cooch Behar", "Bankura", "Purulia", "Bolpur", "Kalimpong", "Digha", "Mandarmani"],
+      ["andaman-and-nicobar-islands", "Port Blair", "Havelock Island", "Neil Island", "Diglipur"],
+      ["chandigarh", "Chandigarh"],
+      ["dadra-and-nagar-haveli-and-daman-and-diu", "Silvassa", "Daman", "Diu"],
+      ["delhi", "Delhi", "New Delhi", "Dwarka", "Rohini"],
+      ["jammu-and-kashmir", "Srinagar", "Jammu", "Anantnag", "Baramulla", "Udhampur", "Kathua", "Sopore", "Gulmarg", "Pahalgam", "Katra", "Sonamarg"],
+      ["ladakh", "Leh", "Kargil", "Nubra Valley", "Pangong"],
+      ["lakshadweep", "Kavaratti", "Agatti", "Minicoy"],
+      ["puducherry", "Puducherry", "Karaikal", "Mahe", "Yanam", "Auroville"]
+    ];
+    slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    build = () => {
+      const seen = /* @__PURE__ */ new Set();
+      const out = [];
+      for (const [state, ...names] of RAW) {
+        const inState = /* @__PURE__ */ new Set();
+        for (const name of names) {
+          const key = name.trim().toLowerCase();
+          if (inState.has(key)) continue;
+          inState.add(key);
+          let slug5 = slugify(name);
+          if (seen.has(slug5)) slug5 = `${slug5}-${state}`;
+          if (seen.has(slug5)) continue;
+          seen.add(slug5);
+          out.push({ slug: slug5, name, state });
+        }
+      }
+      return out;
+    };
+    INDIAN_CITIES = build();
+    CITY_STATE = Object.fromEntries(
+      INDIAN_CITIES.map((c) => [c.name.trim().toLowerCase(), c.state])
+    );
+  }
+});
+
 // server/seo/answerStates.ts
 var answerStates_exports = {};
 __export(answerStates_exports, {
   ANSWER_STATES: () => ANSWER_STATES
 });
-var ANSWER_STATES;
+var BASE_STATES, ANSWER_STATES;
 var init_answerStates = __esm({
   "server/seo/answerStates.ts"() {
-    ANSWER_STATES = [
+    init_cityCorpus();
+    BASE_STATES = [
       { name: "Andhra Pradesh", slug: "andhra-pradesh", cities: ["Vijayawada", "Visakhapatnam"] },
       { name: "Arunachal Pradesh", slug: "arunachal-pradesh", cities: [] },
       { name: "Assam", slug: "assam", cities: ["Guwahati"] },
@@ -55183,6 +55255,10 @@ var init_answerStates = __esm({
       { name: "Lakshadweep", slug: "lakshadweep", cities: [] },
       { name: "Puducherry", slug: "puducherry", cities: [] }
     ];
+    ANSWER_STATES = BASE_STATES.map((st) => ({
+      ...st,
+      cities: citiesOfState(st.slug)
+    }));
   }
 });
 
@@ -55601,7 +55677,7 @@ function resolveSeoPage(path18) {
     ] : [
       `This page compares live ${noun} for ${c}. One search asks every major provider serving the city at once, and the results land in a single lowest-first list.`,
       `Prices in ${c} move hour to hour. We show what each source reports right now with direct links, so the deal you see is the deal you get.`,
-      `${cityList()} and 30+ other cities are covered the same way - change city anytime from inside the app.`
+      `${cityList()} and ${INDIAN_CITIES.length - 8} other cities and towns are covered the same way - change city anytime from inside the app.`
     ];
     const movieFaqs = movie ? [
       { q: `Which languages can I book in ${c} cinemas?`, a: `Multiplexes in ${c} routinely screen ${movie.languages.join(", ")} releases. Each language version is priced separately, so compare the exact language show you want.` },
@@ -55612,7 +55688,10 @@ function resolveSeoPage(path18) {
       { q: `How do you get ${c} prices?`, a: `Live queries to every provider that serves ${c} at search time - no stale listings, no manual uploads.` },
       { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` }
     ];
-    const others = CITIES.filter((x) => x.slug !== tail).slice(0, 6);
+    const stateOfThisCity = stateForCity(c)?.slug;
+    const sameState = CITIES.filter((x) => x.slug !== tail && stateOfThisCity && CITY_STATE[x.name.toLowerCase()] === stateOfThisCity);
+    const elsewhere = CITIES.filter((x) => x.slug !== tail && (!stateOfThisCity || CITY_STATE[x.name.toLowerCase()] !== stateOfThisCity));
+    const others = [...sameState.slice(0, 4), ...elsewhere.slice(0, 6)].slice(0, 6);
     return {
       path: clean4,
       title: head3 === "movies" && movie ? `Movie Ticket Prices in ${c} \u2014 Compare Every Platform | Try1Second` : `${vmeta.label} in ${c} \u2014 Compare Live Prices | Try1Second`,
@@ -55676,11 +55755,9 @@ function intentLinksFor(head3) {
   return list.map((l) => ({ label: l.label, href: `/guides/${l.slug}` }));
 }
 function stateForCity(name) {
-  const want = name.trim().toLowerCase();
-  for (const st of ANSWER_STATES) {
-    if (st.cities.some((c) => c.trim().toLowerCase() === want)) return { name: st.name, slug: st.slug };
-  }
-  return null;
+  const slug5 = CITY_STATE[name.trim().toLowerCase()];
+  const st = slug5 ? ANSWER_STATES.find((x) => x.slug === slug5) : void 0;
+  return st ? { name: st.name, slug: st.slug } : null;
 }
 function seoLinksFor(verticalPath) {
   const head3 = verticalPath.split("/").filter(Boolean)[0];
@@ -55690,7 +55767,7 @@ function seoLinksFor(verticalPath) {
   } else if (head3 === "bus") {
     for (const [a, b] of BUS_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} buses`, href: `/bus/${routeSlug(a, b, "bus")}` });
   } else if (["hotels", "cabs", "grocery", "food", "movies"].includes(head3)) {
-    for (const c of CITIES.slice(0, 8)) links.push({ label: `${cityName(c.slug)}`, href: `/${head3}/${c.slug}` });
+    for (const c of topCities()) links.push({ label: `${cityName(c.slug)}`, href: `/${head3}/${c.slug}` });
   }
   const segs = verticalPath.split("/").filter(Boolean);
   if (segs.length === 2) {
@@ -55700,53 +55777,17 @@ function seoLinksFor(verticalPath) {
   }
   return links;
 }
-var SEO_HOST, CITIES, IATA3, FLIGHT_ROUTES, BUS_ROUTES, VERTICALS2, ECOM_CATS, LOAN_TYPES, INSURANCE_TYPES, CARD_TYPES, BANKING_TYPES, titleCase, cityName, cityList, INTENT_LINKS, INTENT_GENERAL;
+var SEO_HOST, CITIES, TOP_CITIES, topCities, IATA3, FLIGHT_ROUTES, BUS_ROUTES, VERTICALS2, ECOM_CATS, LOAN_TYPES, INSURANCE_TYPES, CARD_TYPES, BANKING_TYPES, titleCase, cityName, cityList, INTENT_LINKS, INTENT_GENERAL;
 var init_data = __esm({
   "server/seo/data.ts"() {
     init_guides();
     init_answerStates();
+    init_cityCorpus();
     init_movieCities();
     SEO_HOST = "https://www.try1second.com";
-    CITIES = [
-      { slug: "mumbai", name: "Mumbai" },
-      { slug: "delhi", name: "Delhi" },
-      { slug: "bengaluru", name: "Bengaluru" },
-      { slug: "hyderabad", name: "Hyderabad" },
-      { slug: "chennai", name: "Chennai" },
-      { slug: "kolkata", name: "Kolkata" },
-      { slug: "pune", name: "Pune" },
-      { slug: "ahmedabad", name: "Ahmedabad" },
-      { slug: "jaipur", name: "Jaipur" },
-      { slug: "lucknow", name: "Lucknow" },
-      { slug: "indore", name: "Indore" },
-      { slug: "bhopal", name: "Bhopal" },
-      { slug: "nagpur", name: "Nagpur" },
-      { slug: "patna", name: "Patna" },
-      { slug: "surat", name: "Surat" },
-      { slug: "vadodara", name: "Vadodara" },
-      { slug: "gurugram", name: "Gurugram" },
-      { slug: "noida", name: "Noida" },
-      { slug: "kochi", name: "Kochi" },
-      { slug: "coimbatore", name: "Coimbatore" },
-      { slug: "vijayawada", name: "Vijayawada" },
-      { slug: "visakhapatnam", name: "Visakhapatnam" },
-      { slug: "guwahati", name: "Guwahati" },
-      { slug: "chandigarh", name: "Chandigarh" },
-      { slug: "dehradun", name: "Dehradun" },
-      { slug: "ludhiana", name: "Ludhiana" },
-      { slug: "agra", name: "Agra" },
-      { slug: "varanasi", name: "Varanasi" },
-      { slug: "kanpur", name: "Kanpur" },
-      { slug: "ranchi", name: "Ranchi" },
-      { slug: "nashik", name: "Nashik" },
-      { slug: "rajkot", name: "Rajkot" },
-      { slug: "jabalpur", name: "Jabalpur" },
-      { slug: "amritsar", name: "Amritsar" },
-      { slug: "udaipur", name: "Udaipur" },
-      { slug: "jodhpur", name: "Jodhpur" },
-      { slug: "goa", name: "Goa" },
-      { slug: "shimla", name: "Shimla" }
-    ];
+    CITIES = INDIAN_CITIES.map((c) => ({ slug: c.slug, name: c.name }));
+    TOP_CITIES = ["mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "pune", "ahmedabad"];
+    topCities = () => TOP_CITIES.map((slug5) => CITIES.find((c) => c.slug === slug5)).filter(Boolean);
     IATA3 = {
       mumbai: "BOM",
       delhi: "DEL",
@@ -56123,7 +56164,7 @@ var init_data = __esm({
     ];
     titleCase = (s) => s.replace(/(^|\s|-)\w/g, (m) => m.toUpperCase());
     cityName = (slug5) => CITIES.find((c) => c.slug === slug5)?.name || titleCase(slug5.replace(/-/g, " "));
-    cityList = () => CITIES.slice(0, 8).map((c) => c.name).join(", ");
+    cityList = () => topCities().map((c) => c.name).join(", ");
     INTENT_LINKS = {
       flights: [
         { label: "Best flight booking comparison website in India", slug: "best-flight-booking-comparison-website-india" },
@@ -56425,6 +56466,9 @@ function sitemapPriority(path18) {
   if (segs[0] === "best") return "0.5";
   if (segs[0] === "answers") return "0.5";
   if (segs[0] === "product") return "0.4";
+  if (CITY_VERTICALS.includes(segs[0]) && segs.length === 2) {
+    return METRO_CITIES.includes(segs[1]) ? "0.7" : "0.5";
+  }
   return "0.7";
 }
 function sitemapXml(extraPaths = []) {
@@ -56471,7 +56515,7 @@ function registerSeoRoutes(app) {
     res.send(await sitemapResponse());
   });
 }
-var productPathCache, WARM_FILE, WARM_TTL_MS, warm, warming, RELEASE_DATE;
+var productPathCache, WARM_FILE, WARM_TTL_MS, warm, warming, RELEASE_DATE, CITY_VERTICALS, METRO_CITIES;
 var init_sitemap = __esm({
   "server/seo/sitemap.ts"() {
     init_data();
@@ -56491,6 +56535,8 @@ var init_sitemap = __esm({
         return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
       }
     })();
+    CITY_VERTICALS = ["hotels", "cabs", "grocery", "food", "movies"];
+    METRO_CITIES = ["mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "pune", "ahmedabad"];
   }
 });
 
@@ -57447,6 +57493,12 @@ function verticalPage(slug5) {
     ]
   };
 }
+function nationalCitiesPhrase(named, restCount, stateName) {
+  if (!named.length) return `across ${stateName}`;
+  if (named.length === 1 && !restCount) return `in ${named[0]}`;
+  const head3 = `${named.slice(0, -1).join(", ")}${named.length > 1 ? " and " : ""}${named[named.length - 1]}`;
+  return restCount > 0 ? `in ${head3} and ${restCount} more cities in ${stateName}` : `in ${head3}`;
+}
 function statePage(slug5, state) {
   const meta = seoVerticals().find((v) => v.slug === slug5);
   if (!meta) return null;
@@ -57455,7 +57507,9 @@ function statePage(slug5, state) {
   const sellers = sellersFor(slug5, label);
   const who = sellerSentence(sellers);
   const cities = state.cities;
-  const cityPhrase = cities.length ? `in ${cities.slice(0, -1).join(", ")}${cities.length > 1 ? " and " : ""}${cities[cities.length - 1]}` : `across ${state.name}`;
+  const named = cities.slice(0, 5);
+  const restCount = Math.max(0, cities.length - named.length);
+  const cityPhrase = nationalCitiesPhrase(named, restCount, state.name);
   return {
     path: `/best/${slug5}/${state.slug}`,
     kind: "state",
@@ -57465,7 +57519,7 @@ function statePage(slug5, state) {
     quickAnswer: `For ${low} in ${state.name} there is no permanently cheapest site: sellers re-price by city, date and demand, and the winner changes. ${BRAND} compares ${who} live in one search for ${cityPhrase} and ranks the results by the real price returned during your search, lowest first, so you see the cheapest option for ${state.name} at that moment instead of a stale ranking.`,
     body: [
       `${BRAND} is an independent comparison engine, not a ${low} seller. That matters in ${state.name}: a single seller only shows its own price, while a comparison shows whether one of the ${sellers.length || "several"} sellers we scan is cheaper for the same ${low} on the same date.`,
-      cities.length ? `Coverage in ${state.name} includes ${cities.join(", ")}. Pick your city and date on the ${low} page and the live scan runs for your exact search, not for a generic state page.` : `We compare ${low} options for every part of ${state.name}; enter your city or route on the ${low} page and the live scan runs for your exact search.`,
+      cities.length ? `Coverage in ${state.name} includes ${named.join(", ")}${restCount ? ` and ${restCount} more cities` : ""}. Pick your city and date on the ${low} page and the live scan runs for your exact search, not for a generic state page.` : `We compare ${low} options for every part of ${state.name}; enter your city or route on the ${low} page and the live scan runs for your exact search.`,
       `Every returned row carries the seller's real price and a booking link. Rows without a genuine positive price are removed rather than shown as placeholders, so an empty result means no verified price was returned, not a broken page.`
     ],
     sellers,
@@ -57480,7 +57534,7 @@ function statePage(slug5, state) {
       },
       {
         q: `Does ${BRAND} cover ${state.name}?`,
-        a: cities.length ? `Yes. ${BRAND} runs live ${low} comparisons for ${cities.join(", ")} and for other cities in ${state.name} when you enter them.` : `Yes. Enter your city or route for ${state.name} and ${BRAND} runs the live ${low} comparison for that exact search.`
+        a: cities.length ? `Yes. ${BRAND} runs live ${low} comparisons for ${named.join(", ")}${restCount ? ` and ${restCount} more cities in ${state.name}` : ""}, and for any other place in ${state.name} you type in.` : `Yes. Enter your city or route for ${state.name} and ${BRAND} runs the live ${low} comparison for that exact search.`
       },
       {
         q: `Is ${BRAND} a booking site?`,

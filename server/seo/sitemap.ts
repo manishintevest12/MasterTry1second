@@ -159,6 +159,9 @@ function churnsDaily(path: string): boolean {
   return path.split('/').filter(Boolean).length > 1;
 }
 
+const CITY_VERTICALS = ['hotels', 'cabs', 'grocery', 'food', 'movies'];
+const METRO_CITIES = ['mumbai', 'delhi', 'bengaluru', 'hyderabad', 'chennai', 'kolkata', 'pune', 'ahmedabad'];
+
 export function sitemapPriority(path: string): string {
   if (path === '/') return '1.0';
   const segs = path.split('/').filter(Boolean);
@@ -168,7 +171,13 @@ export function sitemapPriority(path: string): string {
   if (segs[0] === 'best') return '0.5'; // 481 state answers: keep, but do not chase crawl budget
   if (segs[0] === 'answers') return '0.5';
   if (segs[0] === 'product') return '0.4';
-  return '0.7'; // city and route pages
+  // OWNER 10 Nov ("sb city sb place pr kro"): the corpus went from 38 to 525 places, so 2,620 city URLs now
+  // exist. The eight metros keep the higher signal; the long tail is published and crawlable but does not
+  // compete with the money pages for crawl budget until it proves it can earn an impression.
+  if (CITY_VERTICALS.includes(segs[0]) && segs.length === 2) {
+    return METRO_CITIES.includes(segs[1]) ? '0.7' : '0.5';
+  }
+  return '0.7'; // route pages
 }
 
 export function sitemapXml(extraPaths: string[] = []): string {

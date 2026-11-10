@@ -17,6 +17,7 @@ export const SEO_HOST = 'https://www.try1second.com';
 
 import { GUIDE_SLUGS } from './guides';
 import { ANSWER_STATES } from './answerStates';
+import { CITY_STATE, INDIAN_CITIES } from './cityCorpus';
 import { MOVIE_CITY_CONTENT } from './movieCities';
 
 export interface SeoFaq { q: string; a: string }
@@ -33,27 +34,13 @@ export interface SeoPage {
 
 // ============ Corpus ============
 
-const CITIES: { slug: string; name: string }[] = [
-  { slug: 'mumbai', name: 'Mumbai' }, { slug: 'delhi', name: 'Delhi' },
-  { slug: 'bengaluru', name: 'Bengaluru' }, { slug: 'hyderabad', name: 'Hyderabad' },
-  { slug: 'chennai', name: 'Chennai' }, { slug: 'kolkata', name: 'Kolkata' },
-  { slug: 'pune', name: 'Pune' }, { slug: 'ahmedabad', name: 'Ahmedabad' },
-  { slug: 'jaipur', name: 'Jaipur' }, { slug: 'lucknow', name: 'Lucknow' },
-  { slug: 'indore', name: 'Indore' }, { slug: 'bhopal', name: 'Bhopal' },
-  { slug: 'nagpur', name: 'Nagpur' }, { slug: 'patna', name: 'Patna' },
-  { slug: 'surat', name: 'Surat' }, { slug: 'vadodara', name: 'Vadodara' },
-  { slug: 'gurugram', name: 'Gurugram' }, { slug: 'noida', name: 'Noida' },
-  { slug: 'kochi', name: 'Kochi' }, { slug: 'coimbatore', name: 'Coimbatore' },
-  { slug: 'vijayawada', name: 'Vijayawada' }, { slug: 'visakhapatnam', name: 'Visakhapatnam' },
-  { slug: 'guwahati', name: 'Guwahati' }, { slug: 'chandigarh', name: 'Chandigarh' },
-  { slug: 'dehradun', name: 'Dehradun' }, { slug: 'ludhiana', name: 'Ludhiana' },
-  { slug: 'agra', name: 'Agra' }, { slug: 'varanasi', name: 'Varanasi' },
-  { slug: 'kanpur', name: 'Kanpur' }, { slug: 'ranchi', name: 'Ranchi' },
-  { slug: 'nashik', name: 'Nashik' }, { slug: 'rajkot', name: 'Rajkot' },
-  { slug: 'jabalpur', name: 'Jabalpur' }, { slug: 'amritsar', name: 'Amritsar' },
-  { slug: 'udaipur', name: 'Udaipur' }, { slug: 'jodhpur', name: 'Jodhpur' },
-  { slug: 'goa', name: 'Goa' }, { slug: 'shimla', name: 'Shimla' },
-];
+// OWNER 10 Nov ("sb city sb place pr kro kissi ko v mt leave kro"): every city page, sitemap entry and state
+// city list now comes from ONE corpus (server/seo/cityCorpus.ts) instead of a hand-typed list of 38 places.
+const CITIES: { slug: string; name: string }[] = INDIAN_CITIES.map((c) => ({ slug: c.slug, name: c.name }));
+
+/** The eight metros used for "compare in other cities" blocks and hub teasers (corpus order is not by size). */
+const TOP_CITIES = ['mumbai', 'delhi', 'bengaluru', 'hyderabad', 'chennai', 'kolkata', 'pune', 'ahmedabad'];
+const topCities = () => TOP_CITIES.map((slug) => CITIES.find((c) => c.slug === slug)).filter(Boolean) as { slug: string; name: string }[];
 
 const IATA: Record<string, string> = {
   mumbai: 'BOM', delhi: 'DEL', bengaluru: 'BLR', hyderabad: 'HYD', chennai: 'MAA',
@@ -340,7 +327,7 @@ const BANKING_TYPES: { slug: string; label: string; query: string }[] = [
 
 const titleCase = (s: string) => s.replace(/(^|\s|-)\w/g, (m) => m.toUpperCase());
 const cityName = (slug: string) => CITIES.find((c) => c.slug === slug)?.name || titleCase(slug.replace(/-/g, ' '));
-const cityList = () => CITIES.slice(0, 8).map((c) => c.name).join(', ');
+const cityList = () => topCities().map((c) => c.name).join(', ');
 
 /** Read-only view of the vertical corpus for the answer-page layer (server/seo/answerPages.ts).
  *  Kept as a function so the array itself stays private to this module. */
@@ -659,7 +646,7 @@ export function resolveSeoPage(path: string): SeoPage | null {
       : [
           `This page compares live ${noun} for ${c}. One search asks every major provider serving the city at once, and the results land in a single lowest-first list.`,
           `Prices in ${c} move hour to hour. We show what each source reports right now with direct links, so the deal you see is the deal you get.`,
-          `${cityList()} and 30+ other cities are covered the same way - change city anytime from inside the app.`,
+          `${cityList()} and ${INDIAN_CITIES.length - 8} other cities and towns are covered the same way - change city anytime from inside the app.`,
         ];
     const movieFaqs = movie
       ? [
@@ -673,7 +660,12 @@ export function resolveSeoPage(path: string): SeoPage | null {
           { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` },
         ];
 
-    const others = CITIES.filter((x) => x.slug !== tail).slice(0, 6);
+    // Sibling links stay near home first: a city page should offer its own state's places before it
+    // offers a metro on the other side of the country.
+    const stateOfThisCity = stateForCity(c)?.slug;
+    const sameState = CITIES.filter((x) => x.slug !== tail && stateOfThisCity && CITY_STATE[x.name.toLowerCase()] === stateOfThisCity);
+    const elsewhere = CITIES.filter((x) => x.slug !== tail && (!stateOfThisCity || CITY_STATE[x.name.toLowerCase()] !== stateOfThisCity));
+    const others = [...sameState.slice(0, 4), ...elsewhere.slice(0, 6)].slice(0, 6);
     return {
       path: clean,
       title: head === 'movies' && movie
@@ -789,11 +781,9 @@ function intentLinksFor(head: string): { label: string; href: string }[] {
 }
 
 function stateForCity(name: string): { name: string; slug: string } | null {
-  const want = name.trim().toLowerCase();
-  for (const st of ANSWER_STATES) {
-    if (st.cities.some((c) => c.trim().toLowerCase() === want)) return { name: st.name, slug: st.slug };
-  }
-  return null;
+  const slug = CITY_STATE[name.trim().toLowerCase()];
+  const st = slug ? ANSWER_STATES.find((x) => x.slug === slug) : undefined;
+  return st ? { name: st.name, slug: st.slug } : null;
 }
 
 function seoLinksFor(verticalPath: string): { label: string; href: string }[] {
@@ -804,7 +794,7 @@ function seoLinksFor(verticalPath: string): { label: string; href: string }[] {
   } else if (head === 'bus') {
     for (const [a, b] of BUS_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} buses`, href: `/bus/${routeSlug(a, b, 'bus')}` });
   } else if (['hotels', 'cabs', 'grocery', 'food', 'movies'].includes(head)) {
-    for (const c of CITIES.slice(0, 8)) links.push({ label: `${cityName(c.slug)}`, href: `/${head}/${c.slug}` });
+    for (const c of topCities()) links.push({ label: `${cityName(c.slug)}`, href: `/${head}/${c.slug}` });
   }
   // City page -> its state answer page (and the vertical hub), so the new /best pages collect an
   // internal link from every indexed city page instead of waiting for a fresh crawl.
