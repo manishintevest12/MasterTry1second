@@ -31167,19 +31167,38 @@ function cuelinksMerchantUrl(dest) {
   if (!cuelinksWrapAll() && !cuelinksAllowList().has(domain)) return null;
   return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
+function envTemplateMap(name) {
+  const raw = (process.env[name] || "").trim();
+  if (!raw.startsWith("{")) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    const out = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      const domain = String(k).toLowerCase().replace(/^www\./, "");
+      const tpl = String(v || "").trim();
+      if (domain && tpl.startsWith("https://") && tpl.includes("{DESTINATION}")) out[domain] = tpl;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 function envList(name) {
   return (process.env[name] || "").split(",").map((d) => d.trim().toLowerCase().replace(/^www\./, "")).filter(Boolean);
 }
 function envNetworkFor(domain) {
   for (const spec of ENV_NETWORKS) {
     if (envList(spec.merchantsEnv).includes(domain)) return spec.network;
+    if (envTemplateMap(spec.templateEnv + "S")[domain]) return spec.network;
   }
   return null;
 }
 function envTemplateNetworkFor(domain, dest) {
   for (const spec of ENV_NETWORKS) {
-    if (!envList(spec.merchantsEnv).includes(domain)) continue;
-    const tpl = (process.env[spec.templateEnv] || "").trim();
+    const listed = envList(spec.merchantsEnv).includes(domain);
+    const perDomain = envTemplateMap(spec.templateEnv + "S")[domain];
+    if (!listed && !perDomain) continue;
+    const tpl = perDomain || (process.env[spec.templateEnv] || "").trim();
     if (!tpl.startsWith("https://") || !tpl.includes("{DESTINATION}")) return null;
     return { network: spec.network, url: tpl.replace("{DESTINATION}", encodeURIComponent(dest)) };
   }

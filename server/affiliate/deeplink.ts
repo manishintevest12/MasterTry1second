@@ -146,6 +146,29 @@ const ENV_NETWORKS: EnvNetworkSpec[] = [
   { network: 'inrdeals', merchantsEnv: 'INRDEALS_MERCHANTS', templateEnv: 'INRDEALS_LINK_TEMPLATE' },
 ];
 
+/**
+ * Per-domain template map, e.g. VCOMMISSION_LINK_TEMPLATES='{"ajio.com":"https://track.vcommission.com/click?campaign_id=10364&pub_id=132657&deeplink={DESTINATION}"}'.
+ * Admitad and vCommission hand out ONE tracking base per campaign, so a merchant allow-list plus a
+ * single template cannot cover the account: the map is what lets 54 vCommission campaigns work at once
+ * without a deploy. The single-template variable stays supported for a one-campaign account.
+ */
+function envTemplateMap(name: string): Record<string, string> {
+  const raw = (process.env[name] || '').trim();
+  if (!raw.startsWith('{')) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      const domain = String(k).toLowerCase().replace(/^www\./, '');
+      const tpl = String(v || '').trim();
+      if (domain && tpl.startsWith('https://') && tpl.includes('{DESTINATION}')) out[domain] = tpl;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 function envList(name: string): string[] {
   return (process.env[name] || '')
     .split(',')
@@ -157,6 +180,7 @@ function envList(name: string): string[] {
 export function envNetworkFor(domain: string): string | null {
   for (const spec of ENV_NETWORKS) {
     if (envList(spec.merchantsEnv).includes(domain)) return spec.network;
+    if (envTemplateMap(spec.templateEnv + 'S')[domain]) return spec.network;
   }
   return null;
 }
@@ -164,8 +188,10 @@ export function envNetworkFor(domain: string): string | null {
 /** Builds the tracking URL for the env network that claims this domain, or null. */
 function envTemplateNetworkFor(domain: string, dest: string): { network: string; url: string } | null {
   for (const spec of ENV_NETWORKS) {
-    if (!envList(spec.merchantsEnv).includes(domain)) continue;
-    const tpl = (process.env[spec.templateEnv] || '').trim();
+    const listed = envList(spec.merchantsEnv).includes(domain);
+    const perDomain = envTemplateMap(spec.templateEnv + 'S')[domain];
+    if (!listed && !perDomain) continue;
+    const tpl = perDomain || (process.env[spec.templateEnv] || '').trim();
     if (!tpl.startsWith('https://') || !tpl.includes('{DESTINATION}')) return null; // fail closed
     return { network: spec.network, url: tpl.replace('{DESTINATION}', encodeURIComponent(dest)) };
   }

@@ -1,10 +1,11 @@
 {
-  "generatedAt": "2026-11-10T05:09:16.271Z",
+  "generatedAt": "2026-11-10T05:39:31.105Z",
   "total": 130,
   "covered": 21,
   "uncovered": 109,
   "byNetwork": {
-    "linkinr": 17,
+    "linkinr": 15,
+    "vcommission": 2,
     "amazon-associates": 1,
     "cuelinks": 3
   },
@@ -567,7 +568,7 @@
     {
       "domain": "ajio.com",
       "verticals": "ecommerce, other",
-      "network": "linkinr"
+      "network": "vcommission"
     },
     {
       "domain": "amazon.in",
@@ -640,13 +641,13 @@
       "network": "cuelinks"
     },
     {
-      "domain": "acko.com",
-      "verticals": "insurance",
-      "network": "linkinr"
-    },
-    {
       "domain": "tatacliq.com",
       "verticals": "ecommerce, other",
+      "network": "vcommission"
+    },
+    {
+      "domain": "acko.com",
+      "verticals": "insurance",
       "network": "linkinr"
     },
     {
