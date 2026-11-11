@@ -58,3 +58,14 @@ test('a photo-sized body reaches the upload route while other routes keep the gu
     server.close();
   }
 });
+
+test('a manual entry ships as a priced row whose click goes through our masked exit', () => {
+  const src = readFileSync('server/marketing/financeOffers.ts', 'utf8');
+  const fn = src.slice(src.indexOf('export async function manualFinanceFeedRows'), src.indexOf('export function withManualFinanceRows'));
+  // The row is attached at the last funnel, after answer shaping, so it must carry the comparison price
+  // itself or "No Price, No Card" hides a card the owner just created.
+  assert.match(fn, /prices: \{ currency: 'INR', effectivePrice: price/, 'price must exist in the comparison shape');
+  assert.match(fn, /primaryPrice: price/);
+  // Attribution: a manual entry must not jump straight to the merchant.
+  assert.match(fn, /createMaskingPointer\(dest, \{ vertical: String\(m\.vertical\), trusted: true \}\)/, 'click exits via /api/out');
+});

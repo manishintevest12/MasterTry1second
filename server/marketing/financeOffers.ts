@@ -11,6 +11,7 @@
  * lead already captured stay intact.
  */
 import { getStore } from '../common/db';
+import { createMaskingPointer } from '../affiliate/deeplink';
 
 export const FINANCE_VERTICALS = ['loans', 'creditcards', 'insurance', 'account'] as const;
 export type FinanceVertical = (typeof FINANCE_VERTICALS)[number];
@@ -188,10 +189,22 @@ export async function manualFinanceFeedRows(vertical: string): Promise<any[]> {
       seller: String(m.seller || m.title || ''),
       vendor: String(m.seller || m.title || ''),
       price,
+      // The feed row is already ANSWER-SHAPED by the time this row is attached (it goes in at the last
+      // funnel), so the money must exist in the comparison shape too. Without prices.effectivePrice the
+      // client treated a saved entry as price-less and "No Price, No Card" hid it.
+      prices: { currency: 'INR', effectivePrice: price, mandatoryTotal: price, listPrice: price },
+      primaryPrice: price,
+      unit: String(attrs.unit || ''),
       currency: 'INR',
-      sellerUrl: attrs.affiliate_template
-        ? String(attrs.affiliate_template).replace(/\{url\}/g, encodeURIComponent(String(m.seller_url || '')))
-        : String(m.seller_url || ''),
+      // Clicks must go through OUR masked exit (/api/out), exactly like every other row: that is where the
+      // vertical-stamped GroMo/affiliate hop happens. Without this a manual entry jumped straight to the
+      // merchant and earned nothing.
+      sellerUrl: (() => {
+        const dest = attrs.affiliate_template
+          ? String(attrs.affiliate_template).replace(/\{url\}/g, encodeURIComponent(String(m.seller_url || '')))
+          : String(m.seller_url || '');
+        return createMaskingPointer(dest, { vertical: String(m.vertical), trusted: true }) || dest;
+      })(),
       imageUrl: attrs.image || undefined,
       attributes: { ...attrs, manual: 1, ...(attrs.image ? { image_url: attrs.image } : {}) },
       freshnessStatus: 'LIVE_VERIFIED',
