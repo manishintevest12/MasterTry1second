@@ -425,7 +425,7 @@ export async function createApp(): Promise<express.Express> {
     // title/description/canonical/JSON-LD + prerendered content in #root.
     const { enhanceHtml } = await import('./seo/render');
     const { snapshotForPath, renderSnapshotHtml, snapshotJsonLd } = await import('./seo/liveSnapshot');
-    const { isKnownPath, markdownForPath, agentLinkHeader, notFoundHtml, CONTACT_EMAIL } = await import('./seo/agentReady');
+    const { isKnownPath, isSecretPortalPath, markdownForPath, agentLinkHeader, notFoundHtml, CONTACT_EMAIL } = await import('./seo/agentReady');
     let baseHtml = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
 
     /**
@@ -531,6 +531,12 @@ export async function createApp(): Promise<express.Express> {
     app.get('*', async (req: Request, res: Response) => {
       res.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
       res.setHeader('Vary', 'Accept');
+      // Private portals (owner 11 Nov): a secret route must never be indexed or kept in a shared cache.
+      // robots.txt already disallows /admin, this header covers an agent that ignores robots.
+      if (isSecretPortalPath(req.path)) {
+        res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+        res.setHeader('Cache-Control', 'no-store');
+      }
       // OWNER 9 Nov: advertise the machine resources on every response (RFC 8288), so an agent that
       // only follows headers still finds llms.txt, the sitemap and the MCP server card.
       res.setHeader('Link', agentLinkHeader());

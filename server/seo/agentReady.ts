@@ -61,8 +61,21 @@ const APP_PATHS = new Set([
   // src/utils/verticalRoutes.ts writes these as the canonical address-bar paths; the 404 rule must
   // never swallow one of them (measured against the map, not guessed).
   '/merchantinstab2b',
+  // OWNER 11 Nov: "www.try1second.com/admininsta is not working". The admin portal is a CLIENT-side
+  // secret route (AppContext watches the path), but the honest-404 rule only knew the merchant portal,
+  // so the server answered 404 before React could ever boot. Both secret portals are app paths, and
+  // robots.txt already keeps /admin out of the index.
+  '/admininsta',
 ]);
 const APP_PREFIXES = ['/product/', '/guides/', '/blog/', '/app/', '/r/'];
+
+/** The two private portals: served the app shell, never advertised to crawlers. */
+export const SECRET_PORTAL_PATHS = new Set(['/admininsta', '/merchantinstab2b']);
+
+export function isSecretPortalPath(path: string): boolean {
+  const clean = String(path || '/').split('?')[0].replace(/\/+$/, '').toLowerCase() || '/';
+  return SECRET_PORTAL_PATHS.has(clean);
+}
 
 let knownCache: { set: Set<string>; at: number } | null = null;
 function knownPaths(): Set<string> {

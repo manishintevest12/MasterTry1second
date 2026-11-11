@@ -59036,9 +59036,11 @@ __export(agentReady_exports, {
   CONTACT_EMAIL: () => CONTACT_EMAIL,
   MCP_TOOLS: () => MCP_TOOLS,
   SAME_AS: () => SAME_AS,
+  SECRET_PORTAL_PATHS: () => SECRET_PORTAL_PATHS,
   SUMMARY: () => SUMMARY,
   agentLinkHeader: () => agentLinkHeader,
   isKnownPath: () => isKnownPath,
+  isSecretPortalPath: () => isSecretPortalPath,
   llmsFullText: () => llmsFullText,
   llmsText: () => llmsText,
   markdownForPath: () => markdownForPath,
@@ -59046,6 +59048,10 @@ __export(agentReady_exports, {
   registerAgentFileRoutes: () => registerAgentFileRoutes,
   serverCard: () => serverCard
 });
+function isSecretPortalPath(path18) {
+  const clean4 = String(path18 || "/").split("?")[0].replace(/\/+$/, "").toLowerCase() || "/";
+  return SECRET_PORTAL_PATHS.has(clean4);
+}
 function knownPaths() {
   if (knownCache && Date.now() - knownCache.at < 5 * 6e4) return knownCache.set;
   const set = /* @__PURE__ */ new Set([...APP_PATHS, ...Object.keys(LEGAL_ALIASES)]);
@@ -59258,7 +59264,7 @@ function registerAgentFileRoutes(app) {
     res.json(serverCard());
   });
 }
-var CONTACT_EMAIL, SAME_AS, BUSINESS_TELEPHONE, BUSINESS_ADDRESS, BUSINESS_LEGAL_NAME, BRAND, SUMMARY, APP_PATHS, APP_PREFIXES, knownCache, MCP_TOOLS;
+var CONTACT_EMAIL, SAME_AS, BUSINESS_TELEPHONE, BUSINESS_ADDRESS, BUSINESS_LEGAL_NAME, BRAND, SUMMARY, APP_PATHS, APP_PREFIXES, SECRET_PORTAL_PATHS, knownCache, MCP_TOOLS;
 var init_agentReady = __esm({
   "server/seo/agentReady.ts"() {
     init_data();
@@ -59314,9 +59320,15 @@ var init_agentReady = __esm({
       "/extension",
       // src/utils/verticalRoutes.ts writes these as the canonical address-bar paths; the 404 rule must
       // never swallow one of them (measured against the map, not guessed).
-      "/merchantinstab2b"
+      "/merchantinstab2b",
+      // OWNER 11 Nov: "www.try1second.com/admininsta is not working". The admin portal is a CLIENT-side
+      // secret route (AppContext watches the path), but the honest-404 rule only knew the merchant portal,
+      // so the server answered 404 before React could ever boot. Both secret portals are app paths, and
+      // robots.txt already keeps /admin out of the index.
+      "/admininsta"
     ]);
     APP_PREFIXES = ["/product/", "/guides/", "/blog/", "/app/", "/r/"];
+    SECRET_PORTAL_PATHS = /* @__PURE__ */ new Set(["/admininsta", "/merchantinstab2b"]);
     knownCache = null;
     MCP_TOOLS = [
       {
@@ -61228,7 +61240,7 @@ async function createApp() {
     }));
     const { enhanceHtml: enhanceHtml2 } = await Promise.resolve().then(() => (init_render(), render_exports));
     const { snapshotForPath: snapshotForPath2, renderSnapshotHtml: renderSnapshotHtml2, snapshotJsonLd: snapshotJsonLd2 } = await Promise.resolve().then(() => (init_liveSnapshot(), liveSnapshot_exports));
-    const { isKnownPath: isKnownPath2, markdownForPath: markdownForPath2, agentLinkHeader: agentLinkHeader2, notFoundHtml: notFoundHtml2, CONTACT_EMAIL: CONTACT_EMAIL2 } = await Promise.resolve().then(() => (init_agentReady(), agentReady_exports));
+    const { isKnownPath: isKnownPath2, isSecretPortalPath: isSecretPortalPath2, markdownForPath: markdownForPath2, agentLinkHeader: agentLinkHeader2, notFoundHtml: notFoundHtml2, CONTACT_EMAIL: CONTACT_EMAIL2 } = await Promise.resolve().then(() => (init_agentReady(), agentReady_exports));
     let baseHtml = import_fs9.default.readFileSync(import_path9.default.join(dist, "index.html"), "utf8");
     const assetDir = import_path9.default.join(dist, "assets");
     let assetScan = { at: 0, files: [] };
@@ -61261,6 +61273,10 @@ async function createApp() {
     app.get("*", async (req, res) => {
       res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
       res.setHeader("Vary", "Accept");
+      if (isSecretPortalPath2(req.path)) {
+        res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+        res.setHeader("Cache-Control", "no-store");
+      }
       res.setHeader("Link", agentLinkHeader2());
       const acc = String(req.headers.accept || "");
       const cleanPath = req.path.replace(/\/+$/, "") || "/";
