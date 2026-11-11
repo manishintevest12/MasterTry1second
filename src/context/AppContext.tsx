@@ -371,6 +371,8 @@ interface AppContextType {
   adminOtpRequest: (email: string) => Promise<{ success: boolean; message: string }>;
   /** Step 2 of admin email-OTP login: verify the code and open the admin session. */
   adminOtpVerify: (email: string, code: string) => Promise<{ success: boolean; message: string }>;
+  /** Break-glass: sign in with ADMIN_RECOVERY_CODE when email delivery is down. */
+  adminOtpRecovery: (email: string, code: string) => Promise<{ success: boolean; message: string }>;
   adminLogout: () => void;
 
   // Secret URL Routing (www.try1second.com/merchantinstab2b and try1second.com/admininsta)
@@ -2000,6 +2002,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  /**
+   * Break-glass sign-in (owner 11 Nov). The admin page showed "Could not send the login code right now"
+   * because Resend was the only channel; this path accepts the owner's ADMIN_RECOVERY_CODE so a dead mail
+   * provider can never lock the portal. The server fails closed when the env var is unset.
+   */
+  const adminOtpRecovery = async (email: string, code: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      const res = await fetch('/api/auth/otp/recovery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, code }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!data) return { success: false, message: `The login service did not answer (${res.status}).` };
+      if (!res.ok || !data.success) return { success: false, message: data.error || 'Recovery sign-in failed.' };
+      openAdminSession(cleanEmail, data.token);
+      addToast('success', 'Admin Authenticated', 'Logged in with the recovery code.');
+      return { success: true, message: 'Admin access authorized.' };
+    } catch {
+      return { success: false, message: 'Cannot reach the Try1Second server. Check your internet connection and try again.' };
+    }
+  };
+
   const adminLogout = () => {
     setIsAdminAuthenticated(false);
     setAdminEmail(null);
@@ -2531,6 +2557,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         adminEmail,
         adminOtpRequest,
         adminOtpVerify,
+        adminOtpRecovery,
         adminLogout,
         currentSecretRoute,
         navigateToSecretRoute,

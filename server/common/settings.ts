@@ -68,6 +68,14 @@ export const settings = {
   ).split(',').map((e) => e.trim()).filter(Boolean),
   mailFrom: process.env.MAIL_FROM || 'Try1Second <onboarding@resend.dev>',
 
+  /**
+   * OWNER 11 Nov: the admin portal showed "Could not send the login code right now" because the only
+   * delivery channel is Resend and it is unconfigured/rejected on the host. This is the break-glass:
+   * a long random secret the owner sets in env, accepted INSTEAD of the emailed code, so admin access
+   * never depends on a third-party mail provider. Empty = the recovery path fails closed.
+   */
+  adminRecoveryCode: (process.env.ADMIN_RECOVERY_CODE || '').trim(),
+
   // Amazon Associates (owner's own store, Oct 2026): tag= on every amazon.* click
   // through /api/out. This is ATTRIBUTION ONLY — it does not grant any product-data
   // API access (PA-API needs separate Associates approval with qualifying sales).

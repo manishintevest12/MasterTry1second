@@ -289,6 +289,13 @@ var init_settings = __esm({
       // so every plain build works without owner env setup. Override/extend via env.
       googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com,49438102645-bs97o329ipulmr198avioeoasu7jm6v9.apps.googleusercontent.com,49438102645-ek7dp1kea0dfj0moi7jphamqrngjg1lk.apps.googleusercontent.com").split(",").map((e2) => e2.trim()).filter(Boolean),
       mailFrom: process.env.MAIL_FROM || "Try1Second <onboarding@resend.dev>",
+      /**
+       * OWNER 11 Nov: the admin portal showed "Could not send the login code right now" because the only
+       * delivery channel is Resend and it is unconfigured/rejected on the host. This is the break-glass:
+       * a long random secret the owner sets in env, accepted INSTEAD of the emailed code, so admin access
+       * never depends on a third-party mail provider. Empty = the recovery path fails closed.
+       */
+      adminRecoveryCode: (process.env.ADMIN_RECOVERY_CODE || "").trim(),
       // Amazon Associates (owner's own store, Oct 2026): tag= on every amazon.* click
       // through /api/out. This is ATTRIBUTION ONLY — it does not grant any product-data
       // API access (PA-API needs separate Associates approval with qualifying sales).
@@ -40171,9 +40178,7 @@ var init_productImage = __esm({
 });
 
 // server/auth/mailer.ts
-async function sendEmail(to, subject, html, text) {
-  if (!settings.resendApiKey) return { ok: false, error: "Email delivery is not configured (RESEND_API_KEY missing)" };
-  if (!settings.mailFrom) return { ok: false, error: "Email sender not configured (MAIL_FROM missing)" };
+async function post(from, to, subject, html, text) {
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -40181,13 +40186,13 @@ async function sendEmail(to, subject, html, text) {
         Authorization: `Bearer ${settings.resendApiKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ from: settings.mailFrom, to: [to], subject, html, text: text || html.replace(/<[^>]+>/g, " ") })
+      body: JSON.stringify({ from, to: [to], subject, html, text: text || html.replace(/<[^>]+>/g, " ") })
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       const err = typeof body === "object" && body?.message ? String(body.message) : `HTTP ${res.status}`;
       log.warn("Mailer", `Resend send failed for ${to}: ${err}`);
-      return { ok: false, error: err };
+      return { ok: false, error: err, status: res.status };
     }
     log.info("Mailer", `Email sent to ${to} (id: ${body?.id || "unknown"})`);
     return { ok: true, id: body?.id };
@@ -40196,10 +40201,26 @@ async function sendEmail(to, subject, html, text) {
     return { ok: false, error: e2?.message || "network failure" };
   }
 }
+async function sendEmail(to, subject, html, text) {
+  if (!settings.resendApiKey) return { ok: false, error: "Email delivery is not configured (RESEND_API_KEY missing)" };
+  const from = settings.mailFrom || TEST_SENDER;
+  const first = await post(from, to, subject, html, text);
+  if (first.ok) return { ok: true, id: first.id };
+  const domainProblem = /not verified|domain|not allowed|testing emails/i.test(String(first.error || ""));
+  if (domainProblem && from !== TEST_SENDER) {
+    log.warn("Mailer", `Retrying ${to} from the Resend test sender after: ${first.error}`);
+    const second = await post(TEST_SENDER, to, subject, html, text);
+    if (second.ok) return { ok: true, id: second.id };
+    return { ok: false, error: second.error || first.error };
+  }
+  return { ok: false, error: first.error };
+}
+var TEST_SENDER;
 var init_mailer = __esm({
   "server/auth/mailer.ts"() {
     init_settings();
     init_logger();
+    TEST_SENDER = "Try1Second <onboarding@resend.dev>";
   }
 });
 
@@ -40272,10 +40293,29 @@ async function requestAdminOtp(email) {
   if (!mail.ok) {
     await store7.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
     log.warn("Otp", `OTP email delivery failed for admin: ${mail.error}`);
-    return { ok: false, sent: false, error: "Could not send the login code right now. Please try again later.", deliveryError: mail.error };
+    const recovery = settings.adminRecoveryCode ? " You can sign in with your admin recovery code instead." : " (Set RESEND_API_KEY + a verified MAIL_FROM, or ADMIN_RECOVERY_CODE for break-glass access.)";
+    const why = /not configured/i.test(String(mail.error || "")) ? "Email delivery is not configured on the server" : "Could not send the login code right now";
+    return { ok: false, sent: false, error: `${why}: ${mail.error}.${recovery}`, deliveryError: mail.error };
   }
   log.info("Otp", `Admin OTP sent to ${clean4}`);
   return { ok: true, sent: true };
+}
+async function verifyAdminRecovery(email, code) {
+  const clean4 = String(email || "").trim().toLowerCase();
+  const given = String(code || "").trim();
+  const expected = settings.adminRecoveryCode;
+  if (!expected) return { ok: false, error: "Recovery code is not configured on the server" };
+  if (given.length < 12) return { ok: false, error: "Recovery code is too short" };
+  if (!await isEligibleAdmin(clean4)) return { ok: false, error: "Not an admin account" };
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  const same = a.length === b.length && import_crypto26.default.timingSafeEqual(a, b);
+  if (!same) {
+    log.warn("Otp", "Admin recovery code rejected");
+    return { ok: false, error: "Invalid recovery code" };
+  }
+  log.info("Otp", "Admin signed in with the recovery code");
+  return { ok: true, email: clean4 };
 }
 async function verifyAdminOtp(email, code) {
   const clean4 = String(email || "").trim().toLowerCase();
@@ -51838,6 +51878,31 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
     });
     apiRouter.post("/auth/otp/verify", async (req, res) => {
       const r = await verifyAdminOtp(String(req.body.email || ""), String(req.body.code || ""));
+      if (!r.ok) return res.status(401).json({ success: false, error: r.error });
+      const email = r.email;
+      const store7 = getStore();
+      let rows = await store7.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
+      if (rows.length === 0 && settings.adminEmails.includes(email)) {
+        await store7.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
+          email,
+          `otp-only$${import_crypto31.default.randomBytes(16).toString("hex")}`,
+          "Owner Admin",
+          "admin"
+        ]);
+        rows = await store7.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
+      }
+      if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
+      const u = rows[0];
+      const token = import_crypto31.default.randomBytes(32).toString("hex");
+      await store7.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+        token,
+        Number(u.id),
+        new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
+      ]);
+      res.json({ success: true, token, user: { id: Number(u.id), email: u.email, role: u.role, displayName: u.display_name || void 0 } });
+    });
+    apiRouter.post("/auth/otp/recovery", async (req, res) => {
+      const r = await verifyAdminRecovery(String(req.body.email || ""), String(req.body.code || ""));
       if (!r.ok) return res.status(401).json({ success: false, error: r.error });
       const email = r.email;
       const store7 = getStore();

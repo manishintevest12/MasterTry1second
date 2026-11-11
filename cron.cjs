@@ -84,6 +84,13 @@ var init_settings = __esm({
       // so every plain build works without owner env setup. Override/extend via env.
       googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com,49438102645-bs97o329ipulmr198avioeoasu7jm6v9.apps.googleusercontent.com,49438102645-ek7dp1kea0dfj0moi7jphamqrngjg1lk.apps.googleusercontent.com").split(",").map((e) => e.trim()).filter(Boolean),
       mailFrom: process.env.MAIL_FROM || "Try1Second <onboarding@resend.dev>",
+      /**
+       * OWNER 11 Nov: the admin portal showed "Could not send the login code right now" because the only
+       * delivery channel is Resend and it is unconfigured/rejected on the host. This is the break-glass:
+       * a long random secret the owner sets in env, accepted INSTEAD of the emailed code, so admin access
+       * never depends on a third-party mail provider. Empty = the recovery path fails closed.
+       */
+      adminRecoveryCode: (process.env.ADMIN_RECOVERY_CODE || "").trim(),
       // Amazon Associates (owner's own store, Oct 2026): tag= on every amazon.* click
       // through /api/out. This is ATTRIBUTION ONLY — it does not grant any product-data
       // API access (PA-API needs separate Associates approval with qualifying sales).

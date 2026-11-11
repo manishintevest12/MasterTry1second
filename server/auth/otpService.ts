@@ -105,10 +105,39 @@ export async function requestAdminOtp(email: string): Promise<{ ok: boolean; sen
   if (!mail.ok) {
     await store.execute('DELETE FROM otp_codes WHERE email = ?', [clean]);
     log.warn('Otp', `OTP email delivery failed for admin: ${mail.error}`);
-    return { ok: false, sent: false, error: 'Could not send the login code right now. Please try again later.', deliveryError: mail.error };
+    // OWNER 11 Nov: the page only said "try again later", which hides the fix. Say WHAT is wrong, and
+    // point at the recovery path when one is configured.
+    const recovery = settings.adminRecoveryCode
+      ? ' You can sign in with your admin recovery code instead.'
+      : ' (Set RESEND_API_KEY + a verified MAIL_FROM, or ADMIN_RECOVERY_CODE for break-glass access.)';
+    const why = /not configured/i.test(String(mail.error || '')) ? 'Email delivery is not configured on the server' : 'Could not send the login code right now';
+    return { ok: false, sent: false, error: `${why}: ${mail.error}.${recovery}`, deliveryError: mail.error };
   }
   log.info('Otp', `Admin OTP sent to ${clean}`);
   return { ok: true, sent: true };
+}
+
+/**
+ * Break-glass step (owner 11 Nov): accept ADMIN_RECOVERY_CODE instead of an emailed OTP, so admin access
+ * never depends on Resend/DNS. Fails closed when the env var is unset, only for eligible admin emails, and
+ * the value is never logged or echoed.
+ */
+export async function verifyAdminRecovery(email: string, code: string): Promise<{ ok: boolean; email?: string; error?: string }> {
+  const clean = String(email || '').trim().toLowerCase();
+  const given = String(code || '').trim();
+  const expected = settings.adminRecoveryCode;
+  if (!expected) return { ok: false, error: 'Recovery code is not configured on the server' };
+  if (given.length < 12) return { ok: false, error: 'Recovery code is too short' };
+  if (!(await isEligibleAdmin(clean))) return { ok: false, error: 'Not an admin account' };
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  const same = a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!same) {
+    log.warn('Otp', 'Admin recovery code rejected');
+    return { ok: false, error: 'Invalid recovery code' };
+  }
+  log.info('Otp', 'Admin signed in with the recovery code');
+  return { ok: true, email: clean };
 }
 
 /** Step 2: verify the code. Returns the admin's email on success. */

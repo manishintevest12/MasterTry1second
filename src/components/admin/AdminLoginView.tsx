@@ -12,7 +12,7 @@ import {
 import { useApp } from '../../context/AppContext';
 
 export const AdminLoginView: React.FC = () => {
-  const { adminOtpRequest, adminOtpVerify, navigateToSecretRoute } = useApp();
+  const { adminOtpRequest, adminOtpVerify, adminOtpRecovery, navigateToSecretRoute } = useApp();
 
   const [email, setEmail] = useState<string>('');
   const [code, setCode] = useState<string>('');
@@ -20,6 +20,10 @@ export const AdminLoginView: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
   const [step, setStep] = useState<'email' | 'code'>('email');
+  // Owner 11 Nov: when the mail provider is down the emailed-code step cannot finish, so the recovery
+  // code (server env ADMIN_RECOVERY_CODE) is offered right here instead of a dead end.
+  const [useRecovery, setUseRecovery] = useState<boolean>(false);
+  const [recoveryCode, setRecoveryCode] = useState<string>('');
 
   // Step 1: ask the backend to email a one-time code (sent via Resend).
   const handleSendCode = async (e: React.FormEvent) => {
@@ -40,6 +44,18 @@ export const AdminLoginView: React.FC = () => {
     }
     setStatusMessage(res.message);
     setStep('code');
+  };
+
+  const handleRecoverySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) { setErrorMessage('Enter the administrator email address.'); return; }
+    if (recoveryCode.trim().length < 12) { setErrorMessage('Enter the admin recovery code from your server configuration.'); return; }
+    setIsAuthenticating(true);
+    const res = await adminOtpRecovery(cleanEmail, recoveryCode.trim());
+    setIsAuthenticating(false);
+    if (!res.success) setErrorMessage(res.message);
   };
 
   // Step 2: verify the code and open the admin session.
@@ -109,7 +125,7 @@ export const AdminLoginView: React.FC = () => {
           )}
 
           {/* Form: step 1 (email) or step 2 (one-time code) */}
-          <form onSubmit={step === 'email' ? handleSendCode : handleVerifyCode} className="space-y-4">
+          <form onSubmit={useRecovery ? handleRecoverySubmit : (step === 'email' ? handleSendCode : handleVerifyCode)} className="space-y-4">
             {step === 'email' && (
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -134,6 +150,29 @@ export const AdminLoginView: React.FC = () => {
                 <span className="text-[10px] text-slate-600 mt-1 block">
                   A one-time login code will be emailed to the admin address.
                 </span>
+                {useRecovery && (
+                  <div className="mt-3">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Admin recovery code *
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-600">
+                        <KeyRound className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={recoveryCode}
+                        onChange={(e) => { setRecoveryCode(e.target.value); if (errorMessage) setErrorMessage(''); }}
+                        placeholder="ADMIN_RECOVERY_CODE"
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 font-mono text-sm focus:outline-hidden focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-2xs"
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-600 mt-1 block">
+                      Set ADMIN_RECOVERY_CODE in the server environment. Used only when email delivery is unavailable.
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -169,6 +208,16 @@ export const AdminLoginView: React.FC = () => {
                   Use a different email
                 </button>
               </div>
+            )}
+
+            {step === 'email' && (
+              <button
+                type="button"
+                onClick={() => { setUseRecovery(!useRecovery); setErrorMessage(''); }}
+                className="text-[10px] font-bold text-slate-500 hover:text-slate-700 cursor-pointer underline underline-offset-2"
+              >
+                {useRecovery ? 'Email me a login code instead' : 'Email not arriving? Use the admin recovery code'}
+              </button>
             )}
 
             {/* Error Message */}
