@@ -167,6 +167,50 @@ export async function saveManualFinanceOffer(input: FinanceOfferInput): Promise<
   return { ok: true, id };
 }
 
+/**
+ * OWNER 11 Nov: "make it end to end dynamic, connect to db so that everything should be reflected on site".
+ *
+ * A search for loans/creditcards/insurance/account is answered from the CATALOGUE path, which never runs
+ * the live-sweep step where manual entries used to be merged, so an admin-typed entry was saved in MySQL
+ * and then shown to nobody. This returns the entry in exactly the row shape the feed renders, for every
+ * answer exit (web feed and app both read these rows).
+ */
+export async function manualFinanceFeedRows(vertical: string): Promise<any[]> {
+  const rows = await liveManualFinanceOffers(vertical);
+  return rows.map((m: any) => {
+    let attrs: any = {};
+    try { attrs = typeof m.attributes === 'string' ? JSON.parse(m.attributes) : (m.attributes || {}); } catch { attrs = {}; }
+    const price = m.effective_price === null ? 0 : Number(m.effective_price);
+    return {
+      id: `manual-${m.id}`,
+      vertical: String(m.vertical),
+      title: String(m.title || ''),
+      seller: String(m.seller || m.title || ''),
+      vendor: String(m.seller || m.title || ''),
+      price,
+      currency: 'INR',
+      sellerUrl: attrs.affiliate_template
+        ? String(attrs.affiliate_template).replace(/\{url\}/g, encodeURIComponent(String(m.seller_url || '')))
+        : String(m.seller_url || ''),
+      imageUrl: attrs.image || undefined,
+      attributes: { ...attrs, manual: 1, ...(attrs.image ? { image_url: attrs.image } : {}) },
+      freshnessStatus: 'LIVE_VERIFIED',
+      validationStatus: 'VALID',
+      sourceId: SOURCE_ID,
+      locationCity: m.location_city || null,
+      price_basis: 'admin_manual',
+    } as any;
+  });
+}
+
+/** Merge manual entries into an already-built answer (idempotent, manual rows first). */
+export function withManualFinanceRows(results: any[], vertical: string, manual: any[]): any[] {
+  const base = Array.isArray(results) ? results : [];
+  const have = new Set(base.map((r: any) => String(r?.id || '')));
+  const add = manual.filter((m: any) => !have.has(String(m.id)));
+  return add.length ? [...add, ...base] : base;
+}
+
 export async function deleteManualFinanceOffer(id: number, actor?: string | null): Promise<{ ok: boolean; error?: string }> {
   const store = getStore();
   const rows = await store.query<any>('SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?', [Number(id), SOURCE_ID]).catch(() => []);
@@ -176,13 +220,20 @@ export async function deleteManualFinanceOffer(id: number, actor?: string | null
   return { ok: true };
 }
 
-/** Public feed rows for the vertical engine (only live manual entries). */
+/**
+ * Public feed rows for the vertical engine (only live manual entries).
+ *
+ * OWNER 11 Nov: measured that `freshness_status <> 'INVALID'` returned ZERO rows even when a manual
+ * entry was saved as LIVE_VERIFIED and visible in the admin list, so a manual entry never reached the
+ * site. A positive equality cannot be defeated by a NULL / negated comparison, so the feed now asks for
+ * exactly the state an active entry is written with (delete sets INVALID, which stays excluded).
+ */
 export async function liveManualFinanceOffers(vertical: string): Promise<any[]> {
   const v = normalizeVertical(vertical);
   if (!v) return [];
   return getStore().query<any>(
     `SELECT id, vertical, title, seller, seller_url, effective_price, attributes, location_city
-       FROM offers WHERE source_id = ? AND vertical = ? AND freshness_status <> 'INVALID' ORDER BY id DESC LIMIT 50`,
+       FROM offers WHERE source_id = ? AND vertical = ? AND freshness_status = 'LIVE_VERIFIED' ORDER BY id DESC LIMIT 50`,
     [SOURCE_ID, v],
   ).catch(() => []);
 }

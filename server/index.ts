@@ -69,6 +69,11 @@ export async function createApp(): Promise<express.Express> {
   // result show kro". The installed APK turns ANY non-2xx into a red error box, so the 400 must not be
   // produced at all: the body parser repairs whatever the phone sends instead of rejecting it, and
   // public read endpoints answer a 200 retry envelope instead of 4xx/5xx (see gracefulPublicStatus).
+  // OWNER 11 Nov: photo/logo uploads post a base64 image. The global 256 kb limit silently dropped the
+  // body, so the admin Finance Verticals tab answered "Upload failed" for every photo. These routes get a
+  // parser with room for a compressed image; the browser downscales to ~60 KB first, so 2 mb is a ceiling,
+  // not a target. Mounted BEFORE the global parser, which now steps aside when the body is already parsed.
+  app.use(['/api/admin/merchant-logos', '/api/admin/home-banners', '/api/admin/promo-offers'], lenientJsonBody('2mb'));
   app.use(lenientJsonBody('256kb'));
   // 90 searches per minute per client per endpoint family: a live sweep is one request, the app polls the
   // same in-flight answer, and a person cannot start 90 searches a minute by hand - so a real user never

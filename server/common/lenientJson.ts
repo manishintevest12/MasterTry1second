@@ -78,6 +78,11 @@ export function lenientJsonBody(limit = '256kb') {
   return (req: any, res: any, next: any) => {
     const ct = String(req.headers?.['content-type'] || '');
     if (PASSTHROUGH.test(ct)) return next();
+    // A route-level parser with a bigger limit already consumed the stream (admin photo/logo uploads).
+    // Re-reading here would fail on an empty stream and wipe the body it just parsed.
+    if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body) && Object.keys(req.body).length > 0) {
+      return next();
+    }
     const declaresBody = Number(req.headers?.['content-length'] || 0) > 0 || !!req.headers?.['transfer-encoding'];
     if (!declaresBody) {
       req.body = req.body === undefined ? {} : req.body;

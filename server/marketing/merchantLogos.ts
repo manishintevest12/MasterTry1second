@@ -64,8 +64,13 @@ export async function merchantLogoMap(): Promise<Record<string, string>> {
   return out;
 }
 
-export async function upsertMerchantLogo(p: { name?: unknown; logo?: unknown }): Promise<{ ok: boolean; error?: string; name_key?: string }> {
+export async function upsertMerchantLogo(p: { name?: unknown; logo?: unknown; key?: unknown }): Promise<{ ok: boolean; error?: string; name_key?: string }> {
   const v = validateLogoPayload(p);
+  // OWNER 11 Nov: merchantKeyOf() keeps only the FIRST word, so the finance tab's own keys
+  // ("finance-loans-...") all collapsed to a single key 'finance' and every card shared one photo.
+  // An explicit, slug-shaped key keeps each uploaded picture its own.
+  const explicit = String((p as any)?.key || '').trim().toLowerCase();
+  if (v.ok && v.clean && /^[a-z0-9][a-z0-9-]{2,79}$/.test(explicit)) v.clean.name_key = explicit;
   if (!v.ok || !v.clean) return v;
   await ensureMerchantLogosTable();
   await getStore().execute(

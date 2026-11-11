@@ -89,8 +89,12 @@ test('the advisor is a RESULT ROW too, so every client version renders it (owner
 test('/api/search and /api/scrape/live both get the row through finaliseLiveAnswer', async () => {
   const src = readFileSync('server/api/routes.ts', 'utf8');
   const fn = src.slice(src.indexOf('function finaliseLiveAnswer'), src.indexOf('async function lastChanceRows'));
-  assert.match(fn, /withGromoRow\(/, 'the shared finaliser injects it, so both endpoints inherit it');
-  assert.ok(src.includes("import { withGromoRow } from '../marketing/financeSponsor';"), 'static import, no await in a sync finaliser');
+  // 11 Nov: the finaliser now delegates to the shared answer funnel, which is where the row (and the
+  // admin-typed finance rows) are attached, so both endpoints still inherit it.
+  assert.match(fn, /await withPartnerRow\(response, String\(vertical\)\)/, 'finaliser uses the shared funnel');
+  const funnel = src.slice(src.indexOf('async function withPartnerRow'), src.indexOf('async function finaliseLiveAnswer'));
+  assert.match(funnel, /withGromoRow\(/, 'the funnel injects the advisor row');
+  assert.ok(src.includes("import { withGromoRow } from '../marketing/financeSponsor';"), 'static import');
 });
 
 test('every early exit of the search handler also ships the advisor row', async () => {

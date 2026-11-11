@@ -929,14 +929,35 @@ function gateRowsForDate<T extends Record<string, any>>(
  * cached / last-known-good / last-chance rows without passing through finaliseLiveAnswer (owner 10 Nov:
  * "gromo abhi v ni aa raha ... app and site dono pr"). Applied on every branch that ships results.
  */
-function withPartnerRow(response: any, vertical: string): any {
+/**
+ * Every answer exit funnels here: admin-typed finance entries (DB rows, source_id admin_manual) go first,
+ * then the GroMo partner row. Owner 11 Nov: entries were saved but never reached the site because the
+ * catalogue answer path skips the live-sweep merge entirely.
+ */
+async function withPartnerRow(response: any, vertical: string): Promise<any> {
   try {
-    if (response && Array.isArray(response.results)) response.results = withGromoRow(response.results as any[], String(vertical));
-  } catch { /* a partner row must never break an answer */ }
+    const v = String(vertical);
+    if (response && Array.isArray(response.results)) {
+      if (['loans', 'creditcards', 'insurance', 'account', 'banking'].includes(v)) {
+        const { manualFinanceFeedRows, withManualFinanceRows } = await import('../marketing/financeOffers');
+        const manual = await manualFinanceFeedRows(v);
+        if (manual.length) {
+          const before = response.results.length;
+          response.results = withManualFinanceRows(response.results, v, manual);
+          log.info('Search', 'manual finance entries attached to the answer', {
+            vertical: v, manual: manual.length, before, after: response.results.length,
+          });
+        }
+      }
+      response.results = withGromoRow(response.results as any[], v);
+    }
+  } catch (e: any) {
+    log.warn('Search', 'partner row attach failed', { error: String(e?.message || e).slice(0, 120) });
+  }
   return response;
 }
 
-function finaliseLiveAnswer(response: any, vertical: string, dates: any, query?: string): any {
+async function finaliseLiveAnswer(response: any, vertical: string, dates: any, query?: string): Promise<any> {
   if (!response) return response;
   // OWNER 9 Nov: account TYPE must scope the feed (demat must not answer savings), and a film the site
   // prices from its observed seat band must not vanish on the app just because that seller carries no fare.
@@ -988,9 +1009,8 @@ function finaliseLiveAnswer(response: any, vertical: string, dates: any, query?:
   // both platforms, so the advisor rides the rows for the four finance verticals. Injected AFTER the date and
   // route gates (it carries no date and no route, so no gate should judge it) and always for these verticals,
   // even when the live sweep answered empty.
-  try {
-    response.results = withGromoRow((response.results || []) as any[], String(vertical));
-  } catch { /* never break an answer for a partner row */ }
+  // Manual entries + the partner row, through the same funnel every other exit uses.
+  response = await withPartnerRow(response, String(vertical));
   return reconcileResponseSources(response);
 }
 
@@ -1126,7 +1146,7 @@ apiRouter.post('/search', async (req, res) => {
       response = reconcileResponseSources(response);
     }
     // The shared finaliser is not on this path, so the advisor row is added here for the four finance verticals.
-    response = withPartnerRow(response, String(input.vertical));
+    response = await withPartnerRow(response, String(input.vertical));
   }
   if (!response) {
     const fallback = await lastChanceRows(input, 600);
@@ -1171,7 +1191,7 @@ apiRouter.post('/search', async (req, res) => {
     ])) as Awaited<ReturnType<typeof runSearch>> | null;
     if (late && (late.results || []).length) {
       return res.json({
-        ...finaliseLiveAnswer(late, String(input.vertical), input.travelDates, input.query),
+        ...(await finaliseLiveAnswer(late, String(input.vertical), input.travelDates, input.query)),
         pendingRefresh: allowPending(chainKey, true),
         honestNotice: 'Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.',
         latencyMs: Date.now() - searchStart,
@@ -1239,7 +1259,7 @@ apiRouter.post('/search', async (req, res) => {
   // Owner 28 Oct, standing rule enforced at the API boundary: a flight row missing
   // flight number / dep-arr / duration goes to the BOTTOM of the feed. The installed
   // Play Store app cannot be patched remotely, so this ordering ships server-side.
-  let gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
+  let gatedResponse = await finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
   // OWNER 10 Nov (deep-link-first hybrid, added ON TOP of the existing pipeline): partners we cannot read
   // server-side (Booking.com, IndiGo, Akasa...) are still offered as intent hubs that exit through the
   // affiliate chain, plus any real catalogue price we already hold for that exact merchant + date.

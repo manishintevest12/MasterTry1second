@@ -33249,6 +33249,8 @@ async function merchantLogoMap() {
 }
 async function upsertMerchantLogo(p) {
   const v = validateLogoPayload(p);
+  const explicit = String(p?.key || "").trim().toLowerCase();
+  if (v.ok && v.clean && /^[a-z0-9][a-z0-9-]{2,79}$/.test(explicit)) v.clean.name_key = explicit;
   if (!v.ok || !v.clean) return v;
   await ensureMerchantLogosTable();
   await getStore().execute(
@@ -37009,8 +37011,10 @@ __export(financeOffers_exports, {
   deleteManualFinanceOffer: () => deleteManualFinanceOffer,
   listManualFinanceOffers: () => listManualFinanceOffers,
   liveManualFinanceOffers: () => liveManualFinanceOffers,
+  manualFinanceFeedRows: () => manualFinanceFeedRows,
   saveManualFinanceOffer: () => saveManualFinanceOffer,
-  validateFinanceOffer: () => validateFinanceOffer
+  validateFinanceOffer: () => validateFinanceOffer,
+  withManualFinanceRows: () => withManualFinanceRows
 });
 function normalizeVertical(v) {
   const s = String(v || "").trim().toLowerCase().replace(/[\s_-]/g, "");
@@ -37143,6 +37147,41 @@ async function saveManualFinanceOffer(input) {
   if (id) await log2(id, c.vertical, "create", c.actor, c);
   return { ok: true, id };
 }
+async function manualFinanceFeedRows(vertical) {
+  const rows = await liveManualFinanceOffers(vertical);
+  return rows.map((m) => {
+    let attrs = {};
+    try {
+      attrs = typeof m.attributes === "string" ? JSON.parse(m.attributes) : m.attributes || {};
+    } catch {
+      attrs = {};
+    }
+    const price2 = m.effective_price === null ? 0 : Number(m.effective_price);
+    return {
+      id: `manual-${m.id}`,
+      vertical: String(m.vertical),
+      title: String(m.title || ""),
+      seller: String(m.seller || m.title || ""),
+      vendor: String(m.seller || m.title || ""),
+      price: price2,
+      currency: "INR",
+      sellerUrl: attrs.affiliate_template ? String(attrs.affiliate_template).replace(/\{url\}/g, encodeURIComponent(String(m.seller_url || ""))) : String(m.seller_url || ""),
+      imageUrl: attrs.image || void 0,
+      attributes: { ...attrs, manual: 1, ...attrs.image ? { image_url: attrs.image } : {} },
+      freshnessStatus: "LIVE_VERIFIED",
+      validationStatus: "VALID",
+      sourceId: SOURCE_ID,
+      locationCity: m.location_city || null,
+      price_basis: "admin_manual"
+    };
+  });
+}
+function withManualFinanceRows(results, vertical, manual) {
+  const base = Array.isArray(results) ? results : [];
+  const have = new Set(base.map((r) => String(r?.id || "")));
+  const add = manual.filter((m) => !have.has(String(m.id)));
+  return add.length ? [...add, ...base] : base;
+}
 async function deleteManualFinanceOffer(id, actor) {
   const store7 = getStore();
   const rows = await store7.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [Number(id), SOURCE_ID]).catch(() => []);
@@ -37156,7 +37195,7 @@ async function liveManualFinanceOffers(vertical) {
   if (!v) return [];
   return getStore().query(
     `SELECT id, vertical, title, seller, seller_url, effective_price, attributes, location_city
-       FROM offers WHERE source_id = ? AND vertical = ? AND freshness_status <> 'INVALID' ORDER BY id DESC LIMIT 50`,
+       FROM offers WHERE source_id = ? AND vertical = ? AND freshness_status = 'LIVE_VERIFIED' ORDER BY id DESC LIMIT 50`,
     [SOURCE_ID, v]
   ).catch(() => []);
 }
@@ -38102,12 +38141,18 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
           };
         });
         combined = [...mapped, ...combined];
+        log.info("Search", "manual finance rows attached", { vertical, rows: mapped.length, ids: mapped.map((m) => m.id).slice(0, 5) });
       }
     } catch {
     }
   }
   const engine = getVerticalEngine(vertical);
+  const manualBefore = combined.filter((r) => String(r?.id || "").startsWith("manual-")).length;
   combined = await engine.execute(combined, parsed);
+  if (manualBefore) {
+    const manualAfter = combined.filter((r) => String(r?.id || "").startsWith("manual-")).length;
+    log.info("Search", "manual finance rows after vertical engine", { vertical, before: manualBefore, after: manualAfter });
+  }
   if (String(vertical) === "ecommerce" && String(input.query || "").trim().length >= 2) {
     const priceOfRow2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
     const dept = getEcomDepartment(input.browseDepartmentId);
@@ -48612,14 +48657,32 @@ function gateRowsForDate(rows, vertical, dates2) {
     droppedOn: { ...g.droppedOn, ...priced.dropped ? { unpriced: priced.dropped } : {} }
   };
 }
-function withPartnerRow(response, vertical) {
+async function withPartnerRow(response, vertical) {
   try {
-    if (response && Array.isArray(response.results)) response.results = withGromoRow(response.results, String(vertical));
-  } catch {
+    const v = String(vertical);
+    if (response && Array.isArray(response.results)) {
+      if (["loans", "creditcards", "insurance", "account", "banking"].includes(v)) {
+        const { manualFinanceFeedRows: manualFinanceFeedRows2, withManualFinanceRows: withManualFinanceRows2 } = await Promise.resolve().then(() => (init_financeOffers(), financeOffers_exports));
+        const manual = await manualFinanceFeedRows2(v);
+        if (manual.length) {
+          const before = response.results.length;
+          response.results = withManualFinanceRows2(response.results, v, manual);
+          log.info("Search", "manual finance entries attached to the answer", {
+            vertical: v,
+            manual: manual.length,
+            before,
+            after: response.results.length
+          });
+        }
+      }
+      response.results = withGromoRow(response.results, v);
+    }
+  } catch (e2) {
+    log.warn("Search", "partner row attach failed", { error: String(e2?.message || e2).slice(0, 120) });
   }
   return response;
 }
-function finaliseLiveAnswer(response, vertical, dates2, query) {
+async function finaliseLiveAnswer(response, vertical, dates2, query) {
   if (!response) return response;
   if ((vertical === "account" || vertical === "banking") && query) {
     const kind = requestedAccountKind(String(query));
@@ -48666,10 +48729,7 @@ function finaliseLiveAnswer(response, vertical, dates2, query) {
     response.results = gated.rows;
     if (!gated.rows.length) response.pendingRefresh = true;
   }
-  try {
-    response.results = withGromoRow(response.results || [], String(vertical));
-  } catch {
-  }
+  response = await withPartnerRow(response, String(vertical));
   return reconcileResponseSources(response);
 }
 async function lastChanceRows(input, ms = 500) {
@@ -49801,7 +49861,7 @@ var init_routes = __esm({
           if (!finalGate.rows.length) response.state = { ...response.state || {}, pendingRefresh: true };
           response = reconcileResponseSources(response);
         }
-        response = withPartnerRow(response, String(input.vertical));
+        response = await withPartnerRow(response, String(input.vertical));
       }
       if (!response) {
         const fallback = await lastChanceRows(input, 600);
@@ -49842,7 +49902,7 @@ var init_routes = __esm({
         ]);
         if (late && (late.results || []).length) {
           return res.json({
-            ...finaliseLiveAnswer(late, String(input.vertical), input.travelDates, input.query),
+            ...await finaliseLiveAnswer(late, String(input.vertical), input.travelDates, input.query),
             pendingRefresh: allowPending(chainKey, true),
             honestNotice: "Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.",
             latencyMs: Date.now() - searchStart
@@ -49891,7 +49951,7 @@ var init_routes = __esm({
         } catch {
         }
       }
-      let gatedResponse = finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
+      let gatedResponse = await finaliseLiveAnswer(response, String(input.vertical), input.travelDates, input.query);
       gatedResponse = await attachIntentHubs(gatedResponse, {
         vertical: String(input.vertical),
         query: String(input.query || ""),
@@ -60790,6 +60850,9 @@ function lenientJsonBody(limit = "256kb") {
   return (req, res, next) => {
     const ct = String(req.headers?.["content-type"] || "");
     if (PASSTHROUGH.test(ct)) return next();
+    if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body) && Object.keys(req.body).length > 0) {
+      return next();
+    }
     const declaresBody = Number(req.headers?.["content-length"] || 0) > 0 || !!req.headers?.["transfer-encoding"];
     if (!declaresBody) {
       req.body = req.body === void 0 ? {} : req.body;
@@ -61036,6 +61099,7 @@ async function createApp() {
     };
     next();
   });
+  app.use(["/api/admin/merchant-logos", "/api/admin/home-banners", "/api/admin/promo-offers"], lenientJsonBody("2mb"));
   app.use(lenientJsonBody("256kb"));
   app.use(apiRateLimit({ limit: 90, windowMs: 6e4 }));
   app.use((req, res, next) => {

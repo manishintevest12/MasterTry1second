@@ -10,6 +10,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Plus, Save, Trash2, Loader2, Wallet, CreditCard, ShieldCheck, Landmark, ImagePlus, Link2 } from 'lucide-react';
+import { downscaleImage } from '../../lib/imageResize';
 
 interface Row {
   id: number; vertical: string; title: string; seller: string; rate_label: string;
@@ -55,19 +56,20 @@ export const FinanceVerticalsTab: React.FC = () => {
   // Flutter app and emails can all render (never a blob: URL that dies on reload).
   const uploadPhoto = async (file: File) => {
     if (!file.type.startsWith('image/')) return setMsg({ ok: false, text: 'Sirf image file (png/jpg/webp)' });
-    if (file.size > 4 * 1024 * 1024) return setMsg({ ok: false, text: 'Photo 4MB se choti honi chahiye' });
+    if (file.size > 20 * 1024 * 1024) return setMsg({ ok: false, text: 'Photo 20MB se choti honi chahiye' });
     setUploading(true);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(String(fr.result || ''));
-        fr.onerror = () => reject(new Error('read failed'));
-        fr.readAsDataURL(file);
-      });
+      // Shrink in the browser first: the API body limit is 256 kb and a phone photo is 2-4 MB, which is
+      // exactly why every upload used to fail with a generic error.
+      const dataUrl = await downscaleImage(file, 512, 0.85);
       const name = (form.title || file.name || 'finance').toString().trim();
+      // A unique key per product: the server's slug helper keeps only the first word, which made every
+      // finance photo overwrite one shared 'finance' image.
+      const slug = `${form.vertical}-${name}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+      const key = `fin-${slug || 'card'}-${Date.now().toString(36)}`;
       const res = await fetch('/api/admin/merchant-logos', {
         method: 'POST', headers,
-        body: JSON.stringify({ name: `finance-${form.vertical}-${name}`, logo: dataUrl }),
+        body: JSON.stringify({ name: `finance ${name}`, key, logo: dataUrl }),
       });
       const d = await res.json();
       if (d.success) {

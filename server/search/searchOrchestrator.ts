@@ -1527,13 +1527,20 @@ async function finalizeLive(
           } as any;
         });
         combined = [...mapped, ...combined];
+        // OWNER 11 Nov: prove on every search that admin-typed finance entries actually joined the feed.
+        log.info('Search', 'manual finance rows attached', { vertical, rows: mapped.length, ids: mapped.map((m: any) => m.id).slice(0, 5) });
       }
     } catch { /* manual inventory is optional — never break a vertical */ }
   }
 
   // 8. VERTICAL ENGINE — entity/query filtering + vertical-specific rules
   const engine = getVerticalEngine(vertical as any);
+  const manualBefore = combined.filter((r: any) => String(r?.id || '').startsWith('manual-')).length;
   combined = await engine.execute(combined, parsed);
+  if (manualBefore) {
+    const manualAfter = combined.filter((r: any) => String(r?.id || '').startsWith('manual-')).length;
+    log.info('Search', 'manual finance rows after vertical engine', { vertical, before: manualBefore, after: manualAfter });
+  }
 
   // 8.5 PRODUCT GATE (owner 28 Oct: "iphone 18 search krta hoon tho kabhi iphone 18
   // pro aata hai kabhi kuch aur, consistent result nahi aata"). E-commerce used to
