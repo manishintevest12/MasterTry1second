@@ -548,7 +548,15 @@ export async function createApp(): Promise<express.Express> {
       const acc = String(req.headers.accept || '');
       const cleanPath = req.path.replace(/\/+$/, '') || '/';
       const isAsset = /\.[a-z0-9]{2,5}$/i.test(cleanPath);
-      if (isAsset) { res.sendFile(path.join(dist, 'index.html')); return; }
+      // OWNER 11 Nov (found while chasing a stale-bundle report): a MISSING /assets/*.js was answered with
+      // the 200 SPA shell, so a browser (and my own grep) received 47 KB of HTML under a .js URL and cached
+      // it. express.static has already had its turn by the time we get here, so an asset path that reaches
+      // this handler does not exist: answer a real 404, never HTML with a script content-type.
+      if (isAsset) {
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(404).type('text/plain').send('asset not found');
+        return;
+      }
       // Markdown for agents (owner 9 Nov, "Serves Markdown when an agent asks for it"): an Accept
       // header that wants markdown and NOT html gets a real Markdown document instead of the React
       // shell - far cheaper in tokens and it contains the page's own summary.

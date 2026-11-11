@@ -79,3 +79,13 @@ test('a failed photo upload names its cause instead of a bare "Upload failed"', 
   // The catch-all label may only appear as part of a detailed sentence, never alone.
   assert.ok(!/'Upload failed'\)/.test(fn), 'no bare generic message');
 });
+
+test('a missing hashed asset answers 404, never the 200 SPA shell', () => {
+  const src = readFileSync('server/index.ts', 'utf8');
+  const at = src.indexOf('const isAsset');
+  const branch = src.slice(at, at + 700);
+  // Before 11 Nov this branch answered dist/index.html with 200 for any /assets/*.js, which is how a
+  // stale HTML body got cached under a script URL after a deploy.
+  assert.match(branch, /status\(404\)/, 'missing assets must 404');
+  assert.ok(!/isAsset\) \{ res\.sendFile/.test(branch), 'never serve the shell for an asset path');
+});

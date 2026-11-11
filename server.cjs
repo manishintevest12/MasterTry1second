@@ -61424,7 +61424,8 @@ async function createApp() {
       const cleanPath = req.path.replace(/\/+$/, "") || "/";
       const isAsset = /\.[a-z0-9]{2,5}$/i.test(cleanPath);
       if (isAsset) {
-        res.sendFile(import_path9.default.join(dist, "index.html"));
+        res.setHeader("Cache-Control", "no-store");
+        res.status(404).type("text/plain").send("asset not found");
         return;
       }
       const wantsMarkdown = /text\/markdown|application\/x-markdown/i.test(acc) && !/text\/html/i.test(acc);
