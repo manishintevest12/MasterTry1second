@@ -28744,10 +28744,31 @@ var init_merchantLinks = __esm({
 });
 
 // server/affiliate/deeplink.ts
-var AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_MERCHANTS;
+function secret() {
+  return process.env.AFFILIATE_SECRET || import_crypto22.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+}
+function b64url(s) {
+  return Buffer.from(s, "utf8").toString("base64url");
+}
+function createMaskingPointer(destination, opts = {}) {
+  const dest = String(destination || "").trim();
+  try {
+    const u = new URL(dest);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    if (!u.hostname || !u.hostname.includes(".")) return "";
+  } catch {
+    return "";
+  }
+  const vertical = String(opts.vertical || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 16);
+  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {}, ...vertical ? { v: vertical } : {} }));
+  const sig = import_crypto22.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  return `/api/out?t=${payload}.${sig}`;
+}
+var import_crypto22, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_MERCHANTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
+    import_crypto22 = __toESM(require("crypto"), 1);
     init_settings();
     init_linkinr();
     init_linkinr();
@@ -28967,6 +28988,8 @@ async function merchantLogoMap() {
 }
 async function upsertMerchantLogo(p) {
   const v = validateLogoPayload(p);
+  const explicit = String(p?.key || "").trim().toLowerCase();
+  if (v.ok && v.clean && /^[a-z0-9][a-z0-9-]{2,79}$/.test(explicit)) v.clean.name_key = explicit;
   if (!v.ok || !v.clean) return v;
   await ensureMerchantLogosTable();
   await getStore().execute(
@@ -29175,8 +29198,10 @@ __export(financeOffers_exports, {
   deleteManualFinanceOffer: () => deleteManualFinanceOffer,
   listManualFinanceOffers: () => listManualFinanceOffers,
   liveManualFinanceOffers: () => liveManualFinanceOffers,
+  manualFinanceFeedRows: () => manualFinanceFeedRows,
   saveManualFinanceOffer: () => saveManualFinanceOffer,
-  validateFinanceOffer: () => validateFinanceOffer
+  validateFinanceOffer: () => validateFinanceOffer,
+  withManualFinanceRows: () => withManualFinanceRows
 });
 function normalizeVertical(v) {
   const s = String(v || "").trim().toLowerCase().replace(/[\s_-]/g, "");
@@ -29309,6 +29334,53 @@ async function saveManualFinanceOffer(input) {
   if (id) await log2(id, c.vertical, "create", c.actor, c);
   return { ok: true, id };
 }
+async function manualFinanceFeedRows(vertical) {
+  const rows = await liveManualFinanceOffers(vertical);
+  return rows.map((m) => {
+    let attrs = {};
+    try {
+      attrs = typeof m.attributes === "string" ? JSON.parse(m.attributes) : m.attributes || {};
+    } catch {
+      attrs = {};
+    }
+    const price2 = m.effective_price === null ? 0 : Number(m.effective_price);
+    return {
+      id: `manual-${m.id}`,
+      vertical: String(m.vertical),
+      title: String(m.title || ""),
+      seller: String(m.seller || m.title || ""),
+      vendor: String(m.seller || m.title || ""),
+      price: price2,
+      // The feed row is already ANSWER-SHAPED by the time this row is attached (it goes in at the last
+      // funnel), so the money must exist in the comparison shape too. Without prices.effectivePrice the
+      // client treated a saved entry as price-less and "No Price, No Card" hid it.
+      prices: { currency: "INR", effectivePrice: price2, mandatoryTotal: price2, listPrice: price2 },
+      primaryPrice: price2,
+      unit: String(attrs.unit || ""),
+      currency: "INR",
+      // Clicks must go through OUR masked exit (/api/out), exactly like every other row: that is where the
+      // vertical-stamped GroMo/affiliate hop happens. Without this a manual entry jumped straight to the
+      // merchant and earned nothing.
+      sellerUrl: (() => {
+        const dest = attrs.affiliate_template ? String(attrs.affiliate_template).replace(/\{url\}/g, encodeURIComponent(String(m.seller_url || ""))) : String(m.seller_url || "");
+        return createMaskingPointer(dest, { vertical: String(m.vertical), trusted: true }) || dest;
+      })(),
+      imageUrl: attrs.image || void 0,
+      attributes: { ...attrs, manual: 1, ...attrs.image ? { image_url: attrs.image } : {} },
+      freshnessStatus: "LIVE_VERIFIED",
+      validationStatus: "VALID",
+      sourceId: SOURCE_ID,
+      locationCity: m.location_city || null,
+      price_basis: "admin_manual"
+    };
+  });
+}
+function withManualFinanceRows(results, vertical, manual) {
+  const base = Array.isArray(results) ? results : [];
+  const have = new Set(base.map((r) => String(r?.id || "")));
+  const add = manual.filter((m) => !have.has(String(m.id)));
+  return add.length ? [...add, ...base] : base;
+}
 async function deleteManualFinanceOffer(id, actor) {
   const store2 = getStore();
   const rows = await store2.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [Number(id), SOURCE_ID]).catch(() => []);
@@ -29322,7 +29394,7 @@ async function liveManualFinanceOffers(vertical) {
   if (!v) return [];
   return getStore().query(
     `SELECT id, vertical, title, seller, seller_url, effective_price, attributes, location_city
-       FROM offers WHERE source_id = ? AND vertical = ? AND freshness_status <> 'INVALID' ORDER BY id DESC LIMIT 50`,
+       FROM offers WHERE source_id = ? AND vertical = ? AND freshness_status = 'LIVE_VERIFIED' ORDER BY id DESC LIMIT 50`,
     [SOURCE_ID, v]
   ).catch(() => []);
 }
@@ -29330,6 +29402,7 @@ var FINANCE_VERTICALS, SOURCE_ID, attrsOf;
 var init_financeOffers = __esm({
   "server/marketing/financeOffers.ts"() {
     init_db();
+    init_deeplink();
     FINANCE_VERTICALS = ["loans", "creditcards", "insurance", "account"];
     SOURCE_ID = "admin_manual";
     attrsOf = (row) => {
@@ -35024,12 +35097,18 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
           };
         });
         combined = [...mapped, ...combined];
+        log.info("Search", "manual finance rows attached", { vertical, rows: mapped.length, ids: mapped.map((m) => m.id).slice(0, 5) });
       }
     } catch {
     }
   }
   const engine = getVerticalEngine(vertical);
+  const manualBefore = combined.filter((r) => String(r?.id || "").startsWith("manual-")).length;
   combined = await engine.execute(combined, parsed);
+  if (manualBefore) {
+    const manualAfter = combined.filter((r) => String(r?.id || "").startsWith("manual-")).length;
+    log.info("Search", "manual finance rows after vertical engine", { vertical, before: manualBefore, after: manualAfter });
+  }
   if (String(vertical) === "ecommerce" && String(input.query || "").trim().length >= 2) {
     const priceOfRow2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
     const dept = getEcomDepartment(input.browseDepartmentId);

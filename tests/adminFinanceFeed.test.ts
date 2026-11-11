@@ -69,3 +69,13 @@ test('a manual entry ships as a priced row whose click goes through our masked e
   // Attribution: a manual entry must not jump straight to the merchant.
   assert.match(fn, /createMaskingPointer\(dest, \{ vertical: String\(m\.vertical\), trusted: true \}\)/, 'click exits via /api/out');
 });
+
+test('a failed photo upload names its cause instead of a bare "Upload failed"', () => {
+  const view = readFileSync('src/components/admin/FinanceVerticalsTab.tsx', 'utf8');
+  const fn = view.slice(view.indexOf('const uploadPhoto'), view.indexOf('const save ='));
+  assert.match(fn, /HTTP \$\{res\.status\}/, 'the HTTP status must be shown');
+  assert.match(fn, /dataUrl\.length > 220_000/, 'the payload is squeezed before sending');
+  assert.match(fn, /HEIC/, 'an unconvertible phone photo must be called out, not silently generic');
+  // The catch-all label may only appear as part of a detailed sentence, never alone.
+  assert.ok(!/'Upload failed'\)/.test(fn), 'no bare generic message');
+});

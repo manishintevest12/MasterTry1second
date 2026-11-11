@@ -55,15 +55,28 @@ export const FinanceVerticalsTab: React.FC = () => {
   // store, and the entry keeps /api/logos/<key> — a stable absolute URL the web card,
   // Flutter app and emails can all render (never a blob: URL that dies on reload).
   const uploadPhoto = async (file: File) => {
-    if (!file.type.startsWith('image/')) return setMsg({ ok: false, text: 'Sirf image file (png/jpg/webp)' });
-    if (file.size > 20 * 1024 * 1024) return setMsg({ ok: false, text: 'Photo 20MB se choti honi chahiye' });
+    // OWNER 11 Nov (second report of the same red "Upload failed"): the message was generic, so a stale
+    // tab, an unreadable phone photo (HEIC) and a body the server dropped all looked identical. Every
+    // failure below now names its cause, and the payload is squeezed to a few tens of KB before it leaves
+    // the browser so no limit anywhere can drop it.
+    const fail = (text: string) => setMsg({ ok: false, text });
+    if (!file.type.startsWith('image/')) return fail('Sirf image file (png/jpg/webp/heic) chalti hai');
+    if (file.size > 20 * 1024 * 1024) return fail('Photo 20MB se choti honi chahiye');
     setUploading(true);
     try {
-      // Shrink in the browser first: the API body limit is 256 kb and a phone photo is 2-4 MB, which is
-      // exactly why every upload used to fail with a generic error.
-      const dataUrl = await downscaleImage(file, 512, 0.85);
+      // Squeeze to <= 512px, then again at 320/256 if the encoded string is still large. A real photo
+      // lands at 30-70 KB, well under every limit on the path.
+      let dataUrl = await downscaleImage(file, 512, 0.85);
+      if (dataUrl.length > 220_000) dataUrl = await downscaleImage(file, 320, 0.75);
+      if (dataUrl.length > 220_000) dataUrl = await downscaleImage(file, 256, 0.7);
+      if (!/^data:image\/(jpeg|png|webp);base64,/.test(dataUrl)) {
+        return fail('Ye photo browser me convert nahi hui (iPhone HEIC?) — PNG/JPG chuno ya neeche https image link paste karo');
+      }
+      if (dataUrl.length > 220_000) {
+        return fail('Photo compress nahi ho payi — chhoti image chuno ya neeche https image link paste karo');
+      }
       const name = (form.title || file.name || 'finance').toString().trim();
-      // A unique key per product: the server's slug helper keeps only the first word, which made every
+      // Unique key per product: the server's slug helper keeps only the FIRST word, which made every
       // finance photo overwrite one shared 'finance' image.
       const slug = `${form.vertical}-${name}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
       const key = `fin-${slug || 'card'}-${Date.now().toString(36)}`;
@@ -71,13 +84,20 @@ export const FinanceVerticalsTab: React.FC = () => {
         method: 'POST', headers,
         body: JSON.stringify({ name: `finance ${name}`, key, logo: dataUrl }),
       });
-      const d = await res.json();
-      if (d.success) {
+      const raw = await res.text();
+      let d: any = null;
+      try { d = JSON.parse(raw); } catch { d = null; }
+      if (res.ok && d?.success) {
         set('image_url', `/api/logos/${d.name_key}`);
-        setMsg({ ok: true, text: 'Photo uploaded — card pe dikhegi.' });
-      } else setMsg({ ok: false, text: d.error || 'Upload failed' });
-    } catch { setMsg({ ok: false, text: 'Upload failed' }); }
-    finally { setUploading(false); }
+        setMsg({ ok: true, text: `Photo uploaded (${Math.round(dataUrl.length / 1024)} KB) — card pe dikhegi.` });
+        return;
+      }
+      // Honest, specific failure: status + server text, or the size we tried.
+      const why = d?.error || (raw || '').replace(/<[^>]+>/g, ' ').trim().slice(0, 120);
+      fail(`Upload failed (HTTP ${res.status}${why ? `: ${why}` : ''}) — chhoti image try karo ya neeche https image link paste karo`);
+    } catch (e: any) {
+      fail(`Upload failed: ${String(e?.message || e).slice(0, 80)} — neeche https image link paste karo to bhi photo lag jayegi`);
+    } finally { setUploading(false); }
   };
 
   const save = async () => {
@@ -156,6 +176,10 @@ export const FinanceVerticalsTab: React.FC = () => {
               {form.image_url ? <button type="button" onClick={() => set('image_url', '')} className="text-[11px] text-slate-400 cursor-pointer">remove</button> : null}
             </div>
             <input className={`${inputCls} mt-1.5`} value={form.image_url} onChange={(e) => set('image_url', e.target.value)} placeholder="…ya https:// image link paste karo" />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Photo upload se pehle browser me hi compress hoti hai (512 px, ~30-70 KB) — isliye bade phone photo bhi chalti hai.
+              Agar upload phir bhi fail ho to neeche wale box me kisi image ka https link paste kar do, entry usi photo se live ho jayegi.
+            </p>
           </div>
           <div className="md:col-span-2">
             <label className={labelCls}>Affiliate / tracking link</label>
