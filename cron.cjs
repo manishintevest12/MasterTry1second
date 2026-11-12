@@ -28733,6 +28733,51 @@ var init_gromo = __esm({
   }
 });
 
+// server/affiliate/cuelinksCid.ts
+function isNotACid(value) {
+  const v = String(value || "").trim();
+  if (!v) return true;
+  if (!/^\d{3,12}$/.test(v)) return true;
+  if (v === String(settings.cuelinks.publisherId || "").trim()) return true;
+  if (v === String(settings.cuelinks.campaignId || "").trim()) return false;
+  return false;
+}
+function resolveCuelinksCid() {
+  const configured = String(settings.cuelinks.cid || "").trim();
+  if (!isNotACid(configured)) return configured;
+  if (configured && !warned) {
+    warned = true;
+    log.warn("Cuelinks", `CUELINKS_CID=${configured} is not a tracking cid (it is the publisher/campaign id) - linksredirect answers cuelinks.com/broken-links for it. Using the verified cid ${KNOWN_GOOD_CUELINKS_CID}.`);
+  }
+  return KNOWN_GOOD_CUELINKS_CID;
+}
+function resolveCuelinksSubId(raw) {
+  const v = String(raw || "").trim();
+  return /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : "";
+}
+function buildCuelinksDeepLink(destination, subId) {
+  try {
+    const u = new URL(String(destination || ""));
+    if (u.protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+  const cid = resolveCuelinksCid();
+  if (!cid) return null;
+  const sub = resolveCuelinksSubId(subId) || resolveCuelinksSubId(settings.cuelinks.publisherId);
+  const subPart = sub ? `&subid=${encodeURIComponent(sub)}` : "";
+  return `https://linksredirect.com/?cid=${encodeURIComponent(cid)}${subPart}&source=api&url=${encodeURIComponent(destination)}`;
+}
+var KNOWN_GOOD_CUELINKS_CID, warned;
+var init_cuelinksCid = __esm({
+  "server/affiliate/cuelinksCid.ts"() {
+    init_settings();
+    init_logger();
+    KNOWN_GOOD_CUELINKS_CID = "326794";
+    warned = false;
+  }
+});
+
 // server/affiliate/merchantLinks.ts
 var LINK_MEMO_MAX, LINK_MEMO_TTL_MS;
 var init_merchantLinks = __esm({
@@ -28776,6 +28821,7 @@ var init_deeplink = __esm({
     init_logger();
     init_db();
     init_gromo();
+    init_cuelinksCid();
     init_merchantLinks();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
     CUELINKS_BASE_MERCHANTS = [
@@ -34188,6 +34234,7 @@ function gateRapidoRows(offers, intercity = false) {
 init_settings();
 init_logger();
 init_db();
+init_cuelinksCid();
 var CuelinksAdapter = class {
   constructor() {
     this.id = "cuelinks";
@@ -34195,16 +34242,7 @@ var CuelinksAdapter = class {
   }
   buildDeepLink(destinationUrl, _vendorDomain) {
     const subId = settings.cuelinks.subId;
-    const campaignId = settings.cuelinks.campaignId;
-    const cid = settings.cuelinks.cid;
-    if (campaignId) {
-      const template = `https://linksredirect.com/cuelink?type=nl&subid=${subId}&campaign=${campaignId}&url={DESTINATION}`;
-      return template.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
-    }
-    if (cid) {
-      const sub = subId ? `&subid=${encodeURIComponent(subId)}` : "";
-      return `https://linksredirect.com/?cid=${encodeURIComponent(cid)}&source=linkkit${sub}&url=${encodeURIComponent(destinationUrl)}`;
-    }
+    return buildCuelinksDeepLink(destinationUrl, subId);
     return null;
   }
 };

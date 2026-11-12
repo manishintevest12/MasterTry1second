@@ -19,6 +19,8 @@
  * T1S_APP_INSTALL_EXITS, because sending a price-comparing user to the Play Store instead of the merchant's
  * site is a product decision, not a default.
  */
+import { resolveCuelinksCid } from './cuelinksCid';
+
 export interface AppCampaign {
   /** Merchant key used by T1S_APP_INSTALL_EXITS and by callers. */
   key: string;
@@ -68,8 +70,8 @@ export const APP_CAMPAIGNS: AppCampaign[] = [
 ];
 
 function cuelinksCid(): string {
-  const fromEnv = (process.env.CUELINKS_CID || '').trim();
-  return fromEnv || '326794';
+  // Never the publisher id: that value produced cuelinks.com/broken-links (measured 12 Nov).
+  return resolveCuelinksCid();
 }
 
 /** True when the owner has switched app-install exits on for this merchant. */

@@ -22,6 +22,7 @@ import { ekaroTrackingUrl } from './ekaro';
 import { log } from '../common/logger';
 import { getStore } from '../common/db';
 import { gromoLinkFor, gromoClickUrl, isGromoUrl } from './gromo';
+import { buildCuelinksDeepLink } from './cuelinksCid';
 
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
@@ -271,7 +272,9 @@ export function cuelinksMerchantUrl(dest: string, tier: 'approved' | 'applied' |
     if (!hit) return null;
   }
   // Mirrors the API-generated tracking_url (source=api) + our subid (sub_ids_allowed=true)
-  return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
+  // OWNER 12 Nov: one place decides the cid (a publisher id in CUELINKS_CID produced
+  // cuelinks.com/broken-links on every exit) and one verified link shape is used.
+  return buildCuelinksDeepLink(dest, c.publisherId);
 }
 
 

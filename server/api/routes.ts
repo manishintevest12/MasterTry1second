@@ -1687,9 +1687,24 @@ apiRouter.get('/version', async (_req, res) => {
     } catch { /* handled by assetsOnDisk === 0 */ }
     missing = [...new Set(refs)].filter((f) => !onDisk.has(f));
   }
+  // OWNER 11 Nov (second "upload failed" report, real reason): the host serves an OLD browser bundle while
+  // the server code is current, because `git pull` does not replace locally-modified build output in dist/.
+  // The server cannot rebuild that away, but it can say it out loud: compare dist/index.html on disk with the
+  // one git has at HEAD.
+  let trackedBundle: string | null = null;
+  try {
+    const { execFileSync } = require('child_process');
+    const tracked = String(execFileSync('git', ['show', 'HEAD:dist/index.html'], { cwd: process.cwd(), timeout: 4000, encoding: 'utf8' }) || '');
+    trackedBundle = (tracked.match(/\/assets\/(index-[A-Za-z0-9_.-]+\.js)/) || [])[1] || null;
+  } catch { trackedBundle = null; }
+  const bundleStale = Boolean(trackedBundle && bundle && trackedBundle !== String(bundle).replace('/assets/', ''));
   res.json({
     ok: true,
     bundle,
+    trackedBundle,
+    // true = the checkout is current but the browser half on disk is not the tracked build: run
+    // `git reset --hard origin/main` (never npm run build on the host), then restart Node.
+    bundleStale,
     // OWNER 9 Nov, third report of the same stale-feed complaint: "is the fix live?" must be answerable
     // in ONE request. The commit the running code was built from sits next to the bundle it serves, so a
     // stale checkout (code pulled but dist not, or vice versa) is visible immediately instead of guessed.
@@ -1703,7 +1718,7 @@ apiRouter.get('/version', async (_req, res) => {
       healthy: assetsOnDisk > 0 && missing.length === 0,
       remedy: assetsOnDisk === 0 || missing.length
         ? 'run `npm run build` on the host, then restart Node'
-        : undefined,
+        : (trackedBundle && bundleStale ? 'the browser bundle on disk is not the tracked build: run `git reset --hard origin/main`, then restart Node' : undefined),
     },
   });
 });

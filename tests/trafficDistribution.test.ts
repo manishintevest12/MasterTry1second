@@ -43,15 +43,18 @@ test('every state linked from a hub really exists on the answer layer', () => {
   }
 });
 
-test('Cuelinks mints a deep link from the publisher cid even without a campaign id', async () => {
+test('Cuelinks mints a deep link through the shared verified builder, never from the API key', async () => {
   const src = await import('node:fs').then((fs) => fs.readFileSync(new URL('../server/affiliate/affiliateNetwork.ts', import.meta.url), 'utf8'));
-  assert.match(src, /linksredirect\.com\/\?cid=/, 'cid-based linkkit deep link must exist');
-  assert.match(src, /if \(cid\)/, 'cid branch');
-  assert.match(src, /if \(campaignId\)/, 'campaign template still wins when present');
-  assert.match(src, /return null;/, 'still fail-closed when neither cid nor campaign is configured');
+  // 12 Nov: the cid + link shape live in ONE place now (server/affiliate/cuelinksCid.ts), because a publisher
+  // id in the cid slot answered cuelinks.com/broken-links. affiliateNetwork must delegate, not re-implement.
+  assert.match(src, /import \{ buildCuelinksDeepLink \} from '\.\/cuelinksCid'/, 'uses the shared builder');
+  assert.match(src, /return buildCuelinksDeepLink\(destinationUrl, subId\);/, 'cid-based deep link must exist');
+  assert.match(src, /return null;/, 'still fail-closed when nothing is configured');
+  const builder = await import('node:fs').then((fs) => fs.readFileSync(new URL('../server/affiliate/cuelinksCid.ts', import.meta.url), 'utf8'));
+  assert.match(builder, /linksredirect\.com\/\?cid=/, 'the verified link shape lives here');
   // the deep link must never be built from the API key: an expired key must not stop monetisation
-  const cidBlock = src.slice(src.indexOf('if (cid)'), src.indexOf('return null;'));
-  assert.ok(!cidBlock.includes('apiKey'), 'link minting must not depend on the API key');
+  const fn = builder.slice(builder.indexOf('export function buildCuelinksDeepLink'));
+  assert.ok(!fn.includes('apiKey'), 'link minting must not depend on the API key');
 });
 
 test('Admitad, VCommission and INRDeals activate from one env template each, fail-closed', async () => {

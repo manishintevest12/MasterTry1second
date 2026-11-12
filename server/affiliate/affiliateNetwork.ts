@@ -12,6 +12,7 @@ import type { NormalizedOffer } from '../types';
 import { settings } from '../common/settings';
 import { log } from '../common/logger';
 import { getStore } from '../common/db';
+import { buildCuelinksDeepLink } from './cuelinksCid';
 
 export interface AffiliateNetwork {
   id: string;
@@ -36,17 +37,9 @@ class CuelinksAdapter implements AffiliateNetwork {
     // link (it only reads reporting), which is why an expired key no longer blocks monetisation.
     // Nothing is invented: with no cid and no campaign id there is still no deep link.
     const subId = settings.cuelinks.subId;
-    const campaignId = settings.cuelinks.campaignId;
-    const cid = settings.cuelinks.cid;
-
-    if (campaignId) {
-      const template = `https://linksredirect.com/cuelink?type=nl&subid=${subId}&campaign=${campaignId}&url={DESTINATION}`;
-      return template.replace('{DESTINATION}', encodeURIComponent(destinationUrl));
-    }
-    if (cid) {
-      const sub = subId ? `&subid=${encodeURIComponent(subId)}` : '';
-      return `https://linksredirect.com/?cid=${encodeURIComponent(cid)}&source=linkkit${sub}&url=${encodeURIComponent(destinationUrl)}`;
-    }
+    // OWNER 12 Nov: the old `?type=nl&campaign=` shape 301s to the Cuelinks homepage, and a publisher id in
+    // the cid slot answers cuelinks.com/broken-links. One verified shape, one cid resolver.
+    return buildCuelinksDeepLink(destinationUrl, subId);
     return null;
   }
 }

@@ -31793,6 +31793,51 @@ var init_gromo = __esm({
   }
 });
 
+// server/affiliate/cuelinksCid.ts
+function isNotACid(value) {
+  const v = String(value || "").trim();
+  if (!v) return true;
+  if (!/^\d{3,12}$/.test(v)) return true;
+  if (v === String(settings.cuelinks.publisherId || "").trim()) return true;
+  if (v === String(settings.cuelinks.campaignId || "").trim()) return false;
+  return false;
+}
+function resolveCuelinksCid() {
+  const configured2 = String(settings.cuelinks.cid || "").trim();
+  if (!isNotACid(configured2)) return configured2;
+  if (configured2 && !warned) {
+    warned = true;
+    log.warn("Cuelinks", `CUELINKS_CID=${configured2} is not a tracking cid (it is the publisher/campaign id) - linksredirect answers cuelinks.com/broken-links for it. Using the verified cid ${KNOWN_GOOD_CUELINKS_CID}.`);
+  }
+  return KNOWN_GOOD_CUELINKS_CID;
+}
+function resolveCuelinksSubId(raw) {
+  const v = String(raw || "").trim();
+  return /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : "";
+}
+function buildCuelinksDeepLink(destination, subId) {
+  try {
+    const u = new URL(String(destination || ""));
+    if (u.protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+  const cid = resolveCuelinksCid();
+  if (!cid) return null;
+  const sub = resolveCuelinksSubId(subId) || resolveCuelinksSubId(settings.cuelinks.publisherId);
+  const subPart = sub ? `&subid=${encodeURIComponent(sub)}` : "";
+  return `https://linksredirect.com/?cid=${encodeURIComponent(cid)}${subPart}&source=api&url=${encodeURIComponent(destination)}`;
+}
+var KNOWN_GOOD_CUELINKS_CID, warned;
+var init_cuelinksCid = __esm({
+  "server/affiliate/cuelinksCid.ts"() {
+    init_settings();
+    init_logger();
+    KNOWN_GOOD_CUELINKS_CID = "326794";
+    warned = false;
+  }
+});
+
 // server/affiliate/merchantLinks.ts
 function dates(d) {
   const s = String(d || "");
@@ -32236,7 +32281,7 @@ function cuelinksMerchantUrl(dest, tier = "all") {
     }
     if (!hit) return null;
   }
-  return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
+  return buildCuelinksDeepLink(dest, c.publisherId);
 }
 function domainMatches(domain, listed) {
   return domain === listed || domain.endsWith(`.${listed}`);
@@ -32484,6 +32529,7 @@ var init_deeplink = __esm({
     init_logger();
     init_db();
     init_gromo();
+    init_cuelinksCid();
     init_merchantLinks();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
     CUELINKS_BASE_MERCHANTS = [
@@ -36907,6 +36953,7 @@ var init_affiliateNetwork = __esm({
     init_settings();
     init_logger();
     init_db();
+    init_cuelinksCid();
     CuelinksAdapter = class {
       constructor() {
         this.id = "cuelinks";
@@ -36914,16 +36961,7 @@ var init_affiliateNetwork = __esm({
       }
       buildDeepLink(destinationUrl, _vendorDomain) {
         const subId = settings.cuelinks.subId;
-        const campaignId = settings.cuelinks.campaignId;
-        const cid = settings.cuelinks.cid;
-        if (campaignId) {
-          const template = `https://linksredirect.com/cuelink?type=nl&subid=${subId}&campaign=${campaignId}&url={DESTINATION}`;
-          return template.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
-        }
-        if (cid) {
-          const sub = subId ? `&subid=${encodeURIComponent(subId)}` : "";
-          return `https://linksredirect.com/?cid=${encodeURIComponent(cid)}&source=linkkit${sub}&url=${encodeURIComponent(destinationUrl)}`;
-        }
+        return buildCuelinksDeepLink(destinationUrl, subId);
         return null;
       }
     };
@@ -40878,8 +40916,7 @@ var init_spendLens = __esm({
 
 // server/affiliate/appCampaigns.ts
 function cuelinksCid() {
-  const fromEnv = (process.env.CUELINKS_CID || "").trim();
-  return fromEnv || "326794";
+  return resolveCuelinksCid();
 }
 function appInstallExitEnabled(key) {
   const blocked = APP_CAMPAIGNS.find((c) => c.key === key.toLowerCase() && c.installExitAllowed === false);
@@ -40901,6 +40938,7 @@ function appInstallTrackingUrl(campaign, subId) {
 var APP_CAMPAIGNS;
 var init_appCampaigns = __esm({
   "server/affiliate/appCampaigns.ts"() {
+    init_cuelinksCid();
     APP_CAMPAIGNS = [
       {
         key: "easemytrip",
@@ -50054,9 +50092,22 @@ var init_routes = __esm({
         }
         missing = [...new Set(refs)].filter((f) => !onDisk.has(f));
       }
+      let trackedBundle = null;
+      try {
+        const { execFileSync } = require("child_process");
+        const tracked = String(execFileSync("git", ["show", "HEAD:dist/index.html"], { cwd: process.cwd(), timeout: 4e3, encoding: "utf8" }) || "");
+        trackedBundle = (tracked.match(/\/assets\/(index-[A-Za-z0-9_.-]+\.js)/) || [])[1] || null;
+      } catch {
+        trackedBundle = null;
+      }
+      const bundleStale = Boolean(trackedBundle && bundle && trackedBundle !== String(bundle).replace("/assets/", ""));
       res.json({
         ok: true,
         bundle,
+        trackedBundle,
+        // true = the checkout is current but the browser half on disk is not the tracked build: run
+        // `git reset --hard origin/main` (never npm run build on the host), then restart Node.
+        bundleStale,
         // OWNER 9 Nov, third report of the same stale-feed complaint: "is the fix live?" must be answerable
         // in ONE request. The commit the running code was built from sits next to the bundle it serves, so a
         // stale checkout (code pulled but dist not, or vice versa) is visible immediately instead of guessed.
@@ -50068,7 +50119,7 @@ var init_routes = __esm({
           assetsOnDisk,
           referencedAssetsMissing: missing.slice(0, 8),
           healthy: assetsOnDisk > 0 && missing.length === 0,
-          remedy: assetsOnDisk === 0 || missing.length ? "run `npm run build` on the host, then restart Node" : void 0
+          remedy: assetsOnDisk === 0 || missing.length ? "run `npm run build` on the host, then restart Node" : trackedBundle && bundleStale ? "the browser bundle on disk is not the tracked build: run `git reset --hard origin/main`, then restart Node" : void 0
         }
       });
     });
