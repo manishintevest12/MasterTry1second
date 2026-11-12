@@ -1662,6 +1662,36 @@ apiRouter.get('/affiliate/app-campaigns', (_req, res) => {
   });
 });
 
+/**
+ * OWNER 12 Nov: the owner kept landing on cuelinks.com/broken-links and had to guess whether the fix was
+ * live. This runs ONE real hop per process with our own cid and reports what linksredirect answered, so
+ * /api/version alone says whether Cuelinks exits work - no click needed.
+ */
+let cuelinksProbe: { at: number; cid: string; ok: boolean; finalHost: string | null } | null = null;
+async function probeCuelinksHop(): Promise<{ cid: string; ok: boolean; finalHost: string | null } | null> {
+  if (cuelinksProbe && Date.now() - cuelinksProbe.at < 10 * 60_000) return cuelinksProbe;
+  try {
+    const { buildCuelinksDeepLink, resolveCuelinksCid } = await import('../affiliate/cuelinksCid');
+    const cid = resolveCuelinksCid();
+    const url = buildCuelinksDeepLink('https://www.makemytrip.com/hotels/');
+    if (!url) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    let finalHost: string | null = null;
+    let ok = false;
+    try {
+      const r = await fetch(url, { redirect: 'follow', signal: ctrl.signal, headers: { 'user-agent': 'Mozilla/5.0 Try1SecondProbe' } });
+      finalHost = new URL(r.url).hostname.replace(/^www\./, '');
+      // A wrapped-but-unjoined merchant still passes straight through; only the Cuelinks error page is a failure.
+      ok = !/cuelinks\.com$/i.test(finalHost) || !/broken/i.test(r.url);
+    } finally { clearTimeout(timer); }
+    cuelinksProbe = { at: Date.now(), cid, ok, finalHost };
+  } catch {
+    cuelinksProbe = { at: Date.now(), cid: '', ok: false, finalHost: null };
+  }
+  return cuelinksProbe;
+}
+
 apiRouter.get('/version', async (_req, res) => {
   let bundle: string | null = null;
   let html: string | null = null;
@@ -1698,10 +1728,12 @@ apiRouter.get('/version', async (_req, res) => {
     trackedBundle = (tracked.match(/\/assets\/(index-[A-Za-z0-9_.-]+\.js)/) || [])[1] || null;
   } catch { trackedBundle = null; }
   const bundleStale = Boolean(trackedBundle && bundle && trackedBundle !== String(bundle).replace('/assets/', ''));
+  const cuelinks = await probeCuelinksHop().catch(() => null);
   res.json({
     ok: true,
     bundle,
     trackedBundle,
+    cuelinks: cuelinks ? { cid: cuelinks.cid, hopWorks: cuelinks.ok, landedOn: cuelinks.finalHost } : null,
     // true = the checkout is current but the browser half on disk is not the tracked build: run
     // `git reset --hard origin/main` (never npm run build on the host), then restart Node.
     bundleStale,

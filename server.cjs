@@ -31794,6 +31794,13 @@ var init_gromo = __esm({
 });
 
 // server/affiliate/cuelinksCid.ts
+var cuelinksCid_exports = {};
+__export(cuelinksCid_exports, {
+  KNOWN_GOOD_CUELINKS_CID: () => KNOWN_GOOD_CUELINKS_CID,
+  buildCuelinksDeepLink: () => buildCuelinksDeepLink,
+  resolveCuelinksCid: () => resolveCuelinksCid,
+  resolveCuelinksSubId: () => resolveCuelinksSubId
+});
 function isNotACid(value) {
   const v = String(value || "").trim();
   if (!v) return true;
@@ -49024,6 +49031,30 @@ function offerToComparisonItem(o, reqTravel = {}) {
     }
   };
 }
+async function probeCuelinksHop() {
+  if (cuelinksProbe && Date.now() - cuelinksProbe.at < 10 * 6e4) return cuelinksProbe;
+  try {
+    const { buildCuelinksDeepLink: buildCuelinksDeepLink2, resolveCuelinksCid: resolveCuelinksCid2 } = await Promise.resolve().then(() => (init_cuelinksCid(), cuelinksCid_exports));
+    const cid = resolveCuelinksCid2();
+    const url = buildCuelinksDeepLink2("https://www.makemytrip.com/hotels/");
+    if (!url) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4e3);
+    let finalHost = null;
+    let ok3 = false;
+    try {
+      const r = await fetch(url, { redirect: "follow", signal: ctrl.signal, headers: { "user-agent": "Mozilla/5.0 Try1SecondProbe" } });
+      finalHost = new URL(r.url).hostname.replace(/^www\./, "");
+      ok3 = !/cuelinks\.com$/i.test(finalHost) || !/broken/i.test(r.url);
+    } finally {
+      clearTimeout(timer);
+    }
+    cuelinksProbe = { at: Date.now(), cid, ok: ok3, finalHost };
+  } catch {
+    cuelinksProbe = { at: Date.now(), cid: "", ok: false, finalHost: null };
+  }
+  return cuelinksProbe;
+}
 function verticalForScanUrl(url, domain) {
   const u = url.toLowerCase();
   if (/(blinkit|zepto|instamart|bigbasket|jiomart)/.test(u)) return "grocery";
@@ -49330,7 +49361,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path8, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN, absoluteLogo, validHex, bannerGradient;
+var import_promises2, import_node_path8, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, cuelinksProbe, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN, absoluteLogo, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
@@ -50067,6 +50098,7 @@ var init_routes = __esm({
         }))
       });
     });
+    cuelinksProbe = null;
     apiRouter.get("/version", async (_req, res) => {
       let bundle = null;
       let html = null;
@@ -50101,10 +50133,12 @@ var init_routes = __esm({
         trackedBundle = null;
       }
       const bundleStale = Boolean(trackedBundle && bundle && trackedBundle !== String(bundle).replace("/assets/", ""));
+      const cuelinks = await probeCuelinksHop().catch(() => null);
       res.json({
         ok: true,
         bundle,
         trackedBundle,
+        cuelinks: cuelinks ? { cid: cuelinks.cid, hopWorks: cuelinks.ok, landedOn: cuelinks.finalHost } : null,
         // true = the checkout is current but the browser half on disk is not the tracked build: run
         // `git reset --hard origin/main` (never npm run build on the host), then restart Node.
         bundleStale,
