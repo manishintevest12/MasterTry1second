@@ -15,7 +15,7 @@ export type VerticalId =
   | 'bills_utilities'
   | 'account';
 
-export type MainNavTab = 'home' | 'quickapps' | 'insights' | 'compare' | 'rewards' | 'admin' | 'merchant' | 'tracker' | 'product' | 'spendlens';
+export type MainNavTab = 'home' | 'quickapps' | 'insights' | 'compare' | 'rewards' | 'admin' | 'merchant' | 'tracker' | 'product' | 'spendlens' | 'nearby';
 export type RewardsSubTab = 'top' | 'coupons' | 'offers' | 'spin' | 'cards' | 'refer';
 
 export interface UserLocationState {

@@ -1692,6 +1692,48 @@ async function probeCuelinksHop(): Promise<{ cid: string; ok: boolean; finalHost
   return cuelinksProbe;
 }
 
+/**
+ * NEARBY & LOCAL DISCOVERY (owner 13 Nov): /api/nearby?lat=&lng=&category=restaurants|hotels|stays|cafes|cabs|stores|all
+ * Falls back to ?city= and then to a default city when no coordinates are sent. v1 alias kept for the app.
+ */
+async function nearbyHandler(req: any, res: Response): Promise<void> {
+  try {
+    const { nearbyAnswer } = await import('../nearby/aggregator');
+    const answer = await nearbyAnswer({
+      lat: req.query.lat === undefined ? null : Number(req.query.lat),
+      lng: req.query.lng === undefined ? null : Number(req.query.lng),
+      city: req.query.city ? String(req.query.city) : null,
+      category: req.query.category,
+      limit: Number(req.query.limit) || undefined,
+    });
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json(answer);
+  } catch (e: any) {
+    log.warn('Api', 'nearby failed', { error: String(e?.message || e).slice(0, 120) });
+    res.status(503).json({ ok: false, results: [], error: 'Nearby discovery is unavailable right now' });
+  }
+}
+apiRouter.get('/nearby', nearbyHandler);
+apiRouter.get('/v1/nearby', nearbyHandler);
+
+/** Google photo proxy: the browser never sees GOOGLE_PLACES_API_KEY. */
+apiRouter.get('/nearby/photo', async (req: any, res: Response) => {
+  const key = String(process.env.GOOGLE_PLACES_API_KEY || '').trim();
+  const ref = String(req.query.ref || '');
+  if (!key || !/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(ref)) {
+    res.status(404).type('text/plain').send('photo not available');
+    return;
+  }
+  try {
+    const upstream = await fetch(`https://places.googleapis.com/v1/${ref}/media?maxHeightPx=480&key=${encodeURIComponent(key)}`, { redirect: 'follow' });
+    if (!upstream.ok || !upstream.body) { res.status(502).type('text/plain').send('photo unavailable'); return; }
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.send(buf);
+  } catch { res.status(502).type('text/plain').send('photo unavailable'); }
+});
+
 apiRouter.get('/version', async (_req, res) => {
   let bundle: string | null = null;
   let html: string | null = null;

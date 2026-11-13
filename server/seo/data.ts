@@ -19,6 +19,7 @@ import { GUIDE_SLUGS } from './guides';
 import { ANSWER_STATES } from './answerStates';
 import { CITY_STATE, INDIAN_CITIES } from './cityCorpus';
 import { MOVIE_CITY_CONTENT } from './movieCities';
+import { listNearbyPaths } from '../nearby/seo';
 
 export interface SeoFaq { q: string; a: string }
 export interface SeoPage {
@@ -348,11 +349,14 @@ function routeSlug(a: string, b: string, noun: string): string {
 // ============ Path resolution ============
 
 export function listSeoPaths(): string[] {
+  // Nearby & local discovery pages (owner 13 Nov) ride the same sitemap so IndexNow picks them up.
+  const nearbyPaths = listNearbyPaths();
   // Editorial guides (server/seo/guides.ts) are part of the AdSense "unique value" surface.
   const guidePaths = GUIDE_SLUGS.map((s) => `/guides/${s}`);
   // OWNER 2 Nov (AdSense "Low value content"): the support/legal URLs are now real pages, so the
   // sitemap lists every one of them instead of a lone '/privacy' that answered the SPA shell.
   const paths: string[] = [
+    ...nearbyPaths,
     ...guidePaths,
     // OWNER 10 Nov: the spaced brand spelling gets its own page, so it is a real URL in the index.
     BRAND_PAGE_PATH,

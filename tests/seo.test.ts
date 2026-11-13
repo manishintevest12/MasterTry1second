@@ -40,6 +40,13 @@ const run = async () => {
       assert.ok(resolveAnswerPage(p), `answer URL ${p} must render a page`);
       continue;
     }
+    // Nearby & local discovery (owner 13 Nov) is its own renderer (server/nearby/seo.ts): every sitemap URL
+    // must resolve to a real page record there, not to the SeoPage corpus.
+    if (p === '/nearby' || p.startsWith('/nearby/')) {
+      const { resolveNearbyPage } = await import('../server/nearby/seo');
+      assert.ok(resolveNearbyPage(p), `nearby URL ${p} must render a page`);
+      continue;
+    }
     const page = resolveSeoPage(p);
     assert.ok(page, `sitemap URL ${p} has no SEO page`);
     assert.ok(page.title.length > 10 && page.title.length <= 65 + 30, `title sane at ${p}`);

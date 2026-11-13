@@ -23,6 +23,7 @@ import {
   Receipt,
   CreditCard,
   Wallet,
+  MapPin,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
@@ -268,6 +269,21 @@ export const Navbar: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Nearby & local discovery (owner 13 Nov) */}
+            <button
+              type="button"
+              onClick={() => handleNavClick('nearby')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full border text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                activeNavTab === 'nearby'
+                  ? 'bg-red-50 text-red-700 border-red-300 shadow-xs'
+                  : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
+              }`}
+              title="Nearby & local discovery — restaurants, hotels, stays, cabs around you"
+            >
+              <MapPin className="w-3.5 h-3.5 text-[#E7000B]" />
+              <span className="hidden lg:inline">Nearby</span>
+            </button>
 
             {/* Spend Lens Button */}
             <button

@@ -314,6 +314,17 @@ export async function createApp(): Promise<express.Express> {
   // to agents that ask for text/markdown. Registered before the catch-all so real HTML always wins.
   {
     const { resolveAnswerPage, renderAnswerHtml, renderAnswerMarkdown } = await import('./seo/answerPages');
+    // NEARBY local-SEO pages (owner 13 Nov): /nearby, /nearby/<category>, /nearby/<category>/<city>, .../<area>
+    app.get(['/nearby', '/nearby/:category', '/nearby/:category/:city', '/nearby/:category/:city/:area'], async (req: Request, res: Response) => {
+      const { resolveNearbyPage, renderNearbyHtml } = await import('./nearby/seo');
+      const page = resolveNearbyPage(req.path);
+      if (!page) { res.status(404).type('text/plain').send('Nearby page not found'); return; }
+      const origin = `https://${(req.headers.host as string) || 'www.try1second.com'}`;
+      const html = await renderNearbyHtml(page, origin);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.status(200).type('html').send(html);
+    });
+
     app.get(['/answers', '/best', '/best/:vertical', '/best/:vertical/:state'], async (req: Request, res: Response) => {
       const page = resolveAnswerPage(req.path);
       if (!page) {

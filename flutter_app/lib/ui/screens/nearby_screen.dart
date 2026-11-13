@@ -1,0 +1,295 @@
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/api.dart';
+import '../../core/theme.dart';
+
+/// Nearby & local discovery (owner 13 Nov).
+///
+/// Cards render only what the source supplies. Google Places (when the server has a key) gives rating,
+/// review count and price level; OpenStreetMap gives name, address and distance and nothing else, so those
+/// cards honestly say "rating unknown" instead of inventing a star count.
+class NearbyScreen extends StatefulWidget {
+  const NearbyScreen({super.key});
+
+  @override
+  State<NearbyScreen> createState() => _NearbyScreenState();
+}
+
+class _NearbyScreenState extends State<NearbyScreen> {
+  static const _categories = <String>['all', 'restaurants', 'cafes', 'hotels', 'stays', 'cabs', 'stores'];
+  final _cityController = TextEditingController();
+  String _category = 'all';
+  List<NearbyPlace> _rows = const [];
+  List<String> _notes = const [];
+  String _where = '';
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _cityController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load({double? lat, double? lng, String? city}) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final api = Try1SecondApi();
+      final res = await api.nearby(
+        lat: lat,
+        lng: lng,
+        city: city ?? (_cityController.text.trim().isEmpty ? null : _cityController.text.trim()),
+        category: _category,
+      );
+      if (!mounted) return;
+      setState(() {
+        _rows = res.places;
+        _notes = res.notes;
+        _where = res.city ?? _cityController.text.trim();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _rows = const [];
+      });
+    }
+  }
+
+  Future<void> _useMyLocation() async {
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        setState(() => _error = 'Location service off hai, city box se search karo.');
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        setState(() => _error = 'Location permission nahi mili — city box use karo.');
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
+      await _load(lat: pos.latitude, lng: pos.longitude, city: '');
+    } catch (e) {
+      setState(() => _error = 'Location nahi mili: ${e.toString()}');
+    }
+  }
+
+  Future<void> _open(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Text('Nearby', style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w800)),
+        actions: [
+          IconButton(
+            tooltip: 'Use my location',
+            onPressed: _useMyLocation,
+            icon: const Icon(Icons.near_me_outlined, color: Color(0xFF0F172A)),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _cityController,
+                    style: TextStyle(color: const Color(0xFF0F172A), fontSize: 13),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _load(),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'City or area (e.g. Pune)',
+                      hintStyle: TextStyle(color: const Color(0xFF64748B), fontSize: 12),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () => _load(),
+                  style: FilledButton.styleFrom(backgroundColor: T1SColors.red, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
+                  child: const Text('Search', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 46,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              itemCount: _categories.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                final c = _categories[i];
+                final active = c == _category;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _category = c);
+                    _load();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: active ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: active ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0)),
+                    ),
+                    child: Text(
+                      c[0].toUpperCase() + c.substring(1),
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: active ? Colors.white : const Color(0xFF0F172A)),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_where.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Around $_where', style: TextStyle(fontSize: 11, color: const Color(0xFF64748B))),
+              ),
+            ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(_error!, style: TextStyle(fontSize: 11.5, color: T1SColors.red)),
+            ),
+          if (_notes.isNotEmpty && _rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(_notes.first, style: TextStyle(fontSize: 11, color: const Color(0xFF64748B))),
+            ),
+          Expanded(
+            child: _loading
+                ? Center(child: CircularProgressIndicator(color: T1SColors.red))
+                : _rows.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'Is area ke liye abhi koi live place nahi mila, isliye kuch bhi invent nahi kiya gaya.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: const Color(0xFF64748B), fontSize: 12.5),
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _rows.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) => _card(_rows[i]),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _card(NearbyPlace p) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(p.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A))),
+                    if (p.subcategory != null)
+                      Text(p.subcategory!, style: TextStyle(fontSize: 11, color: const Color(0xFF64748B))),
+                  ],
+                ),
+              ),
+              if (p.distanceKm != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(999)),
+                  child: Text('${p.distanceKm} km', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A))),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 10,
+            runSpacing: 4,
+            children: [
+              if (p.rating != null)
+                Text('⭐ ${p.rating!.toStringAsFixed(1)}${p.ratingCount != null ? ' (${p.ratingCount})' : ''}',
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFFB45309)))
+              else
+                Text('rating unknown', style: TextStyle(fontSize: 11, color: const Color(0xFF64748B))),
+              if (p.priceLabel != null) Text(p.priceLabel!, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFF0F172A))),
+              if (p.price != null) Text('₹${p.price!.round()}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: const Color(0xFF0F172A))),
+            ],
+          ),
+          if (p.address != null) ...[
+            const SizedBox(height: 4),
+            Text(p.address!, style: TextStyle(fontSize: 11, color: const Color(0xFF64748B))),
+          ],
+          const SizedBox(height: 4),
+          Text(p.honesty, style: TextStyle(fontSize: 9.5, color: const Color(0xFF64748B))),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (p.exitUrl.isNotEmpty)
+                FilledButton(
+                  onPressed: () => _open(p.exitUrl),
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F172A), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                  child: const Text('Visit / book', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: () => _open(p.directionsUrl),
+                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                child: const Text('Get directions', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

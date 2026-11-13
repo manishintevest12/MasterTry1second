@@ -3426,26 +3426,26 @@ function parseAmazonIn(html, source, searchUrl) {
   const fingerprint = (0, import_crypto3.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   $('div[data-component-type="s-search-result"]').each((_, el) => {
-    const card = $(el);
-    const asin = card.attr("data-asin");
+    const card2 = $(el);
+    const asin = card2.attr("data-asin");
     if (!asin) return;
-    if (card.find('.puis-sponsored-label-text, [aria-label*="Sponsored"]').length) return;
-    const brandText = card.find("h2").first().text().replace(/\s+/g, " ").trim();
-    const nameText = (card.find('[data-cy="title-recipe"] a.a-link-normal[class*="line-clamp"]').first().text() || card.find('a.a-link-normal[class*="s-line-clamp"]').first().text() || card.find("img.s-image").first().attr("alt") || "").replace(/\s+/g, " ").trim();
+    if (card2.find('.puis-sponsored-label-text, [aria-label*="Sponsored"]').length) return;
+    const brandText = card2.find("h2").first().text().replace(/\s+/g, " ").trim();
+    const nameText = (card2.find('[data-cy="title-recipe"] a.a-link-normal[class*="line-clamp"]').first().text() || card2.find('a.a-link-normal[class*="s-line-clamp"]').first().text() || card2.find("img.s-image").first().attr("alt") || "").replace(/\s+/g, " ").trim();
     const title = nameText ? brandText && !nameText.toLowerCase().startsWith(brandText.toLowerCase()) ? `${brandText} ${nameText}` : nameText : brandText;
-    const h2 = card.find("h2").first();
-    const price2 = parseInr(card.find("span.a-price:not(.a-text-price) > span.a-offscreen").first().text());
-    const mrp = parseInr(card.find("span.a-price.a-text-price > span.a-offscreen").first().text());
+    const h2 = card2.find("h2").first();
+    const price2 = parseInr(card2.find("span.a-price:not(.a-text-price) > span.a-offscreen").first().text());
+    const mrp = parseInr(card2.find("span.a-price.a-text-price > span.a-offscreen").first().text());
     if (!title || !price2) return;
-    const rating = card.find("span.a-icon-alt").first().text().match(/([\d.]+) out of 5/)?.[1];
-    const href = h2.find("a").attr("href") || card.find('a.a-link-normal[href*="/dp/"]').attr("href") || `/dp/${asin}`;
+    const rating = card2.find("span.a-icon-alt").first().text().match(/([\d.]+) out of 5/)?.[1];
+    const href = h2.find("a").attr("href") || card2.find('a.a-link-normal[href*="/dp/"]').attr("href") || `/dp/${asin}`;
     const url = new URL(href.startsWith("http") ? href : `https://www.amazon.in${href.startsWith("/") ? "" : "/"}${href}`);
     const productUrl = `https://www.amazon.in/dp/${asin}`;
     void url;
-    const prime = card.find("i.a-icon-prime").length > 0;
-    const img = (card.find("img.s-image").first().attr("src") || "").trim();
+    const prime = card2.find("i.a-icon-prime").length > 0;
+    const img = (card2.find("img.s-image").first().attr("src") || "").trim();
     const imageUrl = /^https:\/\/m\.media-amazon\.com\//.test(img) ? img : "";
-    const unavailable = /currently unavailable|out of stock/i.test(card.text());
+    const unavailable = /currently unavailable|out of stock/i.test(card2.text());
     out.push(newRawItem(source, {
       title: title.slice(0, 220),
       price: price2,
@@ -5599,19 +5599,19 @@ function parseBookingHotels(html, source, searchUrl, checkin, checkout) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   $('[data-testid="property-card"]').each((_, el) => {
-    const card = $(el);
-    const name = card.find('[data-testid="title"]').first().text().trim();
+    const card2 = $(el);
+    const name = card2.find('[data-testid="title"]').first().text().trim();
     if (!name || seen.has(name)) return;
     seen.add(name);
-    const priceEl = card.find('[data-testid="price-and-discounted-price"]').first().text() || card.find('[data-testid="price"]').first().text();
+    const priceEl = card2.find('[data-testid="price-and-discounted-price"]').first().text() || card2.find('[data-testid="price"]').first().text();
     const { value: price2, currency } = parseInr2(priceEl);
-    const scoreText = card.find('[data-testid="review-score"]').first().text().replace(/\s+/g, " ").trim();
+    const scoreText = card2.find('[data-testid="review-score"]').first().text().replace(/\s+/g, " ").trim();
     const score = scoreText.match(/(\d(?:\.\d)?)\b/)?.[1];
-    const href = card.find('a[href*="/hotel/"]').first().attr("href") || "";
+    const href = card2.find('a[href*="/hotel/"]').first().attr("href") || "";
     const propUrl = href ? `https://www.booking.com${href.split("?")[0]}` : searchUrl;
-    const imgEl = card.find('img[data-testid="hotel-image"]').first().length ? card.find('img[data-testid="hotel-image"]').first() : card.find('img[src*="bstatic.com"], img[data-src*="bstatic.com"]').first();
+    const imgEl = card2.find('img[data-testid="hotel-image"]').first().length ? card2.find('img[data-testid="hotel-image"]').first() : card2.find('img[src*="bstatic.com"], img[data-src*="bstatic.com"]').first();
     const img = String(imgEl.attr("src") || imgEl.attr("data-src") || "").trim();
-    const distance = card.find('[data-testid="distance"]').first().text().trim();
+    const distance = card2.find('[data-testid="distance"]').first().text().trim();
     if (!price2) return;
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
@@ -5823,8 +5823,8 @@ function parseCleartripHotels(nextData2) {
     if (slot2?.slotData?.type !== "HOTEL_CARD_LIST") continue;
     const cards = slot2?.slotData?.data?.hotelCardList;
     if (!Array.isArray(cards)) continue;
-    for (const card of cards) {
-      const d = card?.data;
+    for (const card2 of cards) {
+      const d = card2?.data;
       if (!d?.name || !d?.priceInfo?.data) continue;
       const pi = d.priceInfo.data;
       const price2 = Number(pi.price) || 0;
@@ -5836,7 +5836,7 @@ function parseCleartripHotels(nextData2) {
       const imgRaw = d?.imageSlider?.data?.images?.[0]?.data?.url;
       const imageUrl = typeof imgRaw === "string" && imgRaw.startsWith("http") ? imgRaw : typeof imgRaw === "string" && imgRaw ? CLEARTRIP_IMAGE_CDN + imgRaw.replace(/^\/+/, "") : null;
       const allImgs = (Array.isArray(d?.imageSlider?.data?.images) ? d.imageSlider.data.images : []).map((im) => im?.data?.url).filter((u) => typeof u === "string" && u).map((u) => u.startsWith("http") ? u : CLEARTRIP_IMAGE_CDN + u.replace(/^\/+/, "")).slice(0, 8);
-      const rel = card?.action?.payload?.url;
+      const rel = card2?.action?.payload?.url;
       const deeplink = typeof rel === "string" && rel.startsWith("/") ? CLEARTRIP_WEB + rel : typeof rel === "string" && rel.startsWith("http") ? rel : `${CLEARTRIP_WEB}/hotels/`;
       out.push({
         id,
@@ -6814,16 +6814,16 @@ function parseMmtHotelListing(html) {
   let m;
   while (m = marker.exec(body)) starts.push(m.index);
   for (let i = 0; i < starts.length; i++) {
-    const card = body.slice(starts[i], starts[i + 1] ?? Math.min(body.length, starts[i] + 6e4));
-    const candidates = Array.from(card.matchAll(/<p[^>]*class="[^"]*\blatoBlack\b[^"]*\bfont20\b[^"]*"[^>]*>([\s\S]*?)<\/p>/g)).map((mm) => stripTags(mm[1] || ""));
+    const card2 = body.slice(starts[i], starts[i + 1] ?? Math.min(body.length, starts[i] + 6e4));
+    const candidates = Array.from(card2.matchAll(/<p[^>]*class="[^"]*\blatoBlack\b[^"]*\bfont20\b[^"]*"[^>]*>([\s\S]*?)<\/p>/g)).map((mm) => stripTags(mm[1] || ""));
     const name = candidates.find((t) => t.length >= 3 && t.length <= 90 && !/property is part of|spotlight program|advertisement fee|taxes & fees/i.test(t)) || "";
-    const shown = /id="hlistpg_hotel_shown_price"[^>]*>\s*(?:₹|&#8377;|Rs\.?)\s*([\d,]+)/.exec(card);
+    const shown = /id="hlistpg_hotel_shown_price"[^>]*>\s*(?:₹|&#8377;|Rs\.?)\s*([\d,]+)/.exec(card2);
     if (!name || !shown) continue;
     const price2 = num5(shown[1]);
     if (!price2) continue;
-    const taxes = num5((/\+\s*(?:₹|&#8377;|Rs\.?)\s*([\d,]+)\s*taxes/i.exec(card) || [])[1]) || 0;
-    const starRaw = num5((/\b([1-5](?:\.\d)?)\s*[- ]?star/i.exec(stripTags(card).slice(0, 400)) || [])[1]);
-    const url = (/https:\/\/www\.makemytrip\.com\/hotels\/[a-z0-9_%-]+-details-[a-z0-9-]+\.html/i.exec(card) || [])[0] || null;
+    const taxes = num5((/\+\s*(?:₹|&#8377;|Rs\.?)\s*([\d,]+)\s*taxes/i.exec(card2) || [])[1]) || 0;
+    const starRaw = num5((/\b([1-5](?:\.\d)?)\s*[- ]?star/i.exec(stripTags(card2).slice(0, 400)) || [])[1]);
+    const url = (/https:\/\/www\.makemytrip\.com\/hotels\/[a-z0-9_%-]+-details-[a-z0-9-]+\.html/i.exec(card2) || [])[0] || null;
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -13258,9 +13258,9 @@ function parseCathayOfferFlights(body) {
   if (!Array.isArray(list)) return [];
   const out = [];
   for (const f of list) {
-    const card = f?.flightDetails?.flightCard;
+    const card2 = f?.flightDetails?.flightCard;
     const segs = f?.flightDetails?.flightSegments || [];
-    if (!card || !segs.length) continue;
+    if (!card2 || !segs.length) continue;
     const segInfos = segs.map((s) => s?.flightInfo).filter(Boolean);
     if (!segInfos.length) continue;
     const first = segInfos[0];
@@ -13269,7 +13269,7 @@ function parseCathayOfferFlights(body) {
     const headline = allFlights.find((x) => /^CX/.test(x)) || allFlights[0];
     const transitVia = segInfos.slice(0, -1).map((s) => s.arrival?.airportCode).filter(Boolean);
     const stops = Math.max(0, segInfos.length - 1);
-    const ecoPrice = (card.totalPrice || []).find((p) => p.cabinClass === "Y" && p.isLowestPrice) || (card.totalPrice || []).find((p) => p.cabinClass === "Y") || (card.totalPrice || [])[0];
+    const ecoPrice = (card2.totalPrice || []).find((p) => p.cabinClass === "Y" && p.isLowestPrice) || (card2.totalPrice || []).find((p) => p.cabinClass === "Y") || (card2.totalPrice || [])[0];
     const priceInr = ecoPrice?.currencyCode === "INR" ? ecoPrice.value : ecoPrice ? ecoPrice.value : 0;
     const cheapOffer = (f.flightOffers || []).find((o) => o.isCheapestOffer) || (f.flightOffers || [])[0];
     const quota = cheapOffer?.availabilityDetails?.[0]?.quota;
@@ -13289,7 +13289,7 @@ function parseCathayOfferFlights(body) {
       arrTime: isoTime(last.arrival?.dateTime || ""),
       depIso: first.departure?.dateTime || "",
       arrIso: last.arrival?.dateTime || "",
-      durationMin: Math.round((card.duration || first.duration || 0) / 60),
+      durationMin: Math.round((card2.duration || first.duration || 0) / 60),
       stops,
       transitVia,
       priceInr,
@@ -19710,9 +19710,9 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const c of cards) {
-    const card = c?.card?.card;
-    const rest = card?.restaurant?.info;
-    const dishes = Array.isArray(card?.dishes) ? card.dishes : [];
+    const card2 = c?.card?.card;
+    const rest = card2?.restaurant?.info;
+    const dishes = Array.isArray(card2?.dishes) ? card2.dishes : [];
     if (!rest?.name || !dishes.length) continue;
     const restUrl = rest.slugs?.restaurant && rest.slugs?.city ? `https://www.swiggy.com/city/${rest.slugs.city}/${rest.slugs.restaurant}-rest${rest.id}` : searchUrl;
     for (const dw of dishes) {
@@ -20653,26 +20653,26 @@ var init_bharatTaxi = __esm({
 function parseQuickRideCabs(html, source, pageUrl, from, to) {
   const items = [];
   const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
-  const norm9 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const norm10 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
   const fare = (s) => {
-    const m = /([\d,]{3,7})/.exec(norm9(s).replace(/[₹]/g, ""));
+    const m = /([\d,]{3,7})/.exec(norm10(s).replace(/[₹]/g, ""));
     return m ? Number(m[1].replace(/,/g, "")) : null;
   };
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const row of rows) {
     const cells = row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) || [];
     if (cells.length < 4) continue;
-    const rf = norm9(cells[0] || "").toLowerCase();
-    const rt = norm9(cells[1] || "").toLowerCase();
-    const f = norm9(from || "").toLowerCase();
-    const t = norm9(to || "").toLowerCase();
+    const rf = norm10(cells[0] || "").toLowerCase();
+    const rt = norm10(cells[1] || "").toLowerCase();
+    const f = norm10(from || "").toLowerCase();
+    const t = norm10(to || "").toLowerCase();
     const routeMatch = f && t && (rf.includes(f) || f.includes(rf)) && (rt.includes(t) || t.includes(rt));
     if (!routeMatch) continue;
     const oneWay = fare(cells[2] || "");
     const roundTrip = fare(cells[3] || "");
     if (oneWay && oneWay > 0) {
       items.push(newRawItem(source, {
-        title: `${norm9(cells[0] || "")} to ${norm9(cells[1] || "")} cab (one-way)`,
+        title: `${norm10(cells[0] || "")} to ${norm10(cells[1] || "")} cab (one-way)`,
         brand: "Quick Ride",
         price: Math.round(oneWay),
         currency: "INR",
@@ -20682,7 +20682,7 @@ function parseQuickRideCabs(html, source, pageUrl, from, to) {
         attributes: {
           pickup: from,
           drop: to,
-          route: `${norm9(cells[0] || "")} to ${norm9(cells[1] || "")}`,
+          route: `${norm10(cells[0] || "")} to ${norm10(cells[1] || "")}`,
           vehicle_type: "cab (outstation)",
           trip_type: "one-way",
           round_trip_fare: roundTrip ? String(roundTrip) : "",
@@ -20723,10 +20723,10 @@ async function indriveCityLookup(term) {
 function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
-  const norm9 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
+  const norm10 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
   const esc9 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rx = new RegExp(`^${esc9}\\b`);
-  return cities.find((c) => norm9(c.name) === t) || cities.find((c) => rx.test(norm9(c.name))) || cities.find((c) => norm9(c.name).includes(t)) || null;
+  return cities.find((c) => norm10(c.name) === t) || cities.find((c) => rx.test(norm10(c.name))) || cities.find((c) => norm10(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
   const url = `${HOST_API}/web/v1/prices?city_from_id=${fromId}&city_to_id=${toId}`;
@@ -24527,9 +24527,9 @@ async function olaRateCardFallback(ctx, rt, reason) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const items = [];
   for (const { cat, label } of OLA_CATEGORY_LABELS) {
-    const card = best[cat];
-    if (!card) continue;
-    const price2 = olaCardFare(card, km, mins);
+    const card2 = best[cat];
+    if (!card2) continue;
+    const price2 = olaCardFare(card2, km, mins);
     if (!price2 || price2 < 10 || price2 > 1e5) continue;
     const ul = new URL("https://book.olacabs.com/");
     ul.searchParams.set("lat", String(a.lat));
@@ -26272,19 +26272,19 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   for (const L of listings) {
-    for (const card of L?.cards || []) {
-      const ctaUrl = String(card?.ctaUrl || "");
+    for (const card2 of L?.cards || []) {
+      const ctaUrl = String(card2?.ctaUrl || "");
       if (!ctaUrl.startsWith("https://in.bookmyshow.com/movies/")) continue;
-      const text = Array.isArray(card?.text) ? card.text : [];
+      const text = Array.isArray(card2?.text) ? card2.text : [];
       const title = String(text[0]?.components?.[0]?.text || "").trim();
       if (!title || title.length > 120) continue;
-      const eventCode = String(card?.id || "");
+      const eventCode = String(card2?.id || "");
       const pageCode = bmsBookingCode(ctaUrl);
       const key = eventCode || ctaUrl;
       if (seen.has(key)) continue;
       if (query && !matchesQuery(title, query)) continue;
       seen.add(key);
-      const poster = String(card?.image?.url || "");
+      const poster = String(card2?.image?.url || "");
       const cert = String(text[1]?.components?.[0]?.text || "");
       const lang = String(text[2]?.components?.[0]?.text || "");
       out.push(newRawItem(source, {
@@ -26354,13 +26354,13 @@ function parseNowShowingCards(payload, _region) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const L of payload?.listings || []) {
-    for (const card of L?.cards || []) {
-      const ctaUrl = String(card?.ctaUrl || "");
+    for (const card2 of L?.cards || []) {
+      const ctaUrl = String(card2?.ctaUrl || "");
       if (!ctaUrl.startsWith("https://in.bookmyshow.com/movies/")) continue;
-      const text = Array.isArray(card?.text) ? card.text : [];
+      const text = Array.isArray(card2?.text) ? card2.text : [];
       const title = String(text[0]?.components?.[0]?.text || "").trim();
       if (!title || title.length > 120) continue;
-      const key = String(card?.id || ctaUrl);
+      const key = String(card2?.id || ctaUrl);
       if (seen.has(key)) continue;
       seen.add(key);
       const cert = String(text[1]?.components?.[0]?.text || "").trim();
@@ -26369,7 +26369,7 @@ function parseNowShowingCards(payload, _region) {
         title,
         certification: /^[Uu][A-Gg]?([A-Za-z0-9+]{0,4})$|^A$/.test(cert) ? cert : null,
         languages: langs && langs.length <= 120 ? langs : null,
-        poster: String(card?.image?.url || "") || null,
+        poster: String(card2?.image?.url || "") || null,
         pageUrl: ctaUrl,
         eventCode: bmsBookingCode(ctaUrl)
       });
@@ -26381,16 +26381,16 @@ function parseUpcomingCards(payload, region) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const L of payload?.listings || []) {
-    for (const card of L?.cards || []) {
-      const ctaUrl = String(card?.ctaUrl || "");
+    for (const card2 of L?.cards || []) {
+      const ctaUrl = String(card2?.ctaUrl || "");
       if (!ctaUrl.startsWith("https://in.bookmyshow.com/movies/")) continue;
-      const text = Array.isArray(card?.text) ? card.text : [];
+      const text = Array.isArray(card2?.text) ? card2.text : [];
       const title = String(text[0]?.components?.[0]?.text || "").trim();
       if (!title || title.length > 120) continue;
-      const key = String(card?.id || ctaUrl);
+      const key = String(card2?.id || ctaUrl);
       if (seen.has(key)) continue;
       seen.add(key);
-      const poster = String(card?.image?.url || "");
+      const poster = String(card2?.image?.url || "");
       const likesRaw = String(text[2]?.components?.map((x) => x?.text || "").join("") || "").replace(/\s+/g, " ").trim();
       out.push({
         title,
@@ -26399,7 +26399,7 @@ function parseUpcomingCards(payload, region) {
         releaseDate: bmsPosterReleaseDate(poster),
         poster: poster || null,
         pageUrl: ctaUrl,
-        eventCode: String(card?.id || "") || null
+        eventCode: String(card2?.id || "") || null
       });
     }
   }
@@ -26958,7 +26958,7 @@ async function gwCityCinemas(host, citySlug2, timeoutMs = 12e3) {
 }
 async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs = 12e3) {
   const byTitle = /* @__PURE__ */ new Map();
-  const norm9 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const norm10 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const cinemas = await gwCityCinemas(host, citySlug2, timeoutMs);
   const walkOne = async (cinema) => ({
     cinema,
@@ -26982,7 +26982,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
     for (const mv of moviesMeta) titleByMid.set(String(mv?.id || ""), String(mv?.name || "").trim());
     const contentByTitle = /* @__PURE__ */ new Map();
     for (const g of grouped) {
-      const lbl = norm9(String(g?.label || ""));
+      const lbl = norm10(String(g?.label || ""));
       if (lbl && Number(g?.contentId)) contentByTitle.set(lbl, Number(g.contentId));
     }
     const posterByMid = /* @__PURE__ */ new Map();
@@ -26992,7 +26992,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       const mid = String(ss?.mid || "");
       const title = titleByMid.get(mid) || "";
       if (!title) continue;
-      const key = norm9(title);
+      const key = norm10(title);
       if (!key) continue;
       const areas = [];
       for (const a of ss?.areas || []) {
@@ -44639,29 +44639,29 @@ function istToday(now = /* @__PURE__ */ new Date()) {
   return new Date(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate());
 }
 function interpretAssistantQuestion(raw, now = istToday()) {
-  const norm9 = normalizeAssistantQuestion(raw);
-  const text = norm9.text;
+  const norm10 = normalizeAssistantQuestion(raw);
+  const text = norm10.text;
   if (text.replace(/\s/g, "").length < 2) return { understood: false, vertical: null, query: "", reply: 'Type or say what you want to compare, e.g. "Delhi to Mumbai flight".' };
   const parsed = understandQuery(text);
   let vertical = parsed.vertical || null;
   const lower = text.toLowerCase();
-  const route2 = extractRoute(text) || norm9.routeHint || null;
+  const route2 = extractRoute(text) || norm10.routeHint || null;
   if (!vertical && route2) vertical = "flights";
   if (vertical === "movies" || vertical === "movie") vertical = "movies";
   if (vertical === "banking") vertical = "account";
   if (vertical === "coupons" || vertical === "giftcards") vertical = "ecommerce";
   const category = detectCategoryVertical(text);
   if (category && (!vertical || vertical === "ecommerce")) vertical = category;
-  const keyword = norm9.keywordVertical;
+  const keyword = norm10.keywordVertical;
   if (keyword && keyword in LABEL && (!vertical || vertical === "ecommerce" && !category)) vertical = keyword;
   const STRONG_SUPPORTED = /\b(flight|flights|hotel|hotels|bus|buses|cab|cabs|taxi|movie|movies|loan|loans|insurance|policy|grocery|groceries|food|biryani|pizza|account|savings)\b/i;
-  const unsupportedWins = norm9.unsupported && !STRONG_SUPPORTED.test(text);
+  const unsupportedWins = norm10.unsupported && !STRONG_SUPPORTED.test(text);
   if (unsupportedWins) {
     return {
       understood: false,
       vertical: null,
-      query: norm9.text,
-      reply: `We do not compare ${norm9.unsupported} yet. Try flights, hotels, bus, cabs, movie tickets, shopping, grocery, food delivery, loans, insurance, credit cards or bank accounts.`
+      query: norm10.text,
+      reply: `We do not compare ${norm10.unsupported} yet. Try flights, hotels, bus, cabs, movie tickets, shopping, grocery, food delivery, loans, insurance, credit cards or bank accounts.`
     };
   }
   if (!vertical || !(vertical in LABEL)) {
@@ -44692,7 +44692,7 @@ function interpretAssistantQuestion(raw, now = istToday()) {
     }
   }
   if (!query) query = text;
-  const assumed = vertical === "ecommerce" && !norm9.keywordVertical;
+  const assumed = vertical === "ecommerce" && !norm10.keywordVertical;
   const when = date ? ` for ${date}` : "";
   const categoryReply = vertical === "grocery" ? `"${query}" is a grocery staple, so I am checking the 10-minute delivery apps (Blinkit, Zepto, Instamart, BigBasket, Flipkart Minutes) for the lowest price.` : vertical === "food" ? `"${query}" is a food order, so I am checking the restaurant delivery apps (Zomato, Swiggy, Domino's, EatSure\u2026) for the lowest price.` : `Opening ${LABEL[vertical]} and searching "${query}"${when}. Live prices from every site are loading.`;
   return {
@@ -44700,9 +44700,9 @@ function interpretAssistantQuestion(raw, now = istToday()) {
     vertical,
     query,
     ...date ? { date } : {},
-    ...norm9.budget ? { budget: norm9.budget } : {},
+    ...norm10.budget ? { budget: norm10.budget } : {},
     ...assumed ? { assumed: true } : {},
-    ...norm9.transliterated || norm9.repaired.length ? { normalized: { transliterated: norm9.transliterated, repaired: norm9.repaired } } : {},
+    ...norm10.transliterated || norm10.repaired.length ? { normalized: { transliterated: norm10.transliterated, repaired: norm10.repaired } } : {},
     reply: categoryReply
   };
 }
@@ -46609,8 +46609,8 @@ function gromoFinanceSponsor(vertical) {
   const advisor = gromoAdvisorLink();
   if (!advisor) return null;
   const clickUrl = gromoClickUrl(advisor, `vertical_${v}`);
-  const pointer = createMaskingPointer(clickUrl, { vertical: v });
-  if (!pointer) return null;
+  const pointer2 = createMaskingPointer(clickUrl, { vertical: v });
+  if (!pointer2) return null;
   return {
     provider: "t1s_house",
     vertical: v,
@@ -46621,7 +46621,7 @@ function gromoFinanceSponsor(vertical) {
         title: "Credit card, loan, insurance ya savings account: certified advisor se apply karo",
         discount: "Free expert guidance",
         image: gromoBannerUrl(),
-        url: pointer
+        url: pointer2
       }
     ]
   };
@@ -46631,8 +46631,8 @@ function gromoResultRow(vertical) {
   if (!isFinanceVertical(v)) return null;
   const advisor = gromoAdvisorLink();
   if (!advisor) return null;
-  const pointer = createMaskingPointer(gromoClickUrl(advisor, `row_${v}`), { vertical: v });
-  if (!pointer) return null;
+  const pointer2 = createMaskingPointer(gromoClickUrl(advisor, `row_${v}`), { vertical: v });
+  if (!pointer2) return null;
   const banner = gromoBannerUrl();
   return {
     id: `gromo-advisor-${v}`,
@@ -46642,7 +46642,7 @@ function gromoResultRow(vertical) {
     title: "GroMo advisor: credit card, loan, insurance ya savings account apply karwao",
     seller: "GroMo",
     vendor: "GroMo",
-    sellerUrl: pointer,
+    sellerUrl: pointer2,
     isSponsored: true,
     sponsoredBadge: "Partner",
     confidence: 1,
@@ -46663,7 +46663,7 @@ function gromoResultRow(vertical) {
     identifiers: {},
     availability: "available",
     provenance: "affiliate_configs",
-    affiliate: { network: "gromo", matchedProfile: "gromo_advisor", deepLink: pointer, trackingUrl: pointer, vertical: v }
+    affiliate: { network: "gromo", matchedProfile: "gromo_advisor", deepLink: pointer2, trackingUrl: pointer2, vertical: v }
   };
 }
 function withGromoRow(rows, vertical) {
@@ -47689,6 +47689,477 @@ var init_warm = __esm({
         process.exit(1);
       });
     }
+  }
+});
+
+// server/nearby/aggregator.ts
+var aggregator_exports = {};
+__export(aggregator_exports, {
+  distanceKm: () => distanceKm,
+  nearbyAnswer: () => nearbyAnswer,
+  normalizeNearbyCategory: () => normalizeNearbyCategory,
+  resolveNearbyLocation: () => resolveNearbyLocation
+});
+function normalizeNearbyCategory(raw) {
+  const key = String(raw || "").trim().toLowerCase();
+  return CATEGORY_ALIASES[key] || "all";
+}
+function distanceKm(a, b) {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(s))) * 10) / 10;
+}
+function mapsSearch(name, lat, lng) {
+  if (lat !== null && lng !== null) return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
+}
+function pointer(url, category) {
+  const dest = /^https?:\/\//i.test(url) ? url : "";
+  if (!dest) return "";
+  return createMaskingPointer(dest, { vertical: category === "hotels" || category === "stays" ? "hotels" : category === "cabs" ? "cab" : "nearby", trusted: true });
+}
+function norm9(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+async function resolveNearbyLocation(lat, lng, city) {
+  if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(Number(lat)) <= 90 && Math.abs(Number(lng)) <= 180) {
+    return { lat: Number(lat), lng: Number(lng), city: city ? String(city) : null, resolvedFrom: "coords" };
+  }
+  const wanted = String(city || "").trim();
+  if (wanted) {
+    const geocoded = await geocodeCity(wanted);
+    if (geocoded) return { ...geocoded, city: wanted, resolvedFrom: "city" };
+  }
+  const fallback = await geocodeCity(DEFAULT_CITY);
+  return fallback ? { ...fallback, city: DEFAULT_CITY, resolvedFrom: "fallback" } : { lat: 18.5204, lng: 73.8567, city: DEFAULT_CITY, resolvedFrom: "fallback" };
+}
+async function geocodeCity(city) {
+  const key = city.toLowerCase();
+  if (geocodeCache.has(key)) return geocodeCache.get(key);
+  const store7 = getStore();
+  try {
+    const cached3 = await store7.query("SELECT lat, lng FROM nearby_geocode WHERE city_key = ?", [key]).catch(() => []);
+    if (cached3.length) {
+      const hit = { lat: Number(cached3[0].lat), lng: Number(cached3[0].lng) };
+      geocodeCache.set(key, hit);
+      return hit;
+    }
+  } catch {
+  }
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city + ", India")}&format=json&limit=1`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8e3);
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { "user-agent": "Try1Second/1.0 (https://www.try1second.com; nearby geocoding)" }
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const hit = { lat: Number(rows[0].lat), lng: Number(rows[0].lon) };
+    if (!Number.isFinite(hit.lat) || !Number.isFinite(hit.lng)) return null;
+    geocodeCache.set(key, hit);
+    await store7.execute("CREATE TABLE IF NOT EXISTS nearby_geocode (city_key VARCHAR(120) PRIMARY KEY, lat DECIMAL(10,6), lng DECIMAL(10,6), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)").catch(() => {
+    });
+    await store7.execute("INSERT INTO nearby_geocode (city_key, lat, lng) VALUES (?,?,?) ON DUPLICATE KEY UPDATE lat=VALUES(lat), lng=VALUES(lng)", [key, hit.lat, hit.lng]).catch(() => {
+    });
+    return hit;
+  } catch (e2) {
+    log.warn("Nearby", "geocode failed", { city, error: String(e2?.message || e2).slice(0, 80) });
+    return null;
+  }
+}
+async function googleNearby(lat, lng, category) {
+  const key = String(process.env.GOOGLE_PLACES_API_KEY || "").trim();
+  if (!key) return { rows: [], note: "Google Places key not configured, so ratings and price levels come from nowhere else - they are shown as unknown." };
+  try {
+    const includedTypes = GOOGLE_TYPE[category] || GOOGLE_TYPE.all;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 9e3);
+    const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        "content-type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.rating,places.userRatingCount,places.priceLevel,places.formattedAddress,places.location,places.photos,places.websiteUri,places.primaryType"
+      },
+      body: JSON.stringify({ includedTypes, maxResultCount: 20, locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: RADIUS_M } } })
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) {
+      const text = (await res.text()).slice(0, 160);
+      return { rows: [], note: `Google Places answered ${res.status}: ${text}` };
+    }
+    const data = await res.json();
+    const places2 = Array.isArray(data.places) ? data.places : [];
+    const rows = places2.map((p) => {
+      const plat = Number(p.location?.latitude);
+      const plng = Number(p.location?.longitude);
+      const photo = p.photos?.[0]?.name ? `/api/nearby/photo?ref=${encodeURIComponent(p.photos[0].name)}` : null;
+      const website = p.websiteUri ? String(p.websiteUri) : null;
+      const cat = category === "all" ? mapGoogleType(p.primaryType) : category;
+      return {
+        id: `g-${p.id}`,
+        name: String(p.displayName?.text || "Unnamed place"),
+        category: cat,
+        subcategory: p.primaryType ? String(p.primaryType).replace(/_/g, " ") : null,
+        rating: Number.isFinite(Number(p.rating)) ? Number(p.rating) : null,
+        ratingCount: Number.isFinite(Number(p.userRatingCount)) ? Number(p.userRatingCount) : null,
+        priceLevel: priceLevelToNumber(p.priceLevel),
+        priceLabel: priceLevelLabel(p.priceLevel),
+        price: null,
+        address: p.formattedAddress ? String(p.formattedAddress) : null,
+        lat: Number.isFinite(plat) ? plat : null,
+        lng: Number.isFinite(plng) ? plng : null,
+        distanceKm: Number.isFinite(plat) ? distanceKm({ lat, lng }, { lat: plat, lng: plng }) : null,
+        imageUrl: photo,
+        source: "google",
+        honesty: "Rating and reviews from Google Places, live.",
+        exitUrl: website ? pointer(website, cat) : "",
+        directionsUrl: mapsSearch(String(p.displayName?.text || ""), Number.isFinite(plat) ? plat : null, Number.isFinite(plng) ? plng : null),
+        website
+      };
+    });
+    return { rows };
+  } catch (e2) {
+    return { rows: [], note: `Google Places unreachable: ${String(e2?.message || e2).slice(0, 80)}` };
+  }
+}
+function priceLevelToNumber(level) {
+  const map = {
+    PRICE_LEVEL_FREE: 0,
+    PRICE_LEVEL_INEXPENSIVE: 1,
+    PRICE_LEVEL_MODERATE: 2,
+    PRICE_LEVEL_EXPENSIVE: 3,
+    PRICE_LEVEL_VERY_EXPENSIVE: 4
+  };
+  const v = map[String(level || "")];
+  return v === void 0 ? null : v;
+}
+function priceLevelLabel(level) {
+  const n = priceLevelToNumber(level);
+  return n === null ? null : "\u20B9".repeat(Math.max(1, n + 1));
+}
+function mapGoogleType(primary) {
+  const t = String(primary || "");
+  if (t.includes("restaurant") || t.includes("meal")) return "restaurants";
+  if (t.includes("cafe") || t.includes("coffee") || t.includes("bakery")) return "cafes";
+  if (t.includes("lodging") || t.includes("hotel")) return "hotels";
+  if (t.includes("taxi")) return "cabs";
+  return "stores";
+}
+async function osmNearby(lat, lng, category) {
+  const term = {
+    restaurants: "restaurant",
+    cafes: "cafe",
+    hotels: "hotel",
+    stays: "guest house",
+    cabs: "taxi",
+    stores: "shop",
+    all: "restaurant"
+  };
+  const want = term[category] || "restaurant";
+  const attempts = [];
+  const photon = await photonNearby(lat, lng, want, category);
+  if (photon.rows.length) return photon;
+  if (photon.note) attempts.push(photon.note);
+  const nominatim = await nominatimNearby(lat, lng, want, category);
+  if (nominatim.rows.length) return nominatim;
+  if (nominatim.note) attempts.push(nominatim.note);
+  const overpass = await overpassNearby(lat, lng, category);
+  if (overpass.rows.length) return overpass;
+  if (overpass.note) attempts.push(overpass.note);
+  return { rows: [], note: `Map data unavailable: ${attempts.join("; ").slice(0, 220)}` };
+}
+async function photonNearby(lat, lng, term, category) {
+  try {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(term)}&lat=${lat}&lon=${lng}&limit=30&lang=en`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 9e3);
+    const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (nearby)" } }).finally(() => clearTimeout(timer));
+    if (!res.ok) return { rows: [], note: `Photon answered ${res.status}` };
+    const data = await res.json();
+    const feats = Array.isArray(data.features) ? data.features : [];
+    const rows = [];
+    for (const f of feats) {
+      const p = f.properties || {};
+      const coords = f.geometry?.coordinates || [];
+      const plng = Number(coords[0]);
+      const plat = Number(coords[1]);
+      if (!p.name || !Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+      const cat = osmCategory({ amenity: p.osm_key === "amenity" ? p.osm_value : "", tourism: p.osm_key === "tourism" ? p.osm_value : "", shop: p.osm_key === "shop" ? p.shop || "yes" : "" });
+      if (category !== "all" && cat !== category) continue;
+      const addr = [p.housenumber, p.street, p.district, p.city].filter(Boolean).join(", ") || null;
+      rows.push(baseOsmRow({ name: String(p.name), cat, plat, plng, lat, lng, addr, sub: p.osm_value ? String(p.osm_value).replace(/_/g, " ") : null, osmId: `ph-${p.osm_id || p.name}` }));
+    }
+    return rows.length ? { rows } : { rows: [], note: "Photon returned no matching places" };
+  } catch (e2) {
+    return { rows: [], note: `Photon unreachable: ${String(e2?.message || e2).slice(0, 60)}` };
+  }
+}
+async function nominatimNearby(lat, lng, term, category) {
+  try {
+    const d = 0.06;
+    const viewbox = `${(lng - d).toFixed(4)},${(lat + d).toFixed(4)},${(lng + d).toFixed(4)},${(lat - d).toFixed(4)}`;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(term)}&viewbox=${viewbox}&bounded=1&format=jsonv2&limit=30`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 9e3);
+    const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (https://www.try1second.com; nearby)" } }).finally(() => clearTimeout(timer));
+    if (!res.ok) return { rows: [], note: `Nominatim answered ${res.status}` };
+    const data = await res.json();
+    const rows = [];
+    for (const r of Array.isArray(data) ? data : []) {
+      const plat = Number(r.lat);
+      const plng = Number(r.lon);
+      const name = String(r.name || (r.display_name || "").split(",")[0] || "").trim();
+      if (!name || !Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+      const cat = osmCategory({ amenity: r.class === "amenity" ? r.type : "", tourism: r.class === "tourism" ? r.type : "", shop: r.class === "shop" ? "yes" : "" });
+      if (category !== "all" && cat !== category) continue;
+      rows.push(baseOsmRow({ name, cat, plat, plng, lat, lng, addr: r.display_name ? String(r.display_name) : null, sub: r.type ? String(r.type).replace(/_/g, " ") : null, osmId: `nm-${r.osm_id || r.place_id}` }));
+    }
+    return rows.length ? { rows } : { rows: [], note: "Nominatim returned no matching places" };
+  } catch (e2) {
+    return { rows: [], note: `Nominatim unreachable: ${String(e2?.message || e2).slice(0, 60)}` };
+  }
+}
+async function overpassNearby(lat, lng, category) {
+  const filters = {
+    restaurants: ['node["amenity"="restaurant"]'],
+    cafes: ['node["amenity"="cafe"]'],
+    hotels: ['node["tourism"="hotel"]'],
+    stays: ['node["tourism"="guest_house"]'],
+    cabs: ['node["amenity"="taxi"]'],
+    stores: ['node["shop"]'],
+    all: ['node["amenity"="restaurant"]']
+  };
+  const body = filters[category].map((f) => `${f}(around:${RADIUS_M},${lat},${lng});`).join("\n");
+  const query = `[out:json][timeout:12];(
+${body}
+);out body 30;`;
+  for (const host of ["overpass-api.de", "overpass.kumi.systems"]) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12e3);
+      const res = await fetch(`https://${host}/api/interpreter`, {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "Try1Second/1.0 (nearby)" },
+        body: `data=${encodeURIComponent(query)}`
+      }).finally(() => clearTimeout(timer));
+      if (!res.ok) continue;
+      const data = await res.json();
+      const rows = (Array.isArray(data.elements) ? data.elements : []).filter((e2) => e2?.tags?.name && Number.isFinite(Number(e2.lat))).map((e2) => {
+        const plat = Number(e2.lat);
+        const plng = Number(e2.lon);
+        const cat = osmCategory(e2.tags);
+        return baseOsmRow({
+          name: String(e2.tags.name),
+          cat,
+          plat,
+          plng,
+          lat,
+          lng,
+          addr: [e2.tags["addr:housenumber"], e2.tags["addr:street"], e2.tags["addr:suburb"], e2.tags["addr:city"]].filter(Boolean).join(", ") || null,
+          sub: e2.tags.cuisine ? String(e2.tags.cuisine).replace(/[_;]/g, " ") : e2.tags.tourism || e2.tags.shop || e2.tags.amenity || null,
+          osmId: `op-${e2.id}`,
+          website: e2.tags.website ? String(e2.tags.website) : null
+        });
+      });
+      if (rows.length) return { rows };
+    } catch {
+      continue;
+    }
+  }
+  return { rows: [], note: "Overpass mirrors unreachable" };
+}
+function baseOsmRow(input) {
+  return {
+    id: `osm-${input.cat}-${String(input.osmId).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40)}`,
+    name: input.name,
+    category: input.cat,
+    subcategory: input.sub,
+    rating: null,
+    ratingCount: null,
+    priceLevel: null,
+    priceLabel: null,
+    price: null,
+    address: input.addr,
+    lat: input.plat,
+    lng: input.plng,
+    distanceKm: distanceKm({ lat: input.lat, lng: input.lng }, { lat: input.plat, lng: input.plng }),
+    imageUrl: null,
+    source: "osm",
+    honesty: "OpenStreetMap: name, address and distance are real; OSM has no rating or price, so we show none.",
+    exitUrl: input.website ? pointer(String(input.website), input.cat) : "",
+    directionsUrl: mapsSearch(input.name, input.plat, input.plng),
+    website: input.website || null
+  };
+}
+function osmCategory(tags) {
+  const a = String(tags?.amenity || "");
+  const t = String(tags?.tourism || "");
+  if (a === "restaurant" || a === "fast_food") return "restaurants";
+  if (a === "cafe") return "cafes";
+  if (t === "hotel") return "hotels";
+  if (t === "guest_house" || t === "apartment" || t === "hostel" || t === "motel") return "stays";
+  if (a === "taxi") return "cabs";
+  return "stores";
+}
+async function catalogueNearby(city, category) {
+  if (!city) return [];
+  if (!["hotels", "stays", "all"].includes(category)) return [];
+  try {
+    const rows = await getStore().query(
+      `SELECT title, seller, seller_url, effective_price, location_city, attributes
+         FROM offers
+        WHERE vertical IN ('hotels','stays') AND location_city = ?
+          AND effective_price IS NOT NULL AND effective_price > 0
+        ORDER BY effective_price ASC LIMIT 12`,
+      [city]
+    ).catch(() => []);
+    return rows.map((r) => ({
+      id: `c-${norm9(r.title).replace(/ /g, "-").slice(0, 40)}`,
+      name: String(r.title || r.seller),
+      category: "hotels",
+      subcategory: "live catalogue price",
+      rating: null,
+      ratingCount: null,
+      priceLevel: null,
+      priceLabel: `\u20B9${Math.round(Number(r.effective_price))}`,
+      price: Number(r.effective_price),
+      address: r.location_city ? String(r.location_city) : null,
+      lat: null,
+      lng: null,
+      distanceKm: null,
+      imageUrl: null,
+      source: "catalogue",
+      honesty: "Price we hold in our own catalogue for this city, live.",
+      exitUrl: pointer(String(r.seller_url || ""), "hotels"),
+      directionsUrl: mapsSearch(`${r.title} ${city}`, null, null),
+      website: r.seller_url ? String(r.seller_url) : null
+    }));
+  } catch {
+    return [];
+  }
+}
+function dedupe(rows) {
+  const kept = [];
+  for (const row of rows) {
+    const name = norm9(row.name);
+    const clash = kept.find((k) => {
+      if (norm9(k.name) !== name) return false;
+      if (!k.lat || !row.lat || !k.lng || !row.lng) return true;
+      return distanceKm({ lat: k.lat, lng: k.lng }, { lat: row.lat, lng: row.lng }) < 0.2;
+    });
+    if (clash) {
+      if ((row.rating ?? -1) > (clash.rating ?? -1)) Object.assign(clash, row);
+      continue;
+    }
+    kept.push(row);
+  }
+  return kept;
+}
+function sortRows(rows, category) {
+  const byDistance = (a, b) => (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
+  if (category === "all") return [...rows].sort(byDistance);
+  return [...rows].sort((a, b) => {
+    const rated = (b.rating ?? -1) - (a.rating ?? -1);
+    if (a.rating !== null && b.rating !== null && rated !== 0) return rated;
+    return byDistance(a, b);
+  });
+}
+async function readCache(key) {
+  try {
+    const rows = await getStore().query("SELECT payload, fetched_at FROM nearby_cache WHERE cache_key = ?", [key]).catch(() => []);
+    if (!rows.length) return null;
+    const at = new Date(String(rows[0].fetched_at).replace(" ", "T")).getTime();
+    if (!Number.isFinite(at) || Date.now() - at > CACHE_TTL_MS3) return null;
+    const payload = typeof rows[0].payload === "string" ? JSON.parse(rows[0].payload) : rows[0].payload;
+    return payload && Array.isArray(payload.results) ? payload : null;
+  } catch {
+    return null;
+  }
+}
+async function writeCache(key, answer) {
+  try {
+    const store7 = getStore();
+    await store7.execute("CREATE TABLE IF NOT EXISTS nearby_cache (cache_key VARCHAR(191) PRIMARY KEY, payload MEDIUMTEXT, fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)").catch(() => {
+    });
+    await store7.execute("INSERT INTO nearby_cache (cache_key, payload) VALUES (?,?) ON DUPLICATE KEY UPDATE payload=VALUES(payload), fetched_at=CURRENT_TIMESTAMP", [key, JSON.stringify(answer)]).catch(() => {
+    });
+  } catch {
+  }
+}
+async function nearbyAnswer(input) {
+  const category = normalizeNearbyCategory(input.category);
+  const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
+  const cacheKey = `${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
+  const cached3 = await readCache(cacheKey);
+  if (cached3) return cached3;
+  const [google, osm, catalogue] = await Promise.all([
+    googleNearby(location.lat, location.lng, category),
+    osmNearby(location.lat, location.lng, category),
+    catalogueNearby(location.city, category)
+  ]);
+  const notes = [];
+  if (google.note) notes.push(google.note);
+  if (osm.note) notes.push(osm.note);
+  const merged = sortRows(dedupe([...catalogue, ...google.rows, ...osm.rows]), category);
+  const limit = Math.min(60, Math.max(4, Number(input.limit) || 30));
+  const results = merged.slice(0, limit);
+  const answer = {
+    ok: true,
+    category,
+    location,
+    results,
+    counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length },
+    notes: results.length ? notes : [...notes, "No places came back for this location right now, so nothing is shown rather than guesswork."]
+  };
+  await writeCache(cacheKey, answer);
+  return answer;
+}
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS3, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE;
+var init_aggregator = __esm({
+  "server/nearby/aggregator.ts"() {
+    init_db();
+    init_logger();
+    init_deeplink();
+    DEFAULT_CITY = "Pune";
+    RADIUS_M = 2500;
+    CACHE_TTL_MS3 = 30 * 6e4;
+    CATEGORY_ALIASES = {
+      all: "all",
+      restaurant: "restaurants",
+      restaurants: "restaurants",
+      food: "restaurants",
+      cafe: "cafes",
+      cafes: "cafes",
+      coffee: "cafes",
+      hotel: "hotels",
+      hotels: "hotels",
+      stay: "stays",
+      stays: "stays",
+      homestay: "stays",
+      cab: "cabs",
+      cabs: "cabs",
+      taxi: "cabs",
+      store: "stores",
+      stores: "stores",
+      shop: "stores"
+    };
+    geocodeCache = /* @__PURE__ */ new Map();
+    GOOGLE_TYPE = {
+      restaurants: ["restaurant"],
+      cafes: ["cafe"],
+      hotels: ["lodging"],
+      stays: ["lodging"],
+      cabs: ["taxi_stand"],
+      stores: ["store"],
+      all: ["restaurant", "cafe", "lodging", "store"]
+    };
   }
 });
 
@@ -49055,6 +49526,23 @@ async function probeCuelinksHop() {
   }
   return cuelinksProbe;
 }
+async function nearbyHandler(req, res) {
+  try {
+    const { nearbyAnswer: nearbyAnswer2 } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
+    const answer = await nearbyAnswer2({
+      lat: req.query.lat === void 0 ? null : Number(req.query.lat),
+      lng: req.query.lng === void 0 ? null : Number(req.query.lng),
+      city: req.query.city ? String(req.query.city) : null,
+      category: req.query.category,
+      limit: Number(req.query.limit) || void 0
+    });
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json(answer);
+  } catch (e2) {
+    log.warn("Api", "nearby failed", { error: String(e2?.message || e2).slice(0, 120) });
+    res.status(503).json({ ok: false, results: [], error: "Nearby discovery is unavailable right now" });
+  }
+}
 function verticalForScanUrl(url, domain) {
   const u = url.toLowerCase();
   if (/(blinkit|zepto|instamart|bigbasket|jiomart)/.test(u)) return "grocery";
@@ -50099,6 +50587,29 @@ var init_routes = __esm({
       });
     });
     cuelinksProbe = null;
+    apiRouter.get("/nearby", nearbyHandler);
+    apiRouter.get("/v1/nearby", nearbyHandler);
+    apiRouter.get("/nearby/photo", async (req, res) => {
+      const key = String(process.env.GOOGLE_PLACES_API_KEY || "").trim();
+      const ref = String(req.query.ref || "");
+      if (!key || !/^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/.test(ref)) {
+        res.status(404).type("text/plain").send("photo not available");
+        return;
+      }
+      try {
+        const upstream = await fetch(`https://places.googleapis.com/v1/${ref}/media?maxHeightPx=480&key=${encodeURIComponent(key)}`, { redirect: "follow" });
+        if (!upstream.ok || !upstream.body) {
+          res.status(502).type("text/plain").send("photo unavailable");
+          return;
+        }
+        res.setHeader("Content-Type", upstream.headers.get("content-type") || "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.send(buf);
+      } catch {
+        res.status(502).type("text/plain").send("photo unavailable");
+      }
+    });
     apiRouter.get("/version", async (_req, res) => {
       let bundle = null;
       let html = null;
@@ -51804,11 +52315,11 @@ var init_routes = __esm({
       if (!url) return honestRefuse(
         provider === "uber" && !pickup ? "We could not resolve your pickup location. Please open the app directly." : "In-app booking for this provider is currently disabled by the admin. Please try again later."
       );
-      const pointer = createMaskingPointer(url, { offerId: String(req.query.offerId || "") });
+      const pointer2 = createMaskingPointer(url, { offerId: String(req.query.offerId || "") });
       if (String(req.query.json || "") === "1" || isInAppWebView(req.headers["user-agent"])) {
         const appUrl = provider === "uber" ? buildUberAppSchemeUrl({ cfg, pickup, drop }) : provider === "ola" && pickup ? buildOlaAppSchemeUrl({ cfg, pickup, drop }) : null;
         try {
-          const rawTok = pointer.startsWith("/api/out?t=") ? decodeURIComponent(pointer.slice("/api/out?t=".length)) : pointer;
+          const rawTok = pointer2.startsWith("/api/out?t=") ? decodeURIComponent(pointer2.slice("/api/out?t=".length)) : pointer2;
           const resolved = resolveMaskingPointer(rawTok);
           if (resolved) {
             const dl = await buildSecureDeeplink(resolved.destination);
@@ -51820,10 +52331,10 @@ var init_routes = __esm({
           success: true,
           provider,
           appUrl,
-          webUrl: pointer.startsWith("http") ? pointer : `${req.protocol}://${req.get("host")}${pointer}`
+          webUrl: pointer2.startsWith("http") ? pointer2 : `${req.protocol}://${req.get("host")}${pointer2}`
         });
       }
-      res.redirect(302, pointer.startsWith("/api/out") ? pointer : `/api/out?t=${encodeURIComponent(pointer)}`);
+      res.redirect(302, pointer2.startsWith("/api/out") ? pointer2 : `/api/out?t=${encodeURIComponent(pointer2)}`);
     });
     apiRouter.get("/app-open", async (req, res) => {
       const scheme = String(req.query.s || "");
@@ -53912,9 +54423,9 @@ function splitCsvLine(line) {
 }
 function headerIndex(headers, key) {
   const wanted = HEADER_ALIASES[key] || [];
-  const norm9 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
+  const norm10 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
   for (const w of wanted) {
-    const i = norm9.findIndex((h) => h === w || h.startsWith(`${w} `));
+    const i = norm10.findIndex((h) => h === w || h.startsWith(`${w} `));
     if (i >= 0) return i;
   }
   return -1;
@@ -56497,8 +57008,8 @@ var init_directMerchant = __esm({
 });
 
 // server/affiliate/aggregator.ts
-var aggregator_exports = {};
-__export(aggregator_exports, {
+var aggregator_exports2 = {};
+__export(aggregator_exports2, {
   dedupOffers: () => dedupOffers,
   registeredProviders: () => registeredProviders,
   startAffiliateScheduler: () => startAffiliateScheduler,
@@ -56563,7 +57074,7 @@ function startAffiliateWatchdog(intervalMs = 30 * 60 * 1e3) {
       const rows = await store7.query("SELECT id FROM affiliate_offers WHERE status = 'active' LIMIT 1", []);
       const fresh = await listOffers2({ limit: 1 });
       if (rows.length === 0 && fresh.length === 0) {
-        const { registeredProviders: rp } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
+        const { registeredProviders: rp } = await Promise.resolve().then(() => (init_aggregator2(), aggregator_exports2));
         const anyConfigured = PROVIDERS.some((p) => p.isConfigured());
         if (anyConfigured && Date.now() - lastWatchdogSync > 60 * 60 * 1e3) {
           lastWatchdogSync = Date.now();
@@ -56578,7 +57089,7 @@ function startAffiliateWatchdog(intervalMs = 30 * 60 * 1e3) {
   return t;
 }
 var PROVIDERS, lastWatchdogSync;
-var init_aggregator = __esm({
+var init_aggregator2 = __esm({
   "server/affiliate/aggregator.ts"() {
     init_db();
     init_logger();
@@ -56619,7 +57130,7 @@ var init_api = __esm({
   "server/affiliate/api.ts"() {
     import_express4 = require("express");
     init_store();
-    init_aggregator();
+    init_aggregator2();
     init_authService();
     affiliateRouter = (0, import_express4.Router)();
     affiliateRouter.get("/offers", async (req, res) => {
@@ -57713,6 +58224,142 @@ var init_movieCities = __esm({
   }
 });
 
+// server/nearby/seo.ts
+var seo_exports = {};
+__export(seo_exports, {
+  NEARBY_AREAS: () => NEARBY_AREAS,
+  NEARBY_CATEGORIES: () => NEARBY_CATEGORIES,
+  escapeHtml: () => escapeHtml2,
+  listNearbyPaths: () => listNearbyPaths,
+  renderNearbyHtml: () => renderNearbyHtml,
+  resolveNearbyPage: () => resolveNearbyPage
+});
+function titleCase(slug5) {
+  return slug5.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+function resolveNearbyPage(path18) {
+  const parts = String(path18 || "").split("?")[0].split("/").filter(Boolean);
+  if (parts[0] !== "nearby") return null;
+  if (parts.length === 1) return { path: path18, category: "all", city: "", areaLabel: null };
+  const category = normalizeNearbyCategory(parts[1]);
+  if (category === "all" && parts[1] !== "all") return null;
+  if (parts.length === 2) return { path: path18, category, city: "", areaLabel: null };
+  const citySlug2 = String(parts[2] || "").toLowerCase();
+  const city = CITY_SLUGS.get(citySlug2);
+  if (!city) return null;
+  if (parts.length === 3) return { path: path18, category, city, areaLabel: null };
+  const areaLabel = AREA_SLUGS.get(`${citySlug2}/${String(parts[3] || "").toLowerCase()}`);
+  if (!areaLabel) return null;
+  return { path: path18, category, city, areaLabel };
+}
+function listNearbyPaths() {
+  const paths = ["/nearby"];
+  for (const c of NEARBY_CATEGORIES) paths.push(`/nearby/${c}`);
+  const cities = [...CITY_SLUGS.keys()];
+  for (const c of NEARBY_CATEGORIES) for (const city of cities) paths.push(`/nearby/${c}/${city}`);
+  for (const key of AREA_SLUGS.keys()) {
+    const citySlug2 = key.split("/")[0];
+    for (const c of NEARBY_CATEGORIES) paths.push(`/nearby/${c}/${key}`);
+    void citySlug2;
+  }
+  return [...new Set(paths)];
+}
+function rupee(n) {
+  return n === null ? null : `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+}
+function card(row) {
+  const bits = [];
+  if (row.rating !== null) bits.push(`&#9733; ${row.rating.toFixed(1)}${row.ratingCount ? ` (${row.ratingCount})` : ""}`);
+  if (row.distanceKm !== null) bits.push(`${row.distanceKm} km away`);
+  if (row.priceLabel) bits.push(row.priceLabel);
+  if (row.price !== null) bits.push(rupee(row.price));
+  const meta = bits.length ? `<p class="meta">${bits.join(" &middot; ")}</p>` : '<p class="meta">Distance from the searched point is shown when the map source carries coordinates.</p>';
+  const addr = row.address ? `<p class="addr">${escapeHtml2(row.address)}</p>` : "";
+  const link = row.exitUrl ? `<a class="cta" href="${escapeHtml2(row.exitUrl)}" rel="nofollow sponsored noopener">Book / website</a>` : "";
+  const dir = `<a class="ghost" href="${escapeHtml2(row.directionsUrl)}" rel="nofollow noopener">Get directions</a>`;
+  return `<li class="card"><h3>${escapeHtml2(row.name)}</h3>${meta}${addr}<p class="src">${escapeHtml2(row.honesty)}</p><div class="acts">${link}${dir}</div></li>`;
+}
+function escapeHtml2(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+async function renderNearbyHtml(page, origin2) {
+  const label = page.areaLabel || page.city || "your location";
+  const catLabel = page.category === "all" ? "places" : page.category;
+  const title = page.city ? `Best ${catLabel} near ${label} - live comparison | Try1Second` : `Nearby ${catLabel} - local discovery | Try1Second`;
+  let answer = null;
+  if (page.city || page.areaLabel) {
+    answer = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24 }).catch(() => null);
+  }
+  const rows = answer?.results || [];
+  const list = rows.length ? `<ul class="cards">${rows.map(card).join("")}</ul>` : `<p class="empty">We do not have live ${catLabel} data for ${escapeHtml2(label)} right now, so this page lists nothing rather than invented ratings or prices. Search the same place on the
+       <a href="/">comparison engine</a> for prices we actually hold.</p>`;
+  const notes = (answer?.notes || []).map((n) => `<li>${escapeHtml2(n)}</li>`).join("");
+  const faq = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: `How does Try1Second find ${catLabel} near ${label}?`,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: `We query live map and places data around the coordinates of ${label} and show each place with its distance. Ratings and price levels appear only when the source supplies them; OpenStreetMap rows carry name, address and distance only.`
+        }
+      }
+    ]
+  };
+  const itemList = rows.length ? {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: title,
+    numberOfItems: rows.length,
+    itemListElement: rows.slice(0, 20).map((r, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: r.name,
+      ...r.lat !== null && r.lng !== null ? { item: `https://www.google.com/maps/search/?api=1&query=${r.lat},${r.lng}` } : {}
+    }))
+  } : null;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml2(title)}</title>
+<meta name="description" content="Live nearby ${escapeHtml2(catLabel)} around ${escapeHtml2(label)} with distance, rating and price level where the source actually provides them.">
+<link rel="canonical" href="${origin2}${page.path}">
+<link rel="stylesheet" href="/seo.css">
+<script type="application/ld+json">${JSON.stringify(faq)}</script>
+${itemList ? `<script type="application/ld+json">${JSON.stringify(itemList)}</script>` : ""}
+</head><body><header><a href="/">Try1Second</a><nav><a href="/nearby">Nearby</a>${NEARBY_CATEGORIES.map((c) => `<a href="/nearby/${c}">${c}</a>`).join("")}</nav></header>
+<main><h1>${escapeHtml2(title)}</h1>
+<p class="lead">Places around ${escapeHtml2(label)}, closest first. Every card states where its data comes from. Clicks to a partner site go through our own tracked exit.</p>
+${list}
+${notes ? `<section class="notes"><h2>Data notes</h2><ul>${notes}</ul></section>` : ""}
+<section class="faq"><h2>About this page</h2><p>Ratings and review counts come from Google Places when our key is configured. OpenStreetMap supplies names, addresses and coordinates and has no ratings at all, which is why those cards show distance only. We never invent a rating, a review count or a price.</p></section>
+</main>
+<footer><p><a href="/answers">All comparisons</a> &middot; <a href="/">Search prices</a></p></footer></body></html>`;
+}
+var NEARBY_CATEGORIES, NEARBY_AREAS, CITY_SLUGS, AREA_SLUGS;
+var init_seo = __esm({
+  "server/nearby/seo.ts"() {
+    init_cityCorpus();
+    init_aggregator();
+    NEARBY_CATEGORIES = ["restaurants", "cafes", "hotels", "stays", "cabs", "stores"];
+    NEARBY_AREAS = {
+      pune: ["koregaon-park", "baner", "hinjewadi", "viman-nagar"],
+      mumbai: ["andheri", "bandra", "powai", "lower-parel"],
+      bengaluru: ["indiranagar", "koramangala", "whitefield", "jayanagar"],
+      delhi: ["connaught-place", "saket", "hauz-khas", "dwarka"],
+      hyderabad: ["gachibowli", "banjara-hills", "madhapur"]
+    };
+    CITY_SLUGS = /* @__PURE__ */ new Map();
+    for (const c of INDIAN_CITIES) CITY_SLUGS.set(c.slug, c.name);
+    AREA_SLUGS = /* @__PURE__ */ new Map();
+    for (const [citySlug2, areas] of Object.entries(NEARBY_AREAS)) {
+      const cityName2 = CITY_SLUGS.get(citySlug2) || citySlug2;
+      for (const a of areas) AREA_SLUGS.set(`${citySlug2}/${a}`, `${titleCase(a)}, ${cityName2}`);
+    }
+  }
+});
+
 // server/seo/brandPage.ts
 function brandPage() {
   return {
@@ -57785,8 +58432,10 @@ function routeSlug(a, b, noun) {
   return `${a}-to-${b}-${noun}`;
 }
 function listSeoPaths() {
+  const nearbyPaths = listNearbyPaths();
   const guidePaths = GUIDE_SLUGS.map((s) => `/guides/${s}`);
   const paths = [
+    ...nearbyPaths,
     ...guidePaths,
     // OWNER 10 Nov: the spaced brand spelling gets its own page, so it is a real URL in the index.
     BRAND_PAGE_PATH,
@@ -57847,7 +58496,7 @@ function resolveAppRoute(path18) {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-(flights|bus)$/.exec(tail);
     if (m) {
       const A = m[1].replace(/-/g, " "), B = m[2].replace(/-/g, " ");
-      const pretty = (x) => titleCase(x);
+      const pretty = (x) => titleCase2(x);
       if (head3 === "flights") {
         const aI = IATA3[m[1]] ? ` (${IATA3[m[1]]})` : "";
         const bI = IATA3[m[2]] ? ` (${IATA3[m[2]]})` : "";
@@ -58177,13 +58826,14 @@ function seoLinksFor(verticalPath) {
   }
   return links;
 }
-var SEO_HOST, CITIES, TOP_CITIES, topCities, IATA3, FLIGHT_ROUTES, BUS_ROUTES, VERTICALS2, ECOM_CATS, LOAN_TYPES, INSURANCE_TYPES, CARD_TYPES, BANKING_TYPES, titleCase, cityName, cityList, INTENT_LINKS, INTENT_GENERAL;
+var SEO_HOST, CITIES, TOP_CITIES, topCities, IATA3, FLIGHT_ROUTES, BUS_ROUTES, VERTICALS2, ECOM_CATS, LOAN_TYPES, INSURANCE_TYPES, CARD_TYPES, BANKING_TYPES, titleCase2, cityName, cityList, INTENT_LINKS, INTENT_GENERAL;
 var init_data = __esm({
   "server/seo/data.ts"() {
     init_guides();
     init_answerStates();
     init_cityCorpus();
     init_movieCities();
+    init_seo();
     init_brandPage();
     SEO_HOST = "https://www.try1second.com";
     CITIES = INDIAN_CITIES.map((c) => ({ slug: c.slug, name: c.name }));
@@ -58563,8 +59213,8 @@ var init_data = __esm({
       { slug: "demat-account", label: "Demat Account", query: "demat account" },
       { slug: "current-account", label: "Current Account", query: "current account" }
     ];
-    titleCase = (s) => s.replace(/(^|\s|-)\w/g, (m) => m.toUpperCase());
-    cityName = (slug5) => CITIES.find((c) => c.slug === slug5)?.name || titleCase(slug5.replace(/-/g, " "));
+    titleCase2 = (s) => s.replace(/(^|\s|-)\w/g, (m) => m.toUpperCase());
+    cityName = (slug5) => CITIES.find((c) => c.slug === slug5)?.name || titleCase2(slug5.replace(/-/g, " "));
     cityList = () => topCities().map((c) => c.name).join(", ");
     INTENT_LINKS = {
       flights: [
@@ -61353,6 +62003,18 @@ async function createApp() {
   });
   {
     const { resolveAnswerPage: resolveAnswerPage2, renderAnswerHtml: renderAnswerHtml2, renderAnswerMarkdown: renderAnswerMarkdown2 } = await Promise.resolve().then(() => (init_answerPages(), answerPages_exports));
+    app.get(["/nearby", "/nearby/:category", "/nearby/:category/:city", "/nearby/:category/:city/:area"], async (req, res) => {
+      const { resolveNearbyPage: resolveNearbyPage2, renderNearbyHtml: renderNearbyHtml2 } = await Promise.resolve().then(() => (init_seo(), seo_exports));
+      const page = resolveNearbyPage2(req.path);
+      if (!page) {
+        res.status(404).type("text/plain").send("Nearby page not found");
+        return;
+      }
+      const origin2 = `https://${req.headers.host || "www.try1second.com"}`;
+      const html = await renderNearbyHtml2(page, origin2);
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.status(200).type("html").send(html);
+    });
     app.get(["/answers", "/best", "/best/:vertical", "/best/:vertical/:state"], async (req, res) => {
       const page = resolveAnswerPage2(req.path);
       if (!page) {

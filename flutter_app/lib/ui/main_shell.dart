@@ -16,6 +16,7 @@ import 'screens/rewards_screen.dart';
 import 'widgets/sponsored_pill.dart';
 import 'widgets/kit.dart';
 import 'widgets/logo.dart';
+import 'screens/nearby_screen.dart';
 
 /// Website shell: sticky white header (logo, red bell with unread badge, hamburger menu)
 /// + fixed 5-tab bottom bar (Home, Quick Apps, AI INSIGHTS blue pill, Compare, Rewards).
@@ -140,6 +141,7 @@ class _MainShellState extends State<MainShell> {
                     },
                     onTracker: () => _push(const AlertsScreen()),
                     onSpendLens: () => _push(const SpendLensScreen()),
+            onNearby: () => _push(const NearbyScreen()),
                     onAlerts: () => _push(const NotificationsScreen()),
                     onProfile: () => _push(const ProfileScreen()),
                   ),
@@ -249,6 +251,7 @@ class _MenuSheet extends StatelessWidget {
     required this.onVertical,
     required this.onTracker,
     required this.onSpendLens,
+    required this.onNearby,
     required this.onAlerts,
     required this.onProfile,
   });
@@ -258,6 +261,7 @@ class _MenuSheet extends StatelessWidget {
   final ValueChanged<String> onVertical;
   final VoidCallback onTracker;
   final VoidCallback onSpendLens;
+  final VoidCallback onNearby;
   final VoidCallback onAlerts;
   final VoidCallback onProfile;
 

@@ -23,6 +23,8 @@ const PriceAlertModal = lazyWithRetry(() => import('./components/PriceAlertModal
 const ProductPageView = lazyWithRetry(() => import('./components/ProductPageView').then((m) => ({ default: m.ProductPageView })));
 const PriceAlertsView = lazyWithRetry(() => import('./components/PriceAlertsView').then((m) => ({ default: m.PriceAlertsView })));
 const SpendLensView = lazyWithRetry(() => import('./components/SpendLensView').then((m) => ({ default: m.SpendLensView })));
+// Nearby & local discovery (owner 13 Nov): its own tab, lazily loaded like the other secondary views.
+const NearbyView = lazyWithRetry(() => import('./components/NearbyView'));
 const BrowserExtensionModal = lazyWithRetry(() => import('./components/BrowserExtensionModal').then((m) => ({ default: m.BrowserExtensionModal })));
 const NotificationsDrawer = lazyWithRetry(() => import('./components/NotificationsDrawer').then((m) => ({ default: m.NotificationsDrawer })));
 const SmartCartDrawer = lazyWithRetry(() => import('./components/SmartCartDrawer').then((m) => ({ default: m.SmartCartDrawer })));
@@ -86,6 +88,7 @@ const MainContent: React.FC = () => {
         {activeNavTab === 'tracker' && <PriceAlertsView />}
         {activeNavTab === 'spendlens' && <SpendLensView />}
         {activeNavTab === 'product' && <ProductPageView />}
+        {activeNavTab === 'nearby' && <NearbyView />}
         {activeNavTab === 'compare' && <ComparisonFeed />}
         {activeNavTab === 'rewards' && <RewardsHub />}
         {activeNavTab === 'admin' && (isAdminAuthenticated ? <AdminDashboard /> : <AdminLoginView />)}

@@ -1552,6 +1552,26 @@ class Try1SecondApi {
 
   /// Small public config reads (app ad tag, feature switches). Same transport, auth and cache
   /// rules as every other call, exposed so callers outside this file never touch _get directly.
+  /// Nearby & local discovery (owner 13 Nov). Server falls back to a city when coordinates are absent.
+  Future<NearbyResult> nearby({
+    double? lat,
+    double? lng,
+    String? city,
+    String category = 'all',
+    int limit = 30,
+  }) async {
+    final q = <String, String>{'category': category, 'limit': '$limit'};
+    if (lat != null && lng != null) {
+      q['lat'] = lat.toStringAsFixed(6);
+      q['lng'] = lng.toStringAsFixed(6);
+    } else if (city != null && city.trim().isNotEmpty) {
+      q['city'] = city.trim();
+    }
+    final query = q.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&');
+    final res = await _get('/api/nearby?$query');
+    return NearbyResult.fromJson(res);
+  }
+
   Future<Map<String, dynamic>> getJsonPublic(String path) => _get(path);
 
   Future<AppLinks> appLinks() async =>
@@ -2539,4 +2559,83 @@ String inr(num n) {
     sb.write(last3);
   }
   return '${n < 0 ? '-' : ''}₹$sb';
+}
+
+
+/// One nearby card. Fields that a source does not supply stay null on purpose: OpenStreetMap has no
+/// ratings or prices, and the app must not print an invented star count.
+class NearbyPlace {
+  final String id;
+  final String name;
+  final String category;
+  final String? subcategory;
+  final double? rating;
+  final int? ratingCount;
+  final String? priceLabel;
+  final double? price;
+  final String? address;
+  final double? distanceKm;
+  final String source;
+  final String honesty;
+  final String exitUrl;
+  final String directionsUrl;
+
+  const NearbyPlace({
+    required this.id,
+    required this.name,
+    required this.category,
+    this.subcategory,
+    this.rating,
+    this.ratingCount,
+    this.priceLabel,
+    this.price,
+    this.address,
+    this.distanceKm,
+    required this.source,
+    required this.honesty,
+    required this.exitUrl,
+    required this.directionsUrl,
+  });
+
+  static double? _d(dynamic v) => v == null ? null : (v is num ? v.toDouble() : double.tryParse('$v'));
+  static int? _i(dynamic v) => v == null ? null : (v is num ? v.toInt() : int.tryParse('$v'));
+
+  factory NearbyPlace.fromJson(Map<String, dynamic> j) => NearbyPlace(
+        id: '${j['id'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        category: '${j['category'] ?? ''}',
+        subcategory: j['subcategory'] == null ? null : '${j['subcategory']}',
+        rating: _d(j['rating']),
+        ratingCount: _i(j['ratingCount']),
+        priceLabel: j['priceLabel'] == null ? null : '${j['priceLabel']}',
+        price: _d(j['price']),
+        address: j['address'] == null ? null : '${j['address']}',
+        distanceKm: _d(j['distanceKm']),
+        source: '${j['source'] ?? ''}',
+        honesty: '${j['honesty'] ?? ''}',
+        exitUrl: '${j['exitUrl'] ?? ''}',
+        directionsUrl: '${j['directionsUrl'] ?? ''}',
+      );
+}
+
+class NearbyResult {
+  final List<NearbyPlace> places;
+  final List<String> notes;
+  final String? city;
+
+  const NearbyResult({required this.places, required this.notes, this.city});
+
+  factory NearbyResult.fromJson(Map<String, dynamic> j) {
+    final rows = (j['results'] as List? ?? const [])
+        .whereType<Map>()
+        .map((m) => NearbyPlace.fromJson(Map<String, dynamic>.from(m)))
+        .where((p) => p.name.isNotEmpty)
+        .toList();
+    final loc = j['location'] is Map ? Map<String, dynamic>.from(j['location'] as Map) : const <String, dynamic>{};
+    return NearbyResult(
+      places: rows,
+      notes: (j['notes'] as List? ?? const []).map((n) => '$n').toList(),
+      city: loc['city'] == null ? null : '${loc['city']}',
+    );
+  }
 }
