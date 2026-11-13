@@ -282,7 +282,7 @@ export const Navbar: React.FC = () => {
               title="Nearby & local discovery — restaurants, hotels, stays, cabs around you"
             >
               <MapPin className="w-3.5 h-3.5 text-[#E7000B]" />
-              <span className="hidden lg:inline">Nearby</span>
+              <span>Nearby</span>
             </button>
 
             {/* Spend Lens Button */}

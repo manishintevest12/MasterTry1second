@@ -12,8 +12,7 @@ import {
   ShieldCheck,
   CreditCard,
   Car,
-  Wallet,
-} from 'lucide-react';
+  Wallet, MapPin } from 'lucide-react';
 import { VerticalId } from '../types';
 import { useApp } from '../context/AppContext';
 
@@ -77,6 +76,28 @@ export const VerticalNav: React.FC = () => {
               }`}
             />
             <span>Home</span>
+          </button>
+
+          {/* OWNER 13 Nov ("site pr nearby tab ni dikh raha"): the Nearby tab lived only as a header icon, and
+              its label was hidden below the lg breakpoint, so on a narrower window it read as a bare pin. It is
+              now a chip in the vertical strip itself, which is where the owner looks for verticals. */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveNavTab('nearby');
+              window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+              document.documentElement.scrollTop = 0;
+              document.body.scrollTop = 0;
+            }}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+              activeNavTab === 'nearby'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+            title="Nearby & local discovery — restaurants, hotels, stays, cabs around you"
+          >
+            <MapPin className={`w-4 h-4 ${activeNavTab === 'nearby' ? 'text-orange-400' : 'text-slate-500'}`} />
+            <span>Nearby</span>
           </button>
 
           {VERTICALS.map((item) => {

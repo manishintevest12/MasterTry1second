@@ -109,3 +109,15 @@ test('the enrichment layer is wired into the aggregator with an honest cache ver
   const enrich = readFileSync('server/nearby/enrich.ts', 'utf8');
   assert.match(enrich, /meters > maxMeters\) return null/, 'a same-name place in another city cannot become a fake distance');
 });
+
+test('the Nearby tab is reachable where the owner looks: the vertical strip, with a visible label', () => {
+  const strip = readFileSync('src/components/VerticalNav.tsx', 'utf8');
+  assert.match(strip, /setActiveNavTab\('nearby'\)/, 'the vertical strip carries a Nearby chip');
+  assert.match(strip, /<span>Nearby<\/span>/, 'the chip is labelled, not a bare icon');
+  const navbar = readFileSync('src/components/Navbar.tsx', 'utf8');
+  const btn = navbar.slice(navbar.indexOf("handleNavClick('nearby')"), navbar.indexOf("handleNavClick('nearby')") + 700);
+  assert.match(btn, /<span>Nearby<\/span>/, 'the header button label is not hidden below lg any more');
+  assert.ok(!/hidden lg:inline">Nearby/.test(btn), 'no breakpoint-gated label');
+  const app = readFileSync('src/App.tsx', 'utf8');
+  assert.match(app, /activeNavTab === 'nearby' && <NearbyView \/>/, 'the tab renders the view');
+});
