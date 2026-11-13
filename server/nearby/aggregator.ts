@@ -18,6 +18,7 @@
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
 import { createMaskingPointer } from '../affiliate/deeplink';
+import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords } from './enrich';
 
 export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'all';
 
@@ -466,10 +467,15 @@ function dedupe(rows: NearbyRow[]): NearbyRow[] {
 
 function sortRows(rows: NearbyRow[], category: NearbyCategory): NearbyRow[] {
   const byDistance = (a: NearbyRow, b: NearbyRow) => (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
-  if (category === 'all') return [...rows].sort(byDistance);
+  // A card that can show a real rating and price earns the top of the list; the map-only rows (name, address,
+  // distance) follow, closest first. Before this, a rated Swiggy/OYO row with no coordinates sank to the bottom
+  // behind unrated OSM rows, which made the enrichment look broken when it was working.
+  const score = (r: NearbyRow) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0);
   return [...rows].sort((a, b) => {
-    const rated = (b.rating ?? -1) - (a.rating ?? -1);
-    if (a.rating !== null && b.rating !== null && rated !== 0) return rated;
+    const rank = score(b) - score(a);
+    if (rank !== 0) return rank;
+    if (a.rating !== null && b.rating !== null && a.rating !== b.rating) return b.rating - a.rating;
+    if (category === 'all') return byDistance(a, b);
     return byDistance(a, b);
   });
 }
@@ -498,22 +504,71 @@ export async function nearbyAnswer(input: {
 }): Promise<NearbyAnswer> {
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
-  const cacheKey = `${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
+  // v2: the enrichment layer (Swiggy/OYO ratings, prices, photos) changed what a good answer looks like, so
+  // old cached payloads must not keep serving unrated rows for 30 minutes.
+  const cacheKey = `v5|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
   const cached = await readCache(cacheKey);
   if (cached) return cached;
 
-  const [google, osm, catalogue] = await Promise.all([
+  const wantsFood = category === 'all' || category === 'restaurants' || category === 'cafes';
+  const wantsStay = category === 'all' || category === 'hotels' || category === 'stays';
+  const [google, osm, catalogue, swiggy, oyo] = await Promise.all([
     googleNearby(location.lat, location.lng, category),
     osmNearby(location.lat, location.lng, category),
     catalogueNearby(location.city, category),
+    wantsFood ? swiggyPlaces(location.lat, location.lng) : Promise.resolve({ rows: [], note: undefined as string | undefined }),
+    wantsStay ? oyoStays(location.city, category === 'stays' ? 'stays' : 'hotels') : Promise.resolve({ rows: [], note: undefined as string | undefined }),
   ]);
 
   const notes: string[] = [];
   if (google.note) notes.push(google.note);
   if (osm.note) notes.push(osm.note);
+  if (swiggy.note) notes.push(`Swiggy: ${swiggy.note}`);
+  if (oyo.note) notes.push(`OYO: ${oyo.note}`);
 
-  // Catalogue rows first (real prices), then the rated places, then the keyless map rows.
-  const merged = sortRows(dedupe([...catalogue, ...google.rows, ...osm.rows]), category);
+  // Map rows carry the coordinates; ratings/prices/photos come from the reverse-engineered partner feeds.
+  // Joining them by name gives a card that has BOTH a real distance and a real rating, which is the whole
+  // point: no Google key, no invented numbers.
+  const coordBy = new Map<string, { lat: number; lng: number; distance: number | null }>();
+  for (const row of [...google.rows, ...osm.rows]) {
+    if (row.lat !== null && row.lng !== null) coordBy.set(norm(row.name), { lat: row.lat, lng: row.lng, distance: row.distanceKm });
+  }
+  const wanted = [...swiggy.rows, ...oyo.rows].filter((p) => category === 'all' || p.category === category);
+  // Rated rows first (they are what the owner asked for), then look up coordinates for the ones the map feeds
+  // did not already match, so the card can honestly say "1.2 km away" instead of hiding the badge.
+  const head = wanted.slice(0, 8);
+  // Photon throttles bursts: 8 parallel lookups returned nothing while 3 at a time answered, so the pool below
+  // keeps concurrency at 3 and still finishes inside about a second.
+  const politePool = async <T,>(items: T[], limit: number, fn: (item: T) => Promise<any>) => {
+    const out: any[] = new Array(items.length);
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < items.length) {
+        const i = cursor; cursor += 1;
+        out[i] = await fn(items[i]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return out;
+  };
+  const looked = await politePool(head, 3, async (p) => {
+    const hit = coordBy.get(norm(p.name));
+    if (hit) return { p, coords: { lat: hit.lat, lng: hit.lng }, distance: hit.distance };
+    // Name first; the published address/locality second (OYO brands are too unique for a name lookup, and a
+    // Swiggy card only carries an area name).
+    let geo = await photonCoords(p.name, { lat: location.lat, lng: location.lng });
+    if (!geo && p.address) {
+      geo = await photonCoords(`${p.address}, ${location.city || ''}`.trim(), { lat: location.lat, lng: location.lng }, 25000);
+    }
+    return { p, coords: geo ? { lat: geo.lat, lng: geo.lng } : null, distance: geo ? geo.distanceKm : null };
+  });
+  const enriched = [
+    ...looked.map((l) => enrichedToRow(l.p, l.coords, l.distance) as unknown as NearbyRow),
+    ...wanted.slice(8).map((p) => enrichedToRow(p, null, null) as unknown as NearbyRow),
+  ];
+
+  // Precision first (rated + priced partner rows), then our catalogue, then the raw map rows.
+  const merged = sortRows(dedupe([...enriched, ...catalogue, ...google.rows, ...osm.rows]), category);
   const limit = Math.min(60, Math.max(4, Number(input.limit) || 30));
   const results = merged.slice(0, limit);
 
@@ -522,7 +577,7 @@ export async function nearbyAnswer(input: {
     category,
     location,
     results,
-    counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length },
+    counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
     notes: results.length ? notes : [...notes, 'No places came back for this location right now, so nothing is shown rather than guesswork.'],
   };
   await writeCache(cacheKey, answer);

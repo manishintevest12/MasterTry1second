@@ -77,3 +77,35 @@ test('no card can invent a rating or a price', () => {
   // Every outward link is a signed pointer, never a raw merchant URL.
   assert.match(src, /createMaskingPointer\(dest/);
 });
+
+test('keyless enrichment shapes a card correctly and never wears a Google label', async () => {
+  const { enrichedToRow } = await import('../server/nearby/enrich');
+  const row = enrichedToRow({
+    name: 'Le Plaisir', category: 'restaurants', rating: 4.5, ratingCount: 22000,
+    price: 1000, priceLabel: '₹1,000 for two', priceBasis: 'cost for two as listed by the restaurant',
+    address: 'Kothrud', subcategory: 'European', imageUrl: 'https://media-assets.swiggy.com/x', website: null,
+    source: 'swiggy', honesty: 'Rating and cost-for-two are live from Swiggy.',
+  }, { lat: 18.52, lng: 73.85 }, 1.8);
+  assert.equal(row.rating, 4.5);
+  assert.equal(row.ratingCount, 22000);
+  assert.equal(row.price, 1000);
+  assert.equal(row.distanceKm, 1.8);
+  assert.equal(row.source, 'catalogue', 'a partner-fed row is never labelled google');
+  assert.match(row.directionsUrl, /destination=18\.52,73\.85/);
+  // Without coordinates the directions link must still be usable, by name+address.
+  const noCoords = enrichedToRow({ ...({} as any), name: 'X Hotel', category: 'hotels', rating: null, ratingCount: null, price: null, priceLabel: null, priceBasis: null, address: 'Baner', subcategory: null, imageUrl: null, website: null, source: 'oyo', honesty: 'h' }, null, null);
+  assert.match(noCoords.directionsUrl, /query=X%20Hotel%20Baner/);
+});
+
+test('the enrichment layer is wired into the aggregator with an honest cache version', () => {
+  const src = readFileSync('server/nearby/aggregator.ts', 'utf8');
+  assert.match(src, /import \{ swiggyPlaces, oyoStays, enrichedToRow, photonCoords \} from '\.\/enrich'/, 'enrichment imported');
+  assert.match(src, /swiggyPlaces\(location\.lat, location\.lng\)/, 'restaurants/cafes come from the reverse-engineered Swiggy feed');
+  assert.match(src, /oyoStays\(location\.city/, 'hotels/stays come from OYO');
+  assert.match(src, /const cacheKey = `v5\|/, 'a provider change bumps the cache version so stale unrated payloads stop being served');
+  // Rated/priced rows must rank above map-only rows.
+  assert.match(src, /const score = \(r: NearbyRow\) => \(r\.rating !== null \? 2 : 0\)/, 'rated rows rank first');
+  // A throttled geocoder may never invent a distance.
+  const enrich = readFileSync('server/nearby/enrich.ts', 'utf8');
+  assert.match(enrich, /meters > maxMeters\) return null/, 'a same-name place in another city cannot become a fake distance');
+});

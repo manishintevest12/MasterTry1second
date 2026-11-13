@@ -84,11 +84,12 @@ function card(row: NearbyAnswer['results'][number]): string {
   if (row.price !== null) bits.push(rupee(row.price) as string);
   const meta = bits.length ? `<p class="meta">${bits.join(' &middot; ')}</p>` : '<p class="meta">Distance from the searched point is shown when the map source carries coordinates.</p>';
   const addr = row.address ? `<p class="addr">${escapeHtml(row.address)}</p>` : '';
+  const photo = row.imageUrl ? `<img class="ph" src="${escapeHtml(row.imageUrl)}" alt="${escapeHtml(row.name)}" loading="lazy" width="320" height="200">` : '';
   const link = row.exitUrl
     ? `<a class="cta" href="${escapeHtml(row.exitUrl)}" rel="nofollow sponsored noopener">Book / website</a>`
     : '';
   const dir = `<a class="ghost" href="${escapeHtml(row.directionsUrl)}" rel="nofollow noopener">Get directions</a>`;
-  return `<li class="card"><h3>${escapeHtml(row.name)}</h3>${meta}${addr}<p class="src">${escapeHtml(row.honesty)}</p><div class="acts">${link}${dir}</div></li>`;
+  return `<li class="card">${photo}<h3>${escapeHtml(row.name)}</h3>${meta}${addr}<p class="src">${escapeHtml(row.honesty)}</p><div class="acts">${link}${dir}</div></li>`;
 }
 
 export function escapeHtml(s: string): string {

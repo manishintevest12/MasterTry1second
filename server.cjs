@@ -47692,6 +47692,198 @@ var init_warm = __esm({
   }
 });
 
+// server/nearby/enrich.ts
+function parseCount(text) {
+  const s = String(text || "").replace(/[^0-9.kK]/g, "");
+  if (!s) return null;
+  if (/k$/i.test(s)) {
+    const n2 = Number(s.replace(/k$/i, ""));
+    return Number.isFinite(n2) ? Math.round(n2 * 1e3) : null;
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+function rupee(n) {
+  return n === null || !Number.isFinite(n) ? null : `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+}
+function swiggyImage(id) {
+  const v = String(id || "").trim();
+  if (!v) return null;
+  return `https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400/${v}`;
+}
+async function swiggyPlaces(lat, lng) {
+  const url = `https://www.swiggy.com/dapi/restaurants/list/v5?lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}&page_type=DESKTOP_WEB_LISTING`;
+  try {
+    const res = await cffiFetch(url, {
+      impersonate: "chrome",
+      timeoutMs: 12e3,
+      headers: { "accept-language": "en-IN,en;q=0.9", accept: "application/json" }
+    });
+    if (res.status !== 200) return { rows: [], note: `Swiggy answered ${res.status}` };
+    let data;
+    try {
+      data = JSON.parse(res.body);
+    } catch {
+      return { rows: [], note: "Swiggy returned a non-JSON body" };
+    }
+    const cards = [];
+    const walk2 = (node) => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        node.forEach(walk2);
+        return;
+      }
+      if (node.avgRating !== void 0 && (node.name || node.costForTwo)) cards.push(node);
+      for (const v of Object.values(node)) walk2(v);
+    };
+    walk2(data);
+    const rows = [];
+    for (const c of cards) {
+      const name = String(c.name || "").trim();
+      const rating = Number(c.avgRating);
+      if (!name || !Number.isFinite(rating) || rating <= 0) continue;
+      const costMatch = String(c.costForTwo || "").replace(/,/g, "").match(/(\d{2,6})/);
+      const cost = costMatch ? Number(costMatch[1]) : null;
+      const cuisines = Array.isArray(c.cuisines) ? c.cuisines.slice(0, 2).join(", ") : null;
+      const isCafe = /cafe|coffee|bakery|dessert/i.test(`${cuisines || ""} ${name}`);
+      rows.push({
+        name,
+        category: isCafe ? "cafes" : "restaurants",
+        rating,
+        ratingCount: parseCount(c.totalRatingsString),
+        price: cost,
+        priceLabel: cost !== null ? `${rupee(cost)} for two` : null,
+        priceBasis: cost !== null ? "cost for two as listed by the restaurant" : null,
+        address: c.areaName ? String(c.areaName) : null,
+        subcategory: cuisines,
+        imageUrl: swiggyImage(c.cloudinaryImageId),
+        website: null,
+        source: "swiggy",
+        honesty: cost !== null ? "Rating and cost-for-two are live from Swiggy, photo from the restaurant listing." : "Rating is live from Swiggy; this restaurant lists no cost for two."
+      });
+    }
+    return rows.length ? { rows } : { rows: [], note: "Swiggy returned no rated places for these coordinates" };
+  } catch (e2) {
+    return { rows: [], note: `Swiggy unreachable: ${String(e2?.message || e2).slice(0, 70)}` };
+  }
+}
+async function oyoStays(city, category) {
+  const slug5 = String(city || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  if (!slug5) return { rows: [], note: "No city name, so OYO hotels were not queried" };
+  const url = `https://www.oyorooms.com/hotels-in-${slug5}/`;
+  try {
+    const res = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 14e3, headers: { "accept-language": "en-IN,en;q=0.9" } });
+    if (res.status !== 200) return { rows: [], note: `OYO answered ${res.status} for ${slug5}` };
+    const body = res.body;
+    const marker = body.indexOf('"hotels":[');
+    if (marker < 0) return { rows: [], note: "OYO page carried no hotel list today" };
+    const start = body.indexOf("[", marker);
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < body.length; i += 1) {
+      if (body[i] === "[") depth += 1;
+      else if (body[i] === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+    if (end < 0) return { rows: [], note: "OYO hotel list was truncated" };
+    let hotels = [];
+    try {
+      hotels = JSON.parse(body.slice(start, end));
+    } catch {
+      return { rows: [], note: "OYO hotel list did not parse" };
+    }
+    const rows = [];
+    for (const h of Array.isArray(hotels) ? hotels : []) {
+      const name = String(h?.name || "").trim();
+      if (!name) continue;
+      const rating = Number(h?.rating?.value);
+      const count = Number(h?.rating?.count);
+      const price2 = Number(h?.pricing?.bookingPrice);
+      const img = Array.isArray(h?.hotel_images) && h.hotel_images.length ? String(h.hotel_images[0]?.url || h.hotel_images[0] || "") : "";
+      const link = String(h?.url || h?.external_booking_url || "");
+      const website = link ? link.startsWith("http") ? link : `https://www.oyorooms.com${link}` : null;
+      rows.push({
+        name,
+        category,
+        rating: Number.isFinite(rating) && rating > 0 ? rating : null,
+        ratingCount: Number.isFinite(count) && count >= 0 ? count : null,
+        price: Number.isFinite(price2) && price2 > 0 ? price2 : null,
+        priceLabel: Number.isFinite(price2) && price2 > 0 ? `${rupee(price2)}/night` : null,
+        priceBasis: Number.isFinite(price2) && price2 > 0 ? "nightly price published by OYO" : null,
+        address: h?.address ? String(h.address) : null,
+        subcategory: h?.rating?.subtext ? String(h.rating.subtext) : null,
+        imageUrl: img || null,
+        website,
+        source: "oyo",
+        honesty: Number.isFinite(price2) && price2 > 0 ? "Guest rating, review count and nightly price are live from OYO." : "Guest rating is live from OYO; no nightly price was published for this stay."
+      });
+    }
+    return rows.length ? { rows } : { rows: [], note: `OYO had no stays listed for ${slug5}` };
+  } catch (e2) {
+    log.warn("Nearby", "oyo enrich failed", { city: slug5, error: String(e2?.message || e2).slice(0, 60) });
+    return { rows: [], note: `OYO unreachable: ${String(e2?.message || e2).slice(0, 70)}` };
+  }
+}
+function enrichedToRow(p, coords, distance) {
+  return {
+    id: `${p.source}-${p.category}-${p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`,
+    name: p.name,
+    category: p.category,
+    subcategory: p.subcategory || p.priceBasis,
+    rating: p.rating,
+    ratingCount: p.ratingCount,
+    priceLevel: null,
+    priceLabel: p.priceLabel,
+    price: p.price,
+    address: p.address,
+    lat: coords?.lat ?? null,
+    lng: coords?.lng ?? null,
+    distanceKm: distance,
+    imageUrl: p.imageUrl,
+    source: "catalogue",
+    // a real, priced/rated partner row - not OSM and not Google
+    honesty: p.honesty,
+    exitUrl: "",
+    directionsUrl: coords ? `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${p.name} ${p.address || ""}`.trim())}`,
+    website: p.website
+  };
+}
+async function photonCoords(name, near, maxMeters = 15e3) {
+  try {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(name)}&lat=${near.lat}&lon=${near.lng}&limit=1&lang=en`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5500);
+    const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (nearby)" } }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+    const data = await res.json();
+    const f = (data.features || [])[0];
+    const co = f?.geometry?.coordinates || [];
+    const lng = Number(co[0]);
+    const lat = Number(co[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    const R = 6371e3;
+    const dLat = (lat - near.lat) * Math.PI / 180;
+    const dLng = (lng - near.lng) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(near.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    const meters = 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+    if (!Number.isFinite(meters) || meters > maxMeters) return null;
+    return { lat, lng, distanceKm: Math.round(meters / 1e3 * 10) / 10 };
+  } catch {
+    return null;
+  }
+}
+var init_enrich = __esm({
+  "server/nearby/enrich.ts"() {
+    init_logger();
+    init_curlCffiFetch();
+  }
+});
+
 // server/nearby/aggregator.ts
 var aggregator_exports = {};
 __export(aggregator_exports, {
@@ -48064,10 +48256,12 @@ function dedupe(rows) {
 }
 function sortRows(rows, category) {
   const byDistance = (a, b) => (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
-  if (category === "all") return [...rows].sort(byDistance);
+  const score = (r) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0);
   return [...rows].sort((a, b) => {
-    const rated = (b.rating ?? -1) - (a.rating ?? -1);
-    if (a.rating !== null && b.rating !== null && rated !== 0) return rated;
+    const rank = score(b) - score(a);
+    if (rank !== 0) return rank;
+    if (a.rating !== null && b.rating !== null && a.rating !== b.rating) return b.rating - a.rating;
+    if (category === "all") return byDistance(a, b);
     return byDistance(a, b);
   });
 }
@@ -48096,18 +48290,56 @@ async function writeCache(key, answer) {
 async function nearbyAnswer(input) {
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
-  const cacheKey = `${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
+  const cacheKey = `v5|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
   const cached3 = await readCache(cacheKey);
   if (cached3) return cached3;
-  const [google, osm, catalogue] = await Promise.all([
+  const wantsFood = category === "all" || category === "restaurants" || category === "cafes";
+  const wantsStay = category === "all" || category === "hotels" || category === "stays";
+  const [google, osm, catalogue, swiggy, oyo] = await Promise.all([
     googleNearby(location.lat, location.lng, category),
     osmNearby(location.lat, location.lng, category),
-    catalogueNearby(location.city, category)
+    catalogueNearby(location.city, category),
+    wantsFood ? swiggyPlaces(location.lat, location.lng) : Promise.resolve({ rows: [], note: void 0 }),
+    wantsStay ? oyoStays(location.city, category === "stays" ? "stays" : "hotels") : Promise.resolve({ rows: [], note: void 0 })
   ]);
   const notes = [];
   if (google.note) notes.push(google.note);
   if (osm.note) notes.push(osm.note);
-  const merged = sortRows(dedupe([...catalogue, ...google.rows, ...osm.rows]), category);
+  if (swiggy.note) notes.push(`Swiggy: ${swiggy.note}`);
+  if (oyo.note) notes.push(`OYO: ${oyo.note}`);
+  const coordBy = /* @__PURE__ */ new Map();
+  for (const row of [...google.rows, ...osm.rows]) {
+    if (row.lat !== null && row.lng !== null) coordBy.set(norm9(row.name), { lat: row.lat, lng: row.lng, distance: row.distanceKm });
+  }
+  const wanted = [...swiggy.rows, ...oyo.rows].filter((p) => category === "all" || p.category === category);
+  const head3 = wanted.slice(0, 8);
+  const politePool = async (items, limit2, fn) => {
+    const out = new Array(items.length);
+    let cursor2 = 0;
+    const worker = async () => {
+      while (cursor2 < items.length) {
+        const i = cursor2;
+        cursor2 += 1;
+        out[i] = await fn(items[i]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit2, items.length) }, worker));
+    return out;
+  };
+  const looked = await politePool(head3, 3, async (p) => {
+    const hit = coordBy.get(norm9(p.name));
+    if (hit) return { p, coords: { lat: hit.lat, lng: hit.lng }, distance: hit.distance };
+    let geo = await photonCoords(p.name, { lat: location.lat, lng: location.lng });
+    if (!geo && p.address) {
+      geo = await photonCoords(`${p.address}, ${location.city || ""}`.trim(), { lat: location.lat, lng: location.lng }, 25e3);
+    }
+    return { p, coords: geo ? { lat: geo.lat, lng: geo.lng } : null, distance: geo ? geo.distanceKm : null };
+  });
+  const enriched = [
+    ...looked.map((l) => enrichedToRow(l.p, l.coords, l.distance)),
+    ...wanted.slice(8).map((p) => enrichedToRow(p, null, null))
+  ];
+  const merged = sortRows(dedupe([...enriched, ...catalogue, ...google.rows, ...osm.rows]), category);
   const limit = Math.min(60, Math.max(4, Number(input.limit) || 30));
   const results = merged.slice(0, limit);
   const answer = {
@@ -48115,7 +48347,7 @@ async function nearbyAnswer(input) {
     category,
     location,
     results,
-    counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length },
+    counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
     notes: results.length ? notes : [...notes, "No places came back for this location right now, so nothing is shown rather than guesswork."]
   };
   await writeCache(cacheKey, answer);
@@ -48127,6 +48359,7 @@ var init_aggregator = __esm({
     init_db();
     init_logger();
     init_deeplink();
+    init_enrich();
     DEFAULT_CITY = "Pune";
     RADIUS_M = 2500;
     CACHE_TTL_MS3 = 30 * 6e4;
@@ -58264,7 +58497,7 @@ function listNearbyPaths() {
   }
   return [...new Set(paths)];
 }
-function rupee(n) {
+function rupee2(n) {
   return n === null ? null : `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
 }
 function card(row) {
@@ -58272,12 +58505,13 @@ function card(row) {
   if (row.rating !== null) bits.push(`&#9733; ${row.rating.toFixed(1)}${row.ratingCount ? ` (${row.ratingCount})` : ""}`);
   if (row.distanceKm !== null) bits.push(`${row.distanceKm} km away`);
   if (row.priceLabel) bits.push(row.priceLabel);
-  if (row.price !== null) bits.push(rupee(row.price));
+  if (row.price !== null) bits.push(rupee2(row.price));
   const meta = bits.length ? `<p class="meta">${bits.join(" &middot; ")}</p>` : '<p class="meta">Distance from the searched point is shown when the map source carries coordinates.</p>';
   const addr = row.address ? `<p class="addr">${escapeHtml2(row.address)}</p>` : "";
+  const photo = row.imageUrl ? `<img class="ph" src="${escapeHtml2(row.imageUrl)}" alt="${escapeHtml2(row.name)}" loading="lazy" width="320" height="200">` : "";
   const link = row.exitUrl ? `<a class="cta" href="${escapeHtml2(row.exitUrl)}" rel="nofollow sponsored noopener">Book / website</a>` : "";
   const dir = `<a class="ghost" href="${escapeHtml2(row.directionsUrl)}" rel="nofollow noopener">Get directions</a>`;
-  return `<li class="card"><h3>${escapeHtml2(row.name)}</h3>${meta}${addr}<p class="src">${escapeHtml2(row.honesty)}</p><div class="acts">${link}${dir}</div></li>`;
+  return `<li class="card">${photo}<h3>${escapeHtml2(row.name)}</h3>${meta}${addr}<p class="src">${escapeHtml2(row.honesty)}</p><div class="acts">${link}${dir}</div></li>`;
 }
 function escapeHtml2(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
