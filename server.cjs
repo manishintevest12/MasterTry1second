@@ -47987,6 +47987,23 @@ __export(aggregator_exports, {
   normalizeNearbyCategory: () => normalizeNearbyCategory,
   resolveNearbyLocation: () => resolveNearbyLocation
 });
+function memoryGet(key) {
+  const hit = memoryCache.get(key);
+  if (!hit) return null;
+  const ageMs = Date.now() - hit.at;
+  if (ageMs > STALE_TTL_MS) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return { answer: hit.answer, ageMs };
+}
+function memoryPut(key, answer) {
+  memoryCache.set(key, { answer, at: Date.now() });
+  if (memoryCache.size > MEMORY_CACHE_MAX) {
+    const oldest = [...memoryCache.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, memoryCache.size - MEMORY_CACHE_MAX);
+    for (const [k] of oldest) memoryCache.delete(k);
+  }
+}
 function normalizeNearbyCategory(raw) {
   const key = String(raw || "").trim().toLowerCase();
   return CATEGORY_ALIASES[key] || "all";
@@ -48597,24 +48614,34 @@ async function nearbyAnswer(input) {
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
   const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
+  const warm2 = memoryGet(cacheKey);
+  if (warm2 && warm2.ageMs <= CACHE_TTL_MS3) {
+    return { ...warm2.answer, cached: true, ms: Date.now() - started3 };
+  }
   const fresh = await readCache(cacheKey);
-  if (fresh) return { ...fresh, cached: true, ms: Date.now() - started3 };
+  if (fresh) {
+    memoryPut(cacheKey, fresh);
+    return { ...fresh, cached: true, ms: Date.now() - started3 };
+  }
   const flights = globalThis.__t1sNearbyInflight ||= /* @__PURE__ */ new Map();
   const build2 = () => {
     const existing = flights.get(cacheKey);
     if (existing) return existing;
-    const p = buildNearbyAnswer(input).then((ans) => ({ ...ans, ms: Date.now() - started3 })).finally(() => flights.delete(cacheKey));
+    const p = buildNearbyAnswer(input).then((ans) => {
+      memoryPut(cacheKey, ans);
+      return { ...ans, ms: Date.now() - started3 };
+    }).finally(() => flights.delete(cacheKey));
     flights.set(cacheKey, p);
     return p;
   };
-  const stale = await readCacheAny(cacheKey);
+  const stale = warm2 && warm2.ageMs > CACHE_TTL_MS3 && warm2.ageMs <= STALE_TTL_MS ? warm2 : await readCacheAny(cacheKey);
   if (stale) {
     void build2().catch(() => void 0);
     return { ...stale.answer, cached: true, stale: true, ms: Date.now() - started3 };
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS3, STALE_TTL_MS, OG_BUDGET_MS, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE;
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS3, STALE_TTL_MS, OG_BUDGET_MS, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -48626,6 +48653,8 @@ var init_aggregator = __esm({
     CACHE_TTL_MS3 = 30 * 6e4;
     STALE_TTL_MS = 12 * 60 * 6e4;
     OG_BUDGET_MS = 2200;
+    memoryCache = /* @__PURE__ */ new Map();
+    MEMORY_CACHE_MAX = 300;
     CATEGORY_ALIASES = {
       all: "all",
       restaurant: "restaurants",

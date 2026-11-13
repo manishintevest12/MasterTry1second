@@ -68,6 +68,28 @@ const CACHE_TTL_MS = 30 * 60_000;
 const STALE_TTL_MS = 12 * 60 * 60_000;
 /** Ceiling for the og:image pass. A slow business site must never hold the whole tab hostage. */
 const OG_BUDGET_MS = 2200;
+/**
+ * In-process answer cache. The SQL cache is the durable one, but a light SQL emulator (the file store used in
+ * tests/dev) answers an upsert-shaped write with no row and the read with [], which made EVERY request rebuild -
+ * measured locally: call1 3.3s, call2 7.3s, call3 13.2s with cached=null each time. This map makes a warm city
+ * instant regardless of what the store supports, and the SQL row still survives a restart.
+ */
+const memoryCache = new Map<string, { answer: NearbyAnswer; at: number }>();
+const MEMORY_CACHE_MAX = 300;
+function memoryGet(key: string): { answer: NearbyAnswer; ageMs: number } | null {
+  const hit = memoryCache.get(key);
+  if (!hit) return null;
+  const ageMs = Date.now() - hit.at;
+  if (ageMs > STALE_TTL_MS) { memoryCache.delete(key); return null; }
+  return { answer: hit.answer, ageMs };
+}
+function memoryPut(key: string, answer: NearbyAnswer): void {
+  memoryCache.set(key, { answer, at: Date.now() });
+  if (memoryCache.size > MEMORY_CACHE_MAX) {
+    const oldest = [...memoryCache.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, memoryCache.size - MEMORY_CACHE_MAX);
+    for (const [k] of oldest) memoryCache.delete(k);
+  }
+}
 
 const CATEGORY_ALIASES: Record<string, NearbyCategory> = {
   all: 'all', restaurant: 'restaurants', restaurants: 'restaurants', food: 'restaurants',
@@ -772,21 +794,27 @@ export async function nearbyAnswer(input: {
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
   const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
 
+  const warm = memoryGet(cacheKey);
+  if (warm && warm.ageMs <= CACHE_TTL_MS) {
+    return { ...warm.answer, cached: true, ms: Date.now() - started };
+  }
   const fresh = await readCache(cacheKey);
-  if (fresh) return { ...fresh, cached: true, ms: Date.now() - started };
+  if (fresh) { memoryPut(cacheKey, fresh); return { ...fresh, cached: true, ms: Date.now() - started }; }
 
   const flights = ((globalThis as any).__t1sNearbyInflight ||= new Map<string, Promise<NearbyAnswer>>()) as Map<string, Promise<NearbyAnswer>>;
   const build = (): Promise<NearbyAnswer> => {
     const existing = flights.get(cacheKey);
     if (existing) return existing;
     const p = buildNearbyAnswer(input)
-      .then((ans) => ({ ...ans, ms: Date.now() - started }))
+      .then((ans) => { memoryPut(cacheKey, ans); return { ...ans, ms: Date.now() - started }; })
       .finally(() => flights.delete(cacheKey));
     flights.set(cacheKey, p);
     return p;
   };
 
-  const stale = await readCacheAny(cacheKey);
+  const stale = warm && warm.ageMs > CACHE_TTL_MS && warm.ageMs <= STALE_TTL_MS
+    ? warm
+    : await readCacheAny(cacheKey);
   if (stale) {
     // Serve the last real answer now; refresh once, behind the response.
     void build().catch(() => undefined);
