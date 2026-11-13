@@ -45,6 +45,7 @@ import { QuickAppsAdminTab } from './QuickAppsAdminTab';
 import { HomeBannersTab } from './HomeBannersTab';
 import { PlacementsTab } from './PlacementsTab';
 import { FinanceVerticalsTab } from './FinanceVerticalsTab';
+import NearbyReportTab from './NearbyReportTab';
 import { PromoOffersTab } from './PromoOffersTab';
 import { AdsenseRevenueTab } from './AdsenseRevenueTab';
 import { AppLinksTab } from './AppLinksTab';
@@ -80,7 +81,8 @@ export type AdminTab =
   | 'proxies'
   | 'direct_partners'
   | 'placements'
-  | 'finance_verticals';
+  | 'finance_verticals'
+  | 'nearby_report';
 
 /**
  * REAL admin KPI strip (owner 24 Oct): every number is fetched live from MySQL
@@ -506,6 +508,16 @@ export const AdminDashboard: React.FC = () => {
               Finance Verticals
             </button>
             <button
+              onClick={() => setActiveTab('nearby_report')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                activeTab === 'nearby_report'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Nearby Report
+            </button>
+            <button
               onClick={() => setActiveTab('placements')}
               className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
                 activeTab === 'placements'
@@ -580,6 +592,7 @@ export const AdminDashboard: React.FC = () => {
         {activeTab === 'home_banners' && <HomeBannersTab />}
         {activeTab === 'merchant_logos' && <MerchantLogosTab />}
         {activeTab === 'finance_verticals' && <FinanceVerticalsTab />}
+        {activeTab === 'nearby_report' && <NearbyReportTab />}
         {activeTab === 'placements' && <PlacementsTab />}
         {activeTab === 'app_links' && <AppLinksTab />}
         {activeTab === 'notifications' && <NotificationsTab />}

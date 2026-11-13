@@ -96,6 +96,44 @@ function searchable(text: string): boolean {
  * Never returns "I cannot tell": a bare noun falls back to shopping (the vertical
  * that can price literally any product) and the reply says that out loud.
  */
+/**
+ * OWNER 13 Nov: "Humera ask try1second ai v jb uss se nearby ke questions pooche jaayenge wo answer dega".
+ * Recognised BEFORE the generic vertical parse, because "restaurants near me" must not be read as a Food search
+ * on delivery apps - the answer is places around the user, with distance.
+ */
+export function nearbyIntentFrom(text: string): { category: string; place: string | null } | null {
+  const t = String(text || '').toLowerCase();
+  const nearbyWord = /(near me|nearby|near my|aas ?paas|aas-paas|paas me|paas mein|around me|around here|mere paas|मेरे पास|पास में|आसपास|ಆಸುಪಡಿ|அருகில்)/.test(t);
+  const catMap: [RegExp, string][] = [
+    [/cinema|movie theat|theatre|theater|multiplex|pvr|inox|मल्टीप्लेक्स|सिनेमा/, 'movies'],
+    [/restaurant|dining|khana|khaana|रेस्टोरेंट|खाना/, 'restaurants'],
+    [/cafe|coffee|कैफे|कॉफ़ी/, 'cafes'],
+    [/hotel|होटल/, 'hotels'],
+    [/stay|homestay|guest house|hostel|रुकने/, 'stays'],
+    [/cab|taxi|ola|uber|कैब|टैक्सी/, 'cabs'],
+    [/store|shop|dukan|dukaan|दुकान/, 'stores'],
+  ];
+  let category = '';
+  for (const [re, cat] of catMap) if (re.test(t)) { category = cat; break; }
+  // ONLY an explicit proximity phrase makes it a nearby question. "restaurants in pune" must keep going to the
+  // Food/places pipeline it always did (the shipped assistant tests pin that), and "near <place>" is proximity.
+  const nearPlace = /\bnear\s+([a-z][a-z .]{2,28})$/.test(t);
+  if (!nearbyWord && !nearPlace) return null;
+  // A dish is not a place: "paneer pizza near me" belongs to Food, so a nearby answer needs a PLACE word
+  // (restaurant/cafe/hotel/stay/cab/store/cinema) or a bare "nearby"/"near me" question.
+  if (!category && !/^(nearby|near me|paas me|paas mein|around me|aas paas)$/i.test(t.trim())) return null;
+  const placeMatch = t.match(/\b(?:in|at|near|mein)\s+([a-z][a-z .]{2,28})$/);
+  const cleaned = placeMatch
+    ? placeMatch[1]
+      .replace(/\b(near me|nearby|near my|around me|around here|paas me|paas mein|paas|aas paas|aas-paas)\b/g, ' ')
+      .replace(/^(?:(?:me|my|here|in|at|ke|ki)\s+)+/i, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+    : '';
+  const place = cleaned && !/^(me|here|near|in|at|paas)$/i.test(cleaned) ? cleaned : null;
+  return { category: category || 'all', place: place || null };
+}
+
 export function buildAssistantSearch(raw: string, ctx: AssistantAskContext = {}): { meta: AssistantAnswerMeta; input: AssistantSearchInput | null } {
   // Normalise FIRST (Devanagari/Tamil/etc. -> Latin, budget lifted, typos repaired) so every later step -
   // intent, the "is there anything searchable" test, the query string - works on readable text.
@@ -114,6 +152,23 @@ export function buildAssistantSearch(raw: string, ctx: AssistantAskContext = {})
       ? { travelDates: { depart: intent.date || ctx.travelDates?.depart, return: ctx.travelDates?.return } }
       : {}),
   });
+
+
+  // Nearby questions are answered by the local-discovery engine, not by a delivery/product search.
+  const nearby = nearbyIntentFrom(text);
+  if (nearby) {
+    const place = nearby.place || ctx.city || ctx.locality || '';
+    return {
+      meta: {
+        understood: true, assumedVertical: false, vertical: 'nearby' as any,
+        query: place ? `${nearby.category === 'all' ? 'places' : nearby.category} in ${place}` : (nearby.category === 'all' ? 'places near me' : nearby.category),
+        reply: nearby.category === 'all'
+          ? `Here is what is around ${place || 'you'} right now, closest first. Every card says where its rating and photo came from.`
+          : `Live ${nearby.category} around ${place || 'you'}, closest first, with distance and a tracked exit.`,
+      } as AssistantAnswerMeta,
+      input: withContext({ query: place || 'near me', vertical: 'nearby' as any }),
+    };
+  }
 
   if (intent.understood && intent.vertical) {
     return {

@@ -3475,6 +3475,49 @@ apiRouter.post('/assist/answer', async (req, res) => {
 
   if (!input) return res.json({ success: true, ...meta, results: [], count: 0, latencyMs: Date.now() - started });
 
+  // OWNER 13 Nov: nearby questions ("restaurants near me", "theatre paas me") are answered by the local
+  // discovery engine, so Ask AI and the Nearby tab never disagree.
+  if (String((input as any).vertical) === 'nearby') {
+    const { nearbyAnswer } = await import('../nearby/aggregator');
+    const { nearbyIntentFrom } = await import('../lens/assistantAnswer');
+    const hint = nearbyIntentFrom(text);
+    const answer = await nearbyAnswer({
+      lat: Number.isFinite(Number(req.body?.lat)) ? Number(req.body.lat) : null,
+      lng: Number.isFinite(Number(req.body?.lng)) ? Number(req.body.lng) : null,
+      city: hint?.place || (req.body?.city ? String(req.body.city) : null),
+      category: hint?.category || 'all',
+      limit: 8,
+    }).catch(() => null);
+    const nearbyRows = (answer?.results || []).map((r: any) => ({
+      vertical: 'nearby',
+      title: r.name,
+      provider: `Nearby · ${r.category}`,
+      price: r.price ?? 0,
+      priceAvailable: r.price !== null && r.price > 0,
+      imageUrl: r.imageUrl,
+      url: r.exitUrl || r.directionsUrl,
+      specs: {
+        ...(r.distanceKm !== null ? { distance: `${r.distanceKm} km away` } : {}),
+        ...(r.rating !== null ? { rating: `${r.rating} (${r.ratingCount ?? 0})` } : {}),
+        ...(r.priceLabel ? { price: r.priceLabel } : {}),
+        ...(r.address ? { address: r.address } : {}),
+        source: r.source,
+      },
+    }));
+    return res.json({
+      success: true,
+      ...meta,
+      vertical: 'nearby',
+      reply: nearbyRows.length
+        ? `${meta.reply} ${nearbyRows.length} places, closest first.`
+        : 'Is area ke liye abhi koi live place nahi mila, isliye kuch invent nahi kiya.',
+      results: nearbyRows,
+      count: nearbyRows.length,
+      sourcesSucceeded: answer ? Object.entries(answer.counts).filter(([, n]) => Number(n) > 0).map(([k]) => k) : [],
+      latencyMs: Date.now() - started,
+    });
+  }
+
   const searchInput: SearchInput = {
     query: input.query,
     // Engine ids: the UI calls these 'movie' and 'account'.

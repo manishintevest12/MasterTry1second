@@ -2575,6 +2575,7 @@ class NearbyPlace {
   final double? price;
   final String? address;
   final double? distanceKm;
+  final String? imageUrl;
   final String source;
   final String honesty;
   final String exitUrl;
@@ -2591,6 +2592,7 @@ class NearbyPlace {
     this.price,
     this.address,
     this.distanceKm,
+    this.imageUrl,
     required this.source,
     required this.honesty,
     required this.exitUrl,
@@ -2611,6 +2613,7 @@ class NearbyPlace {
         price: _d(j['price']),
         address: j['address'] == null ? null : '${j['address']}',
         distanceKm: _d(j['distanceKm']),
+        imageUrl: j['imageUrl'] == null ? null : '${j['imageUrl']}',
         source: '${j['source'] ?? ''}',
         honesty: '${j['honesty'] ?? ''}',
         exitUrl: '${j['exitUrl'] ?? ''}',

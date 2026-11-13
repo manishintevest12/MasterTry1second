@@ -8,7 +8,7 @@ import { MapPin, Navigation, Star, Loader2, Compass } from 'lucide-react';
  * server key exists, OpenStreetMap gives name, address and distance and nothing else. That is why a card can
  * legitimately show "rating unknown" - we never print an invented star count.
  */
-type Category = 'all' | 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores';
+type Category = 'all' | 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies';
 
 interface NearbyRow {
   id: string; name: string; category: string; subcategory?: string | null;
@@ -24,6 +24,7 @@ const PILLS: { key: Category; label: string }[] = [
   { key: 'stays', label: 'Stays' },
   { key: 'cafes', label: 'Cafes' },
   { key: 'cabs', label: 'Cabs' },
+  { key: 'movies', label: 'Cinemas' },
   { key: 'stores', label: 'Stores' },
 ];
 
@@ -146,6 +147,15 @@ export default function NearbyView() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
           {rows.map((r) => (
             <div key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col gap-2">
+              {r.imageUrl ? (
+                <img
+                  src={r.imageUrl}
+                  alt={r.name}
+                  loading="lazy"
+                  className="w-full h-32 object-cover rounded-xl bg-slate-100"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/nearby/all.jpg'; }}
+                />
+              ) : null}
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 leading-snug">{r.name}</h3>

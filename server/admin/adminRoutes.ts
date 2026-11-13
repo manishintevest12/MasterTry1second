@@ -361,6 +361,14 @@ adminRouter.post('/deals/sync', async (_req, res) => {
 // ---- Manual finance inventory (owner 27 Oct): loans / credit cards / insurance / account.
 // The owner types a lender, card or plan himself; it is stored in the same `offers`
 // table the scraped rows use, so a gated source can never blank a finance vertical.
+/** OWNER 13 Nov: "iska report admin mai nearby section mai hoga". */
+adminRouter.get('/nearby-report', async (req, res) => {
+  const { nearbyReport } = await import('../nearby/aggregator');
+  const days = Number(req.query.days) || 7;
+  const report = await nearbyReport(days);
+  res.json(report);
+});
+
 adminRouter.get('/finance-offers', async (req, res) => {
   try {
     const { listManualFinanceOffers, FINANCE_VERTICALS } = await import('../marketing/financeOffers');

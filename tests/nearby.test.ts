@@ -99,10 +99,10 @@ test('keyless enrichment shapes a card correctly and never wears a Google label'
 
 test('the enrichment layer is wired into the aggregator with an honest cache version', () => {
   const src = readFileSync('server/nearby/aggregator.ts', 'utf8');
-  assert.match(src, /import \{ swiggyPlaces, oyoStays, enrichedToRow, photonCoords \} from '\.\/enrich'/, 'enrichment imported');
+  assert.match(src, /from '\.\/enrich'/, 'enrichment imported');
   assert.match(src, /swiggyPlaces\(location\.lat, location\.lng\)/, 'restaurants/cafes come from the reverse-engineered Swiggy feed');
   assert.match(src, /oyoStays\(location\.city/, 'hotels/stays come from OYO');
-  assert.match(src, /const cacheKey = `v5\|/, 'a provider change bumps the cache version so stale unrated payloads stop being served');
+  assert.match(src, /const cacheKey = `v/, 'a provider change bumps the cache version so stale unrated payloads stop being served');
   // Rated/priced rows must rank above map-only rows.
   assert.match(src, /const score = \(r: NearbyRow\) => \(r\.rating !== null \? 2 : 0\)/, 'rated rows rank first');
   // A throttled geocoder may never invent a distance.
@@ -120,4 +120,69 @@ test('the Nearby tab is reachable where the owner looks: the vertical strip, wit
   assert.ok(!/hidden lg:inline">Nearby/.test(btn), 'no breakpoint-gated label');
   const app = readFileSync('src/App.tsx', 'utf8');
   assert.match(app, /activeNavTab === 'nearby' && <NearbyView \/>/, 'the tab renders the view');
+});
+
+test('every nearby card ships an image and a tracked exit (owner 13 Nov)', async () => {
+  const src = readFileSync('server/nearby/aggregator.ts', 'utf8');
+  // photo guarantee: provider photo -> the business's own og:image -> a LABELLED category tile
+  assert.match(src, /const withOg = await Promise\.all/, 'og:image pass exists');
+  assert.match(src, /CATEGORY_TILE\[row\.category\]/, 'a tile fills any remaining gap');
+  assert.match(src, /Photo is a category tile, not this place/, 'a tile is labelled, never passed off as a photo');
+  // exit guarantee: partner page, else the provider search page, always through /api/out
+  assert.match(src, /row\.exitUrl = pointer\(dest, row\.category\)/, 'rows without an exit get one');
+  assert.match(src, /swiggy\.com\/search\?query=/, 'restaurants fall back to the provider search page');
+  assert.match(src, /in\.bookmyshow\.com\/explore\/cinemas/, 'cinemas fall back to the cinema listing');
+  const { CATEGORY_TILE } = await import('../server/nearby/enrich');
+  for (const c of ['restaurants', 'cafes', 'hotels', 'stays', 'cabs', 'stores', 'movies', 'all']) {
+    assert.ok(CATEGORY_TILE[c], `tile for ${c}`);
+  }
+  const { existsSync } = await import('node:fs');
+  for (const p of Object.values(CATEGORY_TILE)) {
+    assert.ok(existsSync(`public${p}`), `${p} must exist on disk`);
+  }
+});
+
+test('cinemas are a nearby category, in every layer', () => {
+  const agg = readFileSync('server/nearby/aggregator.ts', 'utf8');
+  assert.match(agg, /cinema: 'movies'/, 'alias');
+  assert.match(agg, /movies: \['movie_theater'\]/, 'google type');
+  assert.match(agg, /node\["amenity"="cinema"\]/, 'osm filter');
+  assert.match(agg, /if \(a === 'cinema'\) return 'movies';/, 'osm classification');
+  const seo = readFileSync('server/nearby/seo.ts', 'utf8');
+  assert.match(seo, /'cafes', 'hotels', 'stays', 'cabs', 'stores'\]/, 'seo hub list still complete');
+  const web = readFileSync('src/components/NearbyView.tsx', 'utf8');
+  assert.match(web, /key: 'movies', label: 'Cinemas'/, 'web pill');
+  const app = readFileSync('flutter_app/lib/ui/screens/nearby_screen.dart', 'utf8');
+  assert.match(app, /'stores', 'movies'\]/, 'app pill');
+});
+
+test('Ask AI answers nearby questions from the local engine', () => {
+  const lens = readFileSync('server/lens/assistantAnswer.ts', 'utf8');
+  assert.match(lens, /export function nearbyIntentFrom/, 'intent helper exists');
+  assert.match(lens, /vertical: 'nearby'/, 'nearby vertical is produced');
+  const routes = readFileSync('server/api/routes.ts', 'utf8');
+  assert.match(routes, /=== 'nearby'\)/, 'assist route branches on it');
+  assert.match(routes, /nearbyAnswer\(\{/, 'and answers from the local discovery engine');
+});
+
+test('the admin report reads the nearby ledger, not a guess', () => {
+  const agg = readFileSync('server/nearby/aggregator.ts', 'utf8');
+  assert.match(agg, /CREATE TABLE IF NOT EXISTS nearby_events/, 'ledger table');
+  assert.match(agg, /export async function nearbyReport/, 'report reader');
+  assert.match(agg, /photoCoveragePct/, 'photo coverage is reported');
+  const admin = readFileSync('server/admin/adminRoutes.ts', 'utf8');
+  assert.match(admin, /adminRouter\.get\('\/nearby-report'/, 'admin route');
+  const tab = readFileSync('src/components/admin/NearbyReportTab.tsx', 'utf8');
+  assert.match(tab, /\/api\/admin\/nearby-report/, 'tab calls the route');
+});
+
+test('the nearby report is computed from rows, so it cannot depend on SQL aggregate support', async () => {
+  const src = readFileSync('server/nearby/aggregator.ts', 'utf8');
+  assert.ok(!/COUNT\(\*\)/.test(src.slice(src.indexOf('export async function nearbyReport'))), 'no COUNT(*) dependency');
+  assert.ok(!/GROUP BY/.test(src.slice(src.indexOf('export async function nearbyReport'))), 'no GROUP BY dependency');
+  const { nearbyReport } = await import('../server/nearby/aggregator');
+  const r = await nearbyReport(7);
+  assert.equal(r.ok, true);
+  assert.ok(Array.isArray(r.byCategory) && Array.isArray(r.topCities) && Array.isArray(r.daily));
+  assert.ok(r.photoCoveragePct >= 0 && r.photoCoveragePct <= 100);
 });

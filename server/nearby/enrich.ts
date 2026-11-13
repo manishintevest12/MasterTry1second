@@ -15,9 +15,23 @@
 import { log } from '../common/logger';
 import { cffiFetch } from '../common/curlCffiFetch';
 
+export type NearbyKind = 'restaurants' | 'cafes' | 'hotels' | 'stays';
+
+/** OWNER 13 Nov: "image compulsory hai" - a category tile is the honest last resort, never a fake photo. */
+export const CATEGORY_TILE: Record<string, string> = {
+  restaurants: '/nearby/restaurants.jpg',
+  cafes: '/nearby/cafes.jpg',
+  hotels: '/nearby/hotels.jpg',
+  stays: '/nearby/stays.jpg',
+  cabs: '/nearby/cabs.jpg',
+  stores: '/nearby/stores.jpg',
+  movies: '/nearby/movies.jpg',
+  all: '/nearby/all.jpg',
+};
+
 export interface EnrichedPlace {
   name: string;
-  category: 'restaurants' | 'cafes' | 'hotels' | 'stays';
+  category: NearbyKind;
   rating: number | null;
   ratingCount: number | null;
   price: number | null;
@@ -225,4 +239,45 @@ export async function photonCoords(
     if (!Number.isFinite(meters) || meters > maxMeters) return null;
     return { lat, lng, distanceKm: Math.round((meters / 1000) * 10) / 10 };
   } catch { return null; }
+}
+
+
+/**
+ * A real photo for a place whose feed carried none: read the business page's own og:image/twitter:image.
+ * Only an absolute https image URL is accepted, the page must be on the place's own host, and the result is
+ * cached in-process for 30 minutes so a hot city does not re-fetch. No photo is ever invented: when this
+ * returns null the caller falls back to a labelled category tile.
+ */
+const ogCache = new Map<string, { url: string | null; at: number }>();
+
+export async function ogImage(pageUrl: string | null | undefined): Promise<string | null> {
+  const url = String(pageUrl || '').trim();
+  if (!/^https:\/\//i.test(url)) return null;
+  const hit = ogCache.get(url);
+  if (hit && Date.now() - hit.at < 30 * 60_000) return hit.url;
+  let found: string | null = null;
+  try {
+    const res = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 7000, headers: { accept: 'text/html,application/xhtml+xml' } });
+    if (res.status === 200 && res.body) {
+      const head = res.body.slice(0, 200_000);
+      const patterns = [
+        /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+        /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+        /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
+        /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/i,
+      ];
+      for (const re of patterns) {
+        const m = head.match(re);
+        const candidate = m ? m[1].trim() : '';
+        if (!candidate) continue;
+        const abs = candidate.startsWith('//') ? `https:${candidate}` : candidate;
+        if (!/^https:\/\//i.test(abs)) continue;
+        if (/\.(svg|gif)(\?|$)/i.test(abs)) continue;
+        found = abs;
+        break;
+      }
+    }
+  } catch { found = null; }
+  ogCache.set(url, { url: found, at: Date.now() });
+  return found;
 }

@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
+import '../../core/app_state.dart';
 import '../../core/theme.dart';
 
 /// Nearby & local discovery (owner 13 Nov).
@@ -18,7 +19,7 @@ class NearbyScreen extends StatefulWidget {
 }
 
 class _NearbyScreenState extends State<NearbyScreen> {
-  static const _categories = <String>['all', 'restaurants', 'cafes', 'hotels', 'stays', 'cabs', 'stores'];
+  static const _categories = <String>['all', 'restaurants', 'cafes', 'hotels', 'stays', 'cabs', 'stores', 'movies'];
   final _cityController = TextEditingController();
   String _category = 'all';
   List<NearbyPlace> _rows = const [];
@@ -230,6 +231,25 @@ class _NearbyScreenState extends State<NearbyScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // OWNER 13 Nov: "image compulsory hai" - the server always ships one (partner photo, the business's
+          // own og:image, or a labelled category tile), so the card always draws an image.
+          if ((p.imageUrl ?? '').isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                p.imageUrl!.startsWith('http') ? p.imageUrl! : '${AppState.instance.api.baseUrl}${p.imageUrl}',
+                height: 140,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  height: 140,
+                  alignment: Alignment.center,
+                  color: const Color(0xFFF1F5F9),
+                  child: Icon(Icons.image_outlined, color: const Color(0xFF94A3B8)),
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

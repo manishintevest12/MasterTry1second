@@ -18,9 +18,9 @@
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
 import { createMaskingPointer } from '../affiliate/deeplink';
-import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords } from './enrich';
+import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords, ogImage, CATEGORY_TILE } from './enrich';
 
-export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'all';
+export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies' | 'all';
 
 export interface NearbyRow {
   id: string;
@@ -62,6 +62,7 @@ const CATEGORY_ALIASES: Record<string, NearbyCategory> = {
   cafe: 'cafes', cafes: 'cafes', coffee: 'cafes',
   hotel: 'hotels', hotels: 'hotels', stay: 'stays', stays: 'stays', homestay: 'stays',
   cab: 'cabs', cabs: 'cabs', taxi: 'cabs', store: 'stores', stores: 'stores', shop: 'stores',
+  movie: 'movies', movies: 'movies', cinema: 'movies', cinemas: 'movies', theatre: 'movies', theater: 'movies', theatres: 'movies', theaters: 'movies',
 };
 
 export function normalizeNearbyCategory(raw: unknown): NearbyCategory {
@@ -159,7 +160,8 @@ const GOOGLE_TYPE: Record<string, string[]> = {
   stays: ['lodging'],
   cabs: ['taxi_stand'],
   stores: ['store'],
-  all: ['restaurant', 'cafe', 'lodging', 'store'],
+  movies: ['movie_theater'],
+  all: ['restaurant', 'cafe', 'lodging', 'store', 'movie_theater'],
 };
 
 async function googleNearby(
@@ -240,6 +242,7 @@ function mapGoogleType(primary: unknown): NearbyCategory {
   if (t.includes('cafe') || t.includes('coffee') || t.includes('bakery')) return 'cafes';
   if (t.includes('lodging') || t.includes('hotel')) return 'hotels';
   if (t.includes('taxi')) return 'cabs';
+  if (t.includes('movie') || t.includes('cinema')) return 'movies';
   return 'stores';
 }
 
@@ -255,7 +258,7 @@ function mapGoogleType(primary: unknown): NearbyCategory {
 async function osmNearby(lat: number, lng: number, category: NearbyCategory):
 Promise<{ rows: NearbyRow[]; note?: string }> {
   const term: Record<NearbyCategory, string> = {
-    restaurants: 'restaurant', cafes: 'cafe', hotels: 'hotel', stays: 'guest house', cabs: 'taxi', stores: 'shop', all: 'restaurant',
+    restaurants: 'restaurant', cafes: 'cafe', hotels: 'hotel', stays: 'guest house', cabs: 'taxi', stores: 'shop', movies: 'cinema', all: 'restaurant',
   };
   const want = term[category] || 'restaurant';
   const attempts: string[] = [];
@@ -318,7 +321,12 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
       const plat = Number(r.lat); const plng = Number(r.lon);
       const name = String(r.name || (r.display_name || '').split(',')[0] || '').trim();
       if (!name || !Number.isFinite(plat) || !Number.isFinite(plng)) continue;
-      const cat = osmCategory({ amenity: r.class === 'amenity' ? r.type : '', tourism: r.class === 'tourism' ? r.type : '', shop: r.class === 'shop' ? 'yes' : '' });
+      const rt = String(r.type || '');
+      const cat = osmCategory({
+        amenity: r.class === 'amenity' || ['cinema','restaurant','cafe','fast_food','taxi'].includes(rt) ? rt : '',
+        tourism: r.class === 'tourism' || ['hotel','guest_house','apartment','hostel','motel'].includes(rt) ? rt : '',
+        shop: r.class === 'shop' || rt === 'shop' ? 'yes' : '',
+      });
       if (category !== 'all' && cat !== category) continue;
       rows.push(baseOsmRow({ name, cat, plat, plng, lat, lng, addr: r.display_name ? String(r.display_name) : null, sub: r.type ? String(r.type).replace(/_/g, ' ') : null, osmId: `nm-${r.osm_id || r.place_id}` }));
     }
@@ -337,6 +345,7 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
     stays: ['node["tourism"="guest_house"]'],
     cabs: ['node["amenity"="taxi"]'],
     stores: ['node["shop"]'],
+    movies: ['node["amenity"="cinema"]'],
     all: ['node["amenity"="restaurant"]'],
   };
   const body = filters[category].map((f) => `${f}(around:${RADIUS_M},${lat},${lng});`).join('\n');
@@ -404,6 +413,7 @@ function osmCategory(tags: any): NearbyCategory {
   if (t === 'hotel') return 'hotels';
   if (t === 'guest_house' || t === 'apartment' || t === 'hostel' || t === 'motel') return 'stays';
   if (a === 'taxi') return 'cabs';
+  if (a === 'cinema') return 'movies';
   return 'stores';
 }
 
@@ -506,7 +516,7 @@ export async function nearbyAnswer(input: {
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
   // v2: the enrichment layer (Swiggy/OYO ratings, prices, photos) changed what a good answer looks like, so
   // old cached payloads must not keep serving unrated rows for 30 minutes.
-  const cacheKey = `v5|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
+  const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
   const cached = await readCache(cacheKey);
   if (cached) return cached;
 
@@ -572,6 +582,52 @@ export async function nearbyAnswer(input: {
   const limit = Math.min(60, Math.max(4, Number(input.limit) || 30));
   const results = merged.slice(0, limit);
 
+  // ---- OWNER 13 Nov: "redirection affiliate ke through hoga agar available hai, warna direct" + "image
+  // compulsory hai". Both are applied here, on the final rows, so every surface (API, SEO page, web tab, app)
+  // gets the same guarantee:
+  //  - exitUrl is always a signed /api/out pointer when the row has anywhere to go: the partner's own page when
+  //    the feed gave one, otherwise that provider's search page for the place. /api/out then runs the affiliate
+  //    chain and falls back to a direct hop when no network covers the merchant - nothing is ever un-attributed
+  //    when a network does cover it.
+  //  - imageUrl is never empty: provider photo -> the business page's own og:image -> a LABELLED category tile.
+  const needsExit = results.filter((r) => !r.exitUrl);
+  for (const row of needsExit) {
+    // Every card redirects. Best destination first (the partner's own page or that provider's search page);
+    // the map place page last, so a store or a cab stand still has a real destination instead of a dead card.
+    const dest = row.website
+      || (row.category === 'restaurants' || row.category === 'cafes'
+        ? `https://www.swiggy.com/search?query=${encodeURIComponent(row.name)}`
+        : row.category === 'movies'
+          ? `https://in.bookmyshow.com/explore/cinemas`
+          : row.category === 'cabs'
+            ? 'https://www.uber.com/in/en/'
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ''}`.trim())}`);
+    if (dest) row.exitUrl = pointer(dest, row.category);
+  }
+
+  const noPhoto = results.filter((r) => !r.imageUrl);
+  const withOg = await Promise.all(noPhoto.slice(0, 6).map(async (row) => ({ row, url: row.website ? await ogImage(row.website) : null })));
+  for (const { row, url } of withOg) {
+    if (url) {
+      row.imageUrl = url;
+      row.honesty = `${row.honesty} Photo is from the business's own page.`.trim();
+    }
+  }
+  for (const row of results) {
+    if (!row.imageUrl) {
+      row.imageUrl = CATEGORY_TILE[row.category] || CATEGORY_TILE.all;
+      row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+    }
+  }
+
+  // The admin Nearby report reads this table (owner: "iska report admin mai nearby section mai hoga").
+  void logNearbyEvent('search', {
+    category, city: location.city, results: results.length,
+    withPhoto: results.filter((r) => r.imageUrl).length,
+    withExit: results.filter((r) => r.exitUrl).length,
+    sources: { google: google.rows.length, osm: osm.rows.length, enriched: enriched.length },
+  });
+
   const answer: NearbyAnswer = {
     ok: true,
     category,
@@ -582,4 +638,80 @@ export async function nearbyAnswer(input: {
   };
   await writeCache(cacheKey, answer);
   return answer;
+}
+
+
+/** Nearby usage/reporting ledger. Fire-and-forget: a reporting failure must never break a search. */
+async function logNearbyEvent(kind: 'search' | 'exit', payload: Record<string, unknown>): Promise<void> {
+  try {
+    const store = getStore();
+    await store.execute(`CREATE TABLE IF NOT EXISTS nearby_events (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      kind VARCHAR(16) NOT NULL,
+      category VARCHAR(24) NULL,
+      city VARCHAR(120) NULL,
+      results INT NOT NULL DEFAULT 0,
+      with_photo INT NOT NULL DEFAULT 0,
+      with_exit INT NOT NULL DEFAULT 0,
+      payload MEDIUMTEXT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`).catch(() => {});
+    await store.execute(
+      'INSERT INTO nearby_events (kind, category, city, results, with_photo, with_exit, payload) VALUES (?,?,?,?,?,?,?)',
+      [kind, String(payload.category || '').slice(0, 24) || null, String(payload.city || '').slice(0, 120) || null,
+        Number(payload.results || 0), Number(payload.withPhoto || 0), Number(payload.withExit || 0),
+        JSON.stringify(payload.sources || payload || {})],
+    );
+  } catch { /* reporting is best effort */ }
+}
+
+export async function nearbyReport(days = 7): Promise<{
+  ok: boolean; days: number; searches: number; exits: number; rows: number; withPhoto: number; withExit: number;
+  photoCoveragePct: number; byCategory: { category: string; searches: number; rows: number }[];
+  topCities: { city: string; searches: number }[]; daily: { day: string; searches: number }[];
+}> {
+  const span = Math.min(90, Math.max(1, Number(days) || 7));
+  const base = { ok: true, days: span, searches: 0, exits: 0, rows: 0, withPhoto: 0, withExit: 0, photoCoveragePct: 0, byCategory: [], topCities: [], daily: [] };
+  const cutoff = Date.now() - span * 86400_000;
+  try {
+    // One plain read, aggregated in code: aggregate SQL and a string date comparison are exactly the shapes a
+    // light SQL emulator (the file store used in tests and dev) answers with [] instead of rows, so the report
+    // must not depend on them to be trustworthy.
+    const raw = await getStore().query<any>(
+      'SELECT kind, category, city, results, with_photo, with_exit, created_at FROM nearby_events ORDER BY id DESC LIMIT 20000',
+    );
+    const rows = (raw || []).filter((r) => {
+      const t = new Date(String(r.created_at).replace(' ', 'T')).getTime();
+      return Number.isFinite(t) ? t >= cutoff : true;
+    });
+    const unq = (v: unknown) => String(v ?? '').replace(/^'+|'+$/g, '');
+    let searches = 0, exits = 0, total = 0, withPhoto = 0, withExit = 0;
+    const cats = new Map<string, { searches: number; rows: number }>();
+    const cities = new Map<string, number>();
+    const byDay = new Map<string, number>();
+    for (const r of rows) {
+      const kind = unq(r.kind);
+      if (kind === 'exit') { exits += 1; continue; }
+      if (kind !== 'search') continue;
+      searches += 1;
+      total += Number(r.results || 0);
+      withPhoto += Number(r.with_photo || 0);
+      withExit += Number(r.with_exit || 0);
+      const cat = unq(r.category) || '(none)';
+      const c = cats.get(cat) || { searches: 0, rows: 0 };
+      c.searches += 1; c.rows += Number(r.results || 0); cats.set(cat, c);
+      const city = unq(r.city) || '(no city)';
+      cities.set(city, (cities.get(city) || 0) + 1);
+      const rawDay = r.created_at;
+      const day = /^\d{10,13}$/.test(String(rawDay)) ? new Date(Number(rawDay) * (String(rawDay).length === 13 ? 1 : 1000)).toISOString().slice(0, 10) : String(rawDay || '').slice(0, 10);
+      if (day) byDay.set(day, (byDay.get(day) || 0) + 1);
+    }
+    return {
+      ok: true, days: span, searches, exits, rows: total, withPhoto, withExit,
+      photoCoveragePct: total ? Math.round((withPhoto / total) * 100) : 0,
+      byCategory: [...cats.entries()].map(([category, v]) => ({ category, ...v })).sort((a, b) => b.searches - a.searches).slice(0, 12),
+      topCities: [...cities.entries()].map(([city, n]) => ({ city, searches: n })).sort((a, b) => b.searches - a.searches).slice(0, 12),
+      daily: [...byDay.entries()].map(([day, n]) => ({ day, searches: n })).sort((a, b) => a.day.localeCompare(b.day)),
+    };
+  } catch { return { ...base, days: span }; }
 }

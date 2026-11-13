@@ -44732,6 +44732,16 @@ var init_assistantIntent = __esm({
 });
 
 // server/lens/assistantAnswer.ts
+var assistantAnswer_exports = {};
+__export(assistantAnswer_exports, {
+  buildAssistantSearch: () => buildAssistantSearch,
+  cleanAssistantQuery: () => cleanAssistantQuery,
+  diversifyByProvider: () => diversifyByProvider,
+  nearbyIntentFrom: () => nearbyIntentFrom,
+  shapeAssistantAnswer: () => shapeAssistantAnswer,
+  toAssistantRows: () => toAssistantRows,
+  verticalLabel: () => verticalLabel
+});
 function cleanAssistantQuery(raw) {
   return String(raw || "").replace(NOISE3, " ").replace(/[?!.,;:]+/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -44739,6 +44749,31 @@ function searchable(text) {
   const t = cleanAssistantQuery(text);
   if (t.length < 3 || !/[a-z0-9]/i.test(t)) return false;
   return !/^(ok|okay|kk|haan|han|yes|yeah|no|nahi|hi|hello|hey|thanks|thank you|thx|bye|good|nice|test)\b/i.test(t);
+}
+function nearbyIntentFrom(text) {
+  const t = String(text || "").toLowerCase();
+  const nearbyWord = /(near me|nearby|near my|aas ?paas|aas-paas|paas me|paas mein|around me|around here|mere paas|मेरे पास|पास में|आसपास|ಆಸುಪಡಿ|அருகில்)/.test(t);
+  const catMap = [
+    [/cinema|movie theat|theatre|theater|multiplex|pvr|inox|मल्टीप्लेक्स|सिनेमा/, "movies"],
+    [/restaurant|dining|khana|khaana|रेस्टोरेंट|खाना/, "restaurants"],
+    [/cafe|coffee|कैफे|कॉफ़ी/, "cafes"],
+    [/hotel|होटल/, "hotels"],
+    [/stay|homestay|guest house|hostel|रुकने/, "stays"],
+    [/cab|taxi|ola|uber|कैब|टैक्सी/, "cabs"],
+    [/store|shop|dukan|dukaan|दुकान/, "stores"]
+  ];
+  let category = "";
+  for (const [re, cat] of catMap) if (re.test(t)) {
+    category = cat;
+    break;
+  }
+  const nearPlace = /\bnear\s+([a-z][a-z .]{2,28})$/.test(t);
+  if (!nearbyWord && !nearPlace) return null;
+  if (!category && !/^(nearby|near me|paas me|paas mein|around me|aas paas)$/i.test(t.trim())) return null;
+  const placeMatch = t.match(/\b(?:in|at|near|mein)\s+([a-z][a-z .]{2,28})$/);
+  const cleaned = placeMatch ? placeMatch[1].replace(/\b(near me|nearby|near my|around me|around here|paas me|paas mein|paas|aas paas|aas-paas)\b/g, " ").replace(/^(?:(?:me|my|here|in|at|ke|ki)\s+)+/i, "").replace(/\s{2,}/g, " ").trim() : "";
+  const place = cleaned && !/^(me|here|near|in|at|paas)$/i.test(cleaned) ? cleaned : null;
+  return { category: category || "all", place: place || null };
 }
 function buildAssistantSearch(raw, ctx = {}) {
   const normalized = normalizeAssistantQuestion(raw);
@@ -44753,6 +44788,20 @@ function buildAssistantSearch(raw, ctx = {}) {
     ...Number.isFinite(ctx.lng) ? { lng: ctx.lng } : {},
     ...ctx.travelDates?.depart || intent.date ? { travelDates: { depart: intent.date || ctx.travelDates?.depart, return: ctx.travelDates?.return } } : {}
   });
+  const nearby = nearbyIntentFrom(text);
+  if (nearby) {
+    const place = nearby.place || ctx.city || ctx.locality || "";
+    return {
+      meta: {
+        understood: true,
+        assumedVertical: false,
+        vertical: "nearby",
+        query: place ? `${nearby.category === "all" ? "places" : nearby.category} in ${place}` : nearby.category === "all" ? "places near me" : nearby.category,
+        reply: nearby.category === "all" ? `Here is what is around ${place || "you"} right now, closest first. Every card says where its rating and photo came from.` : `Live ${nearby.category} around ${place || "you"}, closest first, with distance and a tracked exit.`
+      },
+      input: withContext({ query: place || "near me", vertical: "nearby" })
+    };
+  }
   if (intent.understood && intent.vertical) {
     return {
       meta: { understood: true, assumedVertical: Boolean(intent.assumed), vertical: intent.vertical, query: intent.query, ...intent.date ? { date: intent.date } : {}, ...intent.budget ? { budget: intent.budget } : {}, reply: intent.assumed ? `You named a product rather than a category, so I am comparing "${intent.query}" across every shopping site. Results below.` : intent.reply },
@@ -47877,10 +47926,55 @@ async function photonCoords(name, near, maxMeters = 15e3) {
     return null;
   }
 }
+async function ogImage(pageUrl) {
+  const url = String(pageUrl || "").trim();
+  if (!/^https:\/\//i.test(url)) return null;
+  const hit = ogCache.get(url);
+  if (hit && Date.now() - hit.at < 30 * 6e4) return hit.url;
+  let found = null;
+  try {
+    const res = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 7e3, headers: { accept: "text/html,application/xhtml+xml" } });
+    if (res.status === 200 && res.body) {
+      const head3 = res.body.slice(0, 2e5);
+      const patterns = [
+        /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i,
+        /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+        /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
+        /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/i
+      ];
+      for (const re of patterns) {
+        const m = head3.match(re);
+        const candidate = m ? m[1].trim() : "";
+        if (!candidate) continue;
+        const abs = candidate.startsWith("//") ? `https:${candidate}` : candidate;
+        if (!/^https:\/\//i.test(abs)) continue;
+        if (/\.(svg|gif)(\?|$)/i.test(abs)) continue;
+        found = abs;
+        break;
+      }
+    }
+  } catch {
+    found = null;
+  }
+  ogCache.set(url, { url: found, at: Date.now() });
+  return found;
+}
+var CATEGORY_TILE, ogCache;
 var init_enrich = __esm({
   "server/nearby/enrich.ts"() {
     init_logger();
     init_curlCffiFetch();
+    CATEGORY_TILE = {
+      restaurants: "/nearby/restaurants.jpg",
+      cafes: "/nearby/cafes.jpg",
+      hotels: "/nearby/hotels.jpg",
+      stays: "/nearby/stays.jpg",
+      cabs: "/nearby/cabs.jpg",
+      stores: "/nearby/stores.jpg",
+      movies: "/nearby/movies.jpg",
+      all: "/nearby/all.jpg"
+    };
+    ogCache = /* @__PURE__ */ new Map();
   }
 });
 
@@ -47889,6 +47983,7 @@ var aggregator_exports = {};
 __export(aggregator_exports, {
   distanceKm: () => distanceKm,
   nearbyAnswer: () => nearbyAnswer,
+  nearbyReport: () => nearbyReport,
   normalizeNearbyCategory: () => normalizeNearbyCategory,
   resolveNearbyLocation: () => resolveNearbyLocation
 });
@@ -48041,6 +48136,7 @@ function mapGoogleType(primary) {
   if (t.includes("cafe") || t.includes("coffee") || t.includes("bakery")) return "cafes";
   if (t.includes("lodging") || t.includes("hotel")) return "hotels";
   if (t.includes("taxi")) return "cabs";
+  if (t.includes("movie") || t.includes("cinema")) return "movies";
   return "stores";
 }
 async function osmNearby(lat, lng, category) {
@@ -48051,6 +48147,7 @@ async function osmNearby(lat, lng, category) {
     stays: "guest house",
     cabs: "taxi",
     stores: "shop",
+    movies: "cinema",
     all: "restaurant"
   };
   const want = term[category] || "restaurant";
@@ -48108,7 +48205,12 @@ async function nominatimNearby(lat, lng, term, category) {
       const plng = Number(r.lon);
       const name = String(r.name || (r.display_name || "").split(",")[0] || "").trim();
       if (!name || !Number.isFinite(plat) || !Number.isFinite(plng)) continue;
-      const cat = osmCategory({ amenity: r.class === "amenity" ? r.type : "", tourism: r.class === "tourism" ? r.type : "", shop: r.class === "shop" ? "yes" : "" });
+      const rt = String(r.type || "");
+      const cat = osmCategory({
+        amenity: r.class === "amenity" || ["cinema", "restaurant", "cafe", "fast_food", "taxi"].includes(rt) ? rt : "",
+        tourism: r.class === "tourism" || ["hotel", "guest_house", "apartment", "hostel", "motel"].includes(rt) ? rt : "",
+        shop: r.class === "shop" || rt === "shop" ? "yes" : ""
+      });
       if (category !== "all" && cat !== category) continue;
       rows.push(baseOsmRow({ name, cat, plat, plng, lat, lng, addr: r.display_name ? String(r.display_name) : null, sub: r.type ? String(r.type).replace(/_/g, " ") : null, osmId: `nm-${r.osm_id || r.place_id}` }));
     }
@@ -48125,6 +48227,7 @@ async function overpassNearby(lat, lng, category) {
     stays: ['node["tourism"="guest_house"]'],
     cabs: ['node["amenity"="taxi"]'],
     stores: ['node["shop"]'],
+    movies: ['node["amenity"="cinema"]'],
     all: ['node["amenity"="restaurant"]']
   };
   const body = filters[category].map((f) => `${f}(around:${RADIUS_M},${lat},${lng});`).join("\n");
@@ -48198,6 +48301,7 @@ function osmCategory(tags) {
   if (t === "hotel") return "hotels";
   if (t === "guest_house" || t === "apartment" || t === "hostel" || t === "motel") return "stays";
   if (a === "taxi") return "cabs";
+  if (a === "cinema") return "movies";
   return "stores";
 }
 async function catalogueNearby(city, category) {
@@ -48290,7 +48394,7 @@ async function writeCache(key, answer) {
 async function nearbyAnswer(input) {
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
-  const cacheKey = `v5|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
+  const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
   const cached3 = await readCache(cacheKey);
   if (cached3) return cached3;
   const wantsFood = category === "all" || category === "restaurants" || category === "cafes";
@@ -48342,6 +48446,33 @@ async function nearbyAnswer(input) {
   const merged = sortRows(dedupe([...enriched, ...catalogue, ...google.rows, ...osm.rows]), category);
   const limit = Math.min(60, Math.max(4, Number(input.limit) || 30));
   const results = merged.slice(0, limit);
+  const needsExit = results.filter((r) => !r.exitUrl);
+  for (const row of needsExit) {
+    const dest = row.website || (row.category === "restaurants" || row.category === "cafes" ? `https://www.swiggy.com/search?query=${encodeURIComponent(row.name)}` : row.category === "movies" ? `https://in.bookmyshow.com/explore/cinemas` : row.category === "cabs" ? "https://www.uber.com/in/en/" : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ""}`.trim())}`);
+    if (dest) row.exitUrl = pointer(dest, row.category);
+  }
+  const noPhoto = results.filter((r) => !r.imageUrl);
+  const withOg = await Promise.all(noPhoto.slice(0, 6).map(async (row) => ({ row, url: row.website ? await ogImage(row.website) : null })));
+  for (const { row, url } of withOg) {
+    if (url) {
+      row.imageUrl = url;
+      row.honesty = `${row.honesty} Photo is from the business's own page.`.trim();
+    }
+  }
+  for (const row of results) {
+    if (!row.imageUrl) {
+      row.imageUrl = CATEGORY_TILE[row.category] || CATEGORY_TILE.all;
+      row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+    }
+  }
+  void logNearbyEvent("search", {
+    category,
+    city: location.city,
+    results: results.length,
+    withPhoto: results.filter((r) => r.imageUrl).length,
+    withExit: results.filter((r) => r.exitUrl).length,
+    sources: { google: google.rows.length, osm: osm.rows.length, enriched: enriched.length }
+  });
   const answer = {
     ok: true,
     category,
@@ -48352,6 +48483,92 @@ async function nearbyAnswer(input) {
   };
   await writeCache(cacheKey, answer);
   return answer;
+}
+async function logNearbyEvent(kind, payload) {
+  try {
+    const store7 = getStore();
+    await store7.execute(`CREATE TABLE IF NOT EXISTS nearby_events (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      kind VARCHAR(16) NOT NULL,
+      category VARCHAR(24) NULL,
+      city VARCHAR(120) NULL,
+      results INT NOT NULL DEFAULT 0,
+      with_photo INT NOT NULL DEFAULT 0,
+      with_exit INT NOT NULL DEFAULT 0,
+      payload MEDIUMTEXT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`).catch(() => {
+    });
+    await store7.execute(
+      "INSERT INTO nearby_events (kind, category, city, results, with_photo, with_exit, payload) VALUES (?,?,?,?,?,?,?)",
+      [
+        kind,
+        String(payload.category || "").slice(0, 24) || null,
+        String(payload.city || "").slice(0, 120) || null,
+        Number(payload.results || 0),
+        Number(payload.withPhoto || 0),
+        Number(payload.withExit || 0),
+        JSON.stringify(payload.sources || payload || {})
+      ]
+    );
+  } catch {
+  }
+}
+async function nearbyReport(days = 7) {
+  const span = Math.min(90, Math.max(1, Number(days) || 7));
+  const base = { ok: true, days: span, searches: 0, exits: 0, rows: 0, withPhoto: 0, withExit: 0, photoCoveragePct: 0, byCategory: [], topCities: [], daily: [] };
+  const cutoff = Date.now() - span * 864e5;
+  try {
+    const raw = await getStore().query(
+      "SELECT kind, category, city, results, with_photo, with_exit, created_at FROM nearby_events ORDER BY id DESC LIMIT 20000"
+    );
+    const rows = (raw || []).filter((r) => {
+      const t = new Date(String(r.created_at).replace(" ", "T")).getTime();
+      return Number.isFinite(t) ? t >= cutoff : true;
+    });
+    const unq = (v) => String(v ?? "").replace(/^'+|'+$/g, "");
+    let searches = 0, exits = 0, total = 0, withPhoto = 0, withExit = 0;
+    const cats = /* @__PURE__ */ new Map();
+    const cities = /* @__PURE__ */ new Map();
+    const byDay = /* @__PURE__ */ new Map();
+    for (const r of rows) {
+      const kind = unq(r.kind);
+      if (kind === "exit") {
+        exits += 1;
+        continue;
+      }
+      if (kind !== "search") continue;
+      searches += 1;
+      total += Number(r.results || 0);
+      withPhoto += Number(r.with_photo || 0);
+      withExit += Number(r.with_exit || 0);
+      const cat = unq(r.category) || "(none)";
+      const c = cats.get(cat) || { searches: 0, rows: 0 };
+      c.searches += 1;
+      c.rows += Number(r.results || 0);
+      cats.set(cat, c);
+      const city = unq(r.city) || "(no city)";
+      cities.set(city, (cities.get(city) || 0) + 1);
+      const rawDay = r.created_at;
+      const day = /^\d{10,13}$/.test(String(rawDay)) ? new Date(Number(rawDay) * (String(rawDay).length === 13 ? 1 : 1e3)).toISOString().slice(0, 10) : String(rawDay || "").slice(0, 10);
+      if (day) byDay.set(day, (byDay.get(day) || 0) + 1);
+    }
+    return {
+      ok: true,
+      days: span,
+      searches,
+      exits,
+      rows: total,
+      withPhoto,
+      withExit,
+      photoCoveragePct: total ? Math.round(withPhoto / total * 100) : 0,
+      byCategory: [...cats.entries()].map(([category, v]) => ({ category, ...v })).sort((a, b) => b.searches - a.searches).slice(0, 12),
+      topCities: [...cities.entries()].map(([city, n]) => ({ city, searches: n })).sort((a, b) => b.searches - a.searches).slice(0, 12),
+      daily: [...byDay.entries()].map(([day, n]) => ({ day, searches: n })).sort((a, b) => a.day.localeCompare(b.day))
+    };
+  } catch {
+    return { ...base, days: span };
+  }
 }
 var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS3, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE;
 var init_aggregator = __esm({
@@ -48381,7 +48598,15 @@ var init_aggregator = __esm({
       taxi: "cabs",
       store: "stores",
       stores: "stores",
-      shop: "stores"
+      shop: "stores",
+      movie: "movies",
+      movies: "movies",
+      cinema: "movies",
+      cinemas: "movies",
+      theatre: "movies",
+      theater: "movies",
+      theatres: "movies",
+      theaters: "movies"
     };
     geocodeCache = /* @__PURE__ */ new Map();
     GOOGLE_TYPE = {
@@ -48391,7 +48616,8 @@ var init_aggregator = __esm({
       stays: ["lodging"],
       cabs: ["taxi_stand"],
       stores: ["store"],
-      all: ["restaurant", "cafe", "lodging", "store"]
+      movies: ["movie_theater"],
+      all: ["restaurant", "cafe", "lodging", "store", "movie_theater"]
     };
   }
 });
@@ -52049,6 +52275,44 @@ var init_routes = __esm({
         }
       }
       if (!input) return res.json({ success: true, ...meta, results: [], count: 0, latencyMs: Date.now() - started3 });
+      if (String(input.vertical) === "nearby") {
+        const { nearbyAnswer: nearbyAnswer2 } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
+        const { nearbyIntentFrom: nearbyIntentFrom2 } = await Promise.resolve().then(() => (init_assistantAnswer(), assistantAnswer_exports));
+        const hint = nearbyIntentFrom2(text);
+        const answer = await nearbyAnswer2({
+          lat: Number.isFinite(Number(req.body?.lat)) ? Number(req.body.lat) : null,
+          lng: Number.isFinite(Number(req.body?.lng)) ? Number(req.body.lng) : null,
+          city: hint?.place || (req.body?.city ? String(req.body.city) : null),
+          category: hint?.category || "all",
+          limit: 8
+        }).catch(() => null);
+        const nearbyRows = (answer?.results || []).map((r) => ({
+          vertical: "nearby",
+          title: r.name,
+          provider: `Nearby \xB7 ${r.category}`,
+          price: r.price ?? 0,
+          priceAvailable: r.price !== null && r.price > 0,
+          imageUrl: r.imageUrl,
+          url: r.exitUrl || r.directionsUrl,
+          specs: {
+            ...r.distanceKm !== null ? { distance: `${r.distanceKm} km away` } : {},
+            ...r.rating !== null ? { rating: `${r.rating} (${r.ratingCount ?? 0})` } : {},
+            ...r.priceLabel ? { price: r.priceLabel } : {},
+            ...r.address ? { address: r.address } : {},
+            source: r.source
+          }
+        }));
+        return res.json({
+          success: true,
+          ...meta,
+          vertical: "nearby",
+          reply: nearbyRows.length ? `${meta.reply} ${nearbyRows.length} places, closest first.` : "Is area ke liye abhi koi live place nahi mila, isliye kuch invent nahi kiya.",
+          results: nearbyRows,
+          count: nearbyRows.length,
+          sourcesSucceeded: answer ? Object.entries(answer.counts).filter(([, n]) => Number(n) > 0).map(([k]) => k) : [],
+          latencyMs: Date.now() - started3
+        });
+      }
       const searchInput = {
         query: input.query,
         // Engine ids: the UI calls these 'movie' and 'account'.
@@ -55426,6 +55690,12 @@ var init_adminRoutes = __esm({
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Sync failed" });
       }
+    });
+    adminRouter.get("/nearby-report", async (req, res) => {
+      const { nearbyReport: nearbyReport2 } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
+      const days = Number(req.query.days) || 7;
+      const report = await nearbyReport2(days);
+      res.json(report);
     });
     adminRouter.get("/finance-offers", async (req, res) => {
       try {
