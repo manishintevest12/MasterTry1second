@@ -19,14 +19,14 @@ export type NearbyKind = 'restaurants' | 'cafes' | 'hotels' | 'stays';
 
 /** OWNER 13 Nov: "image compulsory hai" - a category tile is the honest last resort, never a fake photo. */
 export const CATEGORY_TILE: Record<string, string> = {
-  restaurants: '/nearby/restaurants.jpg',
-  cafes: '/nearby/cafes.jpg',
-  hotels: '/nearby/hotels.jpg',
-  stays: '/nearby/stays.jpg',
-  cabs: '/nearby/cabs.jpg',
-  stores: '/nearby/stores.jpg',
-  movies: '/nearby/movies.jpg',
-  all: '/nearby/all.jpg',
+  restaurants: '/nearby-assets/restaurants.jpg',
+  cafes: '/nearby-assets/cafes.jpg',
+  hotels: '/nearby-assets/hotels.jpg',
+  stays: '/nearby-assets/stays.jpg',
+  cabs: '/nearby-assets/cabs.jpg',
+  stores: '/nearby-assets/stores.jpg',
+  movies: '/nearby-assets/movies.jpg',
+  all: '/nearby-assets/all.jpg',
 };
 
 export interface EnrichedPlace {

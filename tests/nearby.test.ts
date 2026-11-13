@@ -138,6 +138,7 @@ test('every nearby card ships an image and a tracked exit (owner 13 Nov)', async
   }
   const { existsSync } = await import('node:fs');
   for (const p of Object.values(CATEGORY_TILE)) {
+    assert.ok(p.startsWith('/nearby-assets/'), `${p} must live outside the /nearby SEO route`);
     assert.ok(existsSync(`public${p}`), `${p} must exist on disk`);
   }
 });

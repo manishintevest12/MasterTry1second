@@ -153,7 +153,7 @@ export default function NearbyView() {
                   alt={r.name}
                   loading="lazy"
                   className="w-full h-32 object-cover rounded-xl bg-slate-100"
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/nearby/all.jpg'; }}
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/nearby-assets/all.jpg'; }}
                 />
               ) : null}
               <div className="flex items-start justify-between gap-2">

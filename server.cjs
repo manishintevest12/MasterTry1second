@@ -47965,14 +47965,14 @@ var init_enrich = __esm({
     init_logger();
     init_curlCffiFetch();
     CATEGORY_TILE = {
-      restaurants: "/nearby/restaurants.jpg",
-      cafes: "/nearby/cafes.jpg",
-      hotels: "/nearby/hotels.jpg",
-      stays: "/nearby/stays.jpg",
-      cabs: "/nearby/cabs.jpg",
-      stores: "/nearby/stores.jpg",
-      movies: "/nearby/movies.jpg",
-      all: "/nearby/all.jpg"
+      restaurants: "/nearby-assets/restaurants.jpg",
+      cafes: "/nearby-assets/cafes.jpg",
+      hotels: "/nearby-assets/hotels.jpg",
+      stays: "/nearby-assets/stays.jpg",
+      cabs: "/nearby-assets/cabs.jpg",
+      stores: "/nearby-assets/stores.jpg",
+      movies: "/nearby-assets/movies.jpg",
+      all: "/nearby-assets/all.jpg"
     };
     ogCache = /* @__PURE__ */ new Map();
   }
@@ -62507,7 +62507,8 @@ async function createApp() {
   });
   {
     const { resolveAnswerPage: resolveAnswerPage2, renderAnswerHtml: renderAnswerHtml2, renderAnswerMarkdown: renderAnswerMarkdown2 } = await Promise.resolve().then(() => (init_answerPages(), answerPages_exports));
-    app.get(["/nearby", "/nearby/:category", "/nearby/:category/:city", "/nearby/:category/:city/:area"], async (req, res) => {
+    app.get(["/nearby", "/nearby/:category", "/nearby/:category/:city", "/nearby/:category/:city/:area"], async (req, res, next) => {
+      if (/\.[a-z0-9]{2,5}$/i.test(req.path)) return next();
       const { resolveNearbyPage: resolveNearbyPage2, renderNearbyHtml: renderNearbyHtml2 } = await Promise.resolve().then(() => (init_seo(), seo_exports));
       const page = resolveNearbyPage2(req.path);
       if (!page) {

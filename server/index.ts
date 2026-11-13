@@ -315,7 +315,9 @@ export async function createApp(): Promise<express.Express> {
   {
     const { resolveAnswerPage, renderAnswerHtml, renderAnswerMarkdown } = await import('./seo/answerPages');
     // NEARBY local-SEO pages (owner 13 Nov): /nearby, /nearby/<category>, /nearby/<category>/<city>, .../<area>
-    app.get(['/nearby', '/nearby/:category', '/nearby/:category/:city', '/nearby/:category/:city/:area'], async (req: Request, res: Response) => {
+    app.get(['/nearby', '/nearby/:category', '/nearby/:category/:city', '/nearby/:category/:city/:area'], async (req: Request, res: Response, next: any) => {
+      // A file path is not a page: /nearby/movies.jpg must fall through to express.static, never 404 here.
+      if (/\.[a-z0-9]{2,5}$/i.test(req.path)) return next();
       const { resolveNearbyPage, renderNearbyHtml } = await import('./nearby/seo');
       const page = resolveNearbyPage(req.path);
       if (!page) { res.status(404).type('text/plain').send('Nearby page not found'); return; }
