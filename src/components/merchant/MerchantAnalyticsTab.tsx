@@ -927,7 +927,11 @@ export const MerchantAnalyticsTab: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/vendor/traffic?vertical=${encodeURIComponent(vendorCategory)}&days=30`);
+        // OWNER 13 Nov sweep: this ran without the merchant token, so requireAuth answered 401 and the KPI
+        // panel silently showed zeros ("honest zero"). Send the merchant session like the leads table does.
+        const res = await fetch(`/api/vendor/traffic?vertical=${encodeURIComponent(vendorCategory)}&days=30`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('t1s_merchant_token') || ''}` },
+        });
         const d = await res.json();
         if (!cancelled && d.success) {
           setRealTraffic({ searches: d.searches, leads: d.leads, leadsApproved: d.leadsApproved, clicks: d.clicks });

@@ -30,6 +30,30 @@ import { getCabDeeplinkConfig, saveCabDeeplinkConfig } from '../common/cabDeepli
 import { runAcceptanceTests, persistAcceptance, acceptanceTotals } from '../registry/acceptanceRunner';
 
 export const adminRouter = Router();
+
+/**
+ * OWNER 13 Nov: "admin ka hr tab, merchant ka hr tab ke hr section hr feature hr button fix kro" - after the
+ * finance photo upload reported failure on an HTTP 200 success because the route answered { ok } while the tab
+ * only trusted { success }. Rather than chase that pair key by key across 26 tabs (and every cached bundle
+ * already in the wild), every admin JSON answer is normalised here: success is derived from ok, ok from
+ * success, and a 2xx payload with neither is a success. Errors keep success:false.
+ */
+adminRouter.use((_req, res, next) => {
+  const original = res.json.bind(res);
+  (res as any).json = (body: any) => {
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      const status = res.statusCode || 200;
+      let success = (body as any).success;
+      if (success === undefined) success = (body as any).ok !== undefined ? Boolean((body as any).ok) : status < 400;
+      if (status >= 400) success = false;
+      const patched: any = { ...body, success };
+      if (patched.ok === undefined) patched.ok = success;
+      return original(patched);
+    }
+    return original(body);
+  };
+  next();
+});
 adminRouter.use(authMiddleware); // attach req.user from the Bearer token
 adminRouter.use(requireAdmin);
 

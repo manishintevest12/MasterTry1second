@@ -63,7 +63,10 @@ export const MerchantOrdersTab: FC = () => {
   const loadTraffic = useCallback(async (windowDays: number) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/vendor/traffic?vertical=${encodeURIComponent(vendorVertical)}&days=${windowDays}`);
+      // Same missing-token bug as the analytics tab: requireAuth 401 turned the traffic panel into zeros.
+      const res = await fetch(`/api/vendor/traffic?vertical=${encodeURIComponent(vendorVertical)}&days=${windowDays}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('t1s_merchant_token') || ''}` },
+      });
       const data = await res.json();
       if (data.success) setTraffic(data);
       else addToast('alert', 'Live Traffic Unavailable', data.error || 'Could not load live traffic.');

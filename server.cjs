@@ -54393,6 +54393,22 @@ var init_adminRoutes = __esm({
     init_cabDeeplink();
     init_acceptanceRunner();
     adminRouter = (0, import_express3.Router)();
+    adminRouter.use((_req, res, next) => {
+      const original = res.json.bind(res);
+      res.json = (body) => {
+        if (body && typeof body === "object" && !Array.isArray(body)) {
+          const status = res.statusCode || 200;
+          let success = body.success;
+          if (success === void 0) success = body.ok !== void 0 ? Boolean(body.ok) : status < 400;
+          if (status >= 400) success = false;
+          const patched = { ...body, success };
+          if (patched.ok === void 0) patched.ok = success;
+          return original(patched);
+        }
+        return original(body);
+      };
+      next();
+    });
     adminRouter.use(authMiddleware);
     adminRouter.use(requireAdmin);
     audit = (req, action, target, details) => {
@@ -56604,6 +56620,7 @@ var init_api = __esm({
     import_express4 = require("express");
     init_store();
     init_aggregator();
+    init_authService();
     affiliateRouter = (0, import_express4.Router)();
     affiliateRouter.get("/offers", async (req, res) => {
       try {
@@ -56623,7 +56640,7 @@ var init_api = __esm({
       }
     });
     affiliateRouter.get("/providers", (_req, res) => res.json({ success: true, providers: registeredProviders() }));
-    affiliateRouter.post("/sync", async (_req, res) => {
+    affiliateRouter.post("/sync", authMiddleware, requireAdmin, async (_req, res) => {
       const outcomes = await syncAllAffiliates();
       res.json({ success: true, outcomes });
     });

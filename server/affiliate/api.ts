@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { listOffers } from './store';
 import { registeredProviders, syncAllAffiliates, startAffiliateScheduler, startAffiliateWatchdog } from './aggregator';
+import { authMiddleware, requireAdmin } from '../auth/authService';
 
 export const affiliateRouter = Router();
 
@@ -33,7 +34,9 @@ export async function bootstrapAffiliateSync(): Promise<void> {
 affiliateRouter.get('/providers', (_req: any, res: any) => res.json({ success: true, providers: registeredProviders() }));
 
 // Admin-triggered manual sync (protected at the router mount in admin routes if needed)
-affiliateRouter.post('/sync', async (_req: any, res: any) => {
+// OWNER 13 Nov sweep: this fired a full affiliate sync for ANY anonymous POST, so one script could keep the
+// whole network queue busy. Admin only (the dashboard's Sync button already carries the admin token).
+affiliateRouter.post('/sync', authMiddleware, requireAdmin, async (_req: any, res: any) => {
   const outcomes = await syncAllAffiliates();
   res.json({ success: true, outcomes });
 });
