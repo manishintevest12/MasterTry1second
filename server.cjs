@@ -33271,7 +33271,7 @@ function validateLogoPayload(p) {
   const logo = String(p.logo || "").trim();
   if (!name) return { ok: false, error: "Merchant name is required" };
   if (!logo || !DATA_URL_RE.test(logo)) return { ok: false, error: "Logo must be a base64 PNG/JPEG/WebP data URL" };
-  if (logo.length > 4e5) return { ok: false, error: "Logo too large (resize to \u2264256px before upload)" };
+  if (logo.length > 8e6) return { ok: false, error: "That image is over 8 MB even as base64; save it as JPG once and retry" };
   return { ok: true, clean: { name_key: merchantKeyOf(name).slice(0, 80) || "brand", name, logo } };
 }
 async function listMerchantLogos() {
@@ -55030,9 +55030,9 @@ var init_adminRoutes = __esm({
       try {
         const { upsertMerchantLogo: upsertMerchantLogo2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
         const r = await upsertMerchantLogo2(req.body || {});
-        if (!r.ok) return res.status(400).json(r);
+        if (!r.ok) return res.status(400).json({ ...r, success: false });
         audit(req, "merchant_logo_upsert", r.name_key, { name: (req.body || {}).name });
-        res.json(r);
+        res.json({ ...r, success: true });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Could not save logo" });
       }
@@ -61197,7 +61197,7 @@ async function createApp() {
     };
     next();
   });
-  app.use(["/api/admin/merchant-logos", "/api/admin/home-banners", "/api/admin/promo-offers"], lenientJsonBody("2mb"));
+  app.use(["/api/admin/merchant-logos", "/api/admin/home-banners", "/api/admin/promo-offers"], lenientJsonBody("8mb"));
   app.use(lenientJsonBody("256kb"));
   app.use(apiRateLimit({ limit: 90, windowMs: 6e4 }));
   app.use((req, res, next) => {

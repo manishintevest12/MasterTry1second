@@ -670,9 +670,12 @@ adminRouter.post('/merchant-logos', async (req, res) => {
   try {
     const { upsertMerchantLogo } = await import('../marketing/merchantLogos');
     const r = await upsertMerchantLogo(req.body || {});
-    if (!r.ok) return res.status(400).json(r);
+    // OWNER 13 Nov: the upload WAS succeeding and the tab still printed "Upload failed (HTTP 200:
+    // {"ok":true,...})" - this endpoint answers { ok }, while the tab only trusted { success }. Answer both
+    // keys so an old bundle in a browser cache and the current one both read it correctly.
+    if (!r.ok) return res.status(400).json({ ...r, success: false });
     audit(req, 'merchant_logo_upsert', r.name_key, { name: (req.body || {}).name });
-    res.json(r);
+    res.json({ ...r, success: true });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save logo' }); }
 });
 

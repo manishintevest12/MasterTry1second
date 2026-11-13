@@ -29003,7 +29003,7 @@ function validateLogoPayload(p) {
   const logo = String(p.logo || "").trim();
   if (!name) return { ok: false, error: "Merchant name is required" };
   if (!logo || !DATA_URL_RE.test(logo)) return { ok: false, error: "Logo must be a base64 PNG/JPEG/WebP data URL" };
-  if (logo.length > 4e5) return { ok: false, error: "Logo too large (resize to \u2264256px before upload)" };
+  if (logo.length > 8e6) return { ok: false, error: "That image is over 8 MB even as base64; save it as JPG once and retry" };
   return { ok: true, clean: { name_key: merchantKeyOf(name).slice(0, 80) || "brand", name, logo } };
 }
 async function listMerchantLogos() {

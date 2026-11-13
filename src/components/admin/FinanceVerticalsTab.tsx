@@ -72,9 +72,8 @@ export const FinanceVerticalsTab: React.FC = () => {
       if (!/^data:image\/(jpeg|png|webp);base64,/.test(dataUrl)) {
         return fail('Ye photo browser me convert nahi hui (iPhone HEIC?) — PNG/JPG chuno ya neeche https image link paste karo');
       }
-      if (dataUrl.length > 220_000) {
-        return fail('Photo compress nahi ho payi — chhoti image chuno ya neeche https image link paste karo');
-      }
+      // No hard stop on size any more: the server accepts up to 8 MB of base64, so an image the browser
+      // could not shrink still goes through instead of telling the owner to pick a different photo.
       const name = (form.title || file.name || 'finance').toString().trim();
       // Unique key per product: the server's slug helper keeps only the FIRST word, which made every
       // finance photo overwrite one shared 'finance' image.
@@ -87,7 +86,10 @@ export const FinanceVerticalsTab: React.FC = () => {
       const raw = await res.text();
       let d: any = null;
       try { d = JSON.parse(raw); } catch { d = null; }
-      if (res.ok && d?.success) {
+      // The endpoint answers { ok }, older builds of this tab only trusted { success }: accept either, so a
+      // stored photo is never reported as a failure (the owner's screenshot: success body, red text).
+      const stored = Boolean(d && (d.ok === true || d.success === true));
+      if (res.ok && stored) {
         set('image_url', `/api/logos/${d.name_key}`);
         setMsg({ ok: true, text: `Photo uploaded (${Math.round(dataUrl.length / 1024)} KB) — card pe dikhegi.` });
         return;

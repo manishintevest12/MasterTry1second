@@ -89,3 +89,27 @@ test('a missing hashed asset answers 404, never the 200 SPA shell', () => {
   assert.match(branch, /status\(404\)/, 'missing assets must 404');
   assert.ok(!/isAsset\) \{ res\.sendFile/.test(branch), 'never serve the shell for an asset path');
 });
+
+test('a stored logo is never reported as a failed upload', () => {
+  // The owner's 13 Nov screenshot: server answered {"ok":true,"name_key":...} with HTTP 200 and the tab still
+  // printed "Upload failed (HTTP 200: ...)" because it only trusted `success`.
+  const route = readFileSync('server/admin/adminRoutes.ts', 'utf8');
+  const block = route.slice(route.indexOf("adminRouter.post('/merchant-logos'"), route.indexOf("adminRouter.delete('/merchant-logos"));
+  assert.match(block, /success: true/, 'the route answers success for older bundles');
+  assert.match(block, /success: false/, 'failures carry the same key too');
+
+  const finance = readFileSync('src/components/admin/FinanceVerticalsTab.tsx', 'utf8');
+  const fn = finance.slice(finance.indexOf('const uploadPhoto'), finance.indexOf('const save ='));
+  assert.match(fn, /d\.ok === true \|\| d\.success === true/, 'the tab trusts both keys');
+  assert.ok(!/compress nahi ho payi/.test(fn), 'no size scolding: the server takes the photo');
+
+  const promo = readFileSync('src/components/admin/PromoOffersTab.tsx', 'utf8');
+  assert.match(promo, /d\.success \|\| d\.ok/, 'the promo tab has the same tolerance');
+});
+
+test('the upload route takes a phone-sized photo (8 MB base64) instead of rejecting it', () => {
+  const logos = readFileSync('server/marketing/merchantLogos.ts', 'utf8');
+  assert.match(logos, /8_000_000/, 'the stored-logo cap is a safety valve, not size advice');
+  const idx = readFileSync('server/index.ts', 'utf8');
+  assert.match(idx, /lenientJsonBody\('8mb'\)/, 'the upload routes parse an 8 MB body');
+});

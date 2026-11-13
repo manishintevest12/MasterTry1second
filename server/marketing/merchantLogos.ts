@@ -28,8 +28,11 @@ export function validateLogoPayload(p: { name?: unknown; logo?: unknown }): { ok
   const logo = String(p.logo || '').trim();
   if (!name) return { ok: false, error: 'Merchant name is required' };
   if (!logo || !DATA_URL_RE.test(logo)) return { ok: false, error: 'Logo must be a base64 PNG/JPEG/WebP data URL' };
-  // ~400KB base64 cap ≈ 300KB image — plenty for a 256px brand logo
-  if (logo.length > 400_000) return { ok: false, error: 'Logo too large (resize to ≤256px before upload)' };
+  // OWNER 13 Nov: "mai chata hoon koi v size daale ... w size khud apna kar le, na ki user ko bolo ye size
+  // daalo". The tab compresses in the browser, and this cap is now the safety valve for any other client,
+  // not advice to the owner: 8 MB of base64 still fits the column and the body parser, so a big photo is
+  // stored instead of bounced.
+  if (logo.length > 8_000_000) return { ok: false, error: 'That image is over 8 MB even as base64; save it as JPG once and retry' };
   return { ok: true, clean: { name_key: merchantKeyOf(name).slice(0, 80) || 'brand', name, logo } };
 }
 

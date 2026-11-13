@@ -89,7 +89,8 @@ export const PromoOffersTab: React.FC = () => {
         body: JSON.stringify({ name: `promo-${form.merchant_slug || 'm'}-${form.title || 'offer'}`, logo: dataUrl }),
       });
       const d = await res.json();
-      if (d.success) { set('image_url', `/api/logos/${d.name_key}`); setMsg({ ok: true, text: 'Photo uploaded.' }); }
+      // Same { ok } vs { success } mismatch as the finance tab: accept either key.
+      if (d.success || d.ok) { set('image_url', `/api/logos/${d.name_key}`); setMsg({ ok: true, text: 'Photo uploaded.' }); }
       else setMsg({ ok: false, text: d.error || 'Upload failed' });
     } catch { setMsg({ ok: false, text: 'Upload failed' }); }
     finally { setUploading(false); }
