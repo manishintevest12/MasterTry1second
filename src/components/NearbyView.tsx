@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MapPin, Navigation, Star, Loader2, Compass } from 'lucide-react';
 
 /**
@@ -39,25 +39,61 @@ export default function NearbyView() {
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState('');
 
+  // OWNER 13 Nov: "jab ye tab open hota hai to time lagta hai aane mai isko fix karo".
+  // Two client-side layers on top of the server's stale-while-revalidate:
+  //  1. the last real answer for this city+category is painted from sessionStorage on the first frame, so the tab
+  //     is never blank while the network is in flight;
+  //  2. the in-flight request is abortable, so switching pills quickly cannot land an old answer on top of a new
+  //     one (which used to look like the tab "loading forever").
+  const abortRef = useRef<AbortController | null>(null);
+  const memoryKey = (cat: string, cityName: string, c: { lat: number; lng: number } | null) =>
+    `t1s-nearby|${cat}|${c ? `${c.lat.toFixed(2)},${c.lng.toFixed(2)}` : cityName.trim().toLowerCase()}`;
+
   const load = useCallback(async (next: { category?: Category; lat?: number; lng?: number; city?: string } = {}) => {
+    const cat = String(next.category || category);
+    const cityName = next.city !== undefined ? next.city : city;
+    const useCoords = next.lat !== undefined && next.lng !== undefined
+      ? { lat: next.lat, lng: next.lng }
+      : coords;
+    const key = memoryKey(cat, cityName, useCoords);
+
+    // Instant paint from the last answer for this exact question.
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (raw) {
+        const snap = JSON.parse(raw);
+        if (Array.isArray(snap?.results) && snap.results.length) {
+          setRows(snap.results);
+          setNotes(snap.notes || []);
+          setWhere(snap.where || cityName || 'your area');
+        }
+      }
+    } catch { /* a broken snapshot just means skeletons this time */ }
+
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setLoading(true); setError('');
     try {
       const q = new URLSearchParams();
-      q.set('category', String(next.category || category));
-      if (next.lat !== undefined && next.lng !== undefined) { q.set('lat', String(next.lat)); q.set('lng', String(next.lng)); }
-      else if (coords) { q.set('lat', String(coords.lat)); q.set('lng', String(coords.lng)); }
-      const cityName = next.city !== undefined ? next.city : city;
+      q.set('category', cat);
+      if (useCoords) { q.set('lat', String(useCoords.lat)); q.set('lng', String(useCoords.lng)); }
       if (cityName.trim()) q.set('city', cityName.trim());
-      const res = await fetch(`/api/nearby?${q.toString()}`);
+      const res = await fetch(`/api/nearby?${q.toString()}`, { signal: ctrl.signal });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      const whereName = data.location?.city || cityName || 'your area';
       setRows(data.results || []);
       setNotes(data.notes || []);
-      setWhere(data.location?.city || cityName || 'your area');
+      setWhere(whereName);
+      try {
+        sessionStorage.setItem(key, JSON.stringify({ results: data.results || [], notes: data.notes || [], where: whereName, at: Date.now() }));
+      } catch { /* quota: the paint cache is optional */ }
     } catch (e: any) {
+      if (e?.name === 'AbortError') return; // superseded by a newer search
       setError(String(e?.message || e).slice(0, 120));
       setRows([]);
-    } finally { setLoading(false); }
+    } finally { if (!ctrl.signal.aborted) setLoading(false); }
   }, [category, city, coords]);
 
   useEffect(() => { void load({ category: 'all' }); /* first paint uses the fallback city */ // eslint-disable-next-line react-hooks/exhaustive-deps

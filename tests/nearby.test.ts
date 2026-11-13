@@ -187,3 +187,32 @@ test('the nearby report is computed from rows, so it cannot depend on SQL aggreg
   assert.ok(Array.isArray(r.byCategory) && Array.isArray(r.topCities) && Array.isArray(r.daily));
   assert.ok(r.photoCoveragePct >= 0 && r.photoCoveragePct <= 100);
 });
+
+test('Nearby is the 13th vertical everywhere a count is shown, and reachable from compare', () => {
+  const meta = readFileSync('src/data/mockData.ts', 'utf8');
+  assert.match(meta, /\n  nearby: \{/, 'VERTICAL_META carries nearby');
+  const navbar = readFileSync('src/components/Navbar.tsx', 'utf8');
+  assert.ok(!/12 Verticals/.test(navbar), 'nothing in the header still says 12 Verticals');
+  assert.match(navbar, /Object\.keys\(VERTICAL_META\)\.length\} Verticals/, 'badge counts the registry');
+  assert.match(navbar, /vId === 'nearby'/, 'picking Nearby opens its own tab');
+  const home = readFileSync('src/components/HomeView.tsx', 'utf8');
+  assert.match(home, /id: 'nearby'/, 'launch grid has the card');
+  const types = readFileSync('src/types/index.ts', 'utf8');
+  assert.match(types, /\| 'nearby';/, 'nearby is a VerticalId');
+  const app = readFileSync('flutter_app/lib/ui/screens/compare_screen.dart', 'utf8');
+  assert.match(app, /itemCount: kVerticals\.length \+ 1/, 'app compare strip adds the chip');
+  assert.match(app, /Text\('Nearby'/, 'and it is labelled Nearby');
+  const appHome = readFileSync('flutter_app/lib/ui/screens/home_screen.dart', 'utf8');
+  assert.match(appHome, /nearby: true/, 'app launch card exists');
+});
+
+test('the Nearby tab answers from cache first: stale serve plus single-flight', () => {
+  const src = readFileSync('server/nearby/aggregator.ts', 'utf8');
+  assert.match(src, /const STALE_TTL_MS/, 'a stale window exists');
+  assert.match(src, /stale: true/, 'an expired payload is served with stale: true');
+  assert.match(src, /__t1sNearbyInflight/, 'concurrent builds share one promise');
+  assert.match(src, /OG_BUDGET_MS/, 'the og photo pass has a budget');
+  const view = readFileSync('src/components/NearbyView.tsx', 'utf8');
+  assert.match(view, /sessionStorage\.getItem\(key\)/, 'the tab paints its last answer instantly');
+  assert.match(view, /ctrl\.signal\.aborted/, 'a superseded request cannot paint late');
+});

@@ -13,7 +13,8 @@ export type VerticalId =
   | 'trains'
   | 'pharmacy'
   | 'bills_utilities'
-  | 'account';
+  | 'account'
+  | 'nearby';
 
 export type MainNavTab = 'home' | 'quickapps' | 'insights' | 'compare' | 'rewards' | 'admin' | 'merchant' | 'tracker' | 'product' | 'spendlens' | 'nearby';
 export type RewardsSubTab = 'top' | 'coupons' | 'offers' | 'spin' | 'cards' | 'refer';

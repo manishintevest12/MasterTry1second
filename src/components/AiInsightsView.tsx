@@ -548,7 +548,7 @@ const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
           </h1>
 
           <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-            Combines 365-day historical price telemetry with instant cross-platform parity across all 12 verticals.
+            Combines 365-day historical price telemetry with instant cross-platform parity across all 13 verticals.
             Flag artificial MRP spikes, auto-apply winning coupon codes at checkout, and catch rain surcharges in sub-second speed.
           </p>
 
@@ -1102,7 +1102,7 @@ const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
         </div>
       </section>
 
-      {/* ================= 4. CATEGORY FILTER TABS FOR 12 VERTICALS ================= */}
+      {/* ================= 4. CATEGORY FILTER TABS FOR 13 VERTICALS ================= */}
       <div className="flex items-center justify-between flex-wrap gap-3 pb-2 border-b border-slate-200">
         <div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">

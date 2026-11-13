@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
+import 'nearby_screen.dart';
 import '../../core/auth.dart';
 import '../../core/autocomplete_data.dart';
 import '../../core/compare.dart' as cmp;
@@ -1271,9 +1272,29 @@ class _VerticalTabs extends StatelessWidget {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          itemCount: kVerticals.length,
+          // owner 13 Nov: Nearby is the 13th vertical, so it also lives in the compare strip
+          itemCount: kVerticals.length + 1,
           separatorBuilder: (_, __) => const SizedBox(width: 8),
           itemBuilder: (c, i) {
+            if (i == kVerticals.length) {
+              final on = current == 'nearby';
+              return GestureDetector(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyScreen())),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: on ? T1SColors.red50 : (isDark(context) ? T1SColors.slate800 : T1SColors.slate50),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: on ? T1SColors.red200 : border(context)),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.nearby_error_rounded, size: 15, color: on ? T1SColors.red : muted(context)),
+                    const SizedBox(width: 6),
+                    Text('Nearby', style: tx(context, 11.5, w: FontWeight.w800, color: on ? T1SColors.red : muted(context))),
+                  ]),
+                ),
+              );
+            }
             final v = kVerticals[i];
             final active = v.id == current;
             final color = active ? T1SColors.red : muted(context);

@@ -13,6 +13,17 @@ export const VERTICAL_META: Record<
     sampleQueries: string[];
   }
 > = {
+  nearby: {
+    name: 'Nearby',
+    icon: 'MapPin',
+    description: 'Restaurants, cafes, hotels, stays, cinemas and stores around you, closest first',
+    searchPlaceholder: 'City or area (e.g. Pune, Koregaon Park)',
+    defaultOrigin: '',
+    defaultDestination: '',
+    criteria: ['Distance', 'Rating', 'Price range', 'Tracked booking link'],
+    sampleQueries: ['restaurants near me', 'hotels in Goa', 'cinema near me Pune'],
+    engine: 'nearby',
+  } as any,
   flights: {
     name: 'Flights',
     icon: 'Plane',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/app_state.dart';
+import 'nearby_screen.dart';
 import '../../core/api.dart';
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
@@ -172,7 +173,7 @@ class _VerticalGrid extends StatelessWidget {
         Container(width: 9, height: 9, decoration: const BoxDecoration(color: T1SColors.red, shape: BoxShape.circle)),
         const SizedBox(width: 8),
         Expanded(
-          child: Text('${kVerticals.length} INSTANT LAUNCH VERTICALS · 1-CLICK SEARCH',
+          child: Text('${kVerticals.length + 1} INSTANT LAUNCH VERTICALS · 1-CLICK SEARCH',
               style: tx(context, 12, w: FontWeight.w900, ls: 0.6)),
         ),
       ]),
@@ -192,7 +193,9 @@ class _VerticalGrid extends StatelessWidget {
                 card: card,
                 width: w,
                 onTap: () {
-                  if (card.vertical != null) {
+                  if (card.nearby) {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyScreen()));
+                  } else if (card.vertical != null) {
                     state.openVertical(card.vertical!);
                   } else {
                     state.goRewards(tab: card.rewardsTab!);
@@ -209,12 +212,13 @@ class _VerticalGrid extends StatelessWidget {
 /// Compact launch card from the owner's reference image: icon left, bold title,
 /// small one-line description. White surface, light border, red icon.
 class _LaunchCardData {
-  const _LaunchCardData(this.title, this.desc, this.icon, {this.vertical, this.rewardsTab});
+  const _LaunchCardData(this.title, this.desc, this.icon, {this.vertical, this.rewardsTab, this.nearby = false});
   final String title;
   final String desc;
   final IconData icon;
   final String? vertical; // non-null: launches the vertical's compare engine
   final int? rewardsTab; // non-null: opens the Rewards screen on this tab
+  final bool nearby; // owner 13 Nov: the 13th vertical opens local discovery
 }
 
 const kLaunchCards = <_LaunchCardData>[
@@ -230,6 +234,7 @@ const kLaunchCards = <_LaunchCardData>[
   _LaunchCardData('Insurance', 'premium quotes', Icons.verified_user_rounded, vertical: 'insurance'),
   _LaunchCardData('Credit Cards', 'fees & rewards', Icons.credit_card_rounded, vertical: 'creditcards'),
   _LaunchCardData('Accounts', 'savings, current & demat', Icons.account_balance_wallet_rounded, vertical: 'account'),
+  _LaunchCardData('Nearby', 'restaurants, hotels, cinemas near you', Icons.nearby_error_rounded, nearby: true),
   _LaunchCardData('Coupons', 'auto-tested on checkout', Icons.local_activity_rounded, rewardsTab: 0),
   _LaunchCardData('Rewards', 'points & daily spin', Icons.card_giftcard_rounded, rewardsTab: 1),
 ];

@@ -48381,6 +48381,20 @@ async function readCache(key) {
     return null;
   }
 }
+async function readCacheAny(key) {
+  try {
+    const rows = await getStore().query("SELECT payload, fetched_at FROM nearby_cache WHERE cache_key = ?", [key]).catch(() => []);
+    if (!rows.length) return null;
+    const at = new Date(String(rows[0].fetched_at).replace(" ", "T")).getTime();
+    if (!Number.isFinite(at)) return null;
+    const ageMs = Date.now() - at;
+    if (ageMs > STALE_TTL_MS) return null;
+    const payload = typeof rows[0].payload === "string" ? JSON.parse(rows[0].payload) : rows[0].payload;
+    return payload && Array.isArray(payload.results) ? { answer: payload, ageMs } : null;
+  } catch {
+    return null;
+  }
+}
 async function writeCache(key, answer) {
   try {
     const store7 = getStore();
@@ -48391,7 +48405,7 @@ async function writeCache(key, answer) {
   } catch {
   }
 }
-async function nearbyAnswer(input) {
+async function buildNearbyAnswer(input) {
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
   const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
@@ -48452,7 +48466,15 @@ async function nearbyAnswer(input) {
     if (dest) row.exitUrl = pointer(dest, row.category);
   }
   const noPhoto = results.filter((r) => !r.imageUrl);
-  const withOg = await Promise.all(noPhoto.slice(0, 6).map(async (row) => ({ row, url: row.website ? await ogImage(row.website) : null })));
+  const ogDeadline = Date.now() + OG_BUDGET_MS;
+  const withinBudget2 = (p, fallback) => {
+    const left = Math.max(250, ogDeadline - Date.now());
+    return Promise.race([p.catch(() => fallback), new Promise((res) => setTimeout(() => res(fallback), left))]);
+  };
+  const withOg = await Promise.all(noPhoto.slice(0, 6).map(async (row) => ({
+    row,
+    url: row.website ? await withinBudget2(ogImage(row.website), null) : null
+  })));
   for (const { row, url } of withOg) {
     if (url) {
       row.imageUrl = url;
@@ -48570,7 +48592,29 @@ async function nearbyReport(days = 7) {
     return { ...base, days: span };
   }
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS3, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE;
+async function nearbyAnswer(input) {
+  const started3 = Date.now();
+  const category = normalizeNearbyCategory(input.category);
+  const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
+  const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
+  const fresh = await readCache(cacheKey);
+  if (fresh) return { ...fresh, cached: true, ms: Date.now() - started3 };
+  const flights = globalThis.__t1sNearbyInflight ||= /* @__PURE__ */ new Map();
+  const build2 = () => {
+    const existing = flights.get(cacheKey);
+    if (existing) return existing;
+    const p = buildNearbyAnswer(input).then((ans) => ({ ...ans, ms: Date.now() - started3 })).finally(() => flights.delete(cacheKey));
+    flights.set(cacheKey, p);
+    return p;
+  };
+  const stale = await readCacheAny(cacheKey);
+  if (stale) {
+    void build2().catch(() => void 0);
+    return { ...stale.answer, cached: true, stale: true, ms: Date.now() - started3 };
+  }
+  return build2();
+}
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS3, STALE_TTL_MS, OG_BUDGET_MS, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -48580,6 +48624,8 @@ var init_aggregator = __esm({
     DEFAULT_CITY = "Pune";
     RADIUS_M = 2500;
     CACHE_TTL_MS3 = 30 * 6e4;
+    STALE_TTL_MS = 12 * 60 * 6e4;
+    OG_BUDGET_MS = 2200;
     CATEGORY_ALIASES = {
       all: "all",
       restaurant: "restaurants",

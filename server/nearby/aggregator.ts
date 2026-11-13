@@ -51,11 +51,23 @@ export interface NearbyAnswer {
   results: NearbyRow[];
   counts: { google: number; osm: number; catalogue: number };
   notes: string[];
+  /** Served from the nearby cache: the first paint is instant, the refresh may still be running. */
+  cached?: boolean;
+  /** Served while expired, with a background refresh in flight (owner 13 Nov: "time lagta hai aane mai"). */
+  stale?: boolean;
+  /** Server-side build time in ms, so the tab can say how fresh the rows are. */
+  ms?: number;
 }
 
 const DEFAULT_CITY = 'Pune';
 const RADIUS_M = 2500;
 const CACHE_TTL_MS = 30 * 60_000;
+// Owner 13 Nov: opening the Nearby tab waited on a cold build (~14s measured on production). A row set an hour
+// old still names the same restaurants, so an expired payload is SERVED INSTANTLY while it revalidates behind it;
+// only beyond this window is a cold build allowed to block the tab.
+const STALE_TTL_MS = 12 * 60 * 60_000;
+/** Ceiling for the og:image pass. A slow business site must never hold the whole tab hostage. */
+const OG_BUDGET_MS = 2200;
 
 const CATEGORY_ALIASES: Record<string, NearbyCategory> = {
   all: 'all', restaurant: 'restaurants', restaurants: 'restaurants', food: 'restaurants',
@@ -501,6 +513,23 @@ async function readCache(key: string): Promise<NearbyAnswer | null> {
   } catch { return null; }
 }
 
+/**
+ * Any cached payload inside the stale window, with its age. Unlike readCache this does NOT enforce freshness: the
+ * caller decides whether to serve it immediately (stale-while-revalidate) or ignore it.
+ */
+async function readCacheAny(key: string): Promise<{ answer: NearbyAnswer; ageMs: number } | null> {
+  try {
+    const rows = await getStore().query<any>('SELECT payload, fetched_at FROM nearby_cache WHERE cache_key = ?', [key]).catch(() => []);
+    if (!rows.length) return null;
+    const at = new Date(String(rows[0].fetched_at).replace(' ', 'T')).getTime();
+    if (!Number.isFinite(at)) return null;
+    const ageMs = Date.now() - at;
+    if (ageMs > STALE_TTL_MS) return null;
+    const payload = typeof rows[0].payload === 'string' ? JSON.parse(rows[0].payload) : rows[0].payload;
+    return payload && Array.isArray(payload.results) ? { answer: payload as NearbyAnswer, ageMs } : null;
+  } catch { return null; }
+}
+
 async function writeCache(key: string, answer: NearbyAnswer): Promise<void> {
   try {
     const store = getStore();
@@ -509,7 +538,7 @@ async function writeCache(key: string, answer: NearbyAnswer): Promise<void> {
   } catch { /* cache is an optimisation, never a requirement */ }
 }
 
-export async function nearbyAnswer(input: {
+async function buildNearbyAnswer(input: {
   lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number;
 }): Promise<NearbyAnswer> {
   const category = normalizeNearbyCategory(input.category);
@@ -606,7 +635,16 @@ export async function nearbyAnswer(input: {
   }
 
   const noPhoto = results.filter((r) => !r.imageUrl);
-  const withOg = await Promise.all(noPhoto.slice(0, 6).map(async (row) => ({ row, url: row.website ? await ogImage(row.website) : null })));
+  // Bounded: each lookup gets the remaining budget, and when it runs out the row keeps its tile instead of
+  // holding the whole answer. ogImage is cached for 30 min, so a warm city pays nothing.
+  const ogDeadline = Date.now() + OG_BUDGET_MS;
+  const withinBudget = <T,>(p: Promise<T>, fallback: T): Promise<T> => {
+    const left = Math.max(250, ogDeadline - Date.now());
+    return Promise.race([p.catch(() => fallback), new Promise<T>((res) => setTimeout(() => res(fallback), left))]);
+  };
+  const withOg = await Promise.all(noPhoto.slice(0, 6).map(async (row) => ({
+    row, url: row.website ? await withinBudget(ogImage(row.website), null as string | null) : null,
+  })));
   for (const { row, url } of withOg) {
     if (url) {
       row.imageUrl = url;
@@ -714,4 +752,45 @@ export async function nearbyReport(days = 7): Promise<{
       daily: [...byDay.entries()].map(([day, n]) => ({ day, searches: n })).sort((a, b) => a.day.localeCompare(b.day)),
     };
   } catch { return { ...base, days: span }; }
+}
+
+/**
+ * The public entry point. Owner 13 Nov: "jab ye tab open hota hai to time lagta hai aane mai isko fix karo".
+ * Measured cause: the first (cold) request for a city/category took ~14s - provider fan-out plus the og:image
+ * pass - while a warm one answered in 0.2s. Three changes make the tab feel instant without inventing anything:
+ *  1. a fresh payload answers immediately (as before);
+ *  2. an EXPIRED payload (up to 12h) is served immediately with `stale: true` while one background build
+ *     revalidates it, so a returning visitor never waits behind a rebuild;
+ *  3. concurrent requests for the same key share ONE build (single-flight), so several open tabs or the web
+ *     prefetch cannot stampede the providers into each other's timeouts.
+ */
+export async function nearbyAnswer(input: {
+  lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number;
+}): Promise<NearbyAnswer> {
+  const started = Date.now();
+  const category = normalizeNearbyCategory(input.category);
+  const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
+  const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
+
+  const fresh = await readCache(cacheKey);
+  if (fresh) return { ...fresh, cached: true, ms: Date.now() - started };
+
+  const flights = ((globalThis as any).__t1sNearbyInflight ||= new Map<string, Promise<NearbyAnswer>>()) as Map<string, Promise<NearbyAnswer>>;
+  const build = (): Promise<NearbyAnswer> => {
+    const existing = flights.get(cacheKey);
+    if (existing) return existing;
+    const p = buildNearbyAnswer(input)
+      .then((ans) => ({ ...ans, ms: Date.now() - started }))
+      .finally(() => flights.delete(cacheKey));
+    flights.set(cacheKey, p);
+    return p;
+  };
+
+  const stale = await readCacheAny(cacheKey);
+  if (stale) {
+    // Serve the last real answer now; refresh once, behind the response.
+    void build().catch(() => undefined);
+    return { ...stale.answer, cached: true, stale: true, ms: Date.now() - started };
+  }
+  return build();
 }

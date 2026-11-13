@@ -1,6 +1,7 @@
 import { AdBannerSlot } from './AdBannerSlot';
 import React, { lazy, Suspense } from 'react';
 import {
+  MapPin,
   Zap,
   TrendingDown,
   Clock,
@@ -270,6 +271,7 @@ export const HomeView: React.FC = () => {
             { id: 'flights', icon: Plane, title: 'Flights', desc: 'live fares, real dates', action: () => handleLaunch('flights') },
             { id: 'hotels', icon: Building2, title: 'Hotels', desc: 'real per-night rates', action: () => handleLaunch('hotels') },
             { id: 'bus', icon: Bus, title: 'Bus', desc: 'tier-1 to tier-3 towns', action: () => handleLaunch('bus') },
+            { id: 'nearby', icon: MapPin, title: 'Nearby', desc: 'restaurants, hotels, cinemas near you', action: () => setActiveNavTab('nearby') },
             { id: 'cab', icon: Car, title: 'Cab & Ride', desc: 'live fare estimates', action: () => handleLaunch('cab') },
             { id: 'movie', icon: Film, title: 'Movies', desc: 'seats & showtimes', action: () => handleLaunch('movie') },
             { id: 'loans', icon: Landmark, title: 'Loans', desc: 'real rate ranges', action: () => handleLaunch('loans') },
