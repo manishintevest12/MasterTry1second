@@ -1,1 +1,0 @@
-import{u as e}from"./index-BhtKxRxx.js";import{o as t,s as n}from"./firebase-mXfuxI8r.js";var r=null;function i(){return r||=t()[0]??n({apiKey:e.apiKey,authDomain:e.authDomain,projectId:e.projectId,storageBucket:void 0,messagingSenderId:e.messagingSenderId,appId:e.appId,measurementId:e.measurementId}),r}export{i as t};

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MapPin, Navigation, Star, Loader2, Compass } from 'lucide-react';
+import { MapPin, Navigation, Star, Loader2, Compass, ChevronDown } from 'lucide-react';
 
 /**
  * Nearby & local discovery (owner 13 Nov).
@@ -38,6 +38,12 @@ export default function NearbyView() {
   const [loading, setLoading] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState('');
+  // OWNER 14 Nov: "load more button is not there". The server has paged this list since 1.8.83 (it answers
+  // offset/limit/total/hasMore), but the website still fetched one page and stopped, so the list simply ended
+  // at 20 with no way forward. These three pieces of state hold the honest count and the next page.
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [moreLoading, setMoreLoading] = useState(false);
 
   // OWNER 13 Nov: "jab ye tab open hota hai to time lagta hai aane mai isko fix karo".
   // Two client-side layers on top of the server's stale-while-revalidate:
@@ -66,6 +72,8 @@ export default function NearbyView() {
           setRows(snap.results);
           setNotes(snap.notes || []);
           setWhere(snap.where || cityName || 'your area');
+          setTotal(Number(snap.total) || snap.results.length);
+          setHasMore(snap.hasMore === true);
         }
       }
     } catch { /* a broken snapshot just means skeletons this time */ }
@@ -73,7 +81,7 @@ export default function NearbyView() {
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setHasMore(false); setTotal(0);
     try {
       const q = new URLSearchParams();
       q.set('category', cat);
@@ -83,11 +91,17 @@ export default function NearbyView() {
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
       const whereName = data.location?.city || cityName || 'your area';
-      setRows(data.results || []);
+      const pageRows = data.results || [];
+      // hasMore is the server's word; when an older deploy omits it, a full page still means there is more.
+      const more = data.hasMore === true || (typeof data.hasMore !== 'boolean' && pageRows.length >= (Number(data.limit) || 20));
+      const nextTotal = Number(data.total) || pageRows.length;
+      setRows(pageRows);
       setNotes(data.notes || []);
       setWhere(whereName);
+      setTotal(nextTotal);
+      setHasMore(more && pageRows.length > 0);
       try {
-        sessionStorage.setItem(key, JSON.stringify({ results: data.results || [], notes: data.notes || [], where: whereName, at: Date.now() }));
+        sessionStorage.setItem(key, JSON.stringify({ results: pageRows, notes: data.notes || [], where: whereName, total: nextTotal, hasMore: more && pageRows.length > 0, at: Date.now() }));
       } catch { /* quota: the paint cache is optional */ }
     } catch (e: any) {
       if (e?.name === 'AbortError') return; // superseded by a newer search
@@ -98,6 +112,34 @@ export default function NearbyView() {
 
   useEffect(() => { void load({ category: 'all' }); /* first paint uses the fallback city */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /// Next page for the SAME anchor, appended after the cards already on screen (deduped by id), so "Load more"
+  /// never re-paints the page or shuffles what is already read.
+  const loadMore = useCallback(async () => {
+    if (moreLoading || !hasMore) return;
+    setMoreLoading(true); setError('');
+    try {
+      const q = new URLSearchParams();
+      q.set('category', category);
+      if (coords) { q.set('lat', String(coords.lat)); q.set('lng', String(coords.lng)); }
+      if (city.trim()) q.set('city', city.trim());
+      q.set('offset', String(rows.length));
+      const res = await fetch(`/api/nearby?${q.toString()}`);
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      const seen = new Set(rows.map((r) => r.id));
+      const appended = (data.results || []).filter((r: NearbyRow) => !seen.has(r.id));
+      const nextTotal = Number(data.total) || rows.length;
+      setRows((prev) => [...prev, ...appended]);
+      setTotal(nextTotal);
+      // No new rows means the tail is genuinely exhausted, so the button goes instead of asking again.
+      setHasMore(appended.length > 0 && (data.hasMore === true || rows.length + appended.length < nextTotal));
+    } catch (e: any) {
+      setError(String(e?.message || e).slice(0, 120));
+    } finally {
+      setMoreLoading(false);
+    }
+  }, [category, city, coords, hasMore, moreLoading, rows]);
 
   const useMyLocation = () => {
     if (!navigator.geolocation) { setError('This browser has no location support, use the city box.'); return; }
@@ -241,6 +283,25 @@ export default function NearbyView() {
           ))}
         </div>
       )}
+
+      {/* The end of the honest list, and the only way past it. It states how many of how many are on screen,
+          because the server holds at most 60 rows for one spot - this is not an infinite feed. */}
+      {!loading && rows.length > 0 && hasMore ? (
+        <div className="mt-4 flex flex-col items-center gap-1.5">
+          <span className="text-[10.5px] text-slate-500">
+            {rows.length} of {Math.max(total, rows.length)} places shown
+          </span>
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={moreLoading}
+            className="w-full max-w-sm px-4 py-3 rounded-xl border border-slate-200 bg-white text-xs font-extrabold text-slate-900 cursor-pointer disabled:opacity-60 inline-flex items-center justify-center gap-1"
+          >
+            {moreLoading ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : <ChevronDown className="w-4 h-4" />}
+            Load more
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

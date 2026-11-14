@@ -87,7 +87,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
         _notes = res.notes;
         _where = res.city ?? (anchorCity ?? '');
         _total = res.total;
-        _hasMore = res.hasMore && res.places.isNotEmpty;
+        // A FULL first page is itself evidence of more, even if an older or cached server answer omits
+        // hasMore. If that guess is wrong the next press returns nothing new and the footer removes itself,
+        // so the cost is one wasted request - cheaper than a list that dead-ends at 20 with no way forward.
+        _hasMore = res.places.isNotEmpty && (res.hasMore || res.places.length >= _pageSize);
         _loading = false;
       });
     } catch (e) {
@@ -125,7 +128,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
         _total = res.total;
         // No new rows means the tail is genuinely exhausted even if the count said otherwise, so the button
         // disappears instead of asking again for the same page.
-        _hasMore = res.hasMore && appended.isNotEmpty;
+        _hasMore = appended.isNotEmpty && (res.hasMore || appended.length >= _pageSize);
         _loadingMore = false;
       });
     } catch (e) {
