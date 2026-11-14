@@ -28,6 +28,24 @@ class _NearbyScreenState extends State<NearbyScreen> {
   bool _loading = false;
   String? _error;
 
+  // ---- paging (owner 14 Nov: "add load more option at the end of the page") -------------------------
+  // One page is fetched at a time and appended. `_total` and `_hasMore` come from the server, so "Load more"
+  // is drawn only while there really is another page - never a button that returns nothing.
+  static const _pageSize = 20;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  int _total = 0;
+
+  // The anchor the current list was loaded with, so every page comes from the same place:
+  // your GPS fix when you tapped "Use my location", otherwise the city you typed.
+  double? _lat;
+  double? _lng;
+  String? _cityAnchor;
+
+  /// True once the list is built from the device's own location, so the UI can say so instead of guessing.
+  bool _located = false;
+  bool _locating = false;
+
   @override
   void initState() {
     super.initState();
@@ -40,24 +58,36 @@ class _NearbyScreenState extends State<NearbyScreen> {
     super.dispose();
   }
 
-  Future<void> _load({double? lat, double? lng, String? city}) async {
+  /// Load page one for an anchor. A new search or category always starts from the top.
+  Future<void> _load({double? lat, double? lng, String? city, bool located = false}) async {
+    final anchorCity = city ?? (_cityController.text.trim().isEmpty ? null : _cityController.text.trim());
     setState(() {
       _loading = true;
       _error = null;
+      _lat = lat;
+      _lng = lng;
+      _cityAnchor = anchorCity;
+      _located = located && lat != null && lng != null;
+      _rows = const [];
+      _hasMore = false;
+      _total = 0;
     });
     try {
-      final api = Try1SecondApi();
-      final res = await api.nearby(
+      final res = await Try1SecondApi().nearby(
         lat: lat,
         lng: lng,
-        city: city ?? (_cityController.text.trim().isEmpty ? null : _cityController.text.trim()),
+        city: anchorCity,
         category: _category,
+        limit: _pageSize,
+        offset: 0,
       );
       if (!mounted) return;
       setState(() {
         _rows = res.places;
         _notes = res.notes;
-        _where = res.city ?? _cityController.text.trim();
+        _where = res.city ?? (anchorCity ?? '');
+        _total = res.total;
+        _hasMore = res.hasMore && res.places.isNotEmpty;
         _loading = false;
       });
     } catch (e) {
@@ -66,15 +96,60 @@ class _NearbyScreenState extends State<NearbyScreen> {
         _loading = false;
         _error = e.toString().replaceFirst('Exception: ', '');
         _rows = const [];
+        _hasMore = false;
+      });
+    }
+  }
+
+  /// Next page for the SAME anchor, appended after the cards already on screen (deduped by server id).
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() {
+      _loadingMore = true;
+      _error = null;
+    });
+    try {
+      final res = await Try1SecondApi().nearby(
+        lat: _lat,
+        lng: _lng,
+        city: _lat == null ? _cityAnchor : null,
+        category: _category,
+        limit: _pageSize,
+        offset: _rows.length,
+      );
+      if (!mounted) return;
+      final seen = _rows.map((r) => r.id).toSet();
+      final appended = res.places.where((p) => !seen.contains(p.id)).toList();
+      setState(() {
+        _rows = [..._rows, ...appended];
+        _total = res.total;
+        // No new rows means the tail is genuinely exhausted even if the count said otherwise, so the button
+        // disappears instead of asking again for the same page.
+        _hasMore = res.hasMore && appended.isNotEmpty;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingMore = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
   }
 
   Future<void> _useMyLocation() async {
+    if (_locating) return;
+    setState(() {
+      _locating = true;
+      _error = null;
+    });
     try {
       final enabled = await Geolocator.isLocationServiceEnabled();
       if (!enabled) {
-        setState(() => _error = 'Location service off hai, city box se search karo.');
+        setState(() {
+          _error = 'Location service off hai, city box se search karo.';
+          _locating = false;
+        });
         return;
       }
       var permission = await Geolocator.checkPermission();
@@ -82,13 +157,21 @@ class _NearbyScreenState extends State<NearbyScreen> {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        setState(() => _error = 'Location permission nahi mili — city box use karo.');
+        setState(() {
+          _error = 'Location permission nahi mili - city box use karo.';
+          _locating = false;
+        });
         return;
       }
       final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
-      await _load(lat: pos.latitude, lng: pos.longitude, city: '');
+      await _load(lat: pos.latitude, lng: pos.longitude, city: null, located: true);
     } catch (e) {
-      setState(() => _error = 'Location nahi mili: ${e.toString()}');
+      setState(() {
+        _error = 'Location nahi mili: ${e.toString()}';
+        _locating = false;
+      });
+    } finally {
+      if (mounted) setState(() => _locating = false);
     }
   }
 
@@ -142,6 +225,44 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   style: FilledButton.styleFrom(backgroundColor: T1SColors.red, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
                   child: const Text('Search', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                 ),
+              ],
+            ),
+          ),
+          // Owner 14 Nov: "give use my location option in nearby vertical" - it is now a labelled button in the
+          // body, not only the app-bar icon, so nobody has to guess what the compass does.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _locating ? null : _useMyLocation,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    side: BorderSide(color: _located ? T1SColors.red : const Color(0xFFE2E8F0)),
+                    backgroundColor: _located ? const Color(0xFFFFF1F2) : Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                  ),
+                  icon: _locating
+                      ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red))
+                      : Icon(Icons.my_location, size: 16, color: _located ? T1SColors.red : const Color(0xFF0F172A)),
+                  label: Text(
+                    _locating ? 'Finding you...' : (_located ? 'Using your location' : 'Use my location'),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: _located ? T1SColors.red : const Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (_located)
+                  Flexible(
+                    child: Text(
+                      'Showing places around your GPS position',
+                      style: TextStyle(fontSize: 10.5, color: const Color(0xFF64748B)),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -210,10 +331,55 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       )
                     : ListView.separated(
                         padding: const EdgeInsets.all(16),
-                        itemCount: _rows.length,
+                        // Cards + one footer row that holds "Load more". The footer exists only while another
+                        // page really exists, so the end of the honest list is also the end of the page.
+                        itemCount: _rows.length + (_hasMore || _loadingMore ? 1 : 0),
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _card(_rows[i]),
+                        itemBuilder: (_, i) {
+                          if (i < _rows.length) return _card(_rows[i]);
+                          return _loadMoreFooter();
+                        },
                       ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// "Load more" at the end of the page (owner 14 Nov). It states exactly how many of how many are on screen,
+  /// because the list is not infinite: the server holds at most 60 rows for one spot.
+  Widget _loadMoreFooter() {
+    final shown = _rows.length;
+    final total = _total > 0 ? _total : shown;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 8),
+      child: Column(
+        children: [
+          Text(
+            total > shown ? '$shown of $total places shown' : '$shown places shown',
+            style: TextStyle(fontSize: 10.5, color: const Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _loadingMore ? null : _loadMore,
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                side: const BorderSide(color: Color(0xFFE2E8F0)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _loadingMore
+                  ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red))
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.expand_more, size: 18, color: const Color(0xFF0F172A)),
+                        const SizedBox(width: 4),
+                        Text('Load more', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A))),
+                      ],
+                    ),
+            ),
           ),
         ],
       ),

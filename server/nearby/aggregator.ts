@@ -58,6 +58,12 @@ export interface NearbyAnswer {
   category: NearbyCategory;
   location: { lat: number; lng: number; city: string | null; resolvedFrom: 'coords' | 'city' | 'fallback' };
   results: NearbyRow[];
+  /** Paging (owner 14 Nov: "load more at the end of the page"): where this page starts, its size, the honest
+   *  number of rows we actually hold for this place/category, and whether another page exists. */
+  offset: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
   counts: { google: number; osm: number; catalogue: number };
   notes: string[];
   /** Served from the nearby cache: the first paint is instant, the refresh may still be running. */
@@ -585,14 +591,31 @@ async function writeCache(key: string, answer: NearbyAnswer): Promise<void> {
   } catch { /* cache is an optimisation, never a requirement */ }
 }
 
+/** Hard ceiling on rows we will ever hold for one spot: pages beyond this do not exist. */
+const PAGE_CEILING = 60;
+
+/** Page window for a request: a sane size by default, never zero, never past the ceiling. */
+function nearPage(input: { limit?: number; offset?: number }): { offset: number; limit: number } {
+  const limit = Math.min(30, Math.max(4, Number(input.limit) || 20));
+  const offset = Math.min(240, Math.max(0, Math.floor(Number(input.offset) || 0)));
+  return { offset, limit };
+}
+
+function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
+  return `v9|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+}
+
 async function buildNearbyAnswer(input: {
-  lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number;
+  lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number; offset?: number;
 }): Promise<NearbyAnswer> {
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
+  const page = nearPage(input);
   // v2: the enrichment layer (Swiggy/OYO ratings, prices, photos) changed what a good answer looks like, so
   // old cached payloads must not keep serving unrated rows for 30 minutes.
-  const cacheKey = `v8|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
+  // v9: pages. A page is cached under its own key, so "load more" never re-enriches page one and a warm city
+  // serves every page instantly.
+  const cacheKey = nearbyCacheKey(category, location, page);
   const cached = await readCache(cacheKey);
   if (cached) return cached;
 
@@ -655,8 +678,12 @@ async function buildNearbyAnswer(input: {
 
   // Precision first (rated + priced partner rows), then our catalogue, then the raw map rows.
   const merged = sortRows(dedupe([...enriched, ...catalogue, ...google.rows, ...osm.rows]), category);
-  const limit = Math.min(60, Math.max(4, Number(input.limit) || 30));
-  const results = merged.slice(0, limit);
+  // Paging: we hold at most PAGE_CEILING rows for a spot, and hand out one page at a time with an honest
+  // `total`/`hasMore` so the app can offer "Load more" instead of pretending the list is endless.
+  const total = Math.min(PAGE_CEILING, merged.length);
+  const offset = Math.min(page.offset, total);
+  const limit = page.limit;
+  const results = merged.slice(offset, Math.min(offset + limit, total));
 
   // ---- OWNER 13 Nov: "redirection affiliate ke through hoga agar available hai, warna direct" + "image
   // compulsory hai". Both are applied here, on the final rows, so every surface (API, SEO page, web tab, app)
@@ -743,6 +770,10 @@ async function buildNearbyAnswer(input: {
     category,
     location,
     results,
+    offset,
+    limit,
+    total,
+    hasMore: offset + results.length < total,
     counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
     notes: results.length ? notes : [...notes, 'No places came back for this location right now, so nothing is shown rather than guesswork.'],
   };
@@ -837,12 +868,13 @@ export async function nearbyReport(days = 7): Promise<{
  *     prefetch cannot stampede the providers into each other's timeouts.
  */
 export async function nearbyAnswer(input: {
-  lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number;
+  lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number; offset?: number;
 }): Promise<NearbyAnswer> {
   const started = Date.now();
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
-  const cacheKey = `v8|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
+  const page = nearPage(input);
+  const cacheKey = nearbyCacheKey(category, location, page);
 
   const warm = memoryGet(cacheKey);
   if (warm && warm.ageMs <= CACHE_TTL_MS) {

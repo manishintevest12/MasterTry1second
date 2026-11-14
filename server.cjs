@@ -48974,10 +48974,19 @@ async function writeCache(key, answer) {
   } catch {
   }
 }
+function nearPage(input) {
+  const limit = Math.min(30, Math.max(4, Number(input.limit) || 20));
+  const offset = Math.min(240, Math.max(0, Math.floor(Number(input.offset) || 0)));
+  return { offset, limit };
+}
+function nearbyCacheKey(category, location, page) {
+  return `v9|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+}
 async function buildNearbyAnswer(input) {
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
-  const cacheKey2 = `v8|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
+  const page = nearPage(input);
+  const cacheKey2 = nearbyCacheKey(category, location, page);
   const cached3 = await readCache(cacheKey2);
   if (cached3) return cached3;
   const wantsFood = category === "all" || category === "restaurants" || category === "cafes";
@@ -49027,8 +49036,10 @@ async function buildNearbyAnswer(input) {
     ...wanted.slice(8).map((p) => enrichedToRow(p, null, null))
   ];
   const merged = sortRows(dedupe([...enriched, ...catalogue, ...google.rows, ...osm.rows]), category);
-  const limit = Math.min(60, Math.max(4, Number(input.limit) || 30));
-  const results = merged.slice(0, limit);
+  const total = Math.min(PAGE_CEILING, merged.length);
+  const offset = Math.min(page.offset, total);
+  const limit = page.limit;
+  const results = merged.slice(offset, Math.min(offset + limit, total));
   const needsExit = results.filter((r) => !r.exitUrl);
   for (const row of needsExit) {
     const dest = row.website || (row.category === "restaurants" || row.category === "cafes" ? `https://www.swiggy.com/search?query=${encodeURIComponent(row.name)}` : row.category === "movies" ? `https://in.bookmyshow.com/explore/cinemas` : row.category === "cabs" ? "https://www.uber.com/in/en/" : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ""}`.trim())}`);
@@ -49087,6 +49098,10 @@ async function buildNearbyAnswer(input) {
     category,
     location,
     results,
+    offset,
+    limit,
+    total,
+    hasMore: offset + results.length < total,
     counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
     notes: results.length ? notes : [...notes, "No places came back for this location right now, so nothing is shown rather than guesswork."]
   };
@@ -49183,7 +49198,8 @@ async function nearbyAnswer(input) {
   const started3 = Date.now();
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
-  const cacheKey2 = `v8|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
+  const page = nearPage(input);
+  const cacheKey2 = nearbyCacheKey(category, location, page);
   const warm2 = memoryGet(cacheKey2);
   if (warm2 && warm2.ageMs <= CACHE_TTL_MS5) {
     return { ...warm2.answer, cached: true, ms: Date.now() - started3 };
@@ -49211,7 +49227,7 @@ async function nearbyAnswer(input) {
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE;
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE, PAGE_CEILING;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -49267,6 +49283,7 @@ var init_aggregator = __esm({
       movies: ["movie_theater"],
       all: ["restaurant", "cafe", "lodging", "store", "movie_theater"]
     };
+    PAGE_CEILING = 60;
   }
 });
 
@@ -50641,7 +50658,10 @@ async function nearbyHandler(req, res) {
       lng: req.query.lng === void 0 ? null : Number(req.query.lng),
       city: req.query.city ? String(req.query.city) : null,
       category: req.query.category,
-      limit: Number(req.query.limit) || void 0
+      limit: Number(req.query.limit) || void 0,
+      // "Load more" pages through the same honest list; the answer carries total/hasMore so the app never
+      // shows a button that would return nothing.
+      offset: Number(req.query.offset) || 0
     });
     res.setHeader("Cache-Control", "public, max-age=300");
     res.json(answer);

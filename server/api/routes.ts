@@ -1706,6 +1706,9 @@ async function nearbyHandler(req: any, res: Response): Promise<void> {
       city: req.query.city ? String(req.query.city) : null,
       category: req.query.category,
       limit: Number(req.query.limit) || undefined,
+      // "Load more" pages through the same honest list; the answer carries total/hasMore so the app never
+      // shows a button that would return nothing.
+      offset: Number(req.query.offset) || 0,
     });
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.json(answer);

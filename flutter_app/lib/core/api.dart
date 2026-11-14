@@ -1558,9 +1558,10 @@ class Try1SecondApi {
     double? lng,
     String? city,
     String category = 'all',
-    int limit = 30,
+    int limit = 20,
+    int offset = 0,
   }) async {
-    final q = <String, String>{'category': category, 'limit': '$limit'};
+    final q = <String, String>{'category': category, 'limit': '$limit', 'offset': '$offset'};
     if (lat != null && lng != null) {
       q['lat'] = lat.toStringAsFixed(6);
       q['lng'] = lng.toStringAsFixed(6);
@@ -2625,8 +2626,20 @@ class NearbyResult {
   final List<NearbyPlace> places;
   final List<String> notes;
   final String? city;
+  /// Where this page started, how many rows the server really holds for this spot, and whether another page
+  /// exists. The screen shows "Load more" only when `hasMore` is true, so the button is never a dead end.
+  final int offset;
+  final int total;
+  final bool hasMore;
 
-  const NearbyResult({required this.places, required this.notes, this.city});
+  const NearbyResult({
+    required this.places,
+    required this.notes,
+    this.city,
+    this.offset = 0,
+    this.total = 0,
+    this.hasMore = false,
+  });
 
   factory NearbyResult.fromJson(Map<String, dynamic> j) {
     final rows = (j['results'] as List? ?? const [])
@@ -2635,10 +2648,14 @@ class NearbyResult {
         .where((p) => p.name.isNotEmpty)
         .toList();
     final loc = j['location'] is Map ? Map<String, dynamic>.from(j['location'] as Map) : const <String, dynamic>{};
+    final total = j['total'] is num ? (j['total'] as num).toInt() : rows.length;
     return NearbyResult(
       places: rows,
       notes: (j['notes'] as List? ?? const []).map((n) => '$n').toList(),
       city: loc['city'] == null ? null : '${loc['city']}',
+      offset: j['offset'] is num ? (j['offset'] as num).toInt() : 0,
+      total: total,
+      hasMore: j['hasMore'] == true || rows.length < total,
     );
   }
 }
