@@ -184,13 +184,23 @@ export default function NearbyView() {
           {rows.map((r) => (
             <div key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col gap-2">
               {r.imageUrl ? (
-                <img
-                  src={r.imageUrl}
-                  alt={r.name}
-                  loading="lazy"
-                  className="w-full h-32 object-cover rounded-xl bg-slate-100"
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/nearby-assets/all.jpg'; }}
-                />
+                /* Owner 14 Nov: real photos differ in size and shape, so the CARD sets the frame and the photo is
+                   cropped into it. Whatever the source resolution, every tile is the same 16:10 and no photo is
+                   ever skipped for its dimensions - only a source that genuinely fails falls back to the tile,
+                   once. */
+                <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl bg-slate-100">
+                  <img
+                    src={r.imageUrl}
+                    alt={r.name}
+                    loading="lazy"
+                    decoding="async"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    onError={(e) => {
+                      const img = e.currentTarget as HTMLImageElement;
+                      if (!img.src.includes('/nearby-assets/all.jpg')) img.src = '/nearby-assets/all.jpg';
+                    }}
+                  />
+                </div>
               ) : null}
               <div className="flex items-start justify-between gap-2">
                 <div>

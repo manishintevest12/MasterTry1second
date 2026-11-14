@@ -46652,6 +46652,23 @@ async function bingImages(query, opts = {}) {
   }
   return rows;
 }
+async function imageFetchOk(url, timeoutMs = 4e3) {
+  if (!/^https?:\/\//i.test(String(url || ""))) return false;
+  try {
+    const res = await cffiFetch(url, {
+      impersonate: "chrome",
+      timeoutMs,
+      binary: true,
+      headers: { accept: "image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8" }
+    });
+    if (res.status !== 200 || !res.body) return false;
+    const buf = Buffer.from(res.body, res.encoding === "base64" ? "base64" : "binary");
+    if (buf.length < 256) return false;
+    return buf[0] === 255 && buf[1] === 216 || buf[0] === 137 && buf[1] === 80 || buf.subarray(0, 4).toString("ascii") === "RIFF" || buf.subarray(4, 8).toString("ascii") === "ftyp";
+  } catch {
+    return false;
+  }
+}
 function proxySecret() {
   return process.env.AFFILIATE_SECRET || import_node_crypto5.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#nearby-image`).digest("hex");
 }
@@ -48283,28 +48300,34 @@ async function wikipediaSearchImage(name, city, tokens3, category, origin2, time
 }
 async function webImageForPlace(name, city, tokens3, category, timeoutMs) {
   if (!tokens3.length) return null;
+  const deadline = Date.now() + Math.max(1500, timeoutMs);
   const query = city ? `${name} ${city}` : name;
   const candidates = await bingImages(query, { count: 20, timeoutMs });
-  let best = null;
   const strong = tokens3.filter((t) => t.length >= 4);
   const required = strong.length ? strong : tokens3;
+  const ranked = [];
   for (const cand of candidates) {
     const haystack = `${cand.title} ${cand.page} ${cand.image}`.toLowerCase();
     if (NOT_A_PLACE2.test(haystack)) continue;
     if (!required.every((t) => haystack.includes(t))) continue;
     if (!required.some((t) => t.length >= 5)) continue;
     const score = (haystack.includes(String(city || "").toLowerCase()) ? 2 : 0) + tokens3.filter((t) => haystack.includes(t)).length;
-    if (!best || score > best.score) best = { cand, score };
+    ranked.push({ cand, score });
   }
-  if (!best) return null;
-  const url = proxiedImage(best.cand.image);
-  if (!url) return null;
-  return {
-    url,
-    credit: `Photo matched on the web for this place (${best.cand.host}).`,
-    tier: "web",
-    sourceTitle: best.cand.title || best.cand.image
-  };
+  ranked.sort((a, b) => b.score - a.score);
+  for (const { cand } of ranked.slice(0, 3)) {
+    if (Date.now() > deadline) break;
+    const url = proxiedImage(cand.image);
+    if (!url) continue;
+    if (!await imageFetchOk(cand.image, Math.max(1200, Math.min(4e3, deadline - Date.now())))) continue;
+    return {
+      url,
+      credit: `Photo matched on the web for this place (${cand.host}).`,
+      tier: "web",
+      sourceTitle: cand.title || cand.image
+    };
+  }
+  return null;
 }
 async function resolvePlacePhoto(input) {
   const ev = input.evidence || {};

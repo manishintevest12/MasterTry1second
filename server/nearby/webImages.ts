@@ -132,7 +132,9 @@ export async function imageFetchOk(url: string, timeoutMs = 4000): Promise<boole
     });
     if (res.status !== 200 || !res.body) return false;
     const buf = Buffer.from(res.body, res.encoding === 'base64' ? 'base64' : 'binary');
-    if (buf.length < 2048) return false;
+    // Size and shape are never a reason to refuse a photo (owner 14 Nov: "unko rkna compulsory hai"): the card
+    // crops whatever it gets. Only an empty/HTML body fails, which the magic bytes already prove.
+    if (buf.length < 256) return false;
     return (buf[0] === 0xff && buf[1] === 0xd8)
       || (buf[0] === 0x89 && buf[1] === 0x50)
       || buf.subarray(0, 4).toString('ascii') === 'RIFF'
