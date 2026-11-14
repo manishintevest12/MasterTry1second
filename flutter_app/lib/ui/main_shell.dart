@@ -303,6 +303,22 @@ class _MenuSheet extends StatelessWidget {
                     ]),
                   ),
                 ),
+              // OWNER 14 Nov: "in app in menu still 12 vertical showing". kVerticals holds the twelve
+              // comparison verticals and Nearby is the thirteenth, so the menu was a tile short of the
+              // count the app itself advertises. Same tile, same red icon, its own callback.
+              InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: onNearby,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50, borderRadius: BorderRadius.circular(10)),
+                  child: Row(children: [
+                    const Icon(Icons.nearby_error_rounded, size: 16, color: T1SColors.red),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('Nearby', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 12, w: FontWeight.w800))),
+                  ]),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),

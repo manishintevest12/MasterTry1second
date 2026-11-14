@@ -194,7 +194,7 @@ class _HomeHeroState extends State<HomeHero> {
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 // Owner 23 Oct: registry-driven count (kVerticals = 12) —
                 // the button can never show a stale count again.
-                Text('Launch ${kVerticals.length}-Vertical Search', style: tx(context, 12, w: FontWeight.w900, color: Colors.white)),
+                Text('Launch ${kVerticals.length + 1}-Vertical Search', style: tx(context, 12, w: FontWeight.w900, color: Colors.white)),
                 const SizedBox(width: 7),
                 const Icon(Icons.arrow_forward_rounded, size: 15, color: Colors.white),
               ]),

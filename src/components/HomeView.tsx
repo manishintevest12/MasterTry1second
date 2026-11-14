@@ -159,7 +159,7 @@ export const HomeView: React.FC = () => {
                 onClick={() => handleLaunch('flights')}
                 className="px-6 py-3 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs font-black shadow-lg shadow-red-600/30 transition-all flex items-center gap-2 cursor-pointer"
               >
-                <span>Launch 12-Vertical Search</span>
+                <span>Launch {Object.keys(VERTICAL_META).length}-Vertical Search</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 

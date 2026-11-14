@@ -165,7 +165,7 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
         _couponsCard(context),
         const SizedBox(height: 20),
         // Owner 23 Oct: real registry count (12) — parity with the web heading.
-        Text('${kVerticals.length}-Vertical Predictive Insights & Yield Telemetry', style: tx(context, 17, w: FontWeight.w900, h: 1.2)),
+        Text('${kVerticals.length + 1}-Vertical Predictive Insights & Yield Telemetry', style: tx(context, 17, w: FontWeight.w900, h: 1.2)),
         const SizedBox(height: 4),
         Text('Real-time algorithm monitoring airline yield curves, hotel rate parity, dark-store surges, and bank card stacks.', style: tx(context, 11.5, color: muted(context), h: 1.4)),
         const SizedBox(height: 12),
@@ -220,7 +220,7 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          'Combines 365-day historical price telemetry with instant cross-platform parity across all 12 verticals. Flag artificial MRP spikes, auto-apply winning coupon codes at checkout, and catch rain surcharges in sub-second speed.',
+          'Combines 365-day historical price telemetry with instant cross-platform parity across all 13 verticals. Flag artificial MRP spikes, auto-apply winning coupon codes at checkout, and catch rain surcharges in sub-second speed.',
           style: tx(context, 11.5, color: const Color(0xFFCBD5E1), h: 1.5),
         ),
         const SizedBox(height: 14),

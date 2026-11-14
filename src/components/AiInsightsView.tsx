@@ -1106,7 +1106,7 @@ const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
       <div className="flex items-center justify-between flex-wrap gap-3 pb-2 border-b border-slate-200">
         <div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">
-            12-Vertical Predictive Insights & Yield Telemetry
+            13-Vertical Predictive Insights & Yield Telemetry
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
             Real-time algorithm monitoring airline yield curves, hotel rate parity, dark-store surges, and bank card stacks.
