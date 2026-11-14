@@ -97,6 +97,8 @@ export async function pythonDiagnostics(): Promise<{ chosen: string; probes: PyP
 export interface CffiResponse {
   status: number;
   body: string;
+  /** 'base64' when the caller asked for binary passthrough (images): decode before use. */
+  encoding?: 'base64';
   /** Present when requested via opts.returnCookies: the session cookie jar after the call. */
   cookies?: Record<string, string>;
   /** Present when requested via opts.returnHeaders: the raw response headers. */
@@ -121,6 +123,8 @@ async function cffiFetchDirect(
     returnHeaders?: boolean;
     /** Egress proxy for THIS call (`http://user:pass@host:port`, socks5://...). */
     proxy?: string;
+    /** Return the body as base64 instead of decoded text (binary files such as images). */
+    binary?: boolean;
   } = {},
 ): Promise<CffiResponse> {
   const payload = JSON.stringify({
@@ -133,6 +137,7 @@ async function cffiFetchDirect(
     ...(opts.returnHeaders ? { returnHeaders: true } : {}),
     ...(opts.httpVersion ? { httpVersion: opts.httpVersion } : {}),
     ...(opts.proxy ? { proxy: opts.proxy } : {}),
+    ...(opts.binary ? { binary: true } : {}),
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 20_000) / 1000)),
     impersonate: opts.impersonate || 'safari17_0',
   });
@@ -161,7 +166,7 @@ async function cffiFetchDirect(
       liveChildren.delete(child);
       try {
         const res = JSON.parse(out || '{}');
-        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ''), ...(res.cookies ? { cookies: res.cookies as Record<string, string> } : {}), ...(res.headers ? { headers: res.headers as Record<string, string> } : {}) });
+        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ''), ...(res.encoding ? { encoding: res.encoding as 'base64' } : {}), ...(res.cookies ? { cookies: res.cookies as Record<string, string> } : {}), ...(res.headers ? { headers: res.headers as Record<string, string> } : {}) });
         reject(new AcquisitionError('SERVER_ERROR', `curl_cffi bridge error: ${res.error || err || 'unknown'}`));
       } catch {
         reject(new AcquisitionError('SERVER_ERROR', `curl_cffi bridge bad output: ${err.slice(0, 200)}`));

@@ -84,6 +84,7 @@ import { pushPublicKey, saveWebSubscription, saveFcmToken, removeSubscription } 
 import { getCatalogueState, recordProvenance, saveItemToCatalogue } from '../../src/server/catalogueStore';
 import { log } from '../common/logger';
 import { pythonDiagnostics, cffiFetch } from '../common/curlCffiFetch';
+import { resolveProxiedImage } from '../nearby/webImages';
 import { YATRA_HOTELS_API_KEY } from '../workers/parsers/yatraHotels';
 import { parseMmtAutosuggest } from '../workers/parsers/mmtAutosuggest';
 import { bmsUpcomingUrl, bmsDiscoverUrl, bmsDiscoverHeaders, parseUpcomingCards, resolveBmsRegion, bmsPosterLikes, bmsPageGenres, parseNowShowingCards } from '../workers/parsers/bookmyshow';
@@ -1730,6 +1731,36 @@ apiRouter.get('/nearby/photo', async (req: any, res: Response) => {
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
     res.setHeader('Cache-Control', 'public, max-age=86400');
     const buf = Buffer.from(await upstream.arrayBuffer());
+    res.send(buf);
+  } catch { res.status(502).type('text/plain').send('photo unavailable'); }
+});
+
+/** Web-photo proxy for Nearby cards: signed token in, image bytes out (see server/nearby/webImages.ts). */
+apiRouter.get('/nearby/img', async (req: any, res: Response) => {
+  const token = String(req.query.t || '');
+  const target = resolveProxiedImage(token);
+  if (!target) { res.status(404).type('text/plain').send('image not available'); return; }
+  try {
+    const upstream = await cffiFetch(target, {
+      impersonate: 'chrome',
+      timeoutMs: 8000,
+      // Binary passthrough: an image sent back as decoded text arrives corrupted, so the bridge returns base64.
+      binary: true,
+      returnHeaders: true,
+      headers: { accept: 'image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8', referer: target },
+    });
+    if (upstream.status !== 200 || !upstream.body) { res.status(502).type('text/plain').send('photo unavailable'); return; }
+    const buf = Buffer.from(upstream.body, upstream.encoding === 'base64' ? 'base64' : 'binary');
+    // A publisher that answers our proxy with a rate-limit or captcha PAGE must not be served as an image: the
+    // card's onError would never fire and the user would see a broken box. Magic bytes are the real test.
+    const isImage = (buf[0] === 0xff && buf[1] === 0xd8)
+      || (buf[0] === 0x89 && buf[1] === 0x50)
+      || buf.subarray(0, 4).toString('ascii') === 'RIFF'
+      || buf.subarray(4, 8).toString('ascii') === 'ftyp';
+    const type = String(upstream.headers?.['content-type'] || '');
+    if (!isImage) { res.status(502).type('text/plain').send('photo unavailable'); return; }
+    res.setHeader('Content-Type', /^image\//i.test(type) ? type : 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
     res.send(buf);
   } catch { res.status(502).type('text/plain').send('photo unavailable'); }
 });

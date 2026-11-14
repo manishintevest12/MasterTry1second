@@ -108,6 +108,8 @@ def main() -> None:
     seed_cookies = req.get("cookies") or {}
     return_cookies = bool(req.get("returnCookies"))
     return_headers = bool(req.get("returnHeaders"))
+    # Binary passthrough (nearby photo proxy): images must survive the bridge as bytes, not as r.text.
+    want_binary = bool(req.get("binary"))
 
     def _seed_domain(url: str) -> str:
         """Seed cookies on the registrable domain of the request URL (e.g. .bigbasket.com)."""
@@ -145,7 +147,16 @@ def main() -> None:
                 r = s.post(url, headers=headers, data=body, timeout=timeout, **kw)
             else:
                 r = s.get(url, headers=headers, timeout=timeout, **kw)
-            out = {"ok": True, "status": int(r.status_code), "body": r.text}
+            if want_binary:
+                import base64 as _b64
+                out = {
+                    "ok": True,
+                    "status": int(r.status_code),
+                    "body": _b64.b64encode(r.content).decode("ascii"),
+                    "encoding": "base64",
+                }
+            else:
+                out = {"ok": True, "status": int(r.status_code), "body": r.text}
             if return_cookies:
                 try:
                     out["cookies"] = {k: str(v) for k, v in s.cookies.get_dict().items()}

@@ -29,6 +29,22 @@ export const CATEGORY_TILE: Record<string, string> = {
   all: '/nearby-assets/all.jpg',
 };
 
+/**
+ * OWNER 14 Nov: nine cards used to show the same tile. The last-resort fallback now rotates through every file
+ * that exists for the vertical, so a street of taxi stands or kirana stores still reads as different places.
+ * Only real files are listed here: a missing file would 404 and drop the card back to the same generic image.
+ */
+export const CATEGORY_TILES: Record<string, string[]> = {
+  restaurants: ['/nearby-assets/restaurants.jpg', '/nearby-assets/restaurants-2.jpg', '/nearby-assets/restaurants-3.jpg'],
+  cafes: ['/nearby-assets/cafes.jpg', '/nearby-assets/cafes-2.jpg', '/nearby-assets/cafes-3.jpg'],
+  hotels: ['/nearby-assets/hotels.jpg', '/nearby-assets/hotels-2.jpg', '/nearby-assets/hotels-3.jpg'],
+  stays: ['/nearby-assets/stays.jpg', '/nearby-assets/stays-2.jpg', '/nearby-assets/stays-3.jpg'],
+  cabs: ['/nearby-assets/cabs.jpg', '/nearby-assets/cabs-2.jpg', '/nearby-assets/cabs-3.jpg'],
+  stores: ['/nearby-assets/stores.jpg', '/nearby-assets/stores-2.jpg', '/nearby-assets/stores-3.jpg'],
+  movies: ['/nearby-assets/movies.jpg', '/nearby-assets/movies-2.jpg', '/nearby-assets/movies-3.jpg', '/nearby-assets/movies-4.jpg'],
+  all: ['/nearby-assets/all.jpg', '/nearby-assets/all-2.jpg', '/nearby-assets/all-3.jpg', '/nearby-assets/all-4.jpg'],
+};
+
 export interface EnrichedPlace {
   name: string;
   category: NearbyKind;

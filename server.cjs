@@ -2080,6 +2080,7 @@ async function cffiFetchDirect(url, opts = {}) {
     ...opts.returnHeaders ? { returnHeaders: true } : {},
     ...opts.httpVersion ? { httpVersion: opts.httpVersion } : {},
     ...opts.proxy ? { proxy: opts.proxy } : {},
+    ...opts.binary ? { binary: true } : {},
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 2e4) / 1e3)),
     impersonate: opts.impersonate || "safari17_0"
   });
@@ -2113,7 +2114,7 @@ async function cffiFetchDirect(url, opts = {}) {
       liveChildren.delete(child);
       try {
         const res = JSON.parse(out || "{}");
-        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ""), ...res.cookies ? { cookies: res.cookies } : {}, ...res.headers ? { headers: res.headers } : {} });
+        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ""), ...res.encoding ? { encoding: res.encoding } : {}, ...res.cookies ? { cookies: res.cookies } : {}, ...res.headers ? { headers: res.headers } : {} });
         reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge error: ${res.error || err || "unknown"}`));
       } catch {
         reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge bad output: ${err.slice(0, 200)}`));
@@ -8932,7 +8933,7 @@ var init_hotels = __esm({
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
-            const UA7 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+            const UA8 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             let cookies = void 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
               const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
@@ -8977,8 +8978,8 @@ var init_hotels = __esm({
             const city = cityFromQuery(ctx);
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
-            const cacheKey = `${city.toLowerCase()}|${checkin}|${checkout}`;
-            const hit = hotelsComCache.get(cacheKey);
+            const cacheKey2 = `${city.toLowerCase()}|${checkin}|${checkout}`;
+            const hit = hotelsComCache.get(cacheKey2);
             if (hit && Date.now() - hit.at < HC_CACHE_TTL_MS) return hit.items;
             if (Date.now() < hotelsComBlockedUntil) {
               throw new AcquisitionError("RATE_LIMITED", `Hotels.com edge is rate-sampling after a 429; cooling down ${Math.ceil((hotelsComBlockedUntil - Date.now()) / 1e3)}s`);
@@ -9004,7 +9005,7 @@ var init_hotels = __esm({
             }
             const stamped = stampStayDates(items, checkin, checkout);
             hotelsComBlockedUntil = 0;
-            hotelsComCache.set(cacheKey, { at: Date.now(), items: stamped });
+            hotelsComCache.set(cacheKey2, { at: Date.now(), items: stamped });
             return stamped;
           }
         },
@@ -9693,9 +9694,9 @@ var init_emtFareCalendar = __esm({
 });
 
 // server/workers/parsers/emtAirbus.ts
-function emtEncrypt(plain) {
+function emtEncrypt(plain2) {
   const c = (0, import_crypto7.createCipheriv)("aes-128-cbc", Buffer.from(ENC_KEY, "utf8"), Buffer.from(ENC_KEY, "utf8"));
-  return Buffer.concat([c.update(Buffer.from(plain, "utf8")), c.final()]).toString("base64");
+  return Buffer.concat([c.update(Buffer.from(plain2, "utf8")), c.final()]).toString("base64");
 }
 function parseEmtAirbus(jsonText) {
   const d = JSON.parse(jsonText);
@@ -18586,8 +18587,8 @@ var init_flights = __esm({
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
             const fromLabel = `${rt.from} (${fromA.code})`;
             const toLabel = `${rt.to} (${toA.code})`;
-            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
-            const H = { "User-Agent": UA7, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
+            const UA8 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const H = { "User-Agent": UA8, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
             const home = await cffiFetch(SL_HOME, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
             const homeBody = home.body || "";
             if (slIsImpervaStub(homeBody)) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan homepage Imperva-gated from this IP (probe self-activates on a clean production IP)", 403);
@@ -18690,8 +18691,8 @@ var init_flights = __esm({
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
             const dateHuman = (/* @__PURE__ */ new Date(dep + "T00:00:00Z")).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
-            const H = { "User-Agent": UA7, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
+            const UA8 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const H = { "User-Agent": UA8, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
             const boot2 = await cffiFetch(SIA_CHAT_PAGE, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
             if (siaIsGated(boot2.status, boot2.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", "Singapore Airlines Akamai-gated from this IP (probe self-activates on a clean production IP)", boot2.status);
             const cookies = boot2.cookies || {};
@@ -18743,10 +18744,10 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const UA8 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
             const sid = String(globalThis.crypto.randomUUID());
             const referer = `https://www.qatarairways.com/app/booking/flight-selection?fromStation=${fromA.code}&toStation=${toA.code}&departing=${dep}`;
-            const H = { "User-Agent": UA7, ...qrHeaders(sid, referer) };
+            const H = { "User-Agent": UA8, ...qrHeaders(sid, referer) };
             const rungs = [
               { imp: "chrome", label: "chrome" },
               { imp: "safari", label: "safari" },
@@ -18815,7 +18816,7 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const UA8 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
             const url = ekSearchRequestUrl(fromA.code, toA.code, dep);
             const rungs = [
               { imp: "chrome", label: "chrome" },
@@ -18830,7 +18831,7 @@ var init_flights = __esm({
                   timeoutMs: 35e3,
                   method: "GET",
                   headers: {
-                    "User-Agent": UA7,
+                    "User-Agent": UA8,
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                     "Accept-Language": "en-US,en;q=0.9",
                     Referer: "https://www.emirates.com/in/english/"
@@ -18884,9 +18885,9 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
+            const UA8 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
             const apiHeaders = {
-              "User-Agent": UA7,
+              "User-Agent": UA8,
               "Accept": "application/json, text/plain, */*",
               "Accept-Language": "en-US,en;q=0.9",
               "Origin": "https://book.cathaypacific.com",
@@ -18963,9 +18964,9 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const UA7 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const UA8 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
             try {
-              const ch = await cffiFetch(BA_CABIN_HELPER(fromA.code, toA.code), { impersonate: "chrome", timeoutMs: 15e3, headers: { "User-Agent": UA7, Accept: "*/*", Referer: "https://www.britishairways.com/travel/book/public/en_gb/" } });
+              const ch = await cffiFetch(BA_CABIN_HELPER(fromA.code, toA.code), { impersonate: "chrome", timeoutMs: 15e3, headers: { "User-Agent": UA8, Accept: "*/*", Referer: "https://www.britishairways.com/travel/book/public/en_gb/" } });
               const cabins = parseBaCabinHelper(ch.body || "");
               if (ch.status === 200 && Object.keys(cabins).length === 0) return [];
             } catch {
@@ -18982,7 +18983,7 @@ var init_flights = __esm({
                   timeoutMs: 2e4,
                   method: "POST",
                   headers: {
-                    "User-Agent": UA7,
+                    "User-Agent": UA8,
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
                     Authorization: 'Client client_id="bacomngprod"',
                     Origin: "https://www.britishairways.com",
@@ -19002,7 +19003,7 @@ var init_flights = __esm({
                   method: "POST",
                   cookies,
                   headers: {
-                    "User-Agent": UA7,
+                    "User-Agent": UA8,
                     "Content-Type": "application/json",
                     Accept: "application/json",
                     "Accept-Language": "en-GB,en;q=0.9",
@@ -28377,7 +28378,7 @@ var init_bus = __esm({
             const t0 = Date.now();
             let resolved = {};
             try {
-              const getJson3 = async (url) => {
+              const getJson4 = async (url) => {
                 const s = Date.now();
                 const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 1e4, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
                 steps.push(`suggest=${Date.now() - s}ms/${r.status}`);
@@ -28389,8 +28390,8 @@ var init_bus = __esm({
                 }
               };
               const [fromDocs, toDocs] = await Promise.all([
-                getJson3(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
-                getJson3(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
+                getJson4(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
+                getJson4(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
               ]);
               resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
             } catch (e2) {
@@ -28583,7 +28584,7 @@ var init_bus = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
-            const getJson3 = async (url) => {
+            const getJson4 = async (url) => {
               const r2 = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 1e4, headers: { Accept: "application/json", Referer: "https://www.abhibus.com/" } });
               if (r2.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus HTTP ${r2.status} on ${url.split("?")[0]}`, r2.status);
               try {
@@ -28593,8 +28594,8 @@ var init_bus = __esm({
               }
             };
             const [from, to] = await Promise.all([
-              resolveAbhiBusCity(getJson3, rt.from),
-              resolveAbhiBusCity(getJson3, rt.to)
+              resolveAbhiBusCity(getJson4, rt.from),
+              resolveAbhiBusCity(getJson4, rt.to)
             ]);
             if (!from || !to) throw new AcquisitionError("NOT_FOUND", `AbhiBus: could not resolve '${rt.from}'/'${rt.to}' as stations`);
             const depart = String(ctx.query.travelDates?.depart || "");
@@ -31448,13 +31449,13 @@ async function linkinrDeepTrackingUrl(dest) {
   if (!linkinrEnabled()) return null;
   const c = linkinrCampaignFor(dest);
   if (!c) return null;
-  const plain = plainLinkInrUrl(c);
+  const plain2 = plainLinkInrUrl(c);
   try {
     const { linkinrDeepUrl: linkinrDeepUrl2 } = await Promise.resolve().then(() => (init_deephop(), deephop_exports));
-    const deep = await linkinrDeepUrl2(plain, c.id, dest);
-    return deep || plain;
+    const deep = await linkinrDeepUrl2(plain2, c.id, dest);
+    return deep || plain2;
   } catch {
-    return plain;
+    return plain2;
   }
 }
 function linkinrCampaignList() {
@@ -37828,7 +37829,7 @@ async function runSearchPipeline(input) {
     reusedCatalogue: false,
     triggeredRefresh: false
   };
-  const cacheKey = buildCacheKey({
+  const cacheKey2 = buildCacheKey({
     // CACHE REVISION: a cached SearchResponse is replayed verbatim, so it bypasses the
     // pipeline's filters entirely. Bumping this retires snapshots built by older logic
     // (v2 = the e-commerce product gate + colour-variant collapse of 28 Oct, which would
@@ -37859,11 +37860,11 @@ async function runSearchPipeline(input) {
     cfg: parsed.configuration ? JSON.stringify(parsed.configuration) : ""
   });
   const { ttlSec, staleSec } = searchCacheTtl(vertical);
-  const cachedSearch = await cacheGet(cacheKey);
+  const cachedSearch = await cacheGet(cacheKey2);
   const cachedValue = cachedSearch.value;
   if (cachedValue && ((cachedValue.results || []).length === 0 || cachedValue.state?.pendingRefresh === true)) {
-    cacheDel(cacheKey);
-    log.info("Search", "Evicted empty/still-acquiring cache entry, going live", { key: cacheKey, rows: (cachedValue.results || []).length });
+    cacheDel(cacheKey2);
+    log.info("Search", "Evicted empty/still-acquiring cache entry, going live", { key: cacheKey2, rows: (cachedValue.results || []).length });
   } else if (cachedValue) {
     const v = cachedValue;
     const cacheGate = enforceRequestedTravelDate(v.results, String(vertical), {
@@ -37876,7 +37877,7 @@ async function runSearchPipeline(input) {
     if (cachePriced.dropped) {
       log.info("Search", "cached price-less rows withheld", { vertical: String(vertical), dropped: cachePriced.dropped, kept: cachePriced.kept.length });
       v.results = cachePriced.kept;
-      if (!v.results.length) cacheDel(cacheKey);
+      if (!v.results.length) cacheDel(cacheKey2);
     }
     if (cacheGate.dropped > 0) {
       log.info("Search", "cached rows dropped for answering a different travel date", {
@@ -37888,8 +37889,8 @@ async function runSearchPipeline(input) {
       });
       v.results = cacheGate.kept;
       if (!v.results.length) {
-        cacheDel(cacheKey);
-        log.info("Search", "Cache snapshot held only other-day rows - going live instead", { key: cacheKey });
+        cacheDel(cacheKey2);
+        log.info("Search", "Cache snapshot held only other-day rows - going live instead", { key: cacheKey2 });
       }
     }
     for (const o of v.results) {
@@ -37901,7 +37902,7 @@ async function runSearchPipeline(input) {
     v.latencyMs = Date.now() - totalStart;
     v.totalSearchLatencyMs = v.latencyMs;
     if (v.state?.pendingRefresh) {
-      const busy = inflightPipelines.get(cacheKey);
+      const busy = inflightPipelines.get(cacheKey2);
       if (busy) {
         const settled = await Promise.race([
           busy.then((r) => r, () => null),
@@ -37913,25 +37914,25 @@ async function runSearchPipeline(input) {
           }
           settled.latencyMs = Date.now() - totalStart;
           settled.totalSearchLatencyMs = settled.latencyMs;
-          cachePut(cacheKey, settled, ttlSec, staleSec);
+          cachePut(cacheKey2, settled, ttlSec, staleSec);
           if (!settled.state.pendingRefresh) forgetPending(pollKey([vertical, input.query, input.city, input.pincode, parsed.travelDates?.depart]));
           return settled;
         }
       }
     }
     if (!cachedSearch.fresh) {
-      revalidateInBackground(cacheKey, ttlSec, () => runLivePipeline(input, parsed));
+      revalidateInBackground(cacheKey2, ttlSec, () => runLivePipeline(input, parsed));
     }
     if (v.results.length) return v;
   }
-  const running2 = inflightPipelines.get(cacheKey);
+  const running2 = inflightPipelines.get(cacheKey2);
   if (running2) {
     const early2 = await Promise.race([
       running2.then((r) => ({ kind: "full", r }), () => null),
       new Promise((res) => setTimeout(() => res(null), 600))
     ]);
     if (early2 && early2.kind === "full") return early2.r;
-    const memo2 = inflightPartials.get(cacheKey);
+    const memo2 = inflightPartials.get(cacheKey2);
     if (memo2 && memo2.snap.results.length > 0) {
       if (!memo2.response) {
         const ctx = await buildLiveCtx(parsed, input);
@@ -37961,18 +37962,18 @@ async function runSearchPipeline(input) {
     if (offers.length >= 1) {
       const pipeline2 = runLivePipeline(input, parsed).then((response) => {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
-        if (response.results.length === 0) cachePut(cacheKey, response, 12, 12);
+        if (response.results.length === 0) cachePut(cacheKey2, response, 12, 12);
         else {
           const bs = busSelfHealTtl(vertical, response, t, st);
           const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec);
-          cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
+          cachePut(cacheKey2, response, bt.ttlSec, bt.staleSec);
         }
         return response;
       }).finally(() => {
-        inflightPipelines.delete(cacheKey);
+        inflightPipelines.delete(cacheKey2);
         pipelineByQuestion.delete(questionKeyOf(input));
       });
-      inflightPipelines.set(cacheKey, pipeline2);
+      inflightPipelines.set(cacheKey2, pipeline2);
       pipelineByQuestion.set(questionKeyOf(input), pipeline2);
       pipeline2.catch(() => {
       });
@@ -37990,7 +37991,7 @@ async function runSearchPipeline(input) {
     onPartial: (snapshot) => {
       if (snapshot.results.length > 0) {
         partialRef.current = snapshot;
-        inflightPartials.set(cacheKey, { snap: snapshot, response: null });
+        inflightPartials.set(cacheKey2, { snap: snapshot, response: null });
         if (firstRowResolve) {
           const r = firstRowResolve;
           firstRowResolve = null;
@@ -38000,19 +38001,19 @@ async function runSearchPipeline(input) {
     }
   }).then((response) => {
     if (response.results.length === 0) {
-      cachePut(cacheKey, response, 12, 12);
+      cachePut(cacheKey2, response, 12, 12);
     } else {
       const bs = busSelfHealTtl(vertical, response, ttlSec, staleSec);
       const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec);
-      cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
+      cachePut(cacheKey2, response, bt.ttlSec, bt.staleSec);
     }
     return response;
   }).finally(() => {
-    inflightPipelines.delete(cacheKey);
-    inflightPartials.delete(cacheKey);
+    inflightPipelines.delete(cacheKey2);
+    inflightPartials.delete(cacheKey2);
     pipelineByQuestion.delete(questionKeyOf(input));
   });
-  inflightPipelines.set(cacheKey, full);
+  inflightPipelines.set(cacheKey2, full);
   pipelineByQuestion.set(questionKeyOf(input), full);
   full.catch(() => {
   });
@@ -42048,8 +42049,8 @@ function bucketRowsByCity(rows, cities, perCityLimit = 60) {
   return map;
 }
 async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
-  const cacheKey = `${vertical}|byCity|${cities.length}|${perCityLimit}`;
-  const hit = cityPoolCache.get(cacheKey);
+  const cacheKey2 = `${vertical}|byCity|${cities.length}|${perCityLimit}`;
+  const hit = cityPoolCache.get(cacheKey2);
   if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.map;
   const store7 = getStore();
   const perCitySql = (like) => `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
@@ -42080,7 +42081,7 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
     } catch {
     }
   }
-  cityPoolCache.set(cacheKey, { at: Date.now(), map });
+  cityPoolCache.set(cacheKey2, { at: Date.now(), map });
   return map;
 }
 async function fetchAffiliateRows(limit) {
@@ -42748,8 +42749,8 @@ function recoverCapacityFromDescription(title, desc) {
 }
 function isMerchantNameTitle(title, domain, merchant) {
   if (!title) return false;
-  const plain = (x) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return plain(title) === plain(domain) || plain(title) === plain(merchant);
+  const plain2 = (x) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return plain2(title) === plain2(domain) || plain2(title) === plain2(merchant);
 }
 function isGenericTitle(title) {
   return !!title && GENERIC_TITLE_RE.test(title.trim());
@@ -45924,8 +45925,8 @@ function fcmServiceAccount() {
   }
 }
 async function fcmAccessToken(sa) {
-  const cacheKey = fcmCacheKey(sa);
-  if (fcmTokenCache && fcmTokenCache.key === cacheKey && fcmTokenCache.exp > Date.now() + 6e4) {
+  const cacheKey2 = fcmCacheKey(sa);
+  if (fcmTokenCache && fcmTokenCache.key === cacheKey2 && fcmTokenCache.exp > Date.now() + 6e4) {
     return fcmTokenCache.token;
   }
   const now = Math.floor(Date.now() / 1e3);
@@ -45947,7 +45948,7 @@ async function fcmAccessToken(sa) {
   if (!res.ok || !data?.access_token) {
     throw Object.assign(new Error(`FCM auth failed: ${clip3(data?.error_description || data?.error || res.status, 120)}`), { statusCode: 401 });
   }
-  fcmTokenCache = { key: cacheKey, token: String(data.access_token), exp: Date.now() + Number(data.expires_in || 3600) * 1e3 };
+  fcmTokenCache = { key: cacheKey2, token: String(data.access_token), exp: Date.now() + Number(data.expires_in || 3600) * 1e3 };
   return fcmTokenCache.token;
 }
 async function sendFcm(row, payload) {
@@ -46588,6 +46589,160 @@ var init_catalogueStore = __esm({
       },
       lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
+  }
+});
+
+// server/nearby/webImages.ts
+function hostOf4(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+function hostAllowed(url) {
+  const host = hostOf4(url);
+  if (!host || !/^https?:\/\//i.test(url)) return false;
+  if (BAD_HOSTS.some((b) => host.includes(b))) return false;
+  const path18 = (() => {
+    try {
+      return new URL(url).pathname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  if (BAD_WORDS.test(path18)) return false;
+  return IMAGE_EXT.test(path18) || IMAGE_CDN_HINT.test(host);
+}
+function decodeEntities(s) {
+  return s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\\u002f/gi, "/").replace(/\\\//g, "/");
+}
+async function bingImages(query, opts = {}) {
+  const q3 = String(query || "").trim();
+  if (!q3) return [];
+  const key = q3.toLowerCase();
+  const hit = cache9.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS3) return hit.rows;
+  const url = `https://www.bing.com/images/search?q=${encodeURIComponent(q3)}&form=HDRSC2&mkt=en-IN&first=1&count=${Math.min(30, Math.max(5, opts.count || 20))}`;
+  let rows = [];
+  try {
+    const res = await cffiFetch(url, {
+      impersonate: "chrome",
+      timeoutMs: Math.max(3e3, opts.timeoutMs || 7e3),
+      headers: { "accept-language": "en-IN,en;q=0.9", accept: "text/html,application/xhtml+xml" }
+    });
+    if (res.status === 200 && res.body) {
+      const chunks = String(res.body).split("murl&quot;:&quot;").slice(1);
+      for (const chunk of chunks) {
+        const image = decodeEntities((chunk.match(/^([^&"]+)/) || [])[1] || "").trim();
+        if (!/^https?:\/\//i.test(image)) continue;
+        if (!hostAllowed(image)) continue;
+        const title = decodeEntities((chunk.match(/t&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
+        const page = decodeEntities((chunk.match(/purl&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
+        rows.push({ image, page, title, host: hostOf4(image) });
+      }
+    }
+  } catch (e2) {
+    log.warn("nearby", "bing images failed", { query: q3, error: String(e2?.message || e2).slice(0, 90) });
+    rows = [];
+  }
+  cache9.set(key, { at: Date.now(), rows });
+  if (cache9.size > 600) {
+    for (const [k] of [...cache9.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 200)) cache9.delete(k);
+  }
+  return rows;
+}
+function proxySecret() {
+  return process.env.AFFILIATE_SECRET || import_node_crypto5.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#nearby-image`).digest("hex");
+}
+function sign(payload) {
+  return import_node_crypto5.default.createHmac("sha256", proxySecret()).update(payload).digest("base64url").slice(0, 32);
+}
+function proxiedImage(url) {
+  const src2 = String(url || "").trim();
+  if (!/^https?:\/\//i.test(src2)) return "";
+  const payload = Buffer.from(JSON.stringify({ u: src2.slice(0, 1500), e: Date.now() + PROXY_TTL_MS }), "utf8").toString("base64url");
+  return `/api/nearby/img?t=${payload}.${sign(payload)}`;
+}
+function resolveProxiedImage(token) {
+  const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
+  if (!m) return null;
+  const [, payload, sig] = m;
+  const expect = sign(payload);
+  if (sig.length !== expect.length) return null;
+  try {
+    if (!import_node_crypto5.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+    const j = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    const url = String(j?.u || "");
+    if (!/^https?:\/\//i.test(url)) return null;
+    if (Number(j?.e) < Date.now()) return null;
+    if (!hostAllowed(url)) return null;
+    const host = hostOf4(url);
+    if (!host.includes(".") || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return null;
+    if (/(^|\.)(localhost|internal|local|arpa)$/.test(host)) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+var import_node_crypto5, BAD_HOSTS, BAD_WORDS, IMAGE_EXT, IMAGE_CDN_HINT, cache9, CACHE_TTL_MS3, PROXY_TTL_MS;
+var init_webImages = __esm({
+  "server/nearby/webImages.ts"() {
+    import_node_crypto5 = __toESM(require("node:crypto"), 1);
+    init_curlCffiFetch();
+    init_logger();
+    BAD_HOSTS = [
+      "bing.com",
+      "bing.net",
+      "microsoft.com",
+      "msn.com",
+      "google.",
+      "gstatic.com",
+      "googleusercontent.com",
+      "justdial.com",
+      "zomato.com",
+      "swiggy.com",
+      "tripadvisor.",
+      "yelp.com",
+      "foursquare.com",
+      "facebook.com",
+      "fbcdn.net",
+      "instagram.com",
+      "pinterest.",
+      "linkedin.com",
+      "twitter.com",
+      "x.com",
+      "youtube.com",
+      "ytimg.com",
+      "wikimedia.org",
+      "wikipedia.org",
+      "bookmyshow.com",
+      "paytm.com",
+      "shutterstock.com",
+      "alamy.com",
+      "dreamstime.com",
+      "istockphoto.com",
+      "gettyimages.com",
+      "123rf.com",
+      "vectorstock.com",
+      "freepik.com",
+      "pngtree.com",
+      "seeklogo.com",
+      "cleanpng.com",
+      "kindpng.com",
+      "placeholder.com",
+      "placehold.it",
+      "loremflickr.com",
+      "unsplash.com",
+      "pexels.com",
+      "pixabay.com"
+    ];
+    BAD_WORDS = /logo|icon|favicon|sprite|placeholder|avatar|map\b|maps|screenshot|banner-ad|watermark|noimage|no-image|default[-_]?image|coming[-_]?soon|storefront-icon/i;
+    IMAGE_EXT = /\.(jpe?g|png|webp)(\?|$)/i;
+    IMAGE_CDN_HINT = /(^|\.)(images?|img|cdn|static|media|assets|photo|photos|pic|pics)\./i;
+    cache9 = /* @__PURE__ */ new Map();
+    CACHE_TTL_MS3 = 12 * 60 * 6e4;
+    PROXY_TTL_MS = 30 * 24 * 60 * 60 * 1e3;
   }
 });
 
@@ -47959,29 +48114,395 @@ async function ogImage(pageUrl) {
   ogCache.set(url, { url: found, at: Date.now() });
   return found;
 }
-var CATEGORY_TILE, ogCache;
+var CATEGORY_TILES, ogCache;
 var init_enrich = __esm({
   "server/nearby/enrich.ts"() {
     init_logger();
     init_curlCffiFetch();
-    CATEGORY_TILE = {
-      restaurants: "/nearby-assets/restaurants.jpg",
-      cafes: "/nearby-assets/cafes.jpg",
-      hotels: "/nearby-assets/hotels.jpg",
-      stays: "/nearby-assets/stays.jpg",
-      cabs: "/nearby-assets/cabs.jpg",
-      stores: "/nearby-assets/stores.jpg",
-      movies: "/nearby-assets/movies.jpg",
-      all: "/nearby-assets/all.jpg"
+    CATEGORY_TILES = {
+      restaurants: ["/nearby-assets/restaurants.jpg", "/nearby-assets/restaurants-2.jpg", "/nearby-assets/restaurants-3.jpg"],
+      cafes: ["/nearby-assets/cafes.jpg", "/nearby-assets/cafes-2.jpg", "/nearby-assets/cafes-3.jpg"],
+      hotels: ["/nearby-assets/hotels.jpg", "/nearby-assets/hotels-2.jpg", "/nearby-assets/hotels-3.jpg"],
+      stays: ["/nearby-assets/stays.jpg", "/nearby-assets/stays-2.jpg", "/nearby-assets/stays-3.jpg"],
+      cabs: ["/nearby-assets/cabs.jpg", "/nearby-assets/cabs-2.jpg", "/nearby-assets/cabs-3.jpg"],
+      stores: ["/nearby-assets/stores.jpg", "/nearby-assets/stores-2.jpg", "/nearby-assets/stores-3.jpg"],
+      movies: ["/nearby-assets/movies.jpg", "/nearby-assets/movies-2.jpg", "/nearby-assets/movies-3.jpg", "/nearby-assets/movies-4.jpg"],
+      all: ["/nearby-assets/all.jpg", "/nearby-assets/all-2.jpg", "/nearby-assets/all-3.jpg", "/nearby-assets/all-4.jpg"]
     };
     ogCache = /* @__PURE__ */ new Map();
+  }
+});
+
+// server/nearby/photos.ts
+function commonsFilePath(file) {
+  const name = String(file || "").replace(/^File:/i, "").trim();
+  if (!name || NOT_A_PHOTO.test(name) || !IS_PHOTO.test(name.replace(/\?.*$/, ""))) return null;
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(name)}?width=${COMMONS_WIDTH}`;
+}
+async function getJson3(url, timeoutMs) {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), Math.max(600, timeoutMs));
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { "user-agent": UA6, accept: "application/json" }
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+function plain(html) {
+  return String(html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+function commonsCredit(meta) {
+  const licence = plain(meta?.LicenseShortName?.value).slice(0, 24);
+  return licence ? `Photo from Wikimedia Commons (${licence}).` : "Photo from Wikimedia Commons.";
+}
+function nameTokens(name) {
+  return String(name || "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !GENERIC_TOKENS.has(t) && !/^\d+$/.test(t));
+}
+function titleMatches(title, tokens3, category) {
+  if (!tokens3.length) return false;
+  const lower = String(title || "").toLowerCase();
+  if (NOT_A_PLACE2.test(lower)) return false;
+  const hits = tokens3.filter((t) => lower.includes(t));
+  const strong = hits.filter((t) => t.length >= 4);
+  const catHit = (CATEGORY_WORDS[String(category || "all")] || CATEGORY_WORDS.all).some((w) => lower.includes(w));
+  if (tokens3.length >= 2 && hits.length === tokens3.length) return true;
+  if (strong.length >= 2) return true;
+  if (strong.length >= 1 && catHit) return true;
+  return false;
+}
+function distanceKm(a, b) {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+function farAway(origin2, cand) {
+  if (!origin2 || !cand) return false;
+  return distanceKm(origin2, cand) > MAX_KM;
+}
+function cacheKey(ev, name, city, category) {
+  return [
+    ev.wikidata || "",
+    ev.wikipedia || "",
+    ev.imageTag || "",
+    ev.commonsTag || "",
+    name.toLowerCase(),
+    (city || "").toLowerCase(),
+    String(category || "")
+  ].join("|");
+}
+async function wikidataImage(qid, timeoutMs) {
+  const id = String(qid || "").trim().toUpperCase();
+  if (!/^Q\d+$/.test(id)) return null;
+  const data = await getJson3(`https://www.wikidata.org/wiki/Special:EntityData/${id}.json`, timeoutMs);
+  const claims = data?.entities?.[id]?.claims;
+  const files = [];
+  for (const c of Array.isArray(claims?.P18) ? claims.P18 : []) {
+    const v = c?.mainsnak?.datavalue?.value;
+    if (typeof v === "string") files.push(v);
+  }
+  for (const file of files) {
+    const url = commonsFilePath(file);
+    if (url) return { url, credit: "Photo from Wikimedia Commons for this place." };
+  }
+  return null;
+}
+async function wikipediaImage(tag, timeoutMs) {
+  const raw = String(tag || "").trim();
+  if (!raw) return null;
+  const m = raw.match(/^([a-z-]{2,3}):(.+)$/i);
+  const lang = m ? m[1].toLowerCase() : "en";
+  const title = (m ? m[2] : raw).replace(/_/g, " ").trim();
+  if (!title) return null;
+  const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&piprop=thumbnail&pithumbsize=${COMMONS_WIDTH}&titles=${encodeURIComponent(title)}`;
+  const data = await getJson3(url, timeoutMs);
+  for (const p of Object.values(data?.query?.pages || {})) {
+    const src2 = String(p?.thumbnail?.source || "");
+    if (/^https:\/\//i.test(src2) && !NOT_A_PHOTO.test(src2)) {
+      return { url: src2, credit: "Photo from the place's Wikipedia article." };
+    }
+  }
+  return null;
+}
+function searchQueries(name, city, tokens3) {
+  const q3 = [
+    city ? `${name} ${city}` : name,
+    name,
+    city ? `${tokens3.slice(0, 3).join(" ")} ${city}` : tokens3.slice(0, 3).join(" ")
+  ];
+  return [...new Set(q3.map((x) => x.trim()).filter(Boolean))];
+}
+async function commonsNameImage(name, city, tokens3, category, origin2, timeoutMs) {
+  if (!tokens3.length) return null;
+  const seen = /* @__PURE__ */ new Set();
+  for (const query of searchQueries(name, city, tokens3)) {
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=6&gsrlimit=10&prop=imageinfo|coordinates&iiprop=url|extmetadata&iiurlwidth=${COMMONS_WIDTH}`;
+    const data = await getJson3(url, timeoutMs);
+    for (const p of Object.values(data?.query?.pages || {})) {
+      const title = String(p?.title || "");
+      if (!title || seen.has(title) || NOT_A_PHOTO.test(title) || !IS_PHOTO.test(title)) continue;
+      seen.add(title);
+      if (!titleMatches(title, tokens3, category)) continue;
+      const co = Array.isArray(p?.coordinates) ? p.coordinates[0] : null;
+      if (farAway(origin2, co ? { lat: Number(co.lat), lng: Number(co.lon) } : null)) continue;
+      const info = Array.isArray(p?.imageinfo) ? p.imageinfo[0] : null;
+      const thumb = String(info?.thumburl || info?.url || "").replace(/[?&]utm_[^&]*/g, "").replace(/\?$/, "");
+      if (!/^https:\/\/(upload|thumb)\.wikimedia\.org\//i.test(thumb)) continue;
+      return {
+        url: thumb,
+        credit: `${commonsCredit(info?.extmetadata)} Matched on this place's name.`,
+        tier: "commons-name",
+        sourceTitle: title
+      };
+    }
+  }
+  return null;
+}
+async function wikipediaSearchImage(name, city, tokens3, category, origin2, timeoutMs) {
+  if (!tokens3.length) return null;
+  for (const query of searchQueries(name, city, tokens3)) {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=6&prop=pageimages|coordinates&piprop=thumbnail&pithumbsize=${COMMONS_WIDTH}`;
+    const data = await getJson3(url, timeoutMs);
+    for (const p of Object.values(data?.query?.pages || {})) {
+      const title = String(p?.title || "");
+      if (!title || !titleMatches(title, tokens3, category)) continue;
+      const co = Array.isArray(p?.coordinates) ? p.coordinates[0] : null;
+      if (!co || farAway(origin2, { lat: Number(co.lat), lng: Number(co.lon) })) continue;
+      const src2 = String(p?.thumbnail?.source || "");
+      if (!/^https:\/\//i.test(src2) || NOT_A_PHOTO.test(src2)) continue;
+      return { url: src2, credit: "Photo from this place's Wikipedia article.", tier: "wikipedia-name", sourceTitle: title };
+    }
+  }
+  return null;
+}
+async function webImageForPlace(name, city, tokens3, category, timeoutMs) {
+  if (!tokens3.length) return null;
+  const query = city ? `${name} ${city}` : name;
+  const candidates = await bingImages(query, { count: 20, timeoutMs });
+  let best = null;
+  const strong = tokens3.filter((t) => t.length >= 4);
+  const required = strong.length ? strong : tokens3;
+  for (const cand of candidates) {
+    const haystack = `${cand.title} ${cand.page} ${cand.image}`.toLowerCase();
+    if (NOT_A_PLACE2.test(haystack)) continue;
+    if (!required.every((t) => haystack.includes(t))) continue;
+    if (!required.some((t) => t.length >= 5)) continue;
+    const score = (haystack.includes(String(city || "").toLowerCase()) ? 2 : 0) + tokens3.filter((t) => haystack.includes(t)).length;
+    if (!best || score > best.score) best = { cand, score };
+  }
+  if (!best) return null;
+  const url = proxiedImage(best.cand.image);
+  if (!url) return null;
+  return {
+    url,
+    credit: `Photo matched on the web for this place (${best.cand.host}).`,
+    tier: "web",
+    sourceTitle: best.cand.title || best.cand.image
+  };
+}
+async function resolvePlacePhoto(input) {
+  const ev = input.evidence || {};
+  const city = input.city || null;
+  const category = input.category || null;
+  const key = cacheKey(ev, input.name, city, category);
+  const hit = cache10.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS4) return hit.hit;
+  const deadline = Date.now() + Math.max(800, Number(input.timeoutMs) || 4e3);
+  const left = () => Math.max(700, deadline - Date.now());
+  const tokens3 = nameTokens(input.name);
+  const origin2 = Number.isFinite(Number(input.lat)) && Number.isFinite(Number(input.lng)) ? { lat: Number(input.lat), lng: Number(input.lng) } : null;
+  let found = null;
+  const direct = String(ev.imageTag || "").trim();
+  if (!found && /^https:\/\/.+\.(jpe?g|png|webp)(\?.*)?$/i.test(direct)) {
+    found = { url: direct, credit: "Photo from this place's own OpenStreetMap listing.", tier: "evidence" };
+  }
+  if (!found && ev.commonsTag) {
+    const url = commonsFilePath(ev.commonsTag);
+    if (url) found = { url, credit: "Photo from Wikimedia Commons for this place.", tier: "evidence" };
+  }
+  if (!found && ev.wikidata) {
+    const wd = await wikidataImage(ev.wikidata, left());
+    if (wd) found = { ...wd, tier: "evidence" };
+  }
+  if (!found && ev.wikipedia) {
+    const wp = await wikipediaImage(ev.wikipedia, left());
+    if (wp) found = { ...wp, tier: "evidence" };
+  }
+  const addressLike = category === "cabs" || category === "stores" || category === "all";
+  if (!found && (!addressLike || tokens3.length >= 2)) {
+    found = await commonsNameImage(input.name, city, tokens3, category, origin2, left());
+  }
+  if (!found && (!addressLike || tokens3.length >= 2)) {
+    found = await wikipediaSearchImage(input.name, city, tokens3, category, origin2, left());
+  }
+  if (!found && (!addressLike || tokens3.length >= 2)) {
+    found = await webImageForPlace(input.name, city, tokens3, category, left());
+  }
+  cache10.set(key, { hit: found, at: Date.now() });
+  if (cache10.size > 1200) {
+    const drop = [...cache10.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 400);
+    for (const [k] of drop) cache10.delete(k);
+  }
+  if (found) log.info("nearby", `photo resolved (${found.tier}) for "${input.name}"`, { city });
+  return found;
+}
+function categoryTile(category, seed, tiles) {
+  const list = tiles[category] || tiles.all || ["/nearby-assets/all.jpg"];
+  let h = 0;
+  const s = String(seed || "");
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) % 1e5;
+  return list[h % list.length];
+}
+var GENERIC_TOKENS, CATEGORY_WORDS, NOT_A_PLACE2, NOT_A_PHOTO, IS_PHOTO, UA6, COMMONS_WIDTH, MAX_KM, cache10, CACHE_TTL_MS4;
+var init_photos = __esm({
+  "server/nearby/photos.ts"() {
+    init_logger();
+    init_webImages();
+    GENERIC_TOKENS = /* @__PURE__ */ new Set([
+      "cafe",
+      "cafes",
+      "coffee",
+      "restaurant",
+      "restaurants",
+      "restro",
+      "bar",
+      "pub",
+      "bakery",
+      "dessert",
+      "food",
+      "cinema",
+      "cinemas",
+      "talkies",
+      "multiplex",
+      "theatre",
+      "theater",
+      "movie",
+      "movies",
+      "cineplex",
+      "picture",
+      "pictures",
+      "hotel",
+      "hotels",
+      "lodge",
+      "inn",
+      "residency",
+      "suites",
+      "stay",
+      "stays",
+      "guest",
+      "guesthouse",
+      "taxi",
+      "cab",
+      "cabs",
+      "auto",
+      "rickshaw",
+      "rikshaw",
+      "stand",
+      "stop",
+      "pick",
+      "pickup",
+      "drop",
+      "parking",
+      "store",
+      "stores",
+      "shop",
+      "shops",
+      "mart",
+      "supermarket",
+      "mall",
+      "market",
+      "complex",
+      "centre",
+      "center",
+      "the",
+      "and",
+      "for",
+      "near",
+      "road",
+      "marg",
+      "street",
+      "lane",
+      "path",
+      "chowk",
+      "chawk",
+      "square",
+      "nagar",
+      "indian",
+      "india",
+      "pune",
+      "mumbai",
+      "delhi",
+      "bangalore",
+      "bengaluru",
+      "hyderabad",
+      "chennai",
+      "kolkata",
+      "limited",
+      "ltd",
+      "pvt",
+      "private",
+      "service",
+      "services",
+      "point",
+      "main",
+      "new",
+      "old",
+      "best",
+      "top",
+      // street/plot words: "Central Avenue" or "Lane Number 7" is an address, not a business, so a photo whose
+      // title merely repeats the address is not evidence of this card's place.
+      "avenue",
+      "cross",
+      "bypass",
+      "extension",
+      "sector",
+      "block",
+      "phase",
+      "colony",
+      "society",
+      "layout",
+      "enclave",
+      "circle",
+      "junction",
+      "corner",
+      "gate",
+      "bridge",
+      "hills",
+      "valley",
+      "number",
+      "no"
+    ]);
+    CATEGORY_WORDS = {
+      movies: ["cinema", "talkie", "theatre", "theater", "multiplex", "cineplex", "picture", "hall"],
+      cabs: ["taxi", "cab", "auto", "rickshaw", "rikshaw", "stand"],
+      stores: ["shop", "store", "market", "mart", "bazaar", "bazar", "mall", "showroom"],
+      cafes: ["cafe", "coffee", "bakery", "restaurant"],
+      restaurants: ["restaurant", "dhaba", "eatery", "cafe", "hotel"],
+      hotels: ["hotel", "lodge", "residency", "inn", "suites", "guest"],
+      stays: ["hotel", "lodge", "guest", "homestay", "residency", "hostel", "apartment", "inn"],
+      all: ["cinema", "hotel", "restaurant", "cafe", "market", "shop", "theatre"]
+    };
+    NOT_A_PLACE2 = /museum|sculpture|excavat|archaeolog|manuscript|coin|inscription|temple|fort\b|monument|map of|logo|emblem|coat of arms|diagram|postage|stamp\b|panorama of/i;
+    NOT_A_PHOTO = /\.(svg|pdf|tif|tiff|djvu|xcf|webm|ogv|gif)$/i;
+    IS_PHOTO = /\.(jpe?g|png|webp)$/i;
+    UA6 = "Try1Second/1.0 (nearby photos; https://try1second.com)";
+    COMMONS_WIDTH = 640;
+    MAX_KM = 40;
+    cache10 = /* @__PURE__ */ new Map();
+    CACHE_TTL_MS4 = 12 * 60 * 6e4;
   }
 });
 
 // server/nearby/aggregator.ts
 var aggregator_exports = {};
 __export(aggregator_exports, {
-  distanceKm: () => distanceKm,
+  distanceKm: () => distanceKm2,
   nearbyAnswer: () => nearbyAnswer,
   nearbyReport: () => nearbyReport,
   normalizeNearbyCategory: () => normalizeNearbyCategory,
@@ -48008,7 +48529,7 @@ function normalizeNearbyCategory(raw) {
   const key = String(raw || "").trim().toLowerCase();
   return CATEGORY_ALIASES[key] || "all";
 }
-function distanceKm(a, b) {
+function distanceKm2(a, b) {
   const R = 6371;
   const dLat = (b.lat - a.lat) * Math.PI / 180;
   const dLng = (b.lng - a.lng) * Math.PI / 180;
@@ -48118,7 +48639,7 @@ async function googleNearby(lat, lng, category) {
         address: p.formattedAddress ? String(p.formattedAddress) : null,
         lat: Number.isFinite(plat) ? plat : null,
         lng: Number.isFinite(plng) ? plng : null,
-        distanceKm: Number.isFinite(plat) ? distanceKm({ lat, lng }, { lat: plat, lng: plng }) : null,
+        distanceKm: Number.isFinite(plat) ? distanceKm2({ lat, lng }, { lat: plat, lng: plng }) : null,
         imageUrl: photo,
         source: "google",
         honesty: "Rating and reviews from Google Places, live.",
@@ -48277,7 +48798,11 @@ ${body}
           addr: [e2.tags["addr:housenumber"], e2.tags["addr:street"], e2.tags["addr:suburb"], e2.tags["addr:city"]].filter(Boolean).join(", ") || null,
           sub: e2.tags.cuisine ? String(e2.tags.cuisine).replace(/[_;]/g, " ") : e2.tags.tourism || e2.tags.shop || e2.tags.amenity || null,
           osmId: `op-${e2.id}`,
-          website: e2.tags.website ? String(e2.tags.website) : null
+          website: e2.tags.website || e2.tags["contact:website"] || null,
+          wikidata: e2.tags.wikidata || null,
+          wikipedia: e2.tags.wikipedia || null,
+          osmImage: e2.tags.image || null,
+          commonsTag: e2.tags.wikimedia_commons || null
         });
       });
       if (rows.length) return { rows };
@@ -48301,13 +48826,17 @@ function baseOsmRow(input) {
     address: input.addr,
     lat: input.plat,
     lng: input.plng,
-    distanceKm: distanceKm({ lat: input.lat, lng: input.lng }, { lat: input.plat, lng: input.plng }),
+    distanceKm: distanceKm2({ lat: input.lat, lng: input.lng }, { lat: input.plat, lng: input.plng }),
     imageUrl: null,
     source: "osm",
     honesty: "OpenStreetMap: name, address and distance are real; OSM has no rating or price, so we show none.",
     exitUrl: input.website ? pointer(String(input.website), input.cat) : "",
     directionsUrl: mapsSearch(input.name, input.plat, input.plng),
-    website: input.website || null
+    website: input.website || null,
+    wikidata: input.wikidata || null,
+    wikipedia: input.wikipedia || null,
+    osmImage: input.osmImage || null,
+    commonsTag: input.commonsTag || null
   };
 }
 function osmCategory(tags) {
@@ -48365,7 +48894,7 @@ function dedupe(rows) {
     const clash = kept.find((k) => {
       if (norm9(k.name) !== name) return false;
       if (!k.lat || !row.lat || !k.lng || !row.lng) return true;
-      return distanceKm({ lat: k.lat, lng: k.lng }, { lat: row.lat, lng: row.lng }) < 0.2;
+      return distanceKm2({ lat: k.lat, lng: k.lng }, { lat: row.lat, lng: row.lng }) < 0.2;
     });
     if (clash) {
       if ((row.rating ?? -1) > (clash.rating ?? -1)) Object.assign(clash, row);
@@ -48391,7 +48920,7 @@ async function readCache(key) {
     const rows = await getStore().query("SELECT payload, fetched_at FROM nearby_cache WHERE cache_key = ?", [key]).catch(() => []);
     if (!rows.length) return null;
     const at = new Date(String(rows[0].fetched_at).replace(" ", "T")).getTime();
-    if (!Number.isFinite(at) || Date.now() - at > CACHE_TTL_MS3) return null;
+    if (!Number.isFinite(at) || Date.now() - at > CACHE_TTL_MS5) return null;
     const payload = typeof rows[0].payload === "string" ? JSON.parse(rows[0].payload) : rows[0].payload;
     return payload && Array.isArray(payload.results) ? payload : null;
   } catch {
@@ -48425,8 +48954,8 @@ async function writeCache(key, answer) {
 async function buildNearbyAnswer(input) {
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
-  const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
-  const cached3 = await readCache(cacheKey);
+  const cacheKey2 = `v8|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
+  const cached3 = await readCache(cacheKey2);
   if (cached3) return cached3;
   const wantsFood = category === "all" || category === "restaurants" || category === "cafes";
   const wantsStay = category === "all" || category === "hotels" || category === "stays";
@@ -48483,12 +49012,30 @@ async function buildNearbyAnswer(input) {
     if (dest) row.exitUrl = pointer(dest, row.category);
   }
   const noPhoto = results.filter((r) => !r.imageUrl);
+  const photoDeadline = Date.now() + PHOTO_BUDGET_MS;
+  const lookupPhoto = (row) => resolvePlacePhoto({
+    name: row.name,
+    city: location.city,
+    category: row.category,
+    lat: row.lat,
+    lng: row.lng,
+    evidence: { wikidata: row.wikidata, wikipedia: row.wikipedia, imageTag: row.osmImage, commonsTag: row.commonsTag },
+    timeoutMs: Math.max(700, photoDeadline - Date.now())
+  });
+  await politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
+    const hit = await lookupPhoto(row).catch(() => null);
+    if (hit) {
+      row.imageUrl = hit.url;
+      row.honesty = `${row.honesty} ${hit.credit}`.trim();
+    }
+  });
   const ogDeadline = Date.now() + OG_BUDGET_MS;
   const withinBudget2 = (p, fallback) => {
     const left = Math.max(250, ogDeadline - Date.now());
     return Promise.race([p.catch(() => fallback), new Promise((res) => setTimeout(() => res(fallback), left))]);
   };
-  const withOg = await Promise.all(noPhoto.slice(0, 6).map(async (row) => ({
+  const stillNoPhoto = results.filter((r) => !r.imageUrl);
+  const withOg = await Promise.all(stillNoPhoto.slice(0, 6).map(async (row) => ({
     row,
     url: row.website ? await withinBudget2(ogImage(row.website), null) : null
   })));
@@ -48500,7 +49047,7 @@ async function buildNearbyAnswer(input) {
   }
   for (const row of results) {
     if (!row.imageUrl) {
-      row.imageUrl = CATEGORY_TILE[row.category] || CATEGORY_TILE.all;
+      row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
       row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
     }
   }
@@ -48520,7 +49067,7 @@ async function buildNearbyAnswer(input) {
     counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
     notes: results.length ? notes : [...notes, "No places came back for this location right now, so nothing is shown rather than guesswork."]
   };
-  await writeCache(cacheKey, answer);
+  await writeCache(cacheKey2, answer);
   return answer;
 }
 async function logNearbyEvent(kind, payload) {
@@ -48613,46 +49160,49 @@ async function nearbyAnswer(input) {
   const started3 = Date.now();
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
-  const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
-  const warm2 = memoryGet(cacheKey);
-  if (warm2 && warm2.ageMs <= CACHE_TTL_MS3) {
+  const cacheKey2 = `v8|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}`;
+  const warm2 = memoryGet(cacheKey2);
+  if (warm2 && warm2.ageMs <= CACHE_TTL_MS5) {
     return { ...warm2.answer, cached: true, ms: Date.now() - started3 };
   }
-  const fresh = await readCache(cacheKey);
+  const fresh = await readCache(cacheKey2);
   if (fresh) {
-    memoryPut(cacheKey, fresh);
+    memoryPut(cacheKey2, fresh);
     return { ...fresh, cached: true, ms: Date.now() - started3 };
   }
   const flights = globalThis.__t1sNearbyInflight ||= /* @__PURE__ */ new Map();
   const build2 = () => {
-    const existing = flights.get(cacheKey);
+    const existing = flights.get(cacheKey2);
     if (existing) return existing;
     const p = buildNearbyAnswer(input).then((ans) => {
-      memoryPut(cacheKey, ans);
+      memoryPut(cacheKey2, ans);
       return { ...ans, ms: Date.now() - started3 };
-    }).finally(() => flights.delete(cacheKey));
-    flights.set(cacheKey, p);
+    }).finally(() => flights.delete(cacheKey2));
+    flights.set(cacheKey2, p);
     return p;
   };
-  const stale = warm2 && warm2.ageMs > CACHE_TTL_MS3 && warm2.ageMs <= STALE_TTL_MS ? warm2 : await readCacheAny(cacheKey);
+  const stale = warm2 && warm2.ageMs > CACHE_TTL_MS5 && warm2.ageMs <= STALE_TTL_MS ? warm2 : await readCacheAny(cacheKey2);
   if (stale) {
     void build2().catch(() => void 0);
     return { ...stale.answer, cached: true, stale: true, ms: Date.now() - started3 };
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS3, STALE_TTL_MS, OG_BUDGET_MS, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE;
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
     init_logger();
     init_deeplink();
     init_enrich();
+    init_photos();
     DEFAULT_CITY = "Pune";
     RADIUS_M = 2500;
-    CACHE_TTL_MS3 = 30 * 6e4;
+    CACHE_TTL_MS5 = 30 * 6e4;
     STALE_TTL_MS = 12 * 60 * 6e4;
     OG_BUDGET_MS = 2200;
+    PHOTO_BUDGET_MS = 4500;
+    PHOTO_LOOKUP_ROWS = 14;
     memoryCache = /* @__PURE__ */ new Map();
     MEMORY_CACHE_MAX = 300;
     CATEGORY_ALIASES = {
@@ -48726,10 +49276,10 @@ async function findProductCatalogueRows(vertical, opts, lookup4 = findCatalogueO
     targeted = await Promise.resolve(lookup4(vertical, { ...base, queryTerms: terms })).catch(() => []);
   }
   if (targeted.length >= 2 && distinctSellers(targeted) >= 2) return targeted;
-  const plain = await Promise.resolve(lookup4(vertical, base)).catch(() => []);
-  if (!targeted.length) return plain;
+  const plain2 = await Promise.resolve(lookup4(vertical, base)).catch(() => []);
+  if (!targeted.length) return plain2;
   const seen = new Set(targeted.map((r) => String(r.id)));
-  return [...targeted, ...plain.filter((r) => !seen.has(String(r.id)))];
+  return [...targeted, ...plain2.filter((r) => !seen.has(String(r.id)))];
 }
 var STOPWORDS2, distinctSellers;
 var init_productCatalogue = __esm({
@@ -49509,7 +50059,7 @@ function deployedCommit() {
     return process.env.BUILD_COMMIT || "unknown";
   }
 }
-async function fetchUpcomingMovies(city, cacheKey) {
+async function fetchUpcomingMovies(city, cacheKey2) {
   {
     const fetchJson = async (url) => {
       const r2 = await cffiFetch(url, { impersonate: "safari", timeoutMs: 15e3, headers: { Accept: "application/json" } });
@@ -49534,7 +50084,7 @@ async function fetchUpcomingMovies(city, cacheKey) {
       // merchant redirect policy: every exit routes through /api/out via a masking pointer
       goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) })
     }));
-    if (movies.length) upcomingCache2.set(cacheKey, { at: Date.now(), movies });
+    if (movies.length) upcomingCache2.set(cacheKey2, { at: Date.now(), movies });
     if (!movies.length) throw new Error("BookMyShow returned no upcoming cards");
     return movies;
   }
@@ -50458,6 +51008,7 @@ var init_routes = __esm({
     init_catalogueStore();
     init_logger();
     init_curlCffiFetch();
+    init_webImages();
     init_yatraHotels();
     init_mmtAutosuggest();
     init_bookmyshow();
@@ -50678,12 +51229,12 @@ var init_routes = __esm({
     upcomingCache2 = /* @__PURE__ */ new Map();
     apiRouter.get("/movies/upcoming", async (req, res) => {
       const city = String(req.query.city || "").slice(0, 60).trim();
-      const cacheKey = (city || "default").toLowerCase();
-      const hit = upcomingCache2.get(cacheKey);
+      const cacheKey2 = (city || "default").toLowerCase();
+      const hit = upcomingCache2.get(cacheKey2);
       if (hit && Date.now() - hit.at < 30 * 6e4) return res.json({ movies: hit.movies });
       try {
-        const moviesOut = await cachedRead(`movies:upcoming:${cacheKey}`, 10 * 6e4, async () => {
-          const cold = await fetchUpcomingMovies(city, cacheKey);
+        const moviesOut = await cachedRead(`movies:upcoming:${cacheKey2}`, 10 * 6e4, async () => {
+          const cold = await fetchUpcomingMovies(city, cacheKey2);
           return cold;
         }, { maxStaleMs: 24 * 60 * 6e4 });
         return res.json({ movies: moviesOut });
@@ -50694,8 +51245,8 @@ var init_routes = __esm({
     nowShowingCache = /* @__PURE__ */ new Map();
     apiRouter.get("/movies/currently-showing", async (req, res) => {
       const city = String(req.query.city || "").slice(0, 60).trim() || "Indore";
-      const cacheKey = (city || "default").toLowerCase();
-      const hit = nowShowingCache.get(cacheKey);
+      const cacheKey2 = (city || "default").toLowerCase();
+      const hit = nowShowingCache.get(cacheKey2);
       if (hit && Date.now() - hit.at < 30 * 6e4) return res.json({ movies: hit.movies, city });
       try {
         const fetchJson = async (url) => {
@@ -50707,7 +51258,7 @@ var init_routes = __esm({
         let r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: "safari", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
         if (r.status !== 200) r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: "chrome", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
         if (r.status !== 200) {
-          const last = nowShowingCache.get(cacheKey) || nowShowingCache.get("indore");
+          const last = nowShowingCache.get(cacheKey2) || nowShowingCache.get("indore");
           if (last?.movies?.length) return res.json({ movies: last.movies, city: region.regionName || city, stale: true });
           return res.json({ movies: [], city: region.regionName || city, error: `BookMyShow now-showing HTTP ${r.status}` });
         }
@@ -50748,11 +51299,11 @@ var init_routes = __esm({
           // Every exit routes through /api/out (affiliate + interstitial policy).
           goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) })
         }));
-        if (movies.length) nowShowingCache.set(cacheKey, { at: Date.now(), movies });
-        if (cacheKey === "indore") nowShowingCache.set("indore", { at: Date.now(), movies });
+        if (movies.length) nowShowingCache.set(cacheKey2, { at: Date.now(), movies });
+        if (cacheKey2 === "indore") nowShowingCache.set("indore", { at: Date.now(), movies });
         return res.json({ movies, city: region.regionName || city });
       } catch (e2) {
-        const last = nowShowingCache.get(cacheKey) || nowShowingCache.get("indore");
+        const last = nowShowingCache.get(cacheKey2) || nowShowingCache.get("indore");
         if (last?.movies?.length) return res.json({ movies: last.movies, city, stale: true });
         return res.json({ movies: [], city, error: String(e2?.message || e2).slice(0, 120) });
       }
@@ -51139,6 +51690,40 @@ var init_routes = __esm({
         res.setHeader("Content-Type", upstream.headers.get("content-type") || "image/jpeg");
         res.setHeader("Cache-Control", "public, max-age=86400");
         const buf = Buffer.from(await upstream.arrayBuffer());
+        res.send(buf);
+      } catch {
+        res.status(502).type("text/plain").send("photo unavailable");
+      }
+    });
+    apiRouter.get("/nearby/img", async (req, res) => {
+      const token = String(req.query.t || "");
+      const target = resolveProxiedImage(token);
+      if (!target) {
+        res.status(404).type("text/plain").send("image not available");
+        return;
+      }
+      try {
+        const upstream = await cffiFetch(target, {
+          impersonate: "chrome",
+          timeoutMs: 8e3,
+          // Binary passthrough: an image sent back as decoded text arrives corrupted, so the bridge returns base64.
+          binary: true,
+          returnHeaders: true,
+          headers: { accept: "image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8", referer: target }
+        });
+        if (upstream.status !== 200 || !upstream.body) {
+          res.status(502).type("text/plain").send("photo unavailable");
+          return;
+        }
+        const buf = Buffer.from(upstream.body, upstream.encoding === "base64" ? "base64" : "binary");
+        const isImage = buf[0] === 255 && buf[1] === 216 || buf[0] === 137 && buf[1] === 80 || buf.subarray(0, 4).toString("ascii") === "RIFF" || buf.subarray(4, 8).toString("ascii") === "ftyp";
+        const type = String(upstream.headers?.["content-type"] || "");
+        if (!isImage) {
+          res.status(502).type("text/plain").send("photo unavailable");
+          return;
+        }
+        res.setHeader("Content-Type", /^image\//i.test(type) ? type : "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=604800, immutable");
         res.send(buf);
       } catch {
         res.status(502).type("text/plain").send("photo unavailable");
@@ -51623,7 +52208,7 @@ var init_routes = __esm({
       const priced = search.results.map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 })).filter((x) => x.price > 0);
       const relevant = vertical === "ecommerce" || !vertical ? priced.filter((x) => isSameProduct(scanQuery, String(x.o.title || ""))) : priced;
       const cheapestFirst = relevant.sort((a, b) => a.price - b.price).slice(0, 8);
-      const hostOf4 = (u) => {
+      const hostOf5 = (u) => {
         try {
           return new URL(u).hostname.replace(/^www\./, "");
         } catch {
@@ -51632,7 +52217,7 @@ var init_routes = __esm({
       };
       const sellerQuotes = cheapestFirst.map((x, i) => ({
         id: `sq-${x.o.id || i}`,
-        sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf4(String(x.o.sellerUrl || "")) || "Verified source")),
+        sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf5(String(x.o.sellerUrl || "")) || "Verified source")),
         price: x.price,
         currency: "\u20B9",
         url: (() => {
@@ -51641,7 +52226,7 @@ var init_routes = __esm({
         })(),
         isLowest: i === 0,
         isLiveScraped: true,
-        sourceDomain: hostOf4(String(x.o.sellerUrl || "")),
+        sourceDomain: hostOf5(String(x.o.sellerUrl || "")),
         deliveryOrEta: x.o.attributes?.eta ? `Delivers in ${x.o.attributes.eta}` : void 0
       }));
       if (product.pagePrice && Number(product.pagePrice) > 0) {
@@ -52616,8 +53201,8 @@ var init_routes = __esm({
     });
     apiRouter.get("/deals", async (req, res) => {
       try {
-        const cacheKey = `deals:${req.query.merchant || ""}|${req.query.kind || ""}|${req.query.vertical || ""}|${req.query.hasImage || ""}|${Number(req.query.limit) || 100}`;
-        const payload = await cachedSection(cacheKey, async () => {
+        const cacheKey2 = `deals:${req.query.merchant || ""}|${req.query.kind || ""}|${req.query.vertical || ""}|${req.query.hasImage || ""}|${Number(req.query.limit) || 100}`;
+        const payload = await cachedSection(cacheKey2, async () => {
           const { getDealsWithCounts: getDealsWithCounts2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
           return getDealsWithCounts2({
             merchant: req.query.merchant,
@@ -54281,7 +54866,7 @@ function splitCsv(line) {
   return out.map((s) => s.trim());
 }
 async function loadOpenFlights(fetchFn) {
-  if (cache9 && Date.now() - cache9.at < 24 * 36e5) return cache9;
+  if (cache11 && Date.now() - cache11.at < 24 * 36e5) return cache11;
   const [apRaw, alRaw, rtRaw] = await Promise.all([
     fetchFn(`${BASE}/airports.dat`),
     fetchFn(`${BASE}/airlines.dat`),
@@ -54299,7 +54884,7 @@ async function loadOpenFlights(fetchFn) {
     const f = l.split(",");
     return { airlineIata: f[0], srcIata: f[2], dstIata: f[4], stops: Number(f[7]) };
   }).filter((r) => r.srcIata && r.dstIata && r.srcIata !== "\\N" && r.dstIata !== "\\N");
-  cache9 = { at: Date.now(), airports, airlines, routes };
+  cache11 = { at: Date.now(), airports, airlines, routes };
   return { airports, airlines, routes };
 }
 function matchAirports(airports, input) {
@@ -54372,12 +54957,12 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
   }
   return out.slice(0, 20);
 }
-var BASE, cache9, CITY_ALIASES2, AIRLINE_SITES, CANONICAL_AIRLINES;
+var BASE, cache11, CITY_ALIASES2, AIRLINE_SITES, CANONICAL_AIRLINES;
 var init_openflights = __esm({
   "server/workers/parsers/openflights.ts"() {
     init_contract();
     BASE = "https://raw.githubusercontent.com/jpatokal/openflights/master/data";
-    cache9 = null;
+    cache11 = null;
     CITY_ALIASES2 = {
       "new delhi": "delhi",
       "bengaluru": "bangalore",
@@ -54444,7 +55029,7 @@ async function httpGet(url, timeoutMs = 12e3, init = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA6, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
+    const r = await fetch(url, { headers: { "User-Agent": UA7, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
     const body = await r.text();
     return { status: r.status, body, bytes: body.length };
   } catch (e2) {
@@ -54684,7 +55269,7 @@ function acceptanceTotals(rows) {
   const verticalsOk = new Set(rows.filter((r) => r.status === "LIVE_VERIFIED").map((r) => r.vertical));
   return { rows: rows.length, byStatus, verticalsWithLiveVerified: [...verticalsOk].sort(), sourcesTested: new Set(rows.filter((r) => r.status !== "SOURCE_RETIRED").map((r) => r.source_id)).size, sourcesRegistered: new Set(rows.map((r) => r.source_id)).size };
 }
-var UA6, SRC, JS_SHELL_RE;
+var UA7, SRC, JS_SHELL_RE;
 var init_acceptanceRunner = __esm({
   "server/registry/acceptanceRunner.ts"() {
     init_acceptanceRegistry();
@@ -54701,7 +55286,7 @@ var init_acceptanceRunner = __esm({
     init_osmTravel();
     init_openflights();
     init_wikidataMovies();
-    UA6 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    UA7 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     SRC = {
       id: "acceptance_test",
       name: "acceptance-test",
@@ -61680,7 +62265,7 @@ async function snapshotForPath(path18) {
   const page = stateAnswer ? null : resolveSeoPage(path18);
   if (!page && !stateAnswer) return null;
   const key = (path18 || "/").replace(/\/+$/, "") || "/";
-  const hit = cache10.get(key);
+  const hit = cache12.get(key);
   if (hit && Date.now() - hit.at < (hit.ttl ?? SNAPSHOT_TTL_MS)) return hit.snap;
   let snap = null;
   const stateMatch = /^\/best\/([a-z0-9-]+)\/([a-z0-9-]+)$/.exec(key);
@@ -61713,7 +62298,7 @@ async function snapshotForPath(path18) {
     } catch {
       snap = null;
     }
-    cache10.set(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
+    cache12.set(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
     return snap;
   }
   try {
@@ -61753,19 +62338,19 @@ async function snapshotForPath(path18) {
   } catch {
     snap = null;
   }
-  cache10.set(key, { at: Date.now(), snap });
+  cache12.set(key, { at: Date.now(), snap });
   return snap;
 }
 function clearSnapshotCache() {
-  cache10.clear();
+  cache12.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc6, inr2, slugOf3;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache12, esc6, inr2, slugOf3;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
     SNAPSHOT_TTL_MS = 10 * 6e4;
     MAX_ROWS = 6;
-    cache10 = /* @__PURE__ */ new Map();
+    cache12 = /* @__PURE__ */ new Map();
     esc6 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     inr2 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf3 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
@@ -62795,8 +63380,8 @@ async function createApp() {
         res.status(404).type("text/html; charset=utf-8").send(notFoundHtml2(cleanPath));
         return;
       }
-      const cacheKey = cleanPath;
-      const cachedShell = SHELL_TTL_MS > 0 ? shellCache.get(cacheKey) : void 0;
+      const cacheKey2 = cleanPath;
+      const cachedShell = SHELL_TTL_MS > 0 ? shellCache.get(cacheKey2) : void 0;
       if (cachedShell && Date.now() - cachedShell.at < SHELL_TTL_MS) {
         res.setHeader("X-T1S-Shell", "hit");
         res.send(cachedShell.html);
@@ -62818,7 +63403,7 @@ async function createApp() {
           const oldest = [...shellCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
           if (oldest) shellCache.delete(oldest[0]);
         }
-        shellCache.set(cacheKey, { html, at: Date.now() });
+        shellCache.set(cacheKey2, { html, at: Date.now() });
         res.setHeader("X-T1S-Shell", "miss");
       }
       res.send(html);

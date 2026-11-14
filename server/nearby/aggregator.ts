@@ -18,7 +18,8 @@
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
 import { createMaskingPointer } from '../affiliate/deeplink';
-import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords, ogImage, CATEGORY_TILE } from './enrich';
+import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords, ogImage, CATEGORY_TILE, CATEGORY_TILES } from './enrich';
+import { resolvePlacePhoto, categoryTile, type PhotoEvidence } from './photos';
 
 export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies' | 'all';
 
@@ -42,6 +43,14 @@ export interface NearbyRow {
   exitUrl: string;
   directionsUrl: string;
   website: string | null;
+  /**
+   * Photo evidence the map itself carries (owner 14 Nov: "all are showing same images"). Kept on the row so the
+   * cached payload still knows which place a Commons/Wikidata lookup belongs to.
+   */
+  wikidata?: string | null;
+  wikipedia?: string | null;
+  osmImage?: string | null;
+  commonsTag?: string | null;
 }
 
 export interface NearbyAnswer {
@@ -68,6 +77,12 @@ const CACHE_TTL_MS = 30 * 60_000;
 const STALE_TTL_MS = 12 * 60 * 60_000;
 /** Ceiling for the og:image pass. A slow business site must never hold the whole tab hostage. */
 const OG_BUDGET_MS = 2200;
+/**
+ * OWNER 14 Nov: every card needs its own photo. The Wikimedia pass is bounded in both rows and time so a city
+ * of unknown shops still paints fast; whatever the budget misses keeps a labelled tile and is cached for 12h.
+ */
+const PHOTO_BUDGET_MS = 4500;
+const PHOTO_LOOKUP_ROWS = 14;
 /**
  * In-process answer cache. The SQL cache is the durable one, but a light SQL emulator (the file store used in
  * tests/dev) answers an upsert-shaped write with no row and the read with [], which made EVERY request rebuild -
@@ -404,7 +419,12 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
             name: String(e.tags.name), cat, plat, plng, lat, lng,
             addr: [e.tags['addr:housenumber'], e.tags['addr:street'], e.tags['addr:suburb'], e.tags['addr:city']].filter(Boolean).join(', ') || null,
             sub: e.tags.cuisine ? String(e.tags.cuisine).replace(/[_;]/g, ' ') : (e.tags.tourism || e.tags.shop || e.tags.amenity || null),
-            osmId: `op-${e.id}`, website: e.tags.website ? String(e.tags.website) : null,
+            osmId: `op-${e.id}`,
+            website: e.tags.website || e.tags['contact:website'] || null,
+            wikidata: e.tags.wikidata || null,
+            wikipedia: e.tags.wikipedia || null,
+            osmImage: e.tags.image || null,
+            commonsTag: e.tags.wikimedia_commons || null,
           });
         });
       if (rows.length) return { rows };
@@ -416,6 +436,7 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
 function baseOsmRow(input: {
   name: string; cat: NearbyCategory; plat: number; plng: number; lat: number; lng: number;
   addr: string | null; sub: string | null; osmId: string; website?: string | null;
+  wikidata?: string | null; wikipedia?: string | null; osmImage?: string | null; commonsTag?: string | null;
 }): NearbyRow {
   return {
     id: `osm-${input.cat}-${String(input.osmId).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40)}`,
@@ -437,6 +458,10 @@ function baseOsmRow(input: {
     exitUrl: input.website ? pointer(String(input.website), input.cat) : '',
     directionsUrl: mapsSearch(input.name, input.plat, input.plng),
     website: input.website || null,
+    wikidata: input.wikidata || null,
+    wikipedia: input.wikipedia || null,
+    osmImage: input.osmImage || null,
+    commonsTag: input.commonsTag || null,
   };
 }
 
@@ -567,7 +592,7 @@ async function buildNearbyAnswer(input: {
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
   // v2: the enrichment layer (Swiggy/OYO ratings, prices, photos) changed what a good answer looks like, so
   // old cached payloads must not keep serving unrated rows for 30 minutes.
-  const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
+  const cacheKey = `v8|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
   const cached = await readCache(cacheKey);
   if (cached) return cached;
 
@@ -656,15 +681,40 @@ async function buildNearbyAnswer(input: {
     if (dest) row.exitUrl = pointer(dest, row.category);
   }
 
+  // ---- OWNER 14 Nov: "all are showing same images ... use images available on google".
+  // Every card now gets its own photo in four honest tiers, and the tile is only the last resort:
+  //   1. Wikimedia evidence the place carries itself (OSM image / wikimedia_commons / wikidata P18 / wikipedia).
+  //   2. Wikimedia Commons file search on the place's name, accepted only when the file title proves the match.
+  //   3. The business page's own og:image.
+  //   4. A rotated category tile (several files per vertical) instead of one image repeated nine times.
   const noPhoto = results.filter((r) => !r.imageUrl);
+  const photoDeadline = Date.now() + PHOTO_BUDGET_MS;
   // Bounded: each lookup gets the remaining budget, and when it runs out the row keeps its tile instead of
-  // holding the whole answer. ogImage is cached for 30 min, so a warm city pays nothing.
+  // holding the whole answer. Every result (including "nothing found") is cached for 12h, so a warm city is free.
+  const lookupPhoto = (row: NearbyRow) => resolvePlacePhoto({
+    name: row.name,
+    city: location.city,
+    category: row.category,
+    lat: row.lat,
+    lng: row.lng,
+    evidence: { wikidata: row.wikidata, wikipedia: row.wikipedia, imageTag: row.osmImage, commonsTag: row.commonsTag } as PhotoEvidence,
+    timeoutMs: Math.max(700, photoDeadline - Date.now()),
+  });
+  await politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
+    const hit = await lookupPhoto(row).catch(() => null);
+    if (hit) {
+      row.imageUrl = hit.url;
+      row.honesty = `${row.honesty} ${hit.credit}`.trim();
+    }
+  });
+
   const ogDeadline = Date.now() + OG_BUDGET_MS;
   const withinBudget = <T,>(p: Promise<T>, fallback: T): Promise<T> => {
     const left = Math.max(250, ogDeadline - Date.now());
     return Promise.race([p.catch(() => fallback), new Promise<T>((res) => setTimeout(() => res(fallback), left))]);
   };
-  const withOg = await Promise.all(noPhoto.slice(0, 6).map(async (row) => ({
+  const stillNoPhoto = results.filter((r) => !r.imageUrl);
+  const withOg = await Promise.all(stillNoPhoto.slice(0, 6).map(async (row) => ({
     row, url: row.website ? await withinBudget(ogImage(row.website), null as string | null) : null,
   })));
   for (const { row, url } of withOg) {
@@ -675,7 +725,7 @@ async function buildNearbyAnswer(input: {
   }
   for (const row of results) {
     if (!row.imageUrl) {
-      row.imageUrl = CATEGORY_TILE[row.category] || CATEGORY_TILE.all;
+      row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
       row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
     }
   }
@@ -792,7 +842,7 @@ export async function nearbyAnswer(input: {
   const started = Date.now();
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
-  const cacheKey = `v7|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
+  const cacheKey = `v8|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}`;
 
   const warm = memoryGet(cacheKey);
   if (warm && warm.ageMs <= CACHE_TTL_MS) {
