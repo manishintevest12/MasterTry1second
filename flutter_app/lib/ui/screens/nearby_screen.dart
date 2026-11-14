@@ -175,10 +175,23 @@ class _NearbyScreenState extends State<NearbyScreen> {
     }
   }
 
+  /// OWNER 14 Nov: "book button is not working in the app".
+  ///
+  /// The server mints exits as root-relative masking pointers (`/api/out?t=...`), which are perfect
+  /// for a browser (it has an origin) and useless to a phone (it does not). Every other surface in
+  /// the app resolves them through [exitUrl]; nearby did not, so the tap threw away the url and
+  /// nothing opened. Now it takes the same route, and falls back to an external open when the
+  /// device has no Custom Tabs provider - a dead book button is worse than a browser hop.
   Future<void> _open(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    final abs = exitUrl(url);
+    final uri = Uri.tryParse(abs);
+    if (uri == null || !uri.hasScheme) return;
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      if (!opened) await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override

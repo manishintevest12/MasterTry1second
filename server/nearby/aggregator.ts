@@ -140,6 +140,29 @@ function mapsSearch(name: string, lat: number | null, lng: number | null): strin
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
 }
 
+/**
+ * OWNER 14 Nov: "book button is not working in app, it redirects properly on the website".
+ *
+ * The masking pointer is minted as a ROOT-RELATIVE path (`/api/out?t=...`) because the web app
+ * always calls it on its own origin. A phone has no origin to be relative to: url_launcher gets
+ * "/api/out?t=..." and has no host to open, so the tap did nothing at all while the same pointer
+ * worked fine in a browser.
+ *
+ * The fix belongs on the server: nearby rows now carry the pointer as an ABSOLUTE url on the
+ * public site host, which old installed builds launch unchanged - no new APK needed for the fix
+ * itself. The pointer is still the same signed /api/out token, so tracking and affiliate
+ * injection are untouched; only the scheme+host it resolves against is now explicit.
+ */
+const PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || 'https://www.try1second.com').replace(/\/+$/, '');
+
+function absoluteExit(url: string): string {
+  const u = String(url || '').trim();
+  if (!u) return '';
+  if (/^https?:\/\//i.test(u)) return u;
+  if (/^(intent|market|tel|mailto):/i.test(u)) return u;
+  return u.startsWith('/') ? `${PUBLIC_ORIGIN}${u}` : `${PUBLIC_ORIGIN}/${u}`;
+}
+
 function pointer(url: string, category: NearbyCategory): string {
   const dest = /^https?:\/\//i.test(url) ? url : '';
   if (!dest) return '';
@@ -602,7 +625,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v9|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v10|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -769,7 +792,8 @@ async function buildNearbyAnswer(input: {
     ok: true,
     category,
     location,
-    results,
+    // Absolute exits (see absoluteExit): a phone can launch these as they are, a browser is unaffected.
+    results: results.map((r) => (r.exitUrl ? { ...r, exitUrl: absoluteExit(r.exitUrl) } : r)),
     offset,
     limit,
     total,

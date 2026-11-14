@@ -48563,6 +48563,13 @@ function mapsSearch(name, lat, lng) {
   if (lat !== null && lng !== null) return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
 }
+function absoluteExit(url) {
+  const u = String(url || "").trim();
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  if (/^(intent|market|tel|mailto):/i.test(u)) return u;
+  return u.startsWith("/") ? `${PUBLIC_ORIGIN}${u}` : `${PUBLIC_ORIGIN}/${u}`;
+}
 function pointer(url, category) {
   const dest = /^https?:\/\//i.test(url) ? url : "";
   if (!dest) return "";
@@ -48980,7 +48987,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v9|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v10|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input) {
   const category = normalizeNearbyCategory(input.category);
@@ -49097,7 +49104,8 @@ async function buildNearbyAnswer(input) {
     ok: true,
     category,
     location,
-    results,
+    // Absolute exits (see absoluteExit): a phone can launch these as they are, a browser is unaffected.
+    results: results.map((r) => r.exitUrl ? { ...r, exitUrl: absoluteExit(r.exitUrl) } : r),
     offset,
     limit,
     total,
@@ -49227,7 +49235,7 @@ async function nearbyAnswer(input) {
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, geocodeCache, GOOGLE_TYPE, PAGE_CEILING;
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, GOOGLE_TYPE, PAGE_CEILING;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -49272,6 +49280,7 @@ var init_aggregator = __esm({
       theatres: "movies",
       theaters: "movies"
     };
+    PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
     geocodeCache = /* @__PURE__ */ new Map();
     GOOGLE_TYPE = {
       restaurants: ["restaurant"],
@@ -50976,7 +50985,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path8, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, cuelinksProbe, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN, absoluteLogo, validHex, bannerGradient;
+var import_promises2, import_node_path8, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, cuelinksProbe, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN2, absoluteLogo, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
@@ -53345,8 +53354,8 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Could not load leads" });
       }
     });
-    PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
-    absoluteLogo = (key) => key ? `${PUBLIC_ORIGIN}/api/logos/${key}` : "";
+    PUBLIC_ORIGIN2 = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
+    absoluteLogo = (key) => key ? `${PUBLIC_ORIGIN2}/api/logos/${key}` : "";
     apiRouter.get("/logos/:key", async (req, res) => {
       try {
         const { getMerchantLogo: getMerchantLogo2, decodeLogoDataUrl: decodeLogoDataUrl2, resolveBrandFavicon: resolveBrandFavicon2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
