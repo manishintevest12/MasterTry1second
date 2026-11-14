@@ -48629,7 +48629,7 @@ async function geocodeCity(city) {
 }
 async function googleNearby(lat, lng, category) {
   const key = String(process.env.GOOGLE_PLACES_API_KEY || "").trim();
-  if (!key) return { rows: [], note: "Google Places key not configured, so ratings and price levels come from nowhere else - they are shown as unknown." };
+  if (!key) return { rows: [] };
   try {
     const includedTypes = GOOGLE_TYPE[category] || GOOGLE_TYPE.all;
     const ctrl = new AbortController();

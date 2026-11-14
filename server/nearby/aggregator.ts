@@ -246,7 +246,10 @@ async function googleNearby(
   lat: number, lng: number, category: NearbyCategory,
 ): Promise<{ rows: NearbyRow[]; note?: string }> {
   const key = String(process.env.GOOGLE_PLACES_API_KEY || '').trim();
-  if (!key) return { rows: [], note: 'Google Places key not configured, so ratings and price levels come from nowhere else - they are shown as unknown.' };
+  // OWNER 14 Nov: "Google Places key not configured ... please remove this word". The missing key is our
+  // plumbing problem, not the visitor's, so it is no longer announced in the notes. Nothing else changes:
+  // the card still says "rating unknown" where a rating genuinely is not known, which is the honest part.
+  if (!key) return { rows: [] };
   try {
     const includedTypes = GOOGLE_TYPE[category] || GOOGLE_TYPE.all;
     const ctrl = new AbortController();
