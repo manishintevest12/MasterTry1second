@@ -48599,15 +48599,44 @@ async function resolveNearbyLocation(lat, lng, city) {
   const fallback = await geocodeCity(DEFAULT_CITY);
   return fallback ? { ...fallback, city: DEFAULT_CITY, resolvedFrom: "fallback" } : { lat: 18.5204, lng: 73.8567, city: DEFAULT_CITY, resolvedFrom: "fallback" };
 }
+function nominatimPaused() {
+  return Date.now() < nominatimPausedUntil;
+}
+function pauseNominatim(seconds = 300) {
+  nominatimPausedUntil = Date.now() + seconds * 1e3;
+}
 async function reverseCity(lat, lng) {
   const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
   const hit = reverseCache.get(key);
   if (hit) return hit;
+  try {
+    const ctrl2 = new AbortController();
+    const timer2 = setTimeout(() => ctrl2.abort(), 5e3);
+    const res = await fetch(
+      `https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1&lang=en`,
+      { signal: ctrl2.signal, headers: { "user-agent": "Try1Second/1.0 (nearby reverse)" } }
+    ).finally(() => clearTimeout(timer2));
+    if (res.ok) {
+      const j = await res.json();
+      const p = (j?.features || [])[0]?.properties || {};
+      const name = String(p.city || p.town || p.village || p.county || p.state || p.name || "").trim();
+      if (name) {
+        reverseCache.set(key, name);
+        return name;
+      }
+    }
+  } catch {
+  }
+  if (nominatimPaused()) return null;
   const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&addressdetails=1`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 6e3);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (https://www.try1second.com; nearby reverse geocoding)" } }).finally(() => clearTimeout(timer));
+    if (res.status === 429) {
+      pauseNominatim();
+      return null;
+    }
     if (!res.ok) return null;
     const j = await res.json();
     const a = j?.address || {};
@@ -48632,6 +48661,7 @@ async function geocodeCity(city) {
     }
   } catch {
   }
+  if (nominatimPaused()) return null;
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city + ", India")}&format=json&limit=1`;
     const ctrl = new AbortController();
@@ -48640,6 +48670,10 @@ async function geocodeCity(city) {
       signal: ctrl.signal,
       headers: { "user-agent": "Try1Second/1.0 (https://www.try1second.com; nearby geocoding)" }
     }).finally(() => clearTimeout(timer));
+    if (res.status === 429) {
+      pauseNominatim();
+      return null;
+    }
     if (!res.ok) return null;
     const rows = await res.json();
     if (!Array.isArray(rows) || !rows.length) return null;
@@ -49385,7 +49419,7 @@ async function nearbyAnswer(input) {
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, reverseCache, GOOGLE_TYPE, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, nominatimPausedUntil, reverseCache, GOOGLE_TYPE, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -49435,6 +49469,7 @@ var init_aggregator = __esm({
     };
     PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
     geocodeCache = /* @__PURE__ */ new Map();
+    nominatimPausedUntil = 0;
     reverseCache = /* @__PURE__ */ new Map();
     GOOGLE_TYPE = {
       restaurants: ["restaurant"],

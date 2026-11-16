@@ -226,16 +226,41 @@ const geocodeCache = new Map<string, { lat: number; lng: number }>();
  * cards silently disappeared ("OYO: No city name, so OYO hotels were not queried"). Reverse-geocoding the fix once
  * restores them, and it is cached, so the cost is paid on the first visit to an area rather than on every search.
  */
+/**
+ * OWNER 16 Nov: Nominatim answered 429 (Too Many Requests) during this work, and once it does, every further call
+ * fails the same way - which silently removes one of the three map mirrors and leaves a category with nothing.
+ * So a 429 parks Nominatim for a while instead of hammering it: the other mirrors carry the request in the
+ * meantime, and we come back politely.
+ */
+let nominatimPausedUntil = 0;
+function nominatimPaused(): boolean { return Date.now() < nominatimPausedUntil; }
+function pauseNominatim(seconds = 300): void { nominatimPausedUntil = Date.now() + seconds * 1000; }
+
 const reverseCache = new Map<string, string>();
 async function reverseCity(lat: number, lng: number): Promise<string | null> {
   const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
   const hit = reverseCache.get(key);
   if (hit) return hit;
+  // Photon first: it answers the same question and is not the host we keep tripping.
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1&lang=en`,
+      { signal: ctrl.signal, headers: { 'user-agent': 'Try1Second/1.0 (nearby reverse)' } }).finally(() => clearTimeout(timer));
+    if (res.ok) {
+      const j: any = await res.json();
+      const p = (j?.features || [])[0]?.properties || {};
+      const name = String(p.city || p.town || p.village || p.county || p.state || p.name || '').trim();
+      if (name) { reverseCache.set(key, name); return name; }
+    }
+  } catch { /* fall through to Nominatim */ }
+  if (nominatimPaused()) return null;
   const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&addressdetails=1`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 6000);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { 'user-agent': 'Try1Second/1.0 (https://www.try1second.com; nearby reverse geocoding)' } }).finally(() => clearTimeout(timer));
+    if (res.status === 429) { pauseNominatim(); return null; }
     if (!res.ok) return null;
     const j: any = await res.json();
     const a = j?.address || {};
@@ -258,6 +283,7 @@ async function geocodeCity(city: string): Promise<{ lat: number; lng: number } |
       return hit;
     }
   } catch { /* table may not exist yet */ }
+  if (nominatimPaused()) return null; // parked after a 429: the caller falls back rather than waiting on a refusal
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city + ', India')}&format=json&limit=1`;
     const ctrl = new AbortController();
@@ -266,6 +292,7 @@ async function geocodeCity(city: string): Promise<{ lat: number; lng: number } |
       signal: ctrl.signal,
       headers: { 'user-agent': 'Try1Second/1.0 (https://www.try1second.com; nearby geocoding)' },
     }).finally(() => clearTimeout(timer));
+    if (res.status === 429) { pauseNominatim(); return null; }
     if (!res.ok) return null;
     const rows = (await res.json()) as any[];
     if (!Array.isArray(rows) || !rows.length) return null;
