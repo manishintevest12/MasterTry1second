@@ -195,7 +195,16 @@ function norm(name: string): string {
 export async function resolveNearbyLocation(lat?: number | null, lng?: number | null, city?: string | null):
 Promise<{ lat: number; lng: number; city: string | null; resolvedFrom: 'coords' | 'city' | 'fallback' }> {
   if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(Number(lat)) <= 90 && Math.abs(Number(lng)) <= 180) {
-    return { lat: Number(lat), lng: Number(lng), city: city ? String(city) : null, resolvedFrom: 'coords' };
+    const la = Number(lat); const ln = Number(lng);
+    const known = city ? String(city) : null;
+    if (known) return { lat: la, lng: ln, city: known, resolvedFrom: 'coords' };
+    // A GPS fix with no city name: ask once (cached afterwards) so the city-scoped sources still answer. Capped,
+    // because a slow geocoder must never delay the list itself - the map sources work without a name.
+    const named = await Promise.race([
+      reverseCity(la, ln).catch(() => null),
+      new Promise<string | null>((r) => setTimeout(() => r(null), 900)),
+    ]);
+    return { lat: la, lng: ln, city: named, resolvedFrom: 'coords' };
   }
   const wanted = String(city || '').trim();
   if (wanted) {
@@ -211,6 +220,32 @@ Promise<{ lat: number; lng: number; city: string | null; resolvedFrom: 'coords' 
 const geocodeCache = new Map<string, { lat: number; lng: number }>();
 
 /** Nominatim (OpenStreetMap) geocoding - no key, low volume, cached in-process and in MySQL. */
+/**
+ * OWNER 16 Nov: with the app now anchoring on the phone's location, every search arrived as coords with NO city
+ * name - and the city-scoped sources (OYO stays, our own catalogue) can only answer for a named city, so those
+ * cards silently disappeared ("OYO: No city name, so OYO hotels were not queried"). Reverse-geocoding the fix once
+ * restores them, and it is cached, so the cost is paid on the first visit to an area rather than on every search.
+ */
+const reverseCache = new Map<string, string>();
+async function reverseCity(lat: number, lng: number): Promise<string | null> {
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const hit = reverseCache.get(key);
+  if (hit) return hit;
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&addressdetails=1`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, headers: { 'user-agent': 'Try1Second/1.0 (https://www.try1second.com; nearby reverse geocoding)' } }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+    const j: any = await res.json();
+    const a = j?.address || {};
+    const name = String(a.city || a.town || a.village || a.municipality || a.county || a.state_district || j?.name || '').trim();
+    if (!name) return null;
+    reverseCache.set(key, name);
+    return name;
+  } catch { return null; }
+}
+
 async function geocodeCity(city: string): Promise<{ lat: number; lng: number } | null> {
   const key = city.toLowerCase();
   if (geocodeCache.has(key)) return geocodeCache.get(key)!;
@@ -688,7 +723,14 @@ async function buildNearbyAnswer(input: {
   // them: the moment one arrives WITH ROWS the rest is optional, and the merge happens on what is already here.
   // (Measured before this: the budgeted build still took 4.3s because it waited for the slowest source every time.)
   // The background finish waits for everything, so nothing is lost - it is only deferred.
-  const srcCap = Math.max(900, Math.min(3000, budgetMs + 400));
+  // OWNER 16 Nov (regression: 'phle result aata tha ab kyun ni aa raha'): the early-exit was applied to EVERY build,
+  // including the background finish, and both were capped at ~3s - so when the map mirrors were slower than that,
+  // the fast answer was empty AND the 'finish' that was supposed to fill the cache was empty too. Measured on
+  // production: rows 0 with counts {google:0, osm:0, catalogue:0} for categories that had rows an hour earlier.
+  // Only the budgeted build races a deadline now. A FULL build waits for its sources (they are allowed to be slow:
+  // nobody is looking at it) and is the one that decides what is real.
+  const isFull = budgetMs >= FULL_BUDGET_MS;
+  const srcCap = isFull ? 20_000 : Math.max(1200, Math.min(6000, budgetMs + 2500));
   const sourcePromise = (name: string, p: Promise<{ rows: any[]; note?: string }>) => ({ name, p });
   const sources: Array<{ name: string; p: Promise<{ rows: any[]; note?: string }> }> = [
     sourcePromise('google', googleNearby(location.lat, location.lng, category)),
@@ -712,7 +754,7 @@ async function buildNearbyAnswer(input: {
     };
     const timer = setTimeout(() => finish('deadline'), srcCap);
     for (const { name, p } of sources) {
-      p.then((v) => { got[name] = v || empty; if ((v?.rows?.length || 0) > 0) finish('rows'); })
+      p.then((v) => { got[name] = v || empty; if (!isFull && (v?.rows?.length || 0) > 0) finish('rows'); })
         .catch(() => { got[name] = empty; })
         .finally(() => { ticking -= 1; if (ticking === 0) finish('all'); });
     }
@@ -768,8 +810,18 @@ async function buildNearbyAnswer(input: {
   // A place that already matched a map row keeps its distance without any lookup; the rest borrow from whatever
   // time is left. A row without a distance is honest, a row that delays the whole answer is not.
   const looked = await stage('photon', lookedStage, Math.max(150, Math.min(400, budgetMs / 2)), [] as any[]);
+  // OWNER 16 Nov (regression 'phle result aata tha ab kyun ni aa raha'): this used to spread the LOOKUP results and
+  // then only the rows after the first eight. When the distance lookup was skipped (budget spent, or Photon
+  // throttled) `looked` came back empty and the first eight partner rows - the only ones we had - vanished with it.
+  // Measured: Swiggy answered with 8 real restaurants and the list rendered 0. Now the head is always rendered; the
+  // lookup only decides whether a row ALSO carries a distance.
+  const lookedByRow = new Map<string, any>();
+  for (const l of (looked as any[]) || []) if (l && l.p) lookedByRow.set(norm(l.p.name), l);
   const enriched = [
-    ...(looked as any[]).map((l: any) => enrichedToRow(l.p, l.coords, l.distance) as unknown as NearbyRow),
+    ...wanted.slice(0, 8).map((p) => {
+      const hit = lookedByRow.get(norm(p.name));
+      return enrichedToRow(p, hit ? hit.coords : null, hit ? hit.distance : null) as unknown as NearbyRow;
+    }),
     ...wanted.slice(8).map((p) => enrichedToRow(p, null, null) as unknown as NearbyRow),
   ];
 
@@ -880,8 +932,11 @@ async function buildNearbyAnswer(input: {
     ...(truncated ? { partial: true } : {}),
   };
   timing.total = Date.now() - startedAt;
-  // A partial answer is never persisted: it would outlive the background build that is already making it whole.
-  if (!truncated) await writeCache(cacheKey, answer);
+  // Persist whenever there are real rows: a list of real places is worth 30 minutes even if its optional extras
+  // (photo, distance, og:image) were cut short - the background finish rewrites the same key with those filled in.
+  // An EMPTY answer is never persisted: a blank list is not a fact about the place, it is a fact about the last few
+  // seconds of the providers, and caching it is how a temporary hiccup becomes a broken screen.
+  if (results.length > 0) await writeCache(cacheKey, answer);
   if (TIMING) log.info('Nearby', 'build timing', { city: location.city, category, budgetMs, truncated, timing });
   return answer;
 }
@@ -968,8 +1023,10 @@ export async function nearbyReport(days = 7): Promise<{
  * of time, one at a time with a pause, so the tab a visitor opens is already warm and answers from memory in
  * ~200ms. Nothing here is shown to anyone: it is the same honest build, just done before the click.
  */
-const PREWARM_CITIES = ['pune', 'mumbai', 'delhi', 'bengaluru', 'hyderabad', 'chennai', 'kolkata', 'ahmedabad', 'jaipur', 'lucknow', 'indore', 'bhopal', 'surat', 'nagpur', 'chandigarh', 'kochi', 'noida', 'gurugram'];
-const PREWARM_CATEGORIES: NearbyCategory[] = ['all', 'restaurants', 'cafes', 'hotels', 'cabs', 'stores', 'movies'];
+// Deliberately short: these are free public mirrors, and a wide prewarm invites the rate limiting that made the
+// live list empty (see the isFull note in buildNearbyAnswer). Ten cities x four categories, ten minutes apart.
+const PREWARM_CITIES = ['pune', 'mumbai', 'delhi', 'bengaluru', 'hyderabad', 'chennai', 'kolkata', 'indore', 'bhopal', 'jaipur'];
+const PREWARM_CATEGORIES: NearbyCategory[] = ['all', 'restaurants', 'hotels', 'cabs'];
 let prewarmRunning = false;
 
 export async function prewarmNearby(limitCities = PREWARM_CITIES.length): Promise<{ built: number; skipped: number }> {
@@ -990,7 +1047,7 @@ export async function prewarmNearby(limitCities = PREWARM_CITIES.length): Promis
           if (!ans.partial) { memoryPut(key, ans); built += 1; }
         } catch { skipped += 1; }
         // One build at a time, and a pause between them: this is a courtesy to free map mirrors, not a crawler.
-        await new Promise((r) => setTimeout(r, 700));
+        await new Promise((r) => setTimeout(r, 2500));
       }
     }
   } finally { prewarmRunning = false; }
@@ -1058,7 +1115,7 @@ export async function nearbyAnswer(input: {
           finishInBackground();
           const done = await Promise.race([
             (fullBuilds.get(cacheKey) as Promise<NearbyAnswer> | undefined) || Promise.resolve(ans),
-            new Promise<NearbyAnswer>((r) => setTimeout(() => r(ans), 6000)),
+            new Promise<NearbyAnswer>((r) => setTimeout(() => r(ans), 12_000)),
           ]).catch(() => ans);
           if (done && (done as NearbyAnswer).results.length > 0) return serve(done as NearbyAnswer, {});
         }

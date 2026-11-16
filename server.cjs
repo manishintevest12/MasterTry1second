@@ -48581,7 +48581,15 @@ function norm9(name) {
 }
 async function resolveNearbyLocation(lat, lng, city) {
   if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(Number(lat)) <= 90 && Math.abs(Number(lng)) <= 180) {
-    return { lat: Number(lat), lng: Number(lng), city: city ? String(city) : null, resolvedFrom: "coords" };
+    const la = Number(lat);
+    const ln = Number(lng);
+    const known = city ? String(city) : null;
+    if (known) return { lat: la, lng: ln, city: known, resolvedFrom: "coords" };
+    const named = await Promise.race([
+      reverseCity(la, ln).catch(() => null),
+      new Promise((r) => setTimeout(() => r(null), 900))
+    ]);
+    return { lat: la, lng: ln, city: named, resolvedFrom: "coords" };
   }
   const wanted = String(city || "").trim();
   if (wanted) {
@@ -48590,6 +48598,26 @@ async function resolveNearbyLocation(lat, lng, city) {
   }
   const fallback = await geocodeCity(DEFAULT_CITY);
   return fallback ? { ...fallback, city: DEFAULT_CITY, resolvedFrom: "fallback" } : { lat: 18.5204, lng: 73.8567, city: DEFAULT_CITY, resolvedFrom: "fallback" };
+}
+async function reverseCity(lat, lng) {
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const hit = reverseCache.get(key);
+  if (hit) return hit;
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&addressdetails=1`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6e3);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (https://www.try1second.com; nearby reverse geocoding)" } }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+    const j = await res.json();
+    const a = j?.address || {};
+    const name = String(a.city || a.town || a.village || a.municipality || a.county || a.state_district || j?.name || "").trim();
+    if (!name) return null;
+    reverseCache.set(key, name);
+    return name;
+  } catch {
+    return null;
+  }
 }
 async function geocodeCity(city) {
   const key = city.toLowerCase();
@@ -49020,7 +49048,8 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   if (cached3) return cached3;
   const wantsFood = category === "all" || category === "restaurants" || category === "cafes";
   const wantsStay = category === "all" || category === "hotels" || category === "stays";
-  const srcCap = Math.max(900, Math.min(3e3, budgetMs + 400));
+  const isFull = budgetMs >= FULL_BUDGET_MS;
+  const srcCap = isFull ? 2e4 : Math.max(1200, Math.min(6e3, budgetMs + 2500));
   const sourcePromise = (name, p) => ({ name, p });
   const sources2 = [
     sourcePromise("google", googleNearby(location.lat, location.lng, category)),
@@ -49046,7 +49075,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     for (const { name, p } of sources2) {
       p.then((v) => {
         got[name] = v || empty;
-        if ((v?.rows?.length || 0) > 0) finish("rows");
+        if (!isFull && (v?.rows?.length || 0) > 0) finish("rows");
       }).catch(() => {
         got[name] = empty;
       }).finally(() => {
@@ -49094,8 +49123,13 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     return { p, coords: geo ? { lat: geo.lat, lng: geo.lng } : null, distance: geo ? geo.distanceKm : null };
   });
   const looked = await stage("photon", lookedStage, Math.max(150, Math.min(400, budgetMs / 2)), []);
+  const lookedByRow = /* @__PURE__ */ new Map();
+  for (const l of looked || []) if (l && l.p) lookedByRow.set(norm9(l.p.name), l);
   const enriched = [
-    ...looked.map((l) => enrichedToRow(l.p, l.coords, l.distance)),
+    ...wanted.slice(0, 8).map((p) => {
+      const hit = lookedByRow.get(norm9(p.name));
+      return enrichedToRow(p, hit ? hit.coords : null, hit ? hit.distance : null);
+    }),
     ...wanted.slice(8).map((p) => enrichedToRow(p, null, null))
   ];
   const merged = sortRows(dedupe([...enriched, ...catalogue, ...google.rows, ...osm.rows]), category);
@@ -49171,7 +49205,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     ...truncated ? { partial: true } : {}
   };
   timing.total = Date.now() - startedAt;
-  if (!truncated) await writeCache(cacheKey2, answer);
+  if (results.length > 0) await writeCache(cacheKey2, answer);
   if (TIMING) log.info("Nearby", "build timing", { city: location.city, category, budgetMs, truncated, timing });
   return answer;
 }
@@ -49290,7 +49324,7 @@ async function prewarmNearby(limitCities = PREWARM_CITIES.length) {
         } catch {
           skipped += 1;
         }
-        await new Promise((r) => setTimeout(r, 700));
+        await new Promise((r) => setTimeout(r, 2500));
       }
     }
   } finally {
@@ -49335,7 +49369,7 @@ async function nearbyAnswer(input) {
         finishInBackground();
         const done = await Promise.race([
           fullBuilds.get(cacheKey2) || Promise.resolve(ans),
-          new Promise((r) => setTimeout(() => r(ans), 6e3))
+          new Promise((r) => setTimeout(() => r(ans), 12e3))
         ]).catch(() => ans);
         if (done && done.results.length > 0) return serve(done, {});
       }
@@ -49351,7 +49385,7 @@ async function nearbyAnswer(input) {
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, GOOGLE_TYPE, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, reverseCache, GOOGLE_TYPE, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -49401,6 +49435,7 @@ var init_aggregator = __esm({
     };
     PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
     geocodeCache = /* @__PURE__ */ new Map();
+    reverseCache = /* @__PURE__ */ new Map();
     GOOGLE_TYPE = {
       restaurants: ["restaurant"],
       cafes: ["cafe"],
@@ -49412,8 +49447,8 @@ var init_aggregator = __esm({
       all: ["restaurant", "cafe", "lodging", "store", "movie_theater"]
     };
     PAGE_CEILING = 60;
-    PREWARM_CITIES = ["pune", "mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "ahmedabad", "jaipur", "lucknow", "indore", "bhopal", "surat", "nagpur", "chandigarh", "kochi", "noida", "gurugram"];
-    PREWARM_CATEGORIES = ["all", "restaurants", "cafes", "hotels", "cabs", "stores", "movies"];
+    PREWARM_CITIES = ["pune", "mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "indore", "bhopal", "jaipur"];
+    PREWARM_CATEGORIES = ["all", "restaurants", "hotels", "cabs"];
     prewarmRunning = false;
   }
 });
