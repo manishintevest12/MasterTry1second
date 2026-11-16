@@ -49537,7 +49537,7 @@ var init_aggregator = __esm({
     FAST_BUDGET_MS = Math.max(400, Number(process.env.NEARBY_FAST_MS || 900));
     FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 45e3));
     TIMING = String(process.env.NEARBY_TIMING || "") === "1";
-    NEARBY_REV = "2026-11-16d";
+    NEARBY_REV = "2026-11-16e";
     memoryCache = /* @__PURE__ */ new Map();
     MEMORY_CACHE_MAX = 300;
     CATEGORY_ALIASES = {

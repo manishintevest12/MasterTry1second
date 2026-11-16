@@ -120,7 +120,7 @@ const FAST_BUDGET_MS = Math.max(400, Number(process.env.NEARBY_FAST_MS || 900));
 const FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 45_000));
 const TIMING = String(process.env.NEARBY_TIMING || '') === '1';
 /** Bump when the nearby build changes, so the live response states which code answered it. */
-const NEARBY_REV = '2026-11-16d';
+const NEARBY_REV = '2026-11-16e';
 /**
  * In-process answer cache. The SQL cache is the durable one, but a light SQL emulator (the file store used in
  * tests/dev) answers an upsert-shaped write with no row and the read with [], which made EVERY request rebuild -
