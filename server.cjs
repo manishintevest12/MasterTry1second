@@ -48883,7 +48883,7 @@ async function photonNearby(lat, lng, term, category) {
   try {
     const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(term)}&lat=${lat}&lon=${lng}&limit=30&lang=en`;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 9e3);
+    const timer = setTimeout(() => ctrl.abort(), 4e3);
     const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (nearby)" } }).finally(() => clearTimeout(timer));
     if (!res.ok) return { rows: [], note: `Photon answered ${res.status}` };
     const data = await res.json();
@@ -48908,11 +48908,12 @@ async function photonNearby(lat, lng, term, category) {
 }
 async function nominatimNearby(lat, lng, term, category) {
   try {
-    const d = 0.06;
+    const SEARCH_BOX_M = 8e3;
+    const d = SEARCH_BOX_M / 111e3;
     const viewbox = `${(lng - d).toFixed(4)},${(lat + d).toFixed(4)},${(lng + d).toFixed(4)},${(lat - d).toFixed(4)}`;
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(term)}&viewbox=${viewbox}&bounded=1&format=jsonv2&limit=30`;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 9e3);
+    const timer = setTimeout(() => ctrl.abort(), 4e3);
     const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (https://www.try1second.com; nearby)" } }).finally(() => clearTimeout(timer));
     if (!res.ok) return { rows: [], note: `Nominatim answered ${res.status}` };
     const data = await res.json();
@@ -48938,6 +48939,30 @@ async function nominatimNearby(lat, lng, term, category) {
     return { rows: [], note: `Nominatim unreachable: ${String(e2?.message || e2).slice(0, 60)}` };
   }
 }
+function rideAppRows(city, lat, lng) {
+  const where = city ? ` in ${city}` : " near you";
+  return RIDE_APPS.map((app) => ({
+    id: `ride-${app.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    name: app.name,
+    category: "cabs",
+    subcategory: app.sub,
+    rating: null,
+    ratingCount: null,
+    priceLevel: null,
+    priceLabel: null,
+    price: null,
+    address: null,
+    lat,
+    lng,
+    distanceKm: null,
+    imageUrl: null,
+    source: "catalogue",
+    honesty: `No taxi stand is mapped at this spot, so this is the ${app.name} booking app, which serves${where}.`,
+    exitUrl: pointer(app.url, "cabs"),
+    directionsUrl: "",
+    website: app.url
+  }));
+}
 async function overpassNearby(lat, lng, category) {
   const filters = {
     restaurants: ['node["amenity"="restaurant"]'],
@@ -48953,17 +48978,18 @@ async function overpassNearby(lat, lng, category) {
   const query = `[out:json][timeout:12];(
 ${body}
 );out body 30;`;
-  for (const host of ["overpass-api.de", "overpass.kumi.systems", "overpass.private.coffee", "maps.mail.ru/osm/tools/overpass"]) {
+  const hosts = ["overpass-api.de", "overpass.kumi.systems", "overpass.private.coffee", "maps.mail.ru/osm/tools/overpass"];
+  const attempts2 = hosts.map(async (host) => {
     try {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 12e3);
+      const timer = setTimeout(() => ctrl.abort(), 4e3);
       const res = await fetch(`https://${host}/api/interpreter`, {
         method: "POST",
         signal: ctrl.signal,
         headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "Try1Second/1.0 (nearby)" },
         body: `data=${encodeURIComponent(query)}`
       }).finally(() => clearTimeout(timer));
-      if (!res.ok) continue;
+      if (!res.ok) return null;
       const data = await res.json();
       const rows = (Array.isArray(data.elements) ? data.elements : []).filter((e2) => e2?.tags?.name && !isJunkName(String(e2.tags.name)) && Number.isFinite(Number(e2.lat))).map((e2) => {
         const plat = Number(e2.lat);
@@ -48988,10 +49014,21 @@ ${body}
       });
       if (rows.length) return { rows };
     } catch {
-      continue;
+      return null;
     }
-  }
-  return { rows: [], note: "Overpass mirrors unreachable" };
+    return null;
+  });
+  const first = await Promise.race([
+    (async () => {
+      for (const p of attempts2) {
+        const hit = await p.catch(() => null);
+        if (hit && hit.rows.length) return hit;
+      }
+      return null;
+    })(),
+    new Promise((r) => setTimeout(() => r(null), 4500))
+  ]);
+  return first && first.rows.length ? first : { rows: [], note: "Overpass mirrors unreachable" };
 }
 function baseOsmRow(input) {
   return {
@@ -49179,7 +49216,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const wantsFood = category === "all" || category === "restaurants" || category === "cafes";
   const wantsStay = category === "all" || category === "hotels" || category === "stays";
   const isFull = budgetMs >= FULL_BUDGET_MS;
-  const srcCap = isFull ? 2e4 : Math.max(1200, Math.min(6e3, budgetMs + 2500));
+  const srcCap = isFull ? 6e3 : Math.max(900, Math.min(2e3, budgetMs + 400));
   const sourcePromise = (name, p) => ({ name, p });
   const sources2 = [
     sourcePromise("google", googleNearby(location.lat, location.lng, category)),
@@ -49262,7 +49299,9 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     }),
     ...wanted.slice(8).map((p) => enrichedToRow(p, null, null))
   ];
-  const merged = sortRows(dedupe([...enriched, ...catalogue, ...google.rows, ...osm.rows]), category);
+  const places2 = [...enriched, ...catalogue, ...google.rows, ...osm.rows];
+  const rideFallback = category === "cabs" && places2.length === 0 ? rideAppRows(location.city, location.lat, location.lng) : [];
+  const merged = sortRows(dedupe([...places2, ...rideFallback]), category);
   const total = Math.min(PAGE_CEILING, merged.length);
   const offset = Math.min(page.offset, total);
   const limit = page.limit;
@@ -49501,7 +49540,7 @@ async function nearbyAnswer(input) {
         finishInBackground();
         const done = await Promise.race([
           fullBuilds.get(cacheKey2) || Promise.resolve(ans),
-          new Promise((r) => setTimeout(() => r(ans), 12e3))
+          new Promise((r) => setTimeout(() => r(ans), 350))
         ]).catch(() => ans);
         if (done && done.results.length > 0) return serve(done, {});
       }
@@ -49517,7 +49556,7 @@ async function nearbyAnswer(input) {
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, WIDE_RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, NEARBY_REV, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, nominatimPausedUntil, cityIndex, CORPUS_CITY_NAMES, reverseCache, GOOGLE_TYPE, CATEGORY_WORDS2, STREET_WORD, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
+var DEFAULT_CITY, RADIUS_M, WIDE_RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, NEARBY_REV, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, nominatimPausedUntil, cityIndex, CORPUS_CITY_NAMES, reverseCache, GOOGLE_TYPE, RIDE_APPS, CATEGORY_WORDS2, STREET_WORD, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -49535,9 +49574,9 @@ var init_aggregator = __esm({
     PHOTO_BUDGET_MS = 4500;
     PHOTO_LOOKUP_ROWS = 14;
     FAST_BUDGET_MS = Math.max(400, Number(process.env.NEARBY_FAST_MS || 900));
-    FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 45e3));
+    FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 12e3));
     TIMING = String(process.env.NEARBY_TIMING || "") === "1";
-    NEARBY_REV = "2026-11-16e";
+    NEARBY_REV = "2026-11-16f";
     memoryCache = /* @__PURE__ */ new Map();
     MEMORY_CACHE_MAX = 300;
     CATEGORY_ALIASES = {
@@ -49590,6 +49629,11 @@ var init_aggregator = __esm({
       movies: ["movie_theater"],
       all: ["restaurant", "cafe", "lodging", "store", "movie_theater"]
     };
+    RIDE_APPS = [
+      { name: "Uber", url: "https://m.uber.com/looking", sub: "ride-hailing app" },
+      { name: "Ola Cabs", url: "https://book.olacabs.com/", sub: "ride-hailing app" },
+      { name: "Rapido", url: "https://rapido.bike/", sub: "bike taxi app" }
+    ];
     CATEGORY_WORDS2 = /* @__PURE__ */ new Set(["shop", "store", "yes", "taxi", "cinema", "restaurant", "cafe", "hotel", "guest house", "guesthouse", "motel", "hostel", "apartment", "fast food", "food", "amenities", "building", "unnamed", "left exit", "right exit", "exit", "entrance", "parking", "gate", "toilet", "atm"]);
     STREET_WORD = /\b(road|rd|street|st|marg|lane|highway|nh|sh|chowk|square|circle|bridge|flyover|junction|crossing|colony|sector|layout|block)\b/i;
     PAGE_CEILING = 60;

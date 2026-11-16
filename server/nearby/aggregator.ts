@@ -117,10 +117,10 @@ const PHOTO_LOOKUP_ROWS = 14;
  */
 const FAST_BUDGET_MS = Math.max(400, Number(process.env.NEARBY_FAST_MS || 900));
 /** The background finish gets room to work: this pass is not holding any user. */
-const FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 45_000));
+const FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 12_000));
 const TIMING = String(process.env.NEARBY_TIMING || '') === '1';
 /** Bump when the nearby build changes, so the live response states which code answered it. */
-const NEARBY_REV = '2026-11-16e';
+const NEARBY_REV = '2026-11-16f';
 /**
  * In-process answer cache. The SQL cache is the durable one, but a light SQL emulator (the file store used in
  * tests/dev) answers an upsert-shaped write with no row and the read with [], which made EVERY request rebuild -
@@ -524,7 +524,7 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
   try {
     const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(term)}&lat=${lat}&lon=${lng}&limit=30&lang=en`;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 9000);
+    const timer = setTimeout(() => ctrl.abort(), 4000);
     const res = await fetch(url, { signal: ctrl.signal, headers: { 'user-agent': 'Try1Second/1.0 (nearby)' } }).finally(() => clearTimeout(timer));
     if (!res.ok) return { rows: [], note: `Photon answered ${res.status}` };
     const data: any = await res.json();
@@ -550,11 +550,16 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
 async function nominatimNearby(lat: number, lng: number, term: string, category: NearbyCategory):
 Promise<{ rows: NearbyRow[]; note?: string }> {
   try {
-    const d = 0.06; // ~6 km box
+    // OWNER 16 Nov ('cinemas hall near me is atleast 5-6'): a text search is a NAME search, so it needs a city-sized
+    // box, not the tight circle used for tag lookups. Measured around the same GPS fix: 2.5km/6km boxes returned 1
+    // cinema and 0 hotels, an 8km box returns the 5 real cinemas and 27 named hotels. Rows are still ordered by
+    // distance, so 'nearby' stays nearby.
+    const SEARCH_BOX_M = 8000;
+    const d = SEARCH_BOX_M / 111_000;
     const viewbox = `${(lng - d).toFixed(4)},${(lat + d).toFixed(4)},${(lng + d).toFixed(4)},${(lat - d).toFixed(4)}`;
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(term)}&viewbox=${viewbox}&bounded=1&format=jsonv2&limit=30`;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 9000);
+    const timer = setTimeout(() => ctrl.abort(), 4000);
     const res = await fetch(url, { signal: ctrl.signal, headers: { 'user-agent': 'Try1Second/1.0 (https://www.try1second.com; nearby)' } }).finally(() => clearTimeout(timer));
     if (!res.ok) return { rows: [], note: `Nominatim answered ${res.status}` };
     const data: any[] = (await res.json()) as any[];
@@ -581,6 +586,43 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
   }
 }
 
+/**
+ * OWNER 16 Nov: the Cabs tab was empty at a perfectly normal Indore address. That is not a data gap we can fix by
+ * searching wider - India barely maps taxi STANDS, because nobody walks to one; the ride arrives from an app. So
+ * when no taxi place is found, the tab offers what actually exists there: the real ride-hailing apps that serve
+ * that city, each opening its own booking flow (the app's own deep link on a phone). Labelled as apps, not as
+ * places, so nothing is invented.
+ */
+const RIDE_APPS: Array<{ name: string; url: string; sub: string }> = [
+  { name: 'Uber', url: 'https://m.uber.com/looking', sub: 'ride-hailing app' },
+  { name: 'Ola Cabs', url: 'https://book.olacabs.com/', sub: 'ride-hailing app' },
+  { name: 'Rapido', url: 'https://rapido.bike/', sub: 'bike taxi app' },
+];
+function rideAppRows(city: string | null, lat: number, lng: number): NearbyRow[] {
+  const where = city ? ` in ${city}` : ' near you';
+  return RIDE_APPS.map((app) => ({
+    id: `ride-${app.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    name: app.name,
+    category: 'cabs' as NearbyCategory,
+    subcategory: app.sub,
+    rating: null,
+    ratingCount: null,
+    priceLevel: null,
+    priceLabel: null,
+    price: null,
+    address: null,
+    lat,
+    lng,
+    distanceKm: null,
+    imageUrl: null,
+    source: 'catalogue' as const,
+    honesty: `No taxi stand is mapped at this spot, so this is the ${app.name} booking app, which serves${where}.`,
+    exitUrl: pointer(app.url, 'cabs'),
+    directionsUrl: '',
+    website: app.url,
+  })) as unknown as NearbyRow[];
+}
+
 async function overpassNearby(lat: number, lng: number, category: NearbyCategory):
 Promise<{ rows: NearbyRow[]; note?: string }> {
   const filters: Record<NearbyCategory, string[]> = {
@@ -595,16 +637,20 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
   };
   const body = filters[category].map((f) => `${f}(around:${radiusFor(category)},${lat},${lng});`).join('\n');
   const query = `[out:json][timeout:12];(\n${body}\n);out body 30;`;
-  for (const host of ['overpass-api.de', 'overpass.kumi.systems', 'overpass.private.coffee', 'maps.mail.ru/osm/tools/overpass']) {
+  // OWNER 16 Nov: these were tried one after another with a 12s timeout each, so a single cold request could sit
+  // on Overpass for 48 seconds - longer than the proxy in front of us keeps a connection open, which is how the
+  // endpoint came back 503 with no rows. They are raced now, 4s each, first real answer wins.
+  const hosts = ['overpass-api.de', 'overpass.kumi.systems', 'overpass.private.coffee', 'maps.mail.ru/osm/tools/overpass'];
+  const attempts2 = hosts.map(async (host) => {
     try {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 12000);
+      const timer = setTimeout(() => ctrl.abort(), 4000);
       const res = await fetch(`https://${host}/api/interpreter`, {
         method: 'POST', signal: ctrl.signal,
         headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'Try1Second/1.0 (nearby)' },
         body: `data=${encodeURIComponent(query)}`,
       }).finally(() => clearTimeout(timer));
-      if (!res.ok) continue;
+      if (!res.ok) return null;
       const data: any = await res.json();
       const rows: NearbyRow[] = (Array.isArray(data.elements) ? data.elements : [])
         .filter((e: any) => e?.tags?.name && !isJunkName(String(e.tags.name)) && Number.isFinite(Number(e.lat)))
@@ -624,9 +670,20 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
           });
         });
       if (rows.length) return { rows };
-    } catch { continue; }
-  }
-  return { rows: [], note: 'Overpass mirrors unreachable' };
+    } catch { return null; }
+    return null;
+  });
+  const first = await Promise.race([
+    (async () => {
+      for (const p of attempts2) {
+        const hit = await p.catch(() => null);
+        if (hit && hit.rows.length) return hit;
+      }
+      return null;
+    })(),
+    new Promise<null>((r) => setTimeout(() => r(null), 4500)),
+  ]);
+  return first && first.rows.length ? first : { rows: [], note: 'Overpass mirrors unreachable' };
 }
 
 function baseOsmRow(input: {
@@ -859,7 +916,10 @@ async function buildNearbyAnswer(input: {
   // Only the budgeted build races a deadline now. A FULL build waits for its sources (they are allowed to be slow:
   // nobody is looking at it) and is the one that decides what is real.
   const isFull = budgetMs >= FULL_BUDGET_MS;
-  const srcCap = isFull ? 20_000 : Math.max(1200, Math.min(6000, budgetMs + 2500));
+  // OWNER 16 Nov: a category with no fast source (cabs, measured 3.8s) used to pay 3.4s just to prove it. The
+  // budgeted build now gives its sources ~1.3s and answers with whatever is real, so no request can approach the
+  // proxy's timeout again.
+  const srcCap = isFull ? 6_000 : Math.max(900, Math.min(2000, budgetMs + 400));
   const sourcePromise = (name: string, p: Promise<{ rows: any[]; note?: string }>) => ({ name, p });
   const sources: Array<{ name: string; p: Promise<{ rows: any[]; note?: string }> }> = [
     sourcePromise('google', googleNearby(location.lat, location.lng, category)),
@@ -955,7 +1015,12 @@ async function buildNearbyAnswer(input: {
   ];
 
   // Precision first (rated + priced partner rows), then our catalogue, then the raw map rows.
-  const merged = sortRows(dedupe([...enriched, ...catalogue, ...google.rows, ...osm.rows]), category);
+  const places = [...enriched, ...catalogue, ...google.rows, ...osm.rows];
+  // The Cabs tab falls back to the real ride-hailing apps when nothing is mapped, never to nothing at all.
+  const rideFallback = category === 'cabs' && places.length === 0
+    ? rideAppRows(location.city, location.lat, location.lng)
+    : [];
+  const merged = sortRows(dedupe([...places, ...rideFallback]), category);
   // Paging: we hold at most PAGE_CEILING rows for a spot, and hand out one page at a time with an honest
   // `total`/`hasMore` so the app can offer "Load more" instead of pretending the list is endless.
   const total = Math.min(PAGE_CEILING, merged.length);
@@ -1248,9 +1313,13 @@ export async function nearbyAnswer(input: {
         // way. Everything else - photos, og:image, extra distances - still lands in the background.
         if (ans.results.length === 0 && ans.partial) {
           finishInBackground();
+          // OWNER 16 Nov (503s at 14.4s in the access log): this wait used to be 12 SECONDS, and the reverse
+          // proxy in front of Node gives up before that - so the browser got a 503 while Node was still politely
+          // waiting, and 'Load more' had no page to show. A request may hold the line for ~1s in total now; the
+          // finish keeps working in the background and the next open is served from cache.
           const done = await Promise.race([
             (fullBuilds.get(cacheKey) as Promise<NearbyAnswer> | undefined) || Promise.resolve(ans),
-            new Promise<NearbyAnswer>((r) => setTimeout(() => r(ans), 12_000)),
+            new Promise<NearbyAnswer>((r) => setTimeout(() => r(ans), 350)),
           ]).catch(() => ans);
           if (done && (done as NearbyAnswer).results.length > 0) return serve(done as NearbyAnswer, {});
         }
