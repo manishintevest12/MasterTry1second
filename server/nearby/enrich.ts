@@ -138,56 +138,96 @@ export async function swiggyPlaces(lat: number, lng: number): Promise<{ rows: En
 }
 
 /** Hotels and stays with a real guest rating and the nightly price OYO publishes. */
+/**
+ * OWNER 16 Nov: 'OYO: OYO answered 404 for juni-indore-tahsil'. A GPS fix reverse-geocodes to an administrative
+ * label ('Juni Indore Tahsil'), and OYO has no page for that slug although it serves Indore perfectly - so the
+ * whole hotel half of the list disappeared for phone users. Slugs are now built from city words only (an admin
+ * suffix is dropped and the real city inside the label is tried too), and a 404 retries the other candidates
+ * before it is believed.
+ */
+function oyoSlugCandidates(city: string | null): string[] {
+  const raw = String(city || '').trim().toLowerCase();
+  if (!raw) return [];
+  const cleaned = raw
+    .replace(/\b(tahsil|tehsil|taluka|taluk|subdistrict|sub district|district|block|mandal|pargana|zilla|division)\b/g, ' ')
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const out: string[] = [];
+  const push = (v: string) => {
+    const slug = v.trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (slug && !out.includes(slug)) out.push(slug);
+  };
+  push(cleaned);
+  // 'juni indore' -> also try each word, longest first: a locality prefix must not hide the city.
+  for (const w of cleaned.split(' ').sort((a, b) => b.length - a.length)) if (w.length >= 4) push(w);
+  return out.slice(0, 3);
+}
+
+/** Parse one OYO city page into priced/rated rows. Kept separate so a 404 retry can reuse it. */
+function parseOyoBody(body: string, category: 'hotels' | 'stays'): EnrichedPlace[] {
+  const marker = body.indexOf('"hotels":[');
+  if (marker < 0) return [];
+  const start = body.indexOf('[', marker);
+  let depth = 0; let end = -1;
+  for (let i = start; i < body.length; i += 1) {
+    if (body[i] === '[') depth += 1;
+    else if (body[i] === ']') { depth -= 1; if (depth === 0) { end = i + 1; break; } }
+  }
+  if (end < 0) return [];
+  let hotels: any[] = [];
+  try { hotels = JSON.parse(body.slice(start, end)); } catch { return []; }
+  const rows: EnrichedPlace[] = [];
+  for (const h of Array.isArray(hotels) ? hotels : []) {
+    const name = String(h?.name || '').trim();
+    if (!name) continue;
+    const rating = Number(h?.rating?.value);
+    const count = Number(h?.rating?.count);
+    const price = Number(h?.pricing?.bookingPrice);
+    const img = Array.isArray(h?.hotel_images) && h.hotel_images.length
+      ? String(h.hotel_images[0]?.url || h.hotel_images[0] || '')
+      : '';
+    const link = String(h?.url || h?.external_booking_url || '');
+    const website = link ? (link.startsWith('http') ? link : `https://www.oyorooms.com${link}`) : null;
+    rows.push({
+      name,
+      category,
+      rating: Number.isFinite(rating) && rating > 0 ? rating : null,
+      ratingCount: Number.isFinite(count) && count >= 0 ? count : null,
+      price: Number.isFinite(price) && price > 0 ? price : null,
+      priceLabel: Number.isFinite(price) && price > 0 ? `${rupee(price)}/night` : null,
+      priceBasis: Number.isFinite(price) && price > 0 ? 'nightly price published by OYO' : null,
+      address: h?.address ? String(h.address) : null,
+      subcategory: h?.rating?.subtext ? String(h.rating.subtext) : null,
+      imageUrl: img || null,
+      website,
+      source: 'oyo',
+      honesty: Number.isFinite(price) && price > 0
+        ? 'Guest rating, review count and nightly price are live from OYO.'
+        : 'Guest rating is live from OYO; no nightly price was published for this stay.',
+    });
+  }
+  return rows;
+}
+
 export async function oyoStays(city: string | null, category: 'hotels' | 'stays'): Promise<{ rows: EnrichedPlace[]; note?: string }> {
-  const slug = String(city || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  if (!slug) return { rows: [], note: 'No city name, so OYO hotels were not queried' };
-  const url = `https://www.oyorooms.com/hotels-in-${slug}/`;
+  const slugs = oyoSlugCandidates(city);
+  if (!slugs.length) return { rows: [], note: 'No city name, so OYO hotels were not queried' };
+  const slug = slugs[0];
   try {
-    const res = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 14000, headers: { 'accept-language': 'en-IN,en;q=0.9' } });
-    if (res.status !== 200) return { rows: [], note: `OYO answered ${res.status} for ${slug}` };
-    const body = res.body;
-    const marker = body.indexOf('"hotels":[');
-    if (marker < 0) return { rows: [], note: 'OYO page carried no hotel list today' };
-    const start = body.indexOf('[', marker);
-    let depth = 0; let end = -1;
-    for (let i = start; i < body.length; i += 1) {
-      if (body[i] === '[') depth += 1;
-      else if (body[i] === ']') { depth -= 1; if (depth === 0) { end = i + 1; break; } }
-    }
-    if (end < 0) return { rows: [], note: 'OYO hotel list was truncated' };
-    let hotels: any[] = [];
-    try { hotels = JSON.parse(body.slice(start, end)); } catch { return { rows: [], note: 'OYO hotel list did not parse' }; }
-    const rows: EnrichedPlace[] = [];
-    for (const h of Array.isArray(hotels) ? hotels : []) {
-      const name = String(h?.name || '').trim();
-      if (!name) continue;
-      const rating = Number(h?.rating?.value);
-      const count = Number(h?.rating?.count);
-      const price = Number(h?.pricing?.bookingPrice);
-      const img = Array.isArray(h?.hotel_images) && h.hotel_images.length
-        ? String(h.hotel_images[0]?.url || h.hotel_images[0] || '')
-        : '';
-      const link = String(h?.url || h?.external_booking_url || '');
-      const website = link ? (link.startsWith('http') ? link : `https://www.oyorooms.com${link}`) : null;
-      rows.push({
-        name,
-        category,
-        rating: Number.isFinite(rating) && rating > 0 ? rating : null,
-        ratingCount: Number.isFinite(count) && count >= 0 ? count : null,
-        price: Number.isFinite(price) && price > 0 ? price : null,
-        priceLabel: Number.isFinite(price) && price > 0 ? `${rupee(price)}/night` : null,
-        priceBasis: Number.isFinite(price) && price > 0 ? 'nightly price published by OYO' : null,
-        address: h?.address ? String(h.address) : null,
-        subcategory: h?.rating?.subtext ? String(h.rating.subtext) : null,
-        imageUrl: img || null,
-        website,
-        source: 'oyo',
-        honesty: Number.isFinite(price) && price > 0
-          ? 'Guest rating, review count and nightly price are live from OYO.'
-          : 'Guest rating is live from OYO; no nightly price was published for this stay.',
+    for (const candidate of slugs) {
+      const res = await cffiFetch(`https://www.oyorooms.com/hotels-in-${candidate}/`, {
+        impersonate: 'chrome', timeoutMs: 14000, headers: { 'accept-language': 'en-IN,en;q=0.9' },
       });
+      if (res.status === 200) {
+        const rows = parseOyoBody(res.body, category);
+        if (rows.length) return { rows };
+        // A page that loads but lists nothing is a real answer for this spelling: try the next one, quietly.
+        continue;
+      }
+      if (res.status !== 404 && res.status !== 410) return { rows: [], note: `OYO could not be read today (${res.status})` };
     }
-    return rows.length ? { rows } : { rows: [], note: `OYO had no stays listed for ${slug}` };
+    return { rows: [], note: `OYO has no stays listed for ${slug} today` };
   } catch (e: any) {
     log.warn('Nearby', 'oyo enrich failed', { city: slug, error: String(e?.message || e).slice(0, 60) });
     return { rows: [], note: `OYO unreachable: ${String(e?.message || e).slice(0, 70)}` };

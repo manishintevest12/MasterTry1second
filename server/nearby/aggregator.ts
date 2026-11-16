@@ -17,6 +17,7 @@
  */
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
+import { INDIAN_CITIES } from '../seo/cityCorpus';
 import { createMaskingPointer } from '../affiliate/deeplink';
 import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords, ogImage, CATEGORY_TILE, CATEGORY_TILES } from './enrich';
 import { resolvePlacePhoto, categoryTile, type PhotoEvidence } from './photos';
@@ -258,6 +259,12 @@ function pauseNominatim(seconds = 300): void { nominatimPausedUntil = Date.now()
  * it cannot be rate-limited. The external reverse geocoders only run when this finds nothing (deep countryside).
  */
 let cityIndex: { at: number; rows: Array<{ name: string; lat: number; lng: number }> } | null = null;
+const CORPUS_CITY_NAMES: string[] = (() => {
+  try {
+    return INDIAN_CITIES.map((c) => String(c.name || '').toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  } catch { return []; }
+})();
+
 async function nearestKnownCity(lat: number, lng: number): Promise<string | null> {
   try {
     if (!cityIndex || Date.now() - cityIndex.at > 10 * 60_000) {
@@ -268,13 +275,25 @@ async function nearestKnownCity(lat: number, lng: number): Promise<string | null
           .filter((r: any) => r.name && Number.isFinite(r.lat) && Number.isFinite(r.lng)),
       };
     }
-    let best: { name: string; km: number } | null = null;
+    // OWNER 16 Nov: this returned 'Juni Indore Tahsil' - a locality, not a city - and OYO answered 404 for that
+    // slug while it serves Indore perfectly. So an administrative label is never the answer: the nearest entry
+    // that names a real city/town wins, and a tahsil/locality is only used when nothing else is inside the radius.
+    const adminWord = /\b(tahsil|tehsil|taluka|taluk|district|subdistrict|sub district|block|mandal|gram|village|pargana|zilla|division)\b/i;
+    const corpus = new Set(CORPUS_CITY_NAMES);
+    let bestCity: { name: string; km: number } | null = null;
+    let bestAny: { name: string; km: number } | null = null;
     for (const c of cityIndex.rows) {
       const dLat = (c.lat - lat) * 111;
       const dLng = (c.lng - lng) * 111 * Math.cos((lat * Math.PI) / 180);
       const km = Math.sqrt(dLat * dLat + dLng * dLng);
-      if (!best || km < best.km) best = { name: c.name, km };
+      if (!bestAny || km < bestAny.km) bestAny = { name: c.name, km };
+      if (adminWord.test(c.name)) continue;
+      const plain = c.name.replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+      const known = corpus.has(plain) || c.name.trim().split(' ').length <= 2;
+      if (!known) continue;
+      if (!bestCity || km < bestCity.km) bestCity = { name: c.name, km };
     }
+    const best = bestCity || bestAny;
     if (best && best.km <= 75) return best.name.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     return null;
   } catch { return null; }
@@ -461,8 +480,11 @@ function mapGoogleType(primary: unknown): NearbyCategory {
  */
 async function osmNearby(lat: number, lng: number, category: NearbyCategory):
 Promise<{ rows: NearbyRow[]; note?: string }> {
+  // Text search needs a word people actually put on a shopfront: 'shop' is an OSM tag, not a name, so a text
+  // search for it returns nothing named (measured: stores 0 rows after 15s). 'supermarket' is what those POIs
+  // are called on the ground.
   const term: Record<NearbyCategory, string> = {
-    restaurants: 'restaurant', cafes: 'cafe', hotels: 'hotel', stays: 'guest house', cabs: 'taxi', stores: 'shop', movies: 'cinema', all: 'restaurant',
+    restaurants: 'restaurant', cafes: 'cafe', hotels: 'hotel', stays: 'guest house', cabs: 'taxi', stores: 'supermarket', movies: 'cinema', all: 'restaurant',
   };
   const want = term[category] || 'restaurant';
   const attempts: string[] = [];
@@ -476,11 +498,25 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
     nominatimNearby(lat, lng, want, category),
     overpassNearby(lat, lng, category),
   ];
-  const settled = await Promise.all(racers.map((p) => p.catch(() => ({ rows: [] as NearbyRow[], note: undefined }))));
-  const winner = settled.find((r) => r.rows.length > 0);
-  if (winner) return winner;
-  for (const r of settled) if (r.note) attempts.push(r.note);
-  return { rows: [], note: `Map data unavailable: ${attempts.join('; ').slice(0, 220)}` };
+  // OWNER 16 Nov: Promise.all meant the SLOWEST mirror decided when we could answer. Photon (blocked here) needs
+  // 9s to give up and the Overpass mirrors can hang for 20s, while Nominatim answers in under a second WITH the
+  // cinemas in it - so the answer arrived after the budget had already expired and the screen said "nothing live
+  // for this spot" while 6 real cinema halls sat in a response we threw away. Now the first mirror holding real
+  // rows wins the moment it speaks; the others are only consulted for their failure notes when nobody has rows.
+  const winner = await new Promise<{ rows: NearbyRow[]; note?: string }>((resolve) => {
+    let open = racers.length;
+    let settled = false;
+    const finish = (r: { rows: NearbyRow[]; note?: string }) => { if (!settled) { settled = true; resolve(r); } };
+    const guard = setTimeout(() => finish({ rows: [], note: `Map data unavailable: ${attempts.join('; ').slice(0, 200) || 'mirrors too slow'}` }), 12_000);
+    for (const p of racers) {
+      p.then((r) => {
+        if (r?.rows?.length) { clearTimeout(guard); finish(r); return; }
+        if (r?.note) attempts.push(r.note);
+      }).catch((e: any) => attempts.push(String(e?.message || e).slice(0, 40)))
+        .finally(() => { open -= 1; if (open === 0) { clearTimeout(guard); finish({ rows: [], note: `Map data unavailable: ${attempts.join('; ').slice(0, 220)}` }); } });
+    }
+  });
+  return winner;
 }
 
 async function photonNearby(lat: number, lng: number, term: string, category: NearbyCategory):
@@ -499,6 +535,7 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
       const coords = f.geometry?.coordinates || [];
       const plng = Number(coords[0]); const plat = Number(coords[1]);
       if (!p.name || !Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+      if (isJunkName(String(p.name))) continue;
       const cat = osmCategory({ amenity: p.osm_key === 'amenity' ? p.osm_value : '', tourism: p.osm_key === 'tourism' ? p.osm_value : '', shop: p.osm_key === 'shop' ? p.shop || 'yes' : '' });
       if (category !== 'all' && cat !== category) continue;
       const addr = [p.housenumber, p.street, p.district, p.city].filter(Boolean).join(', ') || null;
@@ -526,6 +563,9 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
       const plat = Number(r.lat); const plng = Number(r.lon);
       const name = String(r.name || (r.display_name || '').split(',')[0] || '').trim();
       if (!name || !Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+      // Kept only when the name is the place's own: an unnamed POI would otherwise enter the list as its street.
+      if (!r.name && STREET_WORD.test(name)) continue;
+      if (isJunkName(name)) continue;
       const rt = String(r.type || '');
       const cat = osmCategory({
         amenity: r.class === 'amenity' || ['cinema','restaurant','cafe','fast_food','taxi'].includes(rt) ? rt : '',
@@ -567,7 +607,7 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
       if (!res.ok) continue;
       const data: any = await res.json();
       const rows: NearbyRow[] = (Array.isArray(data.elements) ? data.elements : [])
-        .filter((e: any) => e?.tags?.name && Number.isFinite(Number(e.lat)))
+        .filter((e: any) => e?.tags?.name && !isJunkName(String(e.tags.name)) && Number.isFinite(Number(e.lat)))
         .map((e: any) => {
           const plat = Number(e.lat); const plng = Number(e.lon);
           const cat = osmCategory(e.tags);
@@ -619,6 +659,24 @@ function baseOsmRow(input: {
     osmImage: input.osmImage || null,
     commonsTag: input.commonsTag || null,
   };
+}
+
+/**
+ * OWNER 16 Nov: with the mirrors answering again, two kinds of junk came back in the list: a nameless cinema whose
+ * label fell back to the road it sits on ("Old A. B. Road"), and entries literally named after their own category
+ * ("shop", "taxi"). A card must name a real place or it is not shown - the map data itself is fine, these are tags
+ * without a name and OSM's own generic labels.
+ */
+const CATEGORY_WORDS = new Set(['shop', 'store', 'yes', 'taxi', 'cinema', 'restaurant', 'cafe', 'hotel', 'guest house', 'guesthouse', 'motel', 'hostel', 'apartment', 'fast food', 'food', 'amenities', 'building', 'unnamed', 'left exit', 'right exit', 'exit', 'entrance', 'parking', 'gate', 'toilet', 'atm']);
+const STREET_WORD = /\b(road|rd|street|st|marg|lane|highway|nh|sh|chowk|square|circle|bridge|flyover|junction|crossing|colony|sector|layout|block)\b/i;
+function isJunkName(name: string): boolean {
+  const n = String(name || '').trim().toLowerCase();
+  if (!n) return true;
+  if (CATEGORY_WORDS.has(n)) return true;
+  if (n.length < 3) return true;
+  // A bare street name with no place in it ("Old A. B. Road", "Service Road") is an address, not a venue.
+  if (STREET_WORD.test(n) && n.split(/\s+/).length <= 5) return true;
+  return false;
 }
 
 function osmCategory(tags: any): NearbyCategory {
