@@ -49020,14 +49020,46 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   if (cached3) return cached3;
   const wantsFood = category === "all" || category === "restaurants" || category === "cafes";
   const wantsStay = category === "all" || category === "hotels" || category === "stays";
-  const srcBudget = Math.max(1200, Math.min(3e3, budgetMs + 2200));
-  const [google, osm, catalogue, swiggy, oyo] = await Promise.all([
-    stage("google", googleNearby(location.lat, location.lng, category), srcBudget, { rows: [], note: void 0 }),
-    stage("osm", osmNearby(location.lat, location.lng, category), srcBudget, { rows: [], note: void 0 }),
-    stage("catalogue", catalogueNearby(location.city, category), srcBudget, { rows: [] }),
-    wantsFood ? stage("swiggy", swiggyPlaces(location.lat, location.lng), srcBudget, { rows: [], note: void 0 }) : Promise.resolve({ rows: [], note: void 0 }),
-    wantsStay ? stage("oyo", oyoStays(location.city, category === "stays" ? "stays" : "hotels"), srcBudget, { rows: [], note: void 0 }) : Promise.resolve({ rows: [], note: void 0 })
-  ]);
+  const srcCap = Math.max(900, Math.min(3e3, budgetMs + 400));
+  const sourcePromise = (name, p) => ({ name, p });
+  const sources2 = [
+    sourcePromise("google", googleNearby(location.lat, location.lng, category)),
+    sourcePromise("osm", osmNearby(location.lat, location.lng, category)),
+    sourcePromise("catalogue", catalogueNearby(location.city, category)),
+    ...wantsFood ? [sourcePromise("swiggy", swiggyPlaces(location.lat, location.lng))] : [],
+    ...wantsStay ? [sourcePromise("oyo", oyoStays(location.city, category === "stays" ? "stays" : "hotels"))] : []
+  ];
+  const got = {};
+  const empty = { rows: [], note: void 0 };
+  await new Promise((resolve) => {
+    let ticking = sources2.length;
+    let finished = false;
+    const finish = (why) => {
+      if (finished) return;
+      finished = true;
+      timing.sources = Date.now() - startedAt;
+      if (why !== "all") truncated = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => finish("deadline"), srcCap);
+    for (const { name, p } of sources2) {
+      p.then((v) => {
+        got[name] = v || empty;
+        if ((v?.rows?.length || 0) > 0) finish("rows");
+      }).catch(() => {
+        got[name] = empty;
+      }).finally(() => {
+        ticking -= 1;
+        if (ticking === 0) finish("all");
+      });
+    }
+  });
+  const google = got.google || empty;
+  const osm = got.osm || empty;
+  const catalogue = got.catalogue || { rows: [] };
+  const swiggy = got.swiggy || empty;
+  const oyo = got.oyo || empty;
   const notes = [];
   if (google.note) notes.push(google.note);
   if (osm.note) notes.push(osm.note);

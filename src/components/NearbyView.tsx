@@ -110,7 +110,26 @@ export default function NearbyView() {
     } finally { if (!ctrl.signal.aborted) setLoading(false); }
   }, [category, city, coords]);
 
-  useEffect(() => { void load({ category: 'all' }); /* first paint uses the fallback city */ // eslint-disable-next-line react-hooks/exhaustive-deps
+  // OWNER 16 Nov: "nearby mai muje click na krna pde use my location, wo by default hi kare hamesha".
+  // The tab now asks the browser for the device location on open, so the list is about where the visitor actually
+  // is without a second tap. The city fallback paints first (so the page is never empty while the fix lands), and
+  // a refusal simply leaves the fallback city in place - the button stays for a manual re-sync.
+  useEffect(() => {
+    void load({ category: 'all' }); /* first paint uses the fallback city */
+    if (!navigator.geolocation) return;
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setCoords(c);
+        void load({ lat: c.lat, lng: c.lng, city: '' });
+      },
+      () => { /* denied or unavailable: the city list already on screen stays */ },
+      { timeout: 8000, maximumAge: 120000 },
+    );
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /// Next page for the SAME anchor, appended after the cards already on screen (deduped by id), so "Load more"

@@ -684,16 +684,44 @@ async function buildNearbyAnswer(input: {
 
   const wantsFood = category === 'all' || category === 'restaurants' || category === 'cafes';
   const wantsStay = category === 'all' || category === 'hotels' || category === 'stays';
-  // Source caps: the map mirrors and partner feeds are the front of the queue, so each gets a slice of what is
-  // left rather than the whole budget - one slow mirror must not starve the other four.
-  const srcBudget = Math.max(1200, Math.min(3000, budgetMs + 2200));
-  const [google, osm, catalogue, swiggy, oyo] = await Promise.all([
-    stage('google', googleNearby(location.lat, location.lng, category), srcBudget, { rows: [], note: undefined as string | undefined }),
-    stage('osm', osmNearby(location.lat, location.lng, category), srcBudget, { rows: [], note: undefined as string | undefined }),
-    stage('catalogue', catalogueNearby(location.city, category), srcBudget, { rows: [] } as any),
-    wantsFood ? stage('swiggy', swiggyPlaces(location.lat, location.lng), srcBudget, { rows: [], note: undefined as string | undefined }) : Promise.resolve({ rows: [], note: undefined as string | undefined }),
-    wantsStay ? stage('oyo', oyoStays(location.city, category === 'stays' ? 'stays' : 'hotels'), srcBudget, { rows: [], note: undefined as string | undefined }) : Promise.resolve({ rows: [], note: undefined as string | undefined }),
-  ]);
+  // The five sources are independent answers to the same question, so the budgeted build does not wait for all of
+  // them: the moment one arrives WITH ROWS the rest is optional, and the merge happens on what is already here.
+  // (Measured before this: the budgeted build still took 4.3s because it waited for the slowest source every time.)
+  // The background finish waits for everything, so nothing is lost - it is only deferred.
+  const srcCap = Math.max(900, Math.min(3000, budgetMs + 400));
+  const sourcePromise = (name: string, p: Promise<{ rows: any[]; note?: string }>) => ({ name, p });
+  const sources: Array<{ name: string; p: Promise<{ rows: any[]; note?: string }> }> = [
+    sourcePromise('google', googleNearby(location.lat, location.lng, category)),
+    sourcePromise('osm', osmNearby(location.lat, location.lng, category)),
+    sourcePromise('catalogue', catalogueNearby(location.city, category) as any),
+    ...(wantsFood ? [sourcePromise('swiggy', swiggyPlaces(location.lat, location.lng))] : []),
+    ...(wantsStay ? [sourcePromise('oyo', oyoStays(location.city, category === 'stays' ? 'stays' : 'hotels'))] : []),
+  ];
+  const got: Record<string, { rows: any[]; note?: string }> = {};
+  const empty = { rows: [] as NearbyRow[], note: undefined as string | undefined };
+  await new Promise<void>((resolve) => {
+    let ticking = sources.length;
+    let finished = false;
+    const finish = (why: string) => {
+      if (finished) return;
+      finished = true;
+      timing.sources = Date.now() - startedAt;
+      if (why !== 'all') truncated = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => finish('deadline'), srcCap);
+    for (const { name, p } of sources) {
+      p.then((v) => { got[name] = v || empty; if ((v?.rows?.length || 0) > 0) finish('rows'); })
+        .catch(() => { got[name] = empty; })
+        .finally(() => { ticking -= 1; if (ticking === 0) finish('all'); });
+    }
+  });
+  const google = got.google || empty;
+  const osm = got.osm || empty;
+  const catalogue = (got.catalogue || { rows: [] }) as any;
+  const swiggy = got.swiggy || empty;
+  const oyo = got.oyo || empty;
 
   const notes: string[] = [];
   if (google.note) notes.push(google.note);

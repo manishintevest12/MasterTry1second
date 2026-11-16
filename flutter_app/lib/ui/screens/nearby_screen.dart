@@ -49,7 +49,48 @@ class _NearbyScreenState extends State<NearbyScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // OWNER 16 Nov: "nearby mai muje click na krna pde use my location, wo by default hi kare hamesha".
+    // The screen now anchors on the phone's own location the moment it opens: permission is asked once, the last
+    // known fix paints immediately, and a live fix refines it. Only when location is off or refused does it fall
+    // back to the city box (and the button stays there for a manual re-sync).
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final located = await _locateQuietly();
+    if (!located && mounted) await _load();
+  }
+
+  /// The automatic version of _useMyLocation: no error banners for a normal refusal, no double load, and never a
+  /// blocking wait - a fix that takes longer than the last known one just lands when it lands.
+  Future<bool> _locateQuietly() async {
+    if (_locating) return false;
+    if (mounted) setState(() => _locating = true);
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return false;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return false;
+      var painted = false;
+      final last = await Geolocator.getLastKnownPosition().catchError((_) => null);
+      if (last != null) {
+        await _load(lat: last.latitude, lng: last.longitude, city: null, located: true);
+        painted = true;
+      }
+      try {
+        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium)
+            .timeout(const Duration(seconds: 10));
+        await _load(lat: pos.latitude, lng: pos.longitude, city: null, located: true);
+        return true;
+      } catch (_) {
+        // A live fix that never arrives must not throw away a list built from the last known one.
+        return painted;
+      }
+    } catch (_) {
+      return false;
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
   }
 
   @override
@@ -295,7 +336,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 return GestureDetector(
                   onTap: () {
                     setState(() => _category = c);
-                    _load();
+                    // Keep the anchor the list was built with: tapping "Cabs" while on GPS used to reload a
+                    // different (city) place without saying so.
+                    _load(lat: _lat, lng: _lng, located: _located);
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
