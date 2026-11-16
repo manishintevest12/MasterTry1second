@@ -9752,7 +9752,7 @@ function parseEmtAirbus(jsonText) {
   }
   return out;
 }
-function emtAirbusItems(flights, source, route2, fromCode, toCode, dateIso, fromCountry = "India", toCountry = "India", cap = 60) {
+function emtAirbusItems(flights, source, route2, fromCode, toCode, dateIso, fromCountry = "India", toCountry = "India", cap2 = 60) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const routeLabel = `${route2.from} \u2192 ${route2.to}`;
   const emtListing = `https://www.easemytrip.com/flight-search/listing?srch=${fromCode}-${encodeURIComponent(route2.from)}-${encodeURIComponent(fromCountry || "India")}%7C${toCode}-${encodeURIComponent(route2.to)}-${encodeURIComponent(toCountry || "India")}%7C${dateIso.split("-").reverse().join("/")}&px=1-0-0&cbn=Economy&isow=true&isdm=true`;
@@ -9764,7 +9764,7 @@ function emtAirbusItems(flights, source, route2, fromCode, toCode, dateIso, from
     const key = `${alName}|${f.flightNo}|${f.depTime}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (items.length >= cap) break;
+    if (items.length >= cap2) break;
     items.push(newRawItem(source, {
       title: `${alName} ${f.airlineCode}${f.flightNo} \xB7 ${routeLabel}`,
       brand: alName,
@@ -9842,12 +9842,12 @@ async function kiwiSearch(fromIata, toIata, dateIso) {
   const itineraries = root.itineraries || [];
   return { itineraries, total: root.metadata?.itinerariesCount ?? itineraries.length };
 }
-function kiwiItems(itineraries, source, route2, fromCode, toCode, dateIso, cap = 60) {
+function kiwiItems(itineraries, source, route2, fromCode, toCode, dateIso, cap2 = 60) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const it of itineraries) {
-    if (out.length >= cap) break;
+    if (out.length >= cap2) break;
     const segs = (it.sector?.sectorSegments || []).map((s) => s.segment).filter(Boolean);
     if (segs.length === 0) continue;
     const depDay = (segs[0].source?.utcTimeIso || "").slice(0, 10);
@@ -10552,13 +10552,13 @@ function etraveliFlightFare(f) {
   if (!Number.isFinite(value) || value <= 0) return { fare: NaN, currency };
   return { fare: value / 100, currency };
 }
-function etraveliFlightsItems(flights, brand, source, route2, fromCode, toCode, dateIso, searchPath, cap = 40) {
+function etraveliFlightsItems(flights, brand, source, route2, fromCode, toCode, dateIso, searchPath, cap2 = 40) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const routeLabel = `${route2.from} \u2192 ${route2.to}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const f of flights) {
-    if (out.length >= cap) break;
+    if (out.length >= cap2) break;
     const segs = (f.bounds?.[0]?.segments || []).filter(Boolean);
     if (segs.length === 0) continue;
     const oCode = String(segs[0].origin?.cityCode || segs[0].origin?.code || "");
@@ -17406,7 +17406,7 @@ function parseStops(v) {
   if (Number.isFinite(n)) return n === 0 ? "non-stop" : `${n} stop${n > 1 ? "s" : ""}`;
   return String(v);
 }
-function parseExpediaFlights(body, source, route2, dateIso, srpUrl, fx, cap = 40) {
+function parseExpediaFlights(body, source, route2, dateIso, srpUrl, fx, cap2 = 40) {
   let d;
   try {
     d = JSON.parse(body);
@@ -17439,7 +17439,7 @@ function parseExpediaFlights(body, source, route2, dateIso, srpUrl, fx, cap = 40
     const key = `${airline}|${flightNo2}|${dep}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (out.length >= cap) break;
+    if (out.length >= cap2) break;
     const { price: price2, currency, dataNote } = fx && fx.rate > 0 ? {
       price: Math.round(usd2 * fx.rate),
       currency: "INR",
@@ -25124,7 +25124,7 @@ function rupees(s) {
   const m = String(s || "").replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
   return m ? Number(m[1]) : null;
 }
-function parseBlinkit(rawBody, source, pageUrl, cityLabel, cap = 16) {
+function parseBlinkit(rawBody, source, pageUrl, cityLabel, cap2 = 16) {
   let root;
   try {
     root = JSON.parse(rawBody);
@@ -25176,7 +25176,7 @@ function parseBlinkit(rawBody, source, pageUrl, cityLabel, cap = 16) {
       identifiers: pid ? { sku: pid, vendorProductId: String(d.merchant_id || "") || void 0 } : void 0,
       evidence: { sourceUrl: pageUrl, sourceReference: pid, extractedFields: ["name", "variant", "cart_item.price", "cart_item.mrp", "inventory", "image"] }
     }));
-    if (out.length >= cap) break;
+    if (out.length >= cap2) break;
   }
   void now;
   return out;
@@ -25367,7 +25367,7 @@ var init_awsWafChallenge = __esm({
 });
 
 // server/workers/parsers/bigbasket.ts
-function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
+function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap2 = 16) {
   let root;
   try {
     root = JSON.parse(rawBody);
@@ -25417,7 +25417,7 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
         identifiers: id ? { sku: id, ...p.ean_code ? { gtin: String(p.ean_code) } : {} } : void 0,
         evidence: { sourceUrl: pageUrl, sourceReference: id, extractedFields: ["desc", "w", "pricing.discount.prim_price.sp", "pricing.discount.mrp", "availability.avail_status", "images[0].l"] }
       }));
-      if (out.length >= cap) return out;
+      if (out.length >= cap2) return out;
     }
   }
   return out;
@@ -25490,7 +25490,7 @@ function extractImLayouts(body) {
 function imTokenize(term) {
   return term.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length >= 2 && !["the", "and"].includes(t));
 }
-function buildImItems(products, term, cityLabel, sourceUrl, cap) {
+function buildImItems(products, term, cityLabel, sourceUrl, cap2) {
   const tokens3 = imTokenize(term);
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const scored = [];
@@ -25545,7 +25545,7 @@ function buildImItems(products, term, cityLabel, sourceUrl, cap) {
     if (seenNames.has(key)) continue;
     seenNames.add(key);
     out.push({ ...item, sourceId: "w_grocery_instamart" });
-    if (out.length >= cap) break;
+    if (out.length >= cap2) break;
   }
   return out;
 }
@@ -28299,8 +28299,8 @@ function parseMmtBusListing(json, source, deeplinkUrl, from, to, depart, maxRows
   return { items, busCount: buses.length, status };
 }
 function mmtBusDeeplink(from, to, isoDate4) {
-  const cap = (s) => s.trim().replace(/\s+/g, " ").replace(/(^|\s)\S/g, (c) => c.toUpperCase());
-  return `https://www.makemytrip.com/bus/search/${encodeURIComponent(cap(from))}/${encodeURIComponent(cap(to))}/${mmtDate2(isoDate4)}`;
+  const cap2 = (s) => s.trim().replace(/\s+/g, " ").replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+  return `https://www.makemytrip.com/bus/search/${encodeURIComponent(cap2(from))}/${encodeURIComponent(cap2(to))}/${mmtDate2(isoDate4)}`;
 }
 var MMT_GRAPHQL_URL, MMT_AUTOSUGGEST_URL, MMT_BUS_LISTING_QUERY;
 var init_makemytripBus = __esm({
@@ -42180,12 +42180,12 @@ function diversifyByMerchant(items, maxPerMerchant, target) {
   }
   return out;
 }
-function mergeGoBig(mega, massive, cap = 12) {
+function mergeGoBig(mega, massive, cap2 = 12) {
   const seen = /* @__PURE__ */ new Set();
   const savingsOf = (it) => (it.mrp ?? 0) - (it.price ?? 0);
-  return mega.concat(massive).filter((it) => seen.has(it.id) ? false : (seen.add(it.id), true)).sort((a, b) => savingsOf(b) - savingsOf(a) || (b.discountPct ?? 0) - (a.discountPct ?? 0)).slice(0, cap);
+  return mega.concat(massive).filter((it) => seen.has(it.id) ? false : (seen.add(it.id), true)).sort((a, b) => savingsOf(b) - savingsOf(a) || (b.discountPct ?? 0) - (a.discountPct ?? 0)).slice(0, cap2);
 }
-function sectionItems(pool2, filter, sort, cap = 48) {
+function sectionItems(pool2, filter, sort, cap2 = 48) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   for (const row of pool2.filter(filter).sort(sort)) {
@@ -42196,7 +42196,7 @@ function sectionItems(pool2, filter, sort, cap = 48) {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);
-    if (out.length >= cap) break;
+    if (out.length >= cap2) break;
   }
   return out;
 }
@@ -42733,8 +42733,8 @@ function searchableTitle(t) {
   let head3 = noParen.split(/\s*[,|]\s*|\s+-\s+|\s+with\s+/i)[0].replace(/\/(\d+)\b/g, "").replace(/\s+/g, " ").trim();
   const words2 = head3.split(" ");
   if (words2.length > 8) head3 = words2.slice(0, 8).join(" ");
-  const cap = paren && /\d+\s?(gb|tb|ml|l|kg|g)\b/i.test(paren[1]) ? ` ${paren[1].match(/\d+\s?(gb|tb|ml|l|kg|g)\b/i)[0].replace(/\s+/, "")}` : "";
-  return (head3 + cap).trim() || t.slice(0, 80);
+  const cap2 = paren && /\d+\s?(gb|tb|ml|l|kg|g)\b/i.test(paren[1]) ? ` ${paren[1].match(/\d+\s?(gb|tb|ml|l|kg|g)\b/i)[0].replace(/\s+/, "")}` : "";
+  return (head3 + cap2).trim() || t.slice(0, 80);
 }
 function recoverCapacityFromDescription(title, desc) {
   const CAP = /\b\d+(?:\.\d+)?\s?(gb|tb)\b/i;
@@ -45530,9 +45530,9 @@ var init_searchMemory = __esm({
 });
 
 // server/lens/spellFix.ts
-function editDistance(a, b, cap = 3) {
+function editDistance(a, b, cap2 = 3) {
   if (a === b) return 0;
-  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  if (Math.abs(a.length - b.length) > cap2) return cap2 + 1;
   const rows = [];
   for (let i = 0; i <= a.length; i++) rows.push(new Array(b.length + 1).fill(0));
   for (let i = 0; i <= a.length; i++) rows[i][0] = i;
@@ -45548,7 +45548,7 @@ function editDistance(a, b, cap = 3) {
       rows[i][j] = best;
       if (best < rowMin) rowMin = best;
     }
-    if (rowMin > cap) return cap + 1;
+    if (rowMin > cap2) return cap2 + 1;
   }
   return rows[a.length][b.length];
 }
@@ -45560,16 +45560,16 @@ function maxDistanceFor(word) {
 function closestWord(token) {
   const w = token.toLowerCase();
   if (w.length < 4 || VOCAB_SET.has(w)) return null;
-  const cap = maxDistanceFor(w);
+  const cap2 = maxDistanceFor(w);
   let best = null;
-  let bestDist = cap + 1;
+  let bestDist = cap2 + 1;
   let tie = false;
-  for (let len = w.length - cap; len <= w.length + cap; len++) {
+  for (let len = w.length - cap2; len <= w.length + cap2; len++) {
     const bucket = BY_LEN.get(len);
     if (!bucket) continue;
     for (const cand of bucket) {
-      const d = editDistance(w, cand, cap);
-      if (d > cap) continue;
+      const d = editDistance(w, cand, cap2);
+      if (d > cap2) continue;
       if (d < bestDist) {
         bestDist = d;
         best = cand;
@@ -45581,7 +45581,7 @@ function closestWord(token) {
   }
   if (!best) return null;
   if (tie) return null;
-  if (bestDist > cap) return null;
+  if (bestDist > cap2) return null;
   if (bestDist / w.length > 1 / 3) return null;
   return best;
 }
@@ -48630,6 +48630,14 @@ async function resolveNearbyLocation(lat, lng, city) {
   const fallback = await geocodeCity(DEFAULT_CITY);
   return fallback ? { ...fallback, city: DEFAULT_CITY, resolvedFrom: "fallback" } : { lat: 18.5204, lng: 73.8567, city: DEFAULT_CITY, resolvedFrom: "fallback" };
 }
+function nominatimSlot() {
+  const wait = Math.max(0, 1100 - (Date.now() - nominatimLastAt));
+  const p = nominatimLane.then(() => new Promise((r) => setTimeout(r, wait))).then(() => {
+    nominatimLastAt = Date.now();
+  });
+  nominatimLane = p.catch(() => void 0);
+  return p;
+}
 function nominatimPaused() {
   return Date.now() < nominatimPausedUntil;
 }
@@ -48724,6 +48732,7 @@ async function geocodeCity(city) {
   } catch {
   }
   if (nominatimPaused()) return null;
+  await nominatimSlot();
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city + ", India")}&format=json&limit=1`;
     const ctrl = new AbortController();
@@ -48832,6 +48841,58 @@ function mapGoogleType(primary) {
   if (t.includes("movie") || t.includes("cinema")) return "movies";
   return "stores";
 }
+async function wikidataNearby(lat, lng, category) {
+  const classes = WIKIDATA_CLASSES[category] || [];
+  if (!classes.length) return { rows: [] };
+  const radiusKm = Math.round(radiusFor(category) / 1e3);
+  const values = classes.map((c) => `wd:${c}`).join(" ");
+  const sparql = `SELECT ?item ?itemLabel ?coord WHERE {
+  SERVICE wikibase:around { ?item wdt:P625 ?coord . bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral . bd:serviceParam wikibase:radius "${radiusKm}" . }
+  VALUES ?type { ${values} }
+  ?item wdt:P31/wdt:P279* ?type .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+} LIMIT 40`;
+  const res = await fetch("https://query.wikidata.org/sparql", {
+    method: "POST",
+    headers: {
+      Accept: "application/sparql-results+json",
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": "Try1Second/1.0 (https://www.try1second.com; nearby)"
+    },
+    body: `query=${encodeURIComponent(sparql)}`,
+    signal: AbortSignal.timeout(4e3)
+  });
+  if (!res.ok) return { rows: [], note: `Wikidata answered ${res.status}` };
+  const json = await res.json();
+  const bindings = json?.results?.bindings || [];
+  const rows = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const b of bindings) {
+    const name = String(b?.itemLabel?.value || "").trim();
+    const point = String(b?.coord?.value || "");
+    const m = /Point\(([-\d.]+)\s+([-\d.]+)\)/.exec(point);
+    if (!name || !m || name.startsWith("Q")) continue;
+    const plng = Number(m[1]);
+    const plat = Number(m[2]);
+    if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+    if (isJunkName(name) || seen.has(norm9(name))) continue;
+    seen.add(norm9(name));
+    rows.push(baseOsmRow({
+      name,
+      cat: category,
+      plat,
+      plng,
+      lat,
+      lng,
+      addr: null,
+      sub: "open data",
+      osmId: `wikidata:${String(b?.item?.value || name).split("/").pop()}`,
+      website: null
+    }));
+    if (rows.length >= 20) break;
+  }
+  return { rows };
+}
 async function osmNearby(lat, lng, category) {
   const term = {
     restaurants: "restaurant",
@@ -48848,7 +48909,8 @@ async function osmNearby(lat, lng, category) {
   const racers = [
     photonNearby(lat, lng, want, category),
     nominatimNearby(lat, lng, want, category),
-    overpassNearby(lat, lng, category)
+    overpassNearby(lat, lng, category),
+    wikidataNearby(lat, lng, category)
   ];
   const winner = await new Promise((resolve) => {
     let open = racers.length;
@@ -49190,9 +49252,9 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const deadline = startedAt + budgetMs;
   const timing = {};
   let truncated = false;
-  const left = (cap) => Math.max(0, Math.min(cap, deadline - Date.now()));
-  const stage = async (name, work, cap, fallback) => {
-    const ms = left(cap);
+  const left = (cap2) => Math.max(0, Math.min(cap2, deadline - Date.now()));
+  const stage = async (name, work, cap2, fallback) => {
+    const ms = left(cap2);
     if (ms <= 0) {
       truncated = true;
       timing[name] = -1;
@@ -49549,6 +49611,14 @@ async function nearbyAnswer(input) {
     flights.set(cacheKey2, p);
     return p;
   };
+  if (input.preferFull) {
+    try {
+      const full = await buildNearbyAnswer(input, FULL_BUDGET_MS);
+      memoryPut(cacheKey2, full);
+      return { ...full, ms: Date.now() - started3 };
+    } catch {
+    }
+  }
   const stale = warm2 && warm2.ageMs > CACHE_TTL_MS5 && warm2.ageMs <= STALE_TTL_MS ? warm2 : await readCacheAny(cacheKey2);
   if (stale) {
     finishInBackground();
@@ -49556,7 +49626,7 @@ async function nearbyAnswer(input) {
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, WIDE_RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, NEARBY_REV, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, nominatimPausedUntil, cityIndex, CORPUS_CITY_NAMES, reverseCache, GOOGLE_TYPE, RIDE_APPS, CATEGORY_WORDS2, STREET_WORD, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
+var DEFAULT_CITY, RADIUS_M, WIDE_RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, NEARBY_REV, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, nominatimLane, nominatimLastAt, nominatimPausedUntil, cityIndex, CORPUS_CITY_NAMES, reverseCache, GOOGLE_TYPE, WIKIDATA_CLASSES, RIDE_APPS, CATEGORY_WORDS2, STREET_WORD, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -49568,8 +49638,8 @@ var init_aggregator = __esm({
     DEFAULT_CITY = "Pune";
     RADIUS_M = 2500;
     WIDE_RADIUS_M = 9e3;
-    CACHE_TTL_MS5 = 30 * 6e4;
-    STALE_TTL_MS = 12 * 60 * 6e4;
+    CACHE_TTL_MS5 = 2 * 60 * 6e4;
+    STALE_TTL_MS = 7 * 24 * 60 * 6e4;
     OG_BUDGET_MS = 2200;
     PHOTO_BUDGET_MS = 4500;
     PHOTO_LOOKUP_ROWS = 14;
@@ -49609,6 +49679,8 @@ var init_aggregator = __esm({
     };
     PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
     geocodeCache = /* @__PURE__ */ new Map();
+    nominatimLane = Promise.resolve();
+    nominatimLastAt = 0;
     nominatimPausedUntil = 0;
     cityIndex = null;
     CORPUS_CITY_NAMES = (() => {
@@ -49628,6 +49700,22 @@ var init_aggregator = __esm({
       stores: ["store"],
       movies: ["movie_theater"],
       all: ["restaurant", "cafe", "lodging", "store", "movie_theater"]
+    };
+    WIKIDATA_CLASSES = {
+      hotels: ["Q27686"],
+      // hotel
+      stays: ["Q27686", "Q11707".replace("Q11707", "Q1061152")],
+      // hotel, guest house
+      restaurants: ["Q11707"],
+      // restaurant
+      cafes: ["Q30022"],
+      // cafe
+      stores: ["Q18043413", "Q1298666"],
+      // supermarket, shopping centre
+      movies: ["Q2431196"],
+      // movie theater
+      cabs: [],
+      all: ["Q11707", "Q27686", "Q30022"]
     };
     RIDE_APPS = [
       { name: "Uber", url: "https://m.uber.com/looking", sub: "ride-hailing app" },
@@ -54458,7 +54546,7 @@ async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch"
   if (!out.length) throw new Error("Tata CLiQ BFF returned no discounted products");
   return out;
 }
-function extractTatacliqDeals(body, cap = 32) {
+function extractTatacliqDeals(body, cap2 = 32) {
   const out = [];
   let groups = [];
   try {
@@ -54492,7 +54580,7 @@ function extractTatacliqDeals(body, cap = 32) {
         dedupe_key: `tatacliq|${p?.ussid || url2.slice(0, 120)}`,
         image_url: p?.imageURL ? `https:${String(p.imageURL).replace(/^\w+:?/, "")}` : null
       });
-      if (out.length >= cap) return out;
+      if (out.length >= cap2) return out;
     }
   }
   return out;
@@ -59804,6 +59892,7 @@ __export(seo_exports, {
   NEARBY_CATEGORIES: () => NEARBY_CATEGORIES,
   escapeHtml: () => escapeHtml2,
   isKnownThinNearbyPath: () => isKnownThinNearbyPath,
+  isRichNearbyPath: () => isRichNearbyPath,
   listNearbyPaths: () => listNearbyPaths,
   renderNearbyHtml: () => renderNearbyHtml,
   resolveNearbyPage: () => resolveNearbyPage,
@@ -59861,6 +59950,9 @@ function escapeHtml2(s) {
 function isKnownThinNearbyPath(path18) {
   return thinPaths.has(path18);
 }
+function isRichNearbyPath(path18) {
+  return richPaths.has(path18);
+}
 function recordNearbyVerdict(path18, rowCount) {
   const rich = rowCount >= MIN_INDEXABLE_ROWS;
   if (rich) {
@@ -59875,7 +59967,10 @@ function recordNearbyVerdict(path18, rowCount) {
 function startNearbyThinAudit(onDone) {
   if (auditStarted) return;
   auditStarted = true;
-  const paths = listNearbyPaths().filter((p) => p.split("/").filter(Boolean).length >= 3);
+  const paths = listNearbyPaths().filter((p) => {
+    const segs = p.split("/").filter(Boolean);
+    return segs.length === 3 && HUB_CITY_SLUGS.includes(segs[2]);
+  });
   let i = 0;
   let done = 0;
   const worker = async () => {
@@ -59885,10 +59980,10 @@ function startNearbyThinAudit(onDone) {
       const page = resolveNearbyPage(path18);
       if (!page) continue;
       try {
-        const ans = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24 });
+        const ans = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true });
         recordNearbyVerdict(path18, ans?.results?.length || 0);
         done += 1;
-        if (done % 150 === 0) {
+        if (done % 20 === 0) {
           try {
             onDone?.();
           } catch {
@@ -59896,10 +59991,10 @@ function startNearbyThinAudit(onDone) {
         }
       } catch {
       }
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 1500));
     }
   };
-  void Promise.all([worker(), worker()]).then(() => {
+  void worker().then(() => {
     try {
       onDone?.();
     } catch {
@@ -59920,33 +60015,80 @@ function hubBody(page) {
 <section><h2>${cat ? `Browse ${escapeHtml2(cat)} by city` : "Browse by city"}</h2><ul class="links">${cityLinks}</ul></section>
 ${cat ? "" : `<section><h2>Browse by category</h2><ul class="links">${catLinks}</ul></section>`}`;
 }
+function prettyCategory(cat) {
+  return CATEGORY_NOUN[cat].many;
+}
+function cap(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function stateNameFor(cityName2) {
+  const slug5 = CITY_STATE[String(cityName2 || "").trim().toLowerCase()];
+  if (!slug5) return null;
+  return slug5.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+function relatedLinks(page) {
+  const citySlug2 = String(page.city || "").toLowerCase().replace(/\s+/g, "-");
+  const others = [...CITY_SLUGS.keys()].filter((c) => c !== citySlug2);
+  const sameCityOtherCats = NEARBY_CATEGORIES.filter((c) => c !== page.category).map((c) => `<li><a href="/nearby/${c}/${citySlug2}">${escapeHtml2(prettyCategory(c))} in ${escapeHtml2(page.city)}</a></li>`).join("");
+  const picks = [...HUB_CITY_SLUGS.filter((c) => c !== citySlug2 && CITY_SLUGS.has(c)), ...others.sort()].slice(0, 6);
+  const cityLinks = picks.map((c) => `<li><a href="/nearby/${page.category}/${c}">${escapeHtml2(prettyCategory(page.category))} in ${escapeHtml2(CITY_SLUGS.get(c))}</a></li>`).join("");
+  const comparePath = { hotels: "/hotels", cabs: "/cabs", movies: "/movies", stores: "/grocery", restaurants: "/food", cafes: "/food" }[page.category];
+  const compareLink = comparePath ? `<li><a href="${comparePath}/${citySlug2}">Compare ${escapeHtml2(prettyCategory(page.category))} prices in ${escapeHtml2(page.city)}</a></li>` : "";
+  return `<section class="links-wrap"><h2>More ${escapeHtml2(prettyCategory(page.category))} in ${escapeHtml2(page.city)}</h2>
+<ul class="links">${sameCityOtherCats}</ul>
+<h2>${escapeHtml2(prettyCategory(page.category))} in other cities</h2>
+<ul class="links">${cityLinks}</ul>
+<h2>Compare prices before you go</h2>
+<ul class="links">${compareLink}<li><a href="/nearby">All nearby categories</a></li><li><a href="/answers">Every comparison we run</a></li></ul></section>`;
+}
 async function renderNearbyHtml(page, origin2) {
   const label = page.areaLabel || page.city || "your location";
-  const catLabel = page.category === "all" ? "places" : page.category;
-  const title = page.city ? `Best ${catLabel} near ${label} - live comparison | Try1Second` : `Nearby ${catLabel} - local discovery | Try1Second`;
+  const noun = CATEGORY_NOUN[page.category];
+  const catLabel = noun.many;
+  const isHub = !page.city && !page.areaLabel;
+  const citySlug2 = String(page.city || "").toLowerCase().replace(/\s+/g, "-");
   let answer = null;
   if (page.city || page.areaLabel) {
-    answer = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24 }).catch(() => null);
+    answer = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true }).catch(() => null);
   }
   const rows = answer?.results || [];
-  const isHub = !page.city && !page.areaLabel;
   const indexable = isHub ? true : recordNearbyVerdict(page.path, rows.length);
+  const state = stateNameFor(page.city);
+  const placeOf = state && !page.areaLabel ? `${page.city}, ${state}` : label;
+  const names = rows.slice(0, 3).map((r) => r.name).filter(Boolean);
+  const title = isHub ? `${page.category === "all" ? "Nearby places" : `${prettyCategory(page.category)} nearby`} in Indian cities - addresses, distance | Try1Second` : rows.length ? `${rows.length} ${rows.length === 1 ? noun.one : catLabel} near ${label} - addresses and distance | Try1Second` : `${cap(prettyCategory(page.category))} near ${label} - addresses and distance | Try1Second`;
+  const h1 = isHub ? page.category === "all" ? "Nearby places in India" : `${prettyCategory(page.category)} nearby, city by city` : `${rows.length ? `${rows.length} ` : ""}${cap(rows.length === 1 ? noun.one : catLabel)} near ${label}`;
+  const description = isHub ? `Pick a city and see the ${catLabel} around it, closest first, with address and distance. Ratings and prices only where a real source publishes them.` : rows.length ? `${rows.length} ${catLabel} around ${placeOf}, closest first${names.length ? `: ${names.join(", ")}` : ""}. Address and distance from open map data; ratings and prices only where a source actually publishes them.` : `We have no live ${catLabel} data for ${placeOf} right now. Rather than invent ratings or prices we list nothing until a real source answers.`;
   const list = isHub ? hubBody(page) : rows.length ? `<ul class="cards">${rows.map(card).join("")}</ul>` : `<p class="empty">We do not have live ${catLabel} data for ${escapeHtml2(label)} right now, so this page lists nothing rather than invented ratings or prices. Search the same place on the
        <a href="/">comparison engine</a> for prices we actually hold.</p>`;
   const notes = (answer?.notes || []).map((n) => `<li>${escapeHtml2(n)}</li>`).join("");
+  const crumbs = [{ name: "Home", path: "/" }];
+  crumbs.push({ name: page.category === "all" ? "Nearby" : `${prettyCategory(page.category)} nearby`, path: page.category === "all" ? "/nearby" : `/nearby/${page.category}` });
+  if (page.city) crumbs.push({ name: page.areaLabel || page.city, path: page.path });
+  const crumbTrail = crumbs.map((c, i) => i === crumbs.length - 1 ? `<span aria-current="page">${escapeHtml2(c.name)}</span>` : `<a href="${c.path}">${escapeHtml2(c.name)}</a>`).join(" &rsaquo; ");
+  const breadcrumbLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: crumbs.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: `${origin2}${c.path}` }))
+  };
+  const faqItems = [
+    {
+      q: `How does Try1Second find ${catLabel} near ${label}?`,
+      a: `We query live map and places data around the coordinates of ${label} and list each ${noun.one} closest first, with its address and distance. Rows carry a rating or a price only when the partner feed actually supplies one; an open-map row carries name, address and distance only.`
+    },
+    {
+      q: `Can I book ${catLabel} on Try1Second?`,
+      a: `No. Try1Second is a comparison and discovery site, so "Book / website" and "Get directions" hand you to the partner's own page, and every click goes through our tracked exit so we can see which listings are useful.`
+    },
+    {
+      q: `Why is there no rating on some cards?`,
+      a: `Because no source published one for that ${noun.one}. We would rather show an honest blank than an invented rating, review count or price.`
+    }
+  ];
   const faq = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    mainEntity: [
-      {
-        "@type": "Question",
-        name: `How does Try1Second find ${catLabel} near ${label}?`,
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: `We query live map and places data around the coordinates of ${label} and show each place with its distance. Ratings and price levels appear only when the source supplies them; OpenStreetMap rows carry name, address and distance only.`
-        }
-      }
-    ]
+    mainEntity: faqItems.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } }))
   };
   const itemList = rows.length ? {
     "@context": "https://schema.org",
@@ -59960,25 +60102,41 @@ async function renderNearbyHtml(page, origin2) {
       ...r.lat !== null && r.lng !== null ? { item: `https://www.google.com/maps/search/?api=1&query=${r.lat},${r.lng}` } : {}
     }))
   } : null;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  const ogImage2 = `${origin2}/feature-graphic.png`;
+  const faqHtml = faqItems.map((f) => `<details><summary>${escapeHtml2(f.q)}</summary><p>${escapeHtml2(f.a)}</p></details>`).join("");
+  return `<!doctype html><html lang="en-IN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml2(title)}</title>
-<meta name="description" content="Live nearby ${escapeHtml2(catLabel)} around ${escapeHtml2(label)} with distance, rating and price level where the source actually provides them.">
+<meta name="description" content="${escapeHtml2(description)}">
 <link rel="canonical" href="${origin2}${page.path}">
 ${indexable ? '<meta name="robots" content="index, follow, max-image-preview:large">' : '<meta name="robots" content="noindex, follow">'}
-<link rel="stylesheet" href="/seo.css">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Try1Second">
+<meta property="og:title" content="${escapeHtml2(h1)}">
+<meta property="og:description" content="${escapeHtml2(description)}">
+<meta property="og:url" content="${origin2}${page.path}">
+<meta property="og:image" content="${ogImage2}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${escapeHtml2(h1)}">
+<meta name="twitter:description" content="${escapeHtml2(description)}">
+<meta name="twitter:image" content="${ogImage2}">
+<style>${NEARBY_CSS}</style>
+<script type="application/ld+json">${JSON.stringify(breadcrumbLd)}</script>
 <script type="application/ld+json">${JSON.stringify(faq)}</script>
 ${itemList ? `<script type="application/ld+json">${JSON.stringify(itemList)}</script>` : ""}
-</head><body><header><a href="/">Try1Second</a><nav><a href="/nearby">Nearby</a>${NEARBY_CATEGORIES.map((c) => `<a href="/nearby/${c}">${c}</a>`).join("")}</nav></header>
-<main><h1>${escapeHtml2(title)}</h1>
-<p class="lead">Places around ${escapeHtml2(label)}, closest first. Every card states where its data comes from. Clicks to a partner site go through our own tracked exit.</p>
+</head><body><header><a href="/">Try1Second</a><nav><a href="/nearby">Nearby</a>${NEARBY_CATEGORIES.map((c) => `<a href="/nearby/${c}">${prettyCategory(c)}</a>`).join("")}</nav></header>
+<main><nav class="crumbs" aria-label="Breadcrumb">${crumbTrail}</nav>
+<h1>${escapeHtml2(h1)}</h1>
+<p class="lead">${rows.length ? `${rows.length} ${catLabel} around ${escapeHtml2(placeOf)}, closest first. Every card says where its data came from, and every partner click goes through our own tracked exit.` : `Places around ${escapeHtml2(placeOf)}, closest first. Every card says where its data came from.`}</p>
 ${list}
 ${notes ? `<section class="notes"><h2>Data notes</h2><ul>${notes}</ul></section>` : ""}
-<section class="faq"><h2>About this page</h2><p>Names, addresses and distances come from open map data. Ratings, review counts and price levels appear only when a partner feed actually supplies them, so we never invent a rating, a review count or a price.</p></section>
+${page.city && !page.areaLabel ? relatedLinks(page) : ""}
+<section class="faq"><h2>Questions about ${escapeHtml2(catLabel)} near ${escapeHtml2(label)}</h2>${faqHtml}
+<p>Names, addresses and distances come from open map data. Ratings, review counts and price levels appear only when a partner feed actually supplies them, so we never invent a rating, a review count or a price.</p></section>
 </main>
-<footer><p><a href="/answers">All comparisons</a> &middot; <a href="/">Search prices</a></p></footer></body></html>`;
+<footer><p><a href="/answers">All comparisons</a> &middot; <a href="/">Search prices</a> &middot; <a href="/about">About</a></p></footer></body></html>`;
 }
-var NEARBY_CATEGORIES, NEARBY_AREAS, CITY_SLUGS, AREA_SLUGS, MIN_INDEXABLE_ROWS, thinPaths, richPaths, auditStarted, HUB_CITY_SLUGS;
+var NEARBY_CATEGORIES, NEARBY_AREAS, CITY_SLUGS, AREA_SLUGS, NEARBY_CSS, MIN_INDEXABLE_ROWS, thinPaths, richPaths, auditStarted, HUB_CITY_SLUGS, CATEGORY_NOUN;
 var init_seo = __esm({
   "server/nearby/seo.ts"() {
     init_cityCorpus();
@@ -59998,11 +60156,52 @@ var init_seo = __esm({
       const cityName2 = CITY_SLUGS.get(citySlug2) || citySlug2;
       for (const a of areas) AREA_SLUGS.set(`${citySlug2}/${a}`, `${titleCase(a)}, ${cityName2}`);
     }
+    NEARBY_CSS = `
+:root{color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#111827;background:#fff}
+header{border-bottom:1px solid #e5e7eb;padding:12px 20px;display:flex;gap:20px;flex-wrap:wrap;align-items:center}
+header a{font-weight:800;color:#b91c1c;text-decoration:none}
+header nav{display:flex;gap:14px;flex-wrap:wrap;font-size:14px}
+main{max-width:900px;margin:0 auto;padding:22px 18px 60px}
+a{color:#b91c1c;text-decoration:none}a:hover{text-decoration:underline}
+h1{font-size:clamp(22px,4vw,30px);line-height:1.25;margin:6px 0 10px}
+h2{font-size:18px;margin:26px 0 10px}
+.crumbs{font-size:13px;color:#6b7280;margin-bottom:14px}
+.lead{color:#374151;margin:0 0 18px}
+.cards{list-style:none;padding:0;margin:0;display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.card{border:1px solid #e5e7eb;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;background:#fff}
+.card h3{margin:0;font-size:16.5px}
+.card .meta{margin:0;font-size:13px;color:#4b5563}
+.card .addr{margin:0;font-size:12.5px;color:#6b7280}
+.card .src{margin:0;font-size:12px;color:#6b7280}
+.card .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:auto;padding-top:8px;font-size:14px}
+.card .ph{width:100%;height:150px;object-fit:cover;border-radius:10px}
+.ph{background:#f3f4f6}
+.empty{background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px}
+.notes{font-size:13px;color:#4b5563}
+.links{columns:2;column-gap:24px;list-style:none;padding:0;font-size:14.5px}
+.links li{margin:0 0 8px}
+.faq details{border-bottom:1px solid #e5e7eb;padding:10px 0}
+.faq summary{font-weight:650;cursor:pointer}
+footer{border-top:1px solid #e5e7eb;padding:18px;text-align:center;font-size:13.5px;color:#4b5563}
+@media(max-width:560px){.links{columns:1}}
+`;
     MIN_INDEXABLE_ROWS = 6;
     thinPaths = /* @__PURE__ */ new Set();
     richPaths = /* @__PURE__ */ new Set();
     auditStarted = false;
     HUB_CITY_SLUGS = ["mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "pune", "ahmedabad", "jaipur", "lucknow", "indore", "bhopal", "chandigarh", "surat", "nagpur", "kochi"];
+    CATEGORY_NOUN = {
+      restaurants: { one: "restaurant", many: "restaurants" },
+      cafes: { one: "cafe", many: "cafes" },
+      hotels: { one: "hotel", many: "hotels" },
+      stays: { one: "stay", many: "stays and guest houses" },
+      cabs: { one: "cab service", many: "cab services" },
+      stores: { one: "shop", many: "shops and supermarkets" },
+      movies: { one: "cinema", many: "cinemas" },
+      all: { one: "place", many: "places" }
+    };
   }
 });
 
@@ -60126,7 +60325,11 @@ function routeSlug(a, b, noun) {
   return `${a}-to-${b}-${noun}`;
 }
 function listSeoPaths(includeThin = false) {
-  const nearbyPaths = listNearbyPaths().filter((p) => !isKnownThinNearbyPath(p));
+  const nearbyPaths = listNearbyPaths().filter((p) => {
+    const depth = p.split("/").filter(Boolean).length;
+    if (depth <= 2) return true;
+    return isRichNearbyPath(p) && !isKnownThinNearbyPath(p);
+  });
   const guidePaths = GUIDE_SLUGS.map((s) => `/guides/${s}`);
   const paths = [
     ...nearbyPaths,

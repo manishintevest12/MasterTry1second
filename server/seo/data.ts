@@ -19,7 +19,7 @@ import { GUIDE_SLUGS } from './guides';
 import { ANSWER_STATES } from './answerStates';
 import { CITY_STATE, INDIAN_CITIES } from './cityCorpus';
 import { MOVIE_CITY_CONTENT } from './movieCities';
-import { listNearbyPaths, isKnownThinNearbyPath } from '../nearby/seo';
+import { listNearbyPaths, isKnownThinNearbyPath, isRichNearbyPath } from '../nearby/seo';
 
 export interface SeoFaq { q: string; a: string }
 export interface SeoPage {
@@ -353,7 +353,15 @@ export function listSeoPaths(includeThin = false): string[] {
   // Nearby & local discovery pages (owner 13 Nov) ride the same sitemap so IndexNow picks them up.
   // OWNER 16 Nov: a page that rendered with too few real places is kept out of the sitemap, so Google is never
   // asked to index an empty template (Soft 404 / "Crawled - currently not indexed"). See MIN_INDEXABLE_ROWS.
-  const nearbyPaths = listNearbyPaths().filter((p) => !isKnownThinNearbyPath(p));
+  // OWNER 16 Nov ('finish whatever left in seo'): 'not proved thin' was read as 'probably fine', so a fresh
+  // process listed all 3,265 nearby city URLs before the audit had measured a single one - the exact 3,000-page
+  // soft-404 batch Search Console was complaining about. A nearby city page is listed only when a real render
+  // found real places on it (>= MIN_INDEXABLE_ROWS). Hubs have no city to query and are hand-built, so they stay.
+  const nearbyPaths = listNearbyPaths().filter((p) => {
+    const depth = p.split('/').filter(Boolean).length;
+    if (depth <= 2) return true;
+    return isRichNearbyPath(p) && !isKnownThinNearbyPath(p);
+  });
   // Editorial guides (server/seo/guides.ts) are part of the AdSense "unique value" surface.
   const guidePaths = GUIDE_SLUGS.map((s) => `/guides/${s}`);
   // OWNER 2 Nov (AdSense "Low value content"): the support/legal URLs are now real pages, so the

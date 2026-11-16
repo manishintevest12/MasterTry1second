@@ -92,11 +92,15 @@ const WIDE_RADIUS_M = 9000;
 function radiusFor(category: NearbyCategory): number {
   return category === 'cabs' || category === 'stores' || category === 'movies' ? WIDE_RADIUS_M : RADIUS_M;
 }
-const CACHE_TTL_MS = 30 * 60_000;
+// OWNER 16 Nov: our own load was tripping Nominatim's 1-request-per-second policy (notes in the API: 'Nominatim
+// answered 429'), and a 429 stampede emptied whole categories. Places do not move: a list an hour old names the
+// same restaurants. Fresh for 2h, servable for a week, so upstream is asked about a city a handful of times a day
+// instead of once per visitor.
+const CACHE_TTL_MS = 2 * 60 * 60_000;
 // Owner 13 Nov: opening the Nearby tab waited on a cold build (~14s measured on production). A row set an hour
 // old still names the same restaurants, so an expired payload is SERVED INSTANTLY while it revalidates behind it;
 // only beyond this window is a cold build allowed to block the tab.
-const STALE_TTL_MS = 12 * 60 * 60_000;
+const STALE_TTL_MS = 7 * 24 * 60 * 60_000;
 /** Ceiling for the og:image pass. A slow business site must never hold the whole tab hostage. */
 const OG_BUDGET_MS = 2200;
 /**
@@ -249,6 +253,20 @@ const geocodeCache = new Map<string, { lat: number; lng: number }>();
  * So a 429 parks Nominatim for a while instead of hammering it: the other mirrors carry the request in the
  * meantime, and we come back politely.
  */
+/**
+ * OWNER 16 Nov: the same policy, enforced by us instead of learned from a 429. Nominatim allows one request per
+ * second; a city page asks it once, and several pages rendering at the same moment used to fire together and be
+ * refused. Requests now queue through a single lane.
+ */
+let nominatimLane: Promise<void> = Promise.resolve();
+let nominatimLastAt = 0;
+function nominatimSlot(): Promise<void> {
+  const wait = Math.max(0, 1100 - (Date.now() - nominatimLastAt));
+  const p = nominatimLane.then(() => new Promise<void>((r) => setTimeout(r, wait))).then(() => { nominatimLastAt = Date.now(); });
+  nominatimLane = p.catch(() => undefined) as Promise<void>;
+  return p;
+}
+
 let nominatimPausedUntil = 0;
 function nominatimPaused(): boolean { return Date.now() < nominatimPausedUntil; }
 function pauseNominatim(seconds = 300): void { nominatimPausedUntil = Date.now() + seconds * 1000; }
@@ -347,6 +365,7 @@ async function geocodeCity(city: string): Promise<{ lat: number; lng: number } |
     }
   } catch { /* table may not exist yet */ }
   if (nominatimPaused()) return null; // parked after a 429: the caller falls back rather than waiting on a refusal
+  await nominatimSlot(); // one request a second, the way their usage policy asks
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city + ', India')}&format=json&limit=1`;
     const ctrl = new AbortController();
@@ -478,6 +497,70 @@ function mapGoogleType(primary: unknown): NearbyCategory {
  *   3. Overpass mirrors - last, short deadline
  * None of them carry ratings or price levels: OSM has no such fields, so those stay null on the card.
  */
+/**
+ * OWNER 16 Nov: Nominatim is the one mirror that ever answered here, and its usage policy is one request per
+ * second per IP - so our own traffic tripped it ("Nominatim answered 429") and a 429 stampede emptied whole
+ * categories. A single supplier is a single point of failure, so Wikidata Query Service joins the race: it needs
+ * no key, it is not rate-limited the way Nominatim is, and it already knows the chains (measured around Indore:
+ * 20 named hotels with exact coordinates in 1.8s). Rows from here carry their own honest provenance line.
+ */
+const WIKIDATA_CLASSES: Record<string, string[]> = {
+  hotels: ['Q27686'],        // hotel
+  stays: ['Q27686', 'Q11707'.replace('Q11707', 'Q1061152')], // hotel, guest house
+  restaurants: ['Q11707'],   // restaurant
+  cafes: ['Q30022'],         // cafe
+  stores: ['Q18043413', 'Q1298666'], // supermarket, shopping centre
+  movies: ['Q2431196'],      // movie theater
+  cabs: [],
+  all: ['Q11707', 'Q27686', 'Q30022'],
+};
+
+async function wikidataNearby(lat: number, lng: number, category: NearbyCategory):
+Promise<{ rows: NearbyRow[]; note?: string }> {
+  const classes = WIKIDATA_CLASSES[category] || [];
+  if (!classes.length) return { rows: [] };
+  const radiusKm = Math.round(radiusFor(category) / 1000);
+  const values = classes.map((c) => `wd:${c}`).join(' ');
+  const sparql = `SELECT ?item ?itemLabel ?coord WHERE {
+  SERVICE wikibase:around { ?item wdt:P625 ?coord . bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral . bd:serviceParam wikibase:radius "${radiusKm}" . }
+  VALUES ?type { ${values} }
+  ?item wdt:P31/wdt:P279* ?type .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+} LIMIT 40`;
+  const res = await fetch('https://query.wikidata.org/sparql', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/sparql-results+json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'Try1Second/1.0 (https://www.try1second.com; nearby)',
+    },
+    body: `query=${encodeURIComponent(sparql)}`,
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!res.ok) return { rows: [], note: `Wikidata answered ${res.status}` };
+  const json = await res.json() as any;
+  const bindings = json?.results?.bindings || [];
+  const rows: NearbyRow[] = [];
+  const seen = new Set<string>();
+  for (const b of bindings) {
+    const name = String(b?.itemLabel?.value || '').trim();
+    const point = String(b?.coord?.value || ''); // "Point(75.8 22.7)"
+    const m = /Point\(([-\d.]+)\s+([-\d.]+)\)/.exec(point);
+    if (!name || !m || name.startsWith('Q')) continue;
+    const plng = Number(m[1]); const plat = Number(m[2]);
+    if (!Number.isFinite(plat) || !Number.isFinite(plng)) continue;
+    if (isJunkName(name) || seen.has(norm(name))) continue;
+    seen.add(norm(name));
+    rows.push(baseOsmRow({
+      name, cat: category, plat, plng, lat, lng, addr: null, sub: 'open data',
+      osmId: `wikidata:${String(b?.item?.value || name).split('/').pop()}`,
+      website: null,
+    }));
+    if (rows.length >= 20) break;
+  }
+  return { rows };
+}
+
 async function osmNearby(lat: number, lng: number, category: NearbyCategory):
 Promise<{ rows: NearbyRow[]; note?: string }> {
   // Text search needs a word people actually put on a shopfront: 'shop' is an OSM tag, not a name, so a text
@@ -497,6 +580,7 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
     photonNearby(lat, lng, want, category),
     nominatimNearby(lat, lng, want, category),
     overpassNearby(lat, lng, category),
+    wikidataNearby(lat, lng, category),
   ];
   // OWNER 16 Nov: Promise.all meant the SLOWEST mirror decided when we could answer. Photon (blocked here) needs
   // 9s to give up and the Overpass mirrors can hang for 20s, while Nominatim answers in under a second WITH the
@@ -1267,6 +1351,8 @@ export async function prewarmNearby(limitCities = PREWARM_CITIES.length): Promis
  */
 export async function nearbyAnswer(input: {
   lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number; offset?: number;
+  /** Crawler/audit mode: build with the full budget so a cold process does not measure a rich page as empty. */
+  preferFull?: boolean;
 }): Promise<NearbyAnswer> {
   const started = Date.now();
   const category = normalizeNearbyCategory(input.category);
@@ -1329,6 +1415,17 @@ export async function nearbyAnswer(input: {
     flights.set(cacheKey, p);
     return p;
   };
+
+  // A crawler (and the thin-page audit) is not a person waiting on a phone: it must see the WHOLE answer, not the
+  // 1-second one, or a genuinely rich city page gets measured as empty on a cold process and is written off as
+  // thin. preferFull takes the full build directly and only falls back to the fast one if that fails.
+  if (input.preferFull) {
+    try {
+      const full = await buildNearbyAnswer(input, FULL_BUDGET_MS);
+      memoryPut(cacheKey, full);
+      return { ...full, ms: Date.now() - started };
+    } catch { /* fall through to the fast path below */ }
+  }
 
   const stale = warm && warm.ageMs > CACHE_TTL_MS && warm.ageMs <= STALE_TTL_MS
     ? warm
