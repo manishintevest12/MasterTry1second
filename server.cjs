@@ -49384,7 +49384,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     evidence: { wikidata: row.wikidata, wikipedia: row.wikipedia, imageTag: row.osmImage, commonsTag: row.commonsTag },
     timeoutMs: Math.max(700, photoDeadline - Date.now())
   });
-  await stage("photos", politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
+  if (!input.noPhotos) await stage("photos", politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
     const hit = await lookupPhoto(row).catch(() => null);
     if (hit) {
       row.imageUrl = hit.url;
@@ -58829,6 +58829,12 @@ function tick() {
   const late = Math.max(0, now - lastTick - TICK_MS);
   lastTick = now;
   windowBlockedMs += Math.min(late, TICK_MS * 8);
+  if (now - bootedAt < BOOT_GRACE_MS) {
+    windowStart = now;
+    windowBlockedMs = 0;
+    lastTick = now;
+    return;
+  }
   if (now - windowStart >= WINDOW_MS) {
     const busy = windowBlockedMs / (now - windowStart);
     if (busy >= WINDOW_BUSY_RATIO) {
@@ -58849,14 +58855,16 @@ function startLoopWatchdog() {
   setInterval(tick, TICK_MS).unref();
   log.info("Watchdog", `Event-loop watchdog armed (stall >${SINGLE_STALL_MS / 1e3}s or ${WINDOW_BUSY_RATIO * 100}% over ${WINDOW_MS / 1e3}s -> self-restart)`);
 }
-var TICK_MS, SINGLE_STALL_MS, WINDOW_MS, WINDOW_BUSY_RATIO, lastTick, windowStart, windowBlockedMs, started2;
+var TICK_MS, BOOT_GRACE_MS, SINGLE_STALL_MS, WINDOW_MS, WINDOW_BUSY_RATIO, bootedAt, lastTick, windowStart, windowBlockedMs, started2;
 var init_loopWatchdog = __esm({
   "server/common/loopWatchdog.ts"() {
     init_logger();
     TICK_MS = 500;
+    BOOT_GRACE_MS = 18e4;
     SINGLE_STALL_MS = 3e4;
     WINDOW_MS = 18e4;
     WINDOW_BUSY_RATIO = 0.95;
+    bootedAt = Date.now();
     lastTick = Date.now();
     windowStart = Date.now();
     windowBlockedMs = 0;
@@ -60029,7 +60037,7 @@ function startNearbyThinAudit(onDone) {
       const page = resolveNearbyPage(path18);
       if (!page) continue;
       try {
-        const ans = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true });
+        const ans = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true, noPhotos: true });
         recordNearbyVerdict(path18, ans?.results?.length || 0);
         done += 1;
         if (done % 20 === 0) {

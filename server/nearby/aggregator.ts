@@ -956,6 +956,7 @@ function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: 
 
 async function buildNearbyAnswer(input: {
   lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number; offset?: number;
+  noPhotos?: boolean;
 }, budgetMs: number = FULL_BUDGET_MS): Promise<NearbyAnswer> {
   const startedAt = Date.now();
   const deadline = startedAt + budgetMs;
@@ -1157,7 +1158,7 @@ async function buildNearbyAnswer(input: {
   // The photo pass is the single most expensive optional stage (4.5s ceiling), so it runs inside what is left:
   // rows that finish in time get their own photo, the rest keep a labelled tile this second and their real photo
   // arrives with the background build.
-  await stage('photos', politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
+  if (!input.noPhotos) await stage('photos', politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
     const hit = await lookupPhoto(row).catch(() => null);
     if (hit) {
       row.imageUrl = hit.url;
@@ -1355,6 +1356,14 @@ export async function nearbyAnswer(input: {
   preferFull?: boolean;
   /** Cap for preferFull. A PAGE render must answer inside the proxy's patience even if the build is not done. */
   budgetMs?: number;
+  /**
+   * OWNER 16 Nov: the crawl audit opens 112 nearby pages at boot. Each build also resolved photos for 14 rows
+   * (Wikimedia plus a Bing fallback), so boot fired well over a thousand image lookups - visible in the log as a
+   * steady drip of "photo resolved (commons-name)" and "bing images failed" for every city, exactly while the
+   * event loop was supposed to be starting up. The audit only needs the ROW COUNT to decide whether a page is
+   * worth indexing, so it now asks for rows without the photo pass.
+   */
+  noPhotos?: boolean;
 }): Promise<NearbyAnswer> {
   const started = Date.now();
   const category = normalizeNearbyCategory(input.category);

@@ -202,7 +202,7 @@ export function startNearbyThinAudit(onDone?: () => void): void {
       const page = resolveNearbyPage(path);
       if (!page) continue;
       try {
-        const ans = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true });
+        const ans = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true, noPhotos: true });
         recordNearbyVerdict(path, ans?.results?.length || 0);
         done += 1;
         // The sitemap is rebuilt as verdicts land, so everything proved so far is already published.

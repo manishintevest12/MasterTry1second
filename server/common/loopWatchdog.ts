@@ -19,10 +19,21 @@
 import { log } from './logger';
 
 const TICK_MS = 500;
+/**
+ * OWNER 16 Nov (production log): 10:59:44 boot -> 11:00:59 self-restart -> "Background duties deferred, another
+ * instance already runs background" -> boot again. A restart loop. The first minute after boot is the single
+ * busiest moment this process ever has - MySQL retention plus a 758 MB offer compaction, a 47-query boot warm,
+ * a proxy sweep and the nearby crawl audit all start within two seconds of the port opening - so the loop was
+ * blocked past 30s by our OWN startup work and the watchdog dutifully killed a healthy process, which then did
+ * it all again. Startup work is not a hang: it is allowed to be slow. The watchdog now stays silent for the
+ * first three minutes and only starts judging once the boot has had a chance to settle.
+ */
+const BOOT_GRACE_MS = 180_000;
 const SINGLE_STALL_MS = 30_000;
 const WINDOW_MS = 180_000;
 const WINDOW_BUSY_RATIO = 0.95;
 
+const bootedAt = Date.now();
 let lastTick = Date.now();
 let windowStart = Date.now();
 let windowBlockedMs = 0;
@@ -33,6 +44,14 @@ function tick(): void {
   const late = Math.max(0, now - lastTick - TICK_MS);
   lastTick = now;
   windowBlockedMs += Math.min(late, TICK_MS * 8);
+
+  if (now - bootedAt < BOOT_GRACE_MS) {
+    // Boot work is ours, not a symptom: keep the window clean so a slow start cannot trigger a restart loop.
+    windowStart = now;
+    windowBlockedMs = 0;
+    lastTick = now;
+    return;
+  }
 
   if (now - windowStart >= WINDOW_MS) {
     const busy = windowBlockedMs / (now - windowStart);
