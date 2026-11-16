@@ -283,6 +283,13 @@ export async function createApp(): Promise<express.Express> {
   void import('./seo/sitemap').then((m) => m.warmSitemapSoon()).catch(() => {});
   // OWNER 16 Nov: learn which /nearby city pages are too thin to index, a few minutes after boot (so startup and
   // the first real requests are never slowed), then rebuild the sitemap once without them.
+  // OWNER 16 Nov: warm the city x category combinations people actually open, so the Nearby tab answers from
+  // memory (~200ms) instead of paying for a cold build. First pass at 90s (after startup settles), then every
+  // 20 minutes, one build at a time.
+  setTimeout(() => {
+    void import('./nearby/aggregator').then((a) => a.prewarmNearby()).catch(() => {});
+    setInterval(() => { void import('./nearby/aggregator').then((a) => a.prewarmNearby()).catch(() => {}); }, 20 * 60_000).unref?.();
+  }, 90_000).unref?.();
   setTimeout(() => {
     void import('./nearby/seo').then((n) => n.startNearbyThinAudit(() => {
       void import('./seo/sitemap').then((m) => m.rebuildSitemapNow?.()).catch(() => {});

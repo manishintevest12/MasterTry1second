@@ -41454,7 +41454,7 @@ var init_interstitial = __esm({
     init_affiliateNetwork();
     init_logger();
     INTERSTITIAL_TTL_MS = 10 * 60 * 1e3;
-    COUNTDOWN_SECONDS = 4;
+    COUNTDOWN_SECONDS = 2;
   }
 });
 
@@ -48529,6 +48529,7 @@ __export(aggregator_exports, {
   nearbyAnswer: () => nearbyAnswer,
   nearbyReport: () => nearbyReport,
   normalizeNearbyCategory: () => normalizeNearbyCategory,
+  prewarmNearby: () => prewarmNearby,
   resolveNearbyLocation: () => resolveNearbyLocation
 });
 function memoryGet(key) {
@@ -48720,15 +48721,15 @@ async function osmNearby(lat, lng, category) {
   };
   const want = term[category] || "restaurant";
   const attempts = [];
-  const photon = await photonNearby(lat, lng, want, category);
-  if (photon.rows.length) return photon;
-  if (photon.note) attempts.push(photon.note);
-  const nominatim = await nominatimNearby(lat, lng, want, category);
-  if (nominatim.rows.length) return nominatim;
-  if (nominatim.note) attempts.push(nominatim.note);
-  const overpass = await overpassNearby(lat, lng, category);
-  if (overpass.rows.length) return overpass;
-  if (overpass.note) attempts.push(overpass.note);
+  const racers = [
+    photonNearby(lat, lng, want, category),
+    nominatimNearby(lat, lng, want, category),
+    overpassNearby(lat, lng, category)
+  ];
+  const settled = await Promise.all(racers.map((p) => p.catch(() => ({ rows: [], note: void 0 }))));
+  const winner = settled.find((r) => r.rows.length > 0);
+  if (winner) return winner;
+  for (const r of settled) if (r.note) attempts.push(r.note);
   return { rows: [], note: `Map data unavailable: ${attempts.join("; ").slice(0, 220)}` };
 }
 async function photonNearby(lat, lng, term, category) {
@@ -48989,21 +48990,43 @@ function nearPage(input) {
 function nearbyCacheKey(category, location, page) {
   return `v10|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
-async function buildNearbyAnswer(input) {
+async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
+  const startedAt = Date.now();
+  const deadline = startedAt + budgetMs;
+  const timing = {};
+  let truncated = false;
+  const left = (cap) => Math.max(0, Math.min(cap, deadline - Date.now()));
+  const stage = async (name, work, cap, fallback) => {
+    const ms = left(cap);
+    if (ms <= 0) {
+      truncated = true;
+      timing[name] = -1;
+      return fallback;
+    }
+    const raced = await Promise.race([
+      work.then((v) => ({ v, to: false })).catch(() => ({ v: fallback, to: false })),
+      new Promise((r) => setTimeout(() => r({ v: fallback, to: true }), ms))
+    ]);
+    timing[name] = Date.now() - startedAt;
+    if (raced.to) truncated = true;
+    return raced.v;
+  };
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
+  timing.geocode = Date.now() - startedAt;
   const page = nearPage(input);
   const cacheKey2 = nearbyCacheKey(category, location, page);
   const cached3 = await readCache(cacheKey2);
   if (cached3) return cached3;
   const wantsFood = category === "all" || category === "restaurants" || category === "cafes";
   const wantsStay = category === "all" || category === "hotels" || category === "stays";
+  const srcBudget = Math.max(1200, Math.min(3e3, budgetMs + 2200));
   const [google, osm, catalogue, swiggy, oyo] = await Promise.all([
-    googleNearby(location.lat, location.lng, category),
-    osmNearby(location.lat, location.lng, category),
-    catalogueNearby(location.city, category),
-    wantsFood ? swiggyPlaces(location.lat, location.lng) : Promise.resolve({ rows: [], note: void 0 }),
-    wantsStay ? oyoStays(location.city, category === "stays" ? "stays" : "hotels") : Promise.resolve({ rows: [], note: void 0 })
+    stage("google", googleNearby(location.lat, location.lng, category), srcBudget, { rows: [], note: void 0 }),
+    stage("osm", osmNearby(location.lat, location.lng, category), srcBudget, { rows: [], note: void 0 }),
+    stage("catalogue", catalogueNearby(location.city, category), srcBudget, { rows: [] }),
+    wantsFood ? stage("swiggy", swiggyPlaces(location.lat, location.lng), srcBudget, { rows: [], note: void 0 }) : Promise.resolve({ rows: [], note: void 0 }),
+    wantsStay ? stage("oyo", oyoStays(location.city, category === "stays" ? "stays" : "hotels"), srcBudget, { rows: [], note: void 0 }) : Promise.resolve({ rows: [], note: void 0 })
   ]);
   const notes = [];
   if (google.note) notes.push(google.note);
@@ -49029,7 +49052,7 @@ async function buildNearbyAnswer(input) {
     await Promise.all(Array.from({ length: Math.min(limit2, items.length) }, worker));
     return out;
   };
-  const looked = await politePool(head3, 3, async (p) => {
+  const lookedStage = politePool(head3, 3, async (p) => {
     const hit = coordBy.get(norm9(p.name));
     if (hit) return { p, coords: { lat: hit.lat, lng: hit.lng }, distance: hit.distance };
     let geo = await photonCoords(p.name, { lat: location.lat, lng: location.lng });
@@ -49038,6 +49061,7 @@ async function buildNearbyAnswer(input) {
     }
     return { p, coords: geo ? { lat: geo.lat, lng: geo.lng } : null, distance: geo ? geo.distanceKm : null };
   });
+  const looked = await stage("photon", lookedStage, Math.max(150, Math.min(400, budgetMs / 2)), []);
   const enriched = [
     ...looked.map((l) => enrichedToRow(l.p, l.coords, l.distance)),
     ...wanted.slice(8).map((p) => enrichedToRow(p, null, null))
@@ -49063,23 +49087,23 @@ async function buildNearbyAnswer(input) {
     evidence: { wikidata: row.wikidata, wikipedia: row.wikipedia, imageTag: row.osmImage, commonsTag: row.commonsTag },
     timeoutMs: Math.max(700, photoDeadline - Date.now())
   });
-  await politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
+  await stage("photos", politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
     const hit = await lookupPhoto(row).catch(() => null);
     if (hit) {
       row.imageUrl = hit.url;
       row.honesty = `${row.honesty} ${hit.credit}`.trim();
     }
-  });
+  }), Math.max(150, Math.min(PHOTO_BUDGET_MS, budgetMs * 0.35)), void 0);
   const ogDeadline = Date.now() + OG_BUDGET_MS;
   const withinBudget2 = (p, fallback) => {
-    const left = Math.max(250, ogDeadline - Date.now());
-    return Promise.race([p.catch(() => fallback), new Promise((res) => setTimeout(() => res(fallback), left))]);
+    const left2 = Math.max(250, ogDeadline - Date.now());
+    return Promise.race([p.catch(() => fallback), new Promise((res) => setTimeout(() => res(fallback), left2))]);
   };
   const stillNoPhoto = results.filter((r) => !r.imageUrl);
-  const withOg = await Promise.all(stillNoPhoto.slice(0, 6).map(async (row) => ({
+  const withOg = await stage("og", Promise.all(stillNoPhoto.slice(0, 6).map(async (row) => ({
     row,
     url: row.website ? await withinBudget2(ogImage(row.website), null) : null
-  })));
+  }))), Math.max(120, Math.min(OG_BUDGET_MS, budgetMs * 0.2)), []);
   for (const { row, url } of withOg) {
     if (url) {
       row.imageUrl = url;
@@ -49111,9 +49135,12 @@ async function buildNearbyAnswer(input) {
     total,
     hasMore: offset + results.length < total,
     counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
-    notes: results.length ? notes : [...notes, "No places came back for this location right now, so nothing is shown rather than guesswork."]
+    notes: results.length ? notes : [...notes, "No places came back for this location right now, so nothing is shown rather than guesswork."],
+    ...truncated ? { partial: true } : {}
   };
-  await writeCache(cacheKey2, answer);
+  timing.total = Date.now() - startedAt;
+  if (!truncated) await writeCache(cacheKey2, answer);
+  if (TIMING) log.info("Nearby", "build timing", { city: location.city, category, budgetMs, truncated, timing });
   return answer;
 }
 async function logNearbyEvent(kind, payload) {
@@ -49202,40 +49229,97 @@ async function nearbyReport(days = 7) {
     return { ...base, days: span };
   }
 }
+async function prewarmNearby(limitCities = PREWARM_CITIES.length) {
+  if (prewarmRunning) return { built: 0, skipped: 0 };
+  prewarmRunning = true;
+  let built = 0;
+  let skipped = 0;
+  try {
+    for (const city of PREWARM_CITIES.slice(0, limitCities)) {
+      for (const category of PREWARM_CATEGORIES) {
+        const label = city.charAt(0).toUpperCase() + city.slice(1);
+        const lat = await geocodeCity(label).catch(() => null);
+        if (!lat) {
+          skipped += 1;
+          continue;
+        }
+        const key = nearbyCacheKey(category, { lat: lat.lat, lng: lat.lng, city: label }, { offset: 0, limit: 20 });
+        const warm2 = memoryGet(key);
+        if (warm2 && warm2.ageMs <= CACHE_TTL_MS5) {
+          skipped += 1;
+          continue;
+        }
+        try {
+          const ans = await buildNearbyAnswer({ city: label, category, limit: 20, offset: 0 }, FULL_BUDGET_MS);
+          if (!ans.partial) {
+            memoryPut(key, ans);
+            built += 1;
+          }
+        } catch {
+          skipped += 1;
+        }
+        await new Promise((r) => setTimeout(r, 700));
+      }
+    }
+  } finally {
+    prewarmRunning = false;
+  }
+  if (TIMING || built) log.info("Nearby", "prewarm done", { built, skipped });
+  return { built, skipped };
+}
 async function nearbyAnswer(input) {
   const started3 = Date.now();
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
   const page = nearPage(input);
   const cacheKey2 = nearbyCacheKey(category, location, page);
+  const flights = globalThis.__t1sNearbyInflight ||= /* @__PURE__ */ new Map();
+  const fullBuilds = globalThis.__t1sNearbyFull ||= /* @__PURE__ */ new Map();
+  const finishInBackground = () => {
+    if (fullBuilds.has(cacheKey2)) return;
+    const p = buildNearbyAnswer(input, FULL_BUDGET_MS).then((ans) => {
+      memoryPut(cacheKey2, ans);
+      return ans;
+    }).catch(() => void 0).finally(() => fullBuilds.delete(cacheKey2));
+    fullBuilds.set(cacheKey2, p);
+    void p;
+  };
+  const serve = (answer, extra) => {
+    memoryPut(cacheKey2, answer);
+    if (answer.partial) finishInBackground();
+    return { ...answer, ...extra, ms: Date.now() - started3 };
+  };
   const warm2 = memoryGet(cacheKey2);
   if (warm2 && warm2.ageMs <= CACHE_TTL_MS5) {
-    return { ...warm2.answer, cached: true, ms: Date.now() - started3 };
+    return serve(warm2.answer, { cached: true });
   }
   const fresh = await readCache(cacheKey2);
-  if (fresh) {
-    memoryPut(cacheKey2, fresh);
-    return { ...fresh, cached: true, ms: Date.now() - started3 };
-  }
-  const flights = globalThis.__t1sNearbyInflight ||= /* @__PURE__ */ new Map();
+  if (fresh) return serve(fresh, { cached: true });
   const build2 = () => {
     const existing = flights.get(cacheKey2);
     if (existing) return existing;
-    const p = buildNearbyAnswer(input).then((ans) => {
-      memoryPut(cacheKey2, ans);
-      return { ...ans, ms: Date.now() - started3 };
+    const p = buildNearbyAnswer(input, FAST_BUDGET_MS).then(async (ans) => {
+      if (ans.results.length === 0 && ans.partial) {
+        finishInBackground();
+        const done = await Promise.race([
+          fullBuilds.get(cacheKey2) || Promise.resolve(ans),
+          new Promise((r) => setTimeout(() => r(ans), 6e3))
+        ]).catch(() => ans);
+        if (done && done.results.length > 0) return serve(done, {});
+      }
+      return serve(ans, {});
     }).finally(() => flights.delete(cacheKey2));
     flights.set(cacheKey2, p);
     return p;
   };
   const stale = warm2 && warm2.ageMs > CACHE_TTL_MS5 && warm2.ageMs <= STALE_TTL_MS ? warm2 : await readCacheAny(cacheKey2);
   if (stale) {
-    void build2().catch(() => void 0);
+    finishInBackground();
     return { ...stale.answer, cached: true, stale: true, ms: Date.now() - started3 };
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, GOOGLE_TYPE, PAGE_CEILING;
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, GOOGLE_TYPE, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -49250,6 +49334,9 @@ var init_aggregator = __esm({
     OG_BUDGET_MS = 2200;
     PHOTO_BUDGET_MS = 4500;
     PHOTO_LOOKUP_ROWS = 14;
+    FAST_BUDGET_MS = Math.max(400, Number(process.env.NEARBY_FAST_MS || 900));
+    FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 45e3));
+    TIMING = String(process.env.NEARBY_TIMING || "") === "1";
     memoryCache = /* @__PURE__ */ new Map();
     MEMORY_CACHE_MAX = 300;
     CATEGORY_ALIASES = {
@@ -49293,6 +49380,9 @@ var init_aggregator = __esm({
       all: ["restaurant", "cafe", "lodging", "store", "movie_theater"]
     };
     PAGE_CEILING = 60;
+    PREWARM_CITIES = ["pune", "mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "ahmedabad", "jaipur", "lucknow", "indore", "bhopal", "surat", "nagpur", "chandigarh", "kochi", "noida", "gurugram"];
+    PREWARM_CATEGORIES = ["all", "restaurants", "cafes", "hotels", "cabs", "stores", "movies"];
+    prewarmRunning = false;
   }
 });
 
@@ -50095,6 +50185,8 @@ var routes_exports = {};
 __export(routes_exports, {
   apiRouter: () => apiRouter,
   bootstrapBackend: () => bootstrapBackend,
+  isAppApiCall: () => isAppApiCall,
+  markAppExits: () => markAppExits,
   offerToComparisonItem: () => offerToComparisonItem,
   quickAppsPartnerFirst: () => quickAppsPartnerFirst
 });
@@ -50659,6 +50751,13 @@ async function probeCuelinksHop() {
   }
   return cuelinksProbe;
 }
+function isAppApiCall(req) {
+  const ua = String(req.headers["user-agent"] || "");
+  return /Try1Second|try1second-app|Dart\/|dart:io/i.test(ua) && !/Mozilla\//i.test(ua);
+}
+function markAppExits(rows) {
+  return rows.map((r) => r.exitUrl ? { ...r, exitUrl: r.exitUrl.includes("app=1") ? r.exitUrl : `${r.exitUrl}${r.exitUrl.includes("?") ? "&" : "?"}app=1` } : r);
+}
 async function nearbyHandler(req, res) {
   try {
     const { nearbyAnswer: nearbyAnswer2 } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
@@ -50673,7 +50772,7 @@ async function nearbyHandler(req, res) {
       offset: Number(req.query.offset) || 0
     });
     res.setHeader("Cache-Control", "public, max-age=300");
-    res.json(answer);
+    res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(answer.results) } : answer);
   } catch (e2) {
     log.warn("Api", "nearby failed", { error: String(e2?.message || e2).slice(0, 120) });
     res.status(503).json({ ok: false, results: [], error: "Nearby discovery is unavailable right now" });
@@ -53598,7 +53697,8 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       }
       const dl = await buildSecureDeeplink(freshDestination, { vertical: resolved.vertical });
       await recordPointerClick(freshDestination, resolved.offerId, dl.network);
-      if (isInAppWebView(req.headers["user-agent"])) {
+      const fromApp = String(req.query.app || "") === "1" || isInAppWebView(req.headers["user-agent"]);
+      if (fromApp) {
         res.redirect(302, dl.trackingUrl);
         return;
       }
@@ -63331,6 +63431,14 @@ async function createApp() {
   }
   void Promise.resolve().then(() => (init_sitemap(), sitemap_exports)).then((m) => m.warmSitemapSoon()).catch(() => {
   });
+  setTimeout(() => {
+    void Promise.resolve().then(() => (init_aggregator(), aggregator_exports)).then((a) => a.prewarmNearby()).catch(() => {
+    });
+    setInterval(() => {
+      void Promise.resolve().then(() => (init_aggregator(), aggregator_exports)).then((a) => a.prewarmNearby()).catch(() => {
+      });
+    }, 20 * 6e4).unref?.();
+  }, 9e4).unref?.();
   setTimeout(() => {
     void Promise.resolve().then(() => (init_seo(), seo_exports)).then((n) => n.startNearbyThinAudit(() => {
       void Promise.resolve().then(() => (init_sitemap(), sitemap_exports)).then((m) => m.rebuildSitemapNow?.()).catch(() => {

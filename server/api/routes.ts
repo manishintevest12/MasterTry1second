@@ -1697,6 +1697,23 @@ async function probeCuelinksHop(): Promise<{ cid: string; ok: boolean; finalHost
  * NEARBY & LOCAL DISCOVERY (owner 13 Nov): /api/nearby?lat=&lng=&category=restaurants|hotels|stays|cafes|cabs|stores|all
  * Falls back to ?city= and then to a default city when no coordinates are sent. v1 alias kept for the app.
  */
+/** Is this request coming from our own Android app (Dart client) rather than a browser? */
+export function isAppApiCall(req: any): boolean {
+  const ua = String(req.headers['user-agent'] || '');
+  return /Try1Second|try1second-app|Dart\/|dart:io/i.test(ua) && !/Mozilla\//i.test(ua);
+}
+
+/**
+ * OWNER 16 Nov: an exit handed to the app carries `app=1`, so /api/out skips the 4-second AdSense interstitial and
+ * goes straight to the partner (see the fromApp branch there). It is stamped here, server-side, so every install -
+ * including the ones already on phones - stops landing on our own page.
+ */
+export function markAppExits<T extends { exitUrl?: string }>(rows: T[]): T[] {
+  return rows.map((r) => (r.exitUrl
+    ? { ...r, exitUrl: r.exitUrl.includes('app=1') ? r.exitUrl : `${r.exitUrl}${r.exitUrl.includes('?') ? '&' : '?'}app=1` }
+    : r));
+}
+
 async function nearbyHandler(req: any, res: Response): Promise<void> {
   try {
     const { nearbyAnswer } = await import('../nearby/aggregator');
@@ -1711,7 +1728,7 @@ async function nearbyHandler(req: any, res: Response): Promise<void> {
       offset: Number(req.query.offset) || 0,
     });
     res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json(answer);
+    res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(answer.results) } : answer);
   } catch (e: any) {
     log.warn('Api', 'nearby failed', { error: String(e?.message || e).slice(0, 120) });
     res.status(503).json({ ok: false, results: [], error: 'Nearby discovery is unavailable right now' });
@@ -4424,7 +4441,14 @@ apiRouter.get('/out', async (req, res) => {
   // package-targeted intent with our tracked URL as browser_fallback_url, so the partner app
   // opens when installed and the same paid link opens otherwise. Older installs and iOS keep
   // the instant plain redirect: their webview blocks non-http navigations.
-  if (isInAppWebView(req.headers['user-agent'])) {
+  // OWNER 16 Nov: "visit/book dabane pr partner site ni khul raha, apni hi site (ecommerce) mai chala jata hai".
+  // Root cause measured on production: the app launches exits in a Chrome Custom Tab, whose user agent is an
+  // ordinary Chrome mobile one, so this handler did not recognise the app and sent it to the /redirect
+  // interstitial - four seconds parked on our own page before the partner loaded. The API now marks the exits it
+  // hands to the app (`app=1`, stamped server-side, so every install benefits without a rebuild) and this flag
+  // counts exactly like a webview: straight to the partner, tracking intact, no interstitial.
+  const fromApp = String(req.query.app || '') === '1' || isInAppWebView(req.headers['user-agent']);
+  if (fromApp) {
     // Owner 2 Nov (FINAL RULE): "muje sb verticals pr hr website redirection pr aisa hi
     // chaiye results app mai" — EVERY merchant exit, in EVERY vertical, must load inside the
     // app's own browser (dark header, hidden URL). The old app-to-app intent hop is gone from

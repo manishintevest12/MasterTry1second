@@ -31,7 +31,10 @@ import { validateDestination } from '../affiliate/affiliateNetwork';
 import { log } from '../common/logger';
 
 const INTERSTITIAL_TTL_MS = 10 * 60 * 1000; // generous for a 4-second page
-const COUNTDOWN_SECONDS = 4;
+// OWNER 16 Nov: was 4 seconds. The app now skips this page entirely; for a browser visitor four seconds parked on
+// our own domain read as "the partner site is not opening" (owner's report). Two seconds still frames the exit and
+// keeps the ad slot, without looking like a dead end.
+const COUNTDOWN_SECONDS = 2;
 
 function secret(): string {
   // Same derivation as affiliate pointers: one secret rotates every pointer kind.
