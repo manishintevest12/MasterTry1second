@@ -102,13 +102,15 @@ const CACHE_TTL_MS = 2 * 60 * 60_000;
 // only beyond this window is a cold build allowed to block the tab.
 const STALE_TTL_MS = 7 * 24 * 60 * 60_000;
 /** Ceiling for the og:image pass. A slow business site must never hold the whole tab hostage. */
-const OG_BUDGET_MS = 2200;
+const OG_BUDGET_MS = 3200;
 /**
  * OWNER 14 Nov: every card needs its own photo. The Wikimedia pass is bounded in both rows and time so a city
  * of unknown shops still paints fast; whatever the budget misses keeps a labelled tile and is cached for 12h.
  */
-const PHOTO_BUDGET_MS = 4500;
-const PHOTO_LOOKUP_ROWS = 14;
+const PHOTO_BUDGET_MS = 6000;
+// OWNER 16 Nov: this was 14, so the 15th card onward in a 20-row page was guaranteed to show a tile even when a
+// photo existed. It now covers a full page (the pager hands out 20 at a time, the ceiling is 60).
+const PHOTO_LOOKUP_ROWS = 60;
 /**
  * OWNER 16 Nov: "nearby result aane mai bahut time lag raha hai, 1 sec mai aana chahiye". Measured on production:
  * the FIRST (cold) request for a city/category took 5.7s (cabs), 19.4s (all), 19-27s (hotels, restaurants) while
@@ -951,7 +953,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v10|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v11|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1158,7 +1160,7 @@ async function buildNearbyAnswer(input: {
   // The photo pass is the single most expensive optional stage (4.5s ceiling), so it runs inside what is left:
   // rows that finish in time get their own photo, the rest keep a labelled tile this second and their real photo
   // arrives with the background build.
-  if (!input.noPhotos) await stage('photos', politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
+  if (!input.noPhotos) await stage('photos', politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 6, async (row) => {
     const hit = await lookupPhoto(row).catch(() => null);
     if (hit) {
       row.imageUrl = hit.url;
@@ -1172,7 +1174,10 @@ async function buildNearbyAnswer(input: {
     return Promise.race([p.catch(() => fallback), new Promise<T>((res) => setTimeout(() => res(fallback), left))]);
   };
   const stillNoPhoto = results.filter((r) => !r.imageUrl);
-  const withOg = await stage('og', Promise.all(stillNoPhoto.slice(0, 6).map(async (row) => ({
+  // OWNER 16 Nov ("bahut jagah image ni aa raha"): this covered six rows, so in a 20-card grid the tail always
+  // fell back to a tile. Every row without a photo now gets its own listing-page photo, because a business's own
+  // og:image is the one photo we can attribute to that exact place without guessing.
+  const withOg = await stage('og', Promise.all(stillNoPhoto.slice(0, 20).map(async (row) => ({
     row, url: row.website ? await withinBudget(ogImage(row.website), null as string | null) : null,
   }))), Math.max(120, Math.min(OG_BUDGET_MS, budgetMs * 0.2)), [] as any[]) as any[];
   for (const { row, url } of withOg) {

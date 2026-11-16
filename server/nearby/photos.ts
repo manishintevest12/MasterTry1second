@@ -165,6 +165,13 @@ function farAway(origin: { lat: number; lng: number } | null, cand: { lat: numbe
 /** 12h in-process cache: a hot city must not re-query Commons on every Nearby open. */
 const cache = new Map<string, { hit: PhotoHit | null; at: number }>();
 const CACHE_TTL_MS = 12 * 60 * 60_000;
+/**
+ * OWNER 16 Nov ("bahut jagah image ni aa raha"): this cache held MISSES for the same twelve hours as hits, so one
+ * slow lookup - a Bing reset, a row that ran out of budget - pinned that card to its grey tile until the TTL
+ * expired, and a page can carry dozens of such rows. A verified photo is worth twelve hours; a failure is worth
+ * twenty minutes, because most failures are the network, not the place.
+ */
+const MISS_TTL_MS = 20 * 60_000;
 
 function cacheKey(ev: PhotoEvidence, name: string, city: string | null, category: string | null): string {
   return [ev.wikidata || '', ev.wikipedia || '', ev.imageTag || '', ev.commonsTag || '',
@@ -337,7 +344,7 @@ export async function resolvePlacePhoto(input: {
   const category = input.category || null;
   const key = cacheKey(ev, input.name, city, category);
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.hit;
+  if (hit && Date.now() - hit.at < (hit.hit ? CACHE_TTL_MS : MISS_TTL_MS)) return hit.hit;
 
   const deadline = Date.now() + Math.max(800, Number(input.timeoutMs) || 4000);
   const left = () => Math.max(700, deadline - Date.now());

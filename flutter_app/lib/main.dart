@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'core/app_state.dart';
 import 'core/deep_links.dart';
@@ -12,6 +13,21 @@ import 'ui/splash_gate.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // EDGE-TO-EDGE (Play Console, 16 Nov: "Edge-to-edge may not display for all users").
+  // Android 15+ draws every app behind the status and navigation bars whether it likes it or not, and Play asks
+  // for the app to render that way deliberately. Asking for edgeToEdge here means the bars are transparent, the
+  // content sits underneath them, and the SafeAreas inside each screen keep text clear of them - instead of the
+  // window being letterboxed on some devices and full-bleed on others.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Color(0x00000000),
+    systemNavigationBarColor: Color(0x00000000),
+    statusBarIconBrightness: Brightness.dark,
+    statusBarBrightness: Brightness.light,
+    systemNavigationBarIconBrightness: Brightness.dark,
+    systemNavigationBarContrastEnforced: false,
+    systemNavigationBarDividerColor: Color(0x00000000),
+  ));
   // Device alerts: permission + token registration. Deliberately not awaited, so a slow
   // or unavailable Play Services never delays the first frame.
   unawaited(PushAlerts.init());

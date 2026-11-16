@@ -109,7 +109,10 @@ export async function bingImages(query: string, opts: { count?: number; timeoutM
     log.warn('nearby', 'bing images failed', { query: q, error: String(e?.message || e).slice(0, 90) });
     rows = [];
   }
-  cache.set(key, { at: Date.now(), rows });
+  // An empty result is usually a block or a reset, not a verdict about the place. Cache it briefly so one bad
+  // minute does not leave every card for that place photoless until the twelve-hour TTL runs out.
+  const ttl = rows.length ? CACHE_TTL_MS : 15 * 60_000;
+  cache.set(key, { at: Date.now() - (rows.length ? 0 : CACHE_TTL_MS - ttl), rows });
   if (cache.size > 600) {
     for (const [k] of [...cache.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 200)) cache.delete(k);
   }

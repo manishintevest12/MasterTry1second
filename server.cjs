@@ -46646,7 +46646,8 @@ async function bingImages(query, opts = {}) {
     log.warn("nearby", "bing images failed", { query: q3, error: String(e2?.message || e2).slice(0, 90) });
     rows = [];
   }
-  cache9.set(key, { at: Date.now(), rows });
+  const ttl = rows.length ? CACHE_TTL_MS3 : 15 * 6e4;
+  cache9.set(key, { at: Date.now() - (rows.length ? 0 : CACHE_TTL_MS3 - ttl), rows });
   if (cache9.size > 600) {
     for (const [k] of [...cache9.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 200)) cache9.delete(k);
   }
@@ -48361,7 +48362,7 @@ async function resolvePlacePhoto(input) {
   const category = input.category || null;
   const key = cacheKey(ev, input.name, city, category);
   const hit = cache10.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS4) return hit.hit;
+  if (hit && Date.now() - hit.at < (hit.hit ? CACHE_TTL_MS4 : MISS_TTL_MS3)) return hit.hit;
   const deadline = Date.now() + Math.max(800, Number(input.timeoutMs) || 4e3);
   const left = () => Math.max(700, deadline - Date.now());
   const tokens3 = nameTokens(input.name);
@@ -48408,7 +48409,7 @@ function categoryTile(category, seed, tiles) {
   for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) % 1e5;
   return list[h % list.length];
 }
-var GENERIC_TOKENS, CATEGORY_WORDS, NOT_A_PLACE2, NOT_A_PHOTO, IS_PHOTO, UA6, COMMONS_WIDTH, MAX_KM, cache10, CACHE_TTL_MS4;
+var GENERIC_TOKENS, CATEGORY_WORDS, NOT_A_PLACE2, NOT_A_PHOTO, IS_PHOTO, UA6, COMMONS_WIDTH, MAX_KM, cache10, CACHE_TTL_MS4, MISS_TTL_MS3;
 var init_photos = __esm({
   "server/nearby/photos.ts"() {
     init_logger();
@@ -48545,6 +48546,7 @@ var init_photos = __esm({
     MAX_KM = 40;
     cache10 = /* @__PURE__ */ new Map();
     CACHE_TTL_MS4 = 12 * 60 * 6e4;
+    MISS_TTL_MS3 = 20 * 6e4;
   }
 });
 
@@ -49245,7 +49247,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v10|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v11|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49384,7 +49386,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     evidence: { wikidata: row.wikidata, wikipedia: row.wikipedia, imageTag: row.osmImage, commonsTag: row.commonsTag },
     timeoutMs: Math.max(700, photoDeadline - Date.now())
   });
-  if (!input.noPhotos) await stage("photos", politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 4, async (row) => {
+  if (!input.noPhotos) await stage("photos", politePool(noPhoto.slice(0, PHOTO_LOOKUP_ROWS), 6, async (row) => {
     const hit = await lookupPhoto(row).catch(() => null);
     if (hit) {
       row.imageUrl = hit.url;
@@ -49397,7 +49399,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     return Promise.race([p.catch(() => fallback), new Promise((res) => setTimeout(() => res(fallback), left2))]);
   };
   const stillNoPhoto = results.filter((r) => !r.imageUrl);
-  const withOg = await stage("og", Promise.all(stillNoPhoto.slice(0, 6).map(async (row) => ({
+  const withOg = await stage("og", Promise.all(stillNoPhoto.slice(0, 20).map(async (row) => ({
     row,
     url: row.website ? await withinBudget2(ogImage(row.website), null) : null
   }))), Math.max(120, Math.min(OG_BUDGET_MS, budgetMs * 0.2)), []);
@@ -49641,9 +49643,9 @@ var init_aggregator = __esm({
     WIDE_RADIUS_M = 9e3;
     CACHE_TTL_MS5 = 2 * 60 * 6e4;
     STALE_TTL_MS = 7 * 24 * 60 * 6e4;
-    OG_BUDGET_MS = 2200;
-    PHOTO_BUDGET_MS = 4500;
-    PHOTO_LOOKUP_ROWS = 14;
+    OG_BUDGET_MS = 3200;
+    PHOTO_BUDGET_MS = 6e3;
+    PHOTO_LOOKUP_ROWS = 60;
     FAST_BUDGET_MS = Math.max(400, Number(process.env.NEARBY_FAST_MS || 900));
     FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 12e3));
     TIMING = String(process.env.NEARBY_TIMING || "") === "1";
