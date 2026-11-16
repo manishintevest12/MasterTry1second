@@ -9,6 +9,7 @@
  * and (only when a provider supplies them) ratings and price levels. A city with no rows says so.
  */
 import { INDIAN_CITIES, CITY_STATE } from '../seo/cityCorpus';
+import { INDEXABLE_METROS } from '../seo/indexPolicy';
 import { nearbyAnswer, normalizeNearbyCategory, type NearbyAnswer, type NearbyCategory } from './aggregator';
 
 export const NEARBY_CATEGORIES: NearbyCategory[] = ['restaurants', 'cafes', 'hotels', 'stays', 'cabs', 'stores'];
@@ -168,8 +169,8 @@ export function isRichNearbyPath(path: string): boolean {
   return richPaths.has(path);
 }
 
-function recordNearbyVerdict(path: string, rowCount: number): boolean {
-  const rich = rowCount >= MIN_INDEXABLE_ROWS;
+function recordNearbyVerdict(path: string, rowCount: number, floor: number = MIN_INDEXABLE_ROWS): boolean {
+  const rich = rowCount >= floor;
   if (rich) { richPaths.add(path); thinPaths.delete(path); } else { thinPaths.add(path); richPaths.delete(path); }
   return rich;
 }
@@ -292,10 +293,20 @@ export async function renderNearbyHtml(page: NearbyPage, origin: string): Promis
   let answer: NearbyAnswer | null = null;
   if (page.city || page.areaLabel) {
     // Crawlers get the whole answer (preferFull), so a cold render cannot brand a rich page as thin.
-    answer = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true }).catch(() => null);
+    // OWNER 16 Nov (Search Console access log: /nearby/cabs/nahan held for 14,464ms and answered 503): a page
+    // render gets the full build but only 2.5s of it. A crawler that can see the page in 2.5s is worth more than
+    // one that waits out the proxy and gets an error page.
+    answer = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true, budgetMs: 2500 }).catch(() => null);
   }
   const rows = answer?.results || [];
-  const indexable = isHub ? true : recordNearbyVerdict(page.path, rows.length);
+  // A page render is allowed to be cut short, so an empty answer here proves nothing: it is never recorded as
+  // thin (only the boot audit, which has the full budget, may call a page thin). A rich answer is always
+  // recorded, so the sitemap promotes the page the moment it is genuinely full.
+  // OWNER 16 Nov: Indore has exactly 5 cinemas on the map. A flat floor of 6 called that page thin, which is
+  // the wrong answer for the one city where the list is complete and people actually search. The metros the
+  // product is used in get a floor of 4; the long tail still needs 6.
+  const floor = page.city && INDEXABLE_METROS.has(citySlug) ? 4 : MIN_INDEXABLE_ROWS;
+  const indexable = isHub ? true : (rows.length >= floor ? recordNearbyVerdict(page.path, rows.length, floor) : (isRichNearbyPath(page.path) ? true : false));
   const state = stateNameFor(page.city);
   const placeOf = state && !page.areaLabel ? `${page.city}, ${state}` : label;
   const names = rows.slice(0, 3).map((r) => r.name).filter(Boolean);

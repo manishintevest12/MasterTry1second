@@ -49613,7 +49613,8 @@ async function nearbyAnswer(input) {
   };
   if (input.preferFull) {
     try {
-      const full = await buildNearbyAnswer(input, FULL_BUDGET_MS);
+      const cap2 = Math.max(800, Math.min(input.budgetMs ?? FULL_BUDGET_MS, FULL_BUDGET_MS));
+      const full = await buildNearbyAnswer(input, cap2);
       memoryPut(cacheKey2, full);
       return { ...full, ms: Date.now() - started3 };
     } catch {
@@ -59884,6 +59885,54 @@ var init_movieCities = __esm({
   }
 });
 
+// server/seo/indexPolicy.ts
+var indexPolicy_exports = {};
+__export(indexPolicy_exports, {
+  INDEXABLE_METROS: () => INDEXABLE_METROS,
+  TEMPLATED_CITY_VERTICALS: () => TEMPLATED_CITY_VERTICALS,
+  isIndexableCityPage: () => isIndexableCityPage,
+  isTemplatedCityPath: () => isTemplatedCityPath
+});
+function isTemplatedCityPath(path18) {
+  const segs = String(path18 || "").split("?")[0].split("/").filter(Boolean);
+  return segs.length === 2 && TEMPLATED_CITY_VERTICALS.has(segs[0]);
+}
+function isIndexableCityPage(path18) {
+  if (!isTemplatedCityPath(path18)) return true;
+  const [vertical, city] = String(path18).split("?")[0].split("/").filter(Boolean);
+  if (INDEXABLE_METROS.has(city)) return true;
+  if (vertical === "movies" && MOVIE_CITY_CONTENT[city]) return true;
+  return false;
+}
+var INDEXABLE_METROS, TEMPLATED_CITY_VERTICALS;
+var init_indexPolicy = __esm({
+  "server/seo/indexPolicy.ts"() {
+    init_movieCities();
+    INDEXABLE_METROS = /* @__PURE__ */ new Set([
+      "mumbai",
+      "delhi",
+      "bengaluru",
+      "hyderabad",
+      "chennai",
+      "kolkata",
+      "pune",
+      "ahmedabad",
+      "jaipur",
+      "lucknow",
+      "indore",
+      "bhopal",
+      "chandigarh",
+      "surat",
+      "nagpur",
+      "kochi",
+      "noida",
+      "gurugram",
+      "goa"
+    ]);
+    TEMPLATED_CITY_VERTICALS = /* @__PURE__ */ new Set(["hotels", "cabs", "grocery", "food", "movies"]);
+  }
+});
+
 // server/nearby/seo.ts
 var seo_exports = {};
 __export(seo_exports, {
@@ -59953,8 +60002,8 @@ function isKnownThinNearbyPath(path18) {
 function isRichNearbyPath(path18) {
   return richPaths.has(path18);
 }
-function recordNearbyVerdict(path18, rowCount) {
-  const rich = rowCount >= MIN_INDEXABLE_ROWS;
+function recordNearbyVerdict(path18, rowCount, floor = MIN_INDEXABLE_ROWS) {
+  const rich = rowCount >= floor;
   if (rich) {
     richPaths.add(path18);
     thinPaths.delete(path18);
@@ -60049,10 +60098,11 @@ async function renderNearbyHtml(page, origin2) {
   const citySlug2 = String(page.city || "").toLowerCase().replace(/\s+/g, "-");
   let answer = null;
   if (page.city || page.areaLabel) {
-    answer = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true }).catch(() => null);
+    answer = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true, budgetMs: 2500 }).catch(() => null);
   }
   const rows = answer?.results || [];
-  const indexable = isHub ? true : recordNearbyVerdict(page.path, rows.length);
+  const floor = page.city && INDEXABLE_METROS.has(citySlug2) ? 4 : MIN_INDEXABLE_ROWS;
+  const indexable = isHub ? true : rows.length >= floor ? recordNearbyVerdict(page.path, rows.length, floor) : isRichNearbyPath(page.path) ? true : false;
   const state = stateNameFor(page.city);
   const placeOf = state && !page.areaLabel ? `${page.city}, ${state}` : label;
   const names = rows.slice(0, 3).map((r) => r.name).filter(Boolean);
@@ -60140,6 +60190,7 @@ var NEARBY_CATEGORIES, NEARBY_AREAS, CITY_SLUGS, AREA_SLUGS, NEARBY_CSS, MIN_IND
 var init_seo = __esm({
   "server/nearby/seo.ts"() {
     init_cityCorpus();
+    init_indexPolicy();
     init_aggregator();
     NEARBY_CATEGORIES = ["restaurants", "cafes", "hotels", "stays", "cabs", "stores"];
     NEARBY_AREAS = {
@@ -60263,54 +60314,6 @@ var init_brandPage = __esm({
   "server/seo/brandPage.ts"() {
     BRAND_PAGE_PATH = "/try-1-second";
     BRAND_FACT_LINE = `Try1Second (also written "Try 1 Second", "Try1 Second", "T1S", try1second.com) is an independent Indian metasearch engine that compares live prices for flights, hotels, bus, cabs, ecommerce, grocery, food delivery, movies, loans, insurance, credit cards, bank accounts and banking products, ranking every seller's own offer lowest first. It is unrelated to the "1 Second Everyday" video app.`;
-  }
-});
-
-// server/seo/indexPolicy.ts
-var indexPolicy_exports = {};
-__export(indexPolicy_exports, {
-  INDEXABLE_METROS: () => INDEXABLE_METROS,
-  TEMPLATED_CITY_VERTICALS: () => TEMPLATED_CITY_VERTICALS,
-  isIndexableCityPage: () => isIndexableCityPage,
-  isTemplatedCityPath: () => isTemplatedCityPath
-});
-function isTemplatedCityPath(path18) {
-  const segs = String(path18 || "").split("?")[0].split("/").filter(Boolean);
-  return segs.length === 2 && TEMPLATED_CITY_VERTICALS.has(segs[0]);
-}
-function isIndexableCityPage(path18) {
-  if (!isTemplatedCityPath(path18)) return true;
-  const [vertical, city] = String(path18).split("?")[0].split("/").filter(Boolean);
-  if (INDEXABLE_METROS.has(city)) return true;
-  if (vertical === "movies" && MOVIE_CITY_CONTENT[city]) return true;
-  return false;
-}
-var INDEXABLE_METROS, TEMPLATED_CITY_VERTICALS;
-var init_indexPolicy = __esm({
-  "server/seo/indexPolicy.ts"() {
-    init_movieCities();
-    INDEXABLE_METROS = /* @__PURE__ */ new Set([
-      "mumbai",
-      "delhi",
-      "bengaluru",
-      "hyderabad",
-      "chennai",
-      "kolkata",
-      "pune",
-      "ahmedabad",
-      "jaipur",
-      "lucknow",
-      "indore",
-      "bhopal",
-      "chandigarh",
-      "surat",
-      "nagpur",
-      "kochi",
-      "noida",
-      "gurugram",
-      "goa"
-    ]);
-    TEMPLATED_CITY_VERTICALS = /* @__PURE__ */ new Set(["hotels", "cabs", "grocery", "food", "movies"]);
   }
 });
 

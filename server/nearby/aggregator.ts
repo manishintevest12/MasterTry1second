@@ -1353,6 +1353,8 @@ export async function nearbyAnswer(input: {
   lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number; offset?: number;
   /** Crawler/audit mode: build with the full budget so a cold process does not measure a rich page as empty. */
   preferFull?: boolean;
+  /** Cap for preferFull. A PAGE render must answer inside the proxy's patience even if the build is not done. */
+  budgetMs?: number;
 }): Promise<NearbyAnswer> {
   const started = Date.now();
   const category = normalizeNearbyCategory(input.category);
@@ -1421,7 +1423,8 @@ export async function nearbyAnswer(input: {
   // thin. preferFull takes the full build directly and only falls back to the fast one if that fails.
   if (input.preferFull) {
     try {
-      const full = await buildNearbyAnswer(input, FULL_BUDGET_MS);
+      const cap = Math.max(800, Math.min(input.budgetMs ?? FULL_BUDGET_MS, FULL_BUDGET_MS));
+      const full = await buildNearbyAnswer(input, cap);
       memoryPut(cacheKey, full);
       return { ...full, ms: Date.now() - started };
     } catch { /* fall through to the fast path below */ }
