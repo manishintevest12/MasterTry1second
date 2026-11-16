@@ -48585,6 +48585,8 @@ async function resolveNearbyLocation(lat, lng, city) {
     const ln = Number(lng);
     const known = city ? String(city) : null;
     if (known) return { lat: la, lng: ln, city: known, resolvedFrom: "coords" };
+    const near = await nearestKnownCity(la, ln).catch(() => null);
+    if (near) return { lat: la, lng: ln, city: near, resolvedFrom: "coords" };
     const named = await Promise.race([
       reverseCity(la, ln).catch(() => null),
       new Promise((r) => setTimeout(() => r(null), 900))
@@ -48604,6 +48606,28 @@ function nominatimPaused() {
 }
 function pauseNominatim(seconds = 300) {
   nominatimPausedUntil = Date.now() + seconds * 1e3;
+}
+async function nearestKnownCity(lat, lng) {
+  try {
+    if (!cityIndex || Date.now() - cityIndex.at > 10 * 6e4) {
+      const rows = await getStore().query("SELECT city_key, lat, lng FROM nearby_geocode").catch(() => []);
+      cityIndex = {
+        at: Date.now(),
+        rows: (rows || []).map((r) => ({ name: String(r.city_key || ""), lat: Number(r.lat), lng: Number(r.lng) })).filter((r) => r.name && Number.isFinite(r.lat) && Number.isFinite(r.lng))
+      };
+    }
+    let best = null;
+    for (const c of cityIndex.rows) {
+      const dLat = (c.lat - lat) * 111;
+      const dLng = (c.lng - lng) * 111 * Math.cos(lat * Math.PI / 180);
+      const km = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (!best || km < best.km) best = { name: c.name, km };
+    }
+    if (best && best.km <= 75) return best.name.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    return null;
+  } catch {
+    return null;
+  }
 }
 async function reverseCity(lat, lng) {
   const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
@@ -48865,7 +48889,7 @@ async function overpassNearby(lat, lng, category) {
   const query = `[out:json][timeout:12];(
 ${body}
 );out body 30;`;
-  for (const host of ["overpass-api.de", "overpass.kumi.systems"]) {
+  for (const host of ["overpass-api.de", "overpass.kumi.systems", "overpass.private.coffee", "maps.mail.ru/osm/tools/overpass"]) {
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 12e3);
@@ -49236,7 +49260,8 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     hasMore: offset + results.length < total,
     counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
     notes: results.length ? notes : [...notes, "No places came back for this location right now, so nothing is shown rather than guesswork."],
-    ...truncated ? { partial: true } : {}
+    ...truncated ? { partial: true } : {},
+    rev: NEARBY_REV
   };
   timing.total = Date.now() - startedAt;
   if (results.length > 0) await writeCache(cacheKey2, answer);
@@ -49330,6 +49355,7 @@ async function nearbyReport(days = 7) {
   }
 }
 async function prewarmNearby(limitCities = PREWARM_CITIES.length) {
+  if (String(process.env.T1S_NEARBY_PREWARM || "") !== "1") return { built: 0, skipped: 0 };
   if (prewarmRunning) return { built: 0, skipped: 0 };
   prewarmRunning = true;
   let built = 0;
@@ -49419,7 +49445,7 @@ async function nearbyAnswer(input) {
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, nominatimPausedUntil, reverseCache, GOOGLE_TYPE, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
+var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, NEARBY_REV, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, nominatimPausedUntil, cityIndex, reverseCache, GOOGLE_TYPE, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -49437,6 +49463,7 @@ var init_aggregator = __esm({
     FAST_BUDGET_MS = Math.max(400, Number(process.env.NEARBY_FAST_MS || 900));
     FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 45e3));
     TIMING = String(process.env.NEARBY_TIMING || "") === "1";
+    NEARBY_REV = "2026-11-16d";
     memoryCache = /* @__PURE__ */ new Map();
     MEMORY_CACHE_MAX = 300;
     CATEGORY_ALIASES = {
@@ -49470,6 +49497,7 @@ var init_aggregator = __esm({
     PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
     geocodeCache = /* @__PURE__ */ new Map();
     nominatimPausedUntil = 0;
+    cityIndex = null;
     reverseCache = /* @__PURE__ */ new Map();
     GOOGLE_TYPE = {
       restaurants: ["restaurant"],

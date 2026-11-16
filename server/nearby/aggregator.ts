@@ -71,6 +71,8 @@ export interface NearbyAnswer {
   /** OWNER 16 Nov: served inside the 1-second budget, so a slower stage (extra photos, og:image, a slow map
    *  mirror) was cut short and is still being filled in the background. Never written to the durable cache. */
   partial?: boolean;
+  /** Build marker, so "is the deploy actually live?" is one request instead of a guess. */
+  rev?: string;
   /** Served while expired, with a background refresh in flight (owner 13 Nov: "time lagta hai aane mai"). */
   stale?: boolean;
   /** Server-side build time in ms, so the tab can say how fresh the rows are. */
@@ -106,6 +108,8 @@ const FAST_BUDGET_MS = Math.max(400, Number(process.env.NEARBY_FAST_MS || 900));
 /** The background finish gets room to work: this pass is not holding any user. */
 const FULL_BUDGET_MS = Math.max(FAST_BUDGET_MS, Number(process.env.NEARBY_FULL_MS || 45_000));
 const TIMING = String(process.env.NEARBY_TIMING || '') === '1';
+/** Bump when the nearby build changes, so the live response states which code answered it. */
+const NEARBY_REV = '2026-11-16d';
 /**
  * In-process answer cache. The SQL cache is the durable one, but a light SQL emulator (the file store used in
  * tests/dev) answers an upsert-shaped write with no row and the read with [], which made EVERY request rebuild -
@@ -200,6 +204,8 @@ Promise<{ lat: number; lng: number; city: string | null; resolvedFrom: 'coords' 
     if (known) return { lat: la, lng: ln, city: known, resolvedFrom: 'coords' };
     // A GPS fix with no city name: ask once (cached afterwards) so the city-scoped sources still answer. Capped,
     // because a slow geocoder must never delay the list itself - the map sources work without a name.
+    const near = await nearestKnownCity(la, ln).catch(() => null);
+    if (near) return { lat: la, lng: ln, city: near, resolvedFrom: 'coords' };
     const named = await Promise.race([
       reverseCity(la, ln).catch(() => null),
       new Promise<string | null>((r) => setTimeout(() => r(null), 900)),
@@ -235,6 +241,34 @@ const geocodeCache = new Map<string, { lat: number; lng: number }>();
 let nominatimPausedUntil = 0;
 function nominatimPaused(): boolean { return Date.now() < nominatimPausedUntil; }
 function pauseNominatim(seconds = 300): void { nominatimPausedUntil = Date.now() + seconds * 1000; }
+
+/**
+ * OWNER 16 Nov: the reliable way to name a GPS fix. Every city we have ever geocoded is already in our own table
+ * (nearby_geocode), so the nearest one inside ~75km is the city the phone is in - computed locally, instantly, and
+ * it cannot be rate-limited. The external reverse geocoders only run when this finds nothing (deep countryside).
+ */
+let cityIndex: { at: number; rows: Array<{ name: string; lat: number; lng: number }> } | null = null;
+async function nearestKnownCity(lat: number, lng: number): Promise<string | null> {
+  try {
+    if (!cityIndex || Date.now() - cityIndex.at > 10 * 60_000) {
+      const rows = await getStore().query<any>('SELECT city_key, lat, lng FROM nearby_geocode').catch(() => []);
+      cityIndex = {
+        at: Date.now(),
+        rows: (rows || []).map((r: any) => ({ name: String(r.city_key || ''), lat: Number(r.lat), lng: Number(r.lng) }))
+          .filter((r: any) => r.name && Number.isFinite(r.lat) && Number.isFinite(r.lng)),
+      };
+    }
+    let best: { name: string; km: number } | null = null;
+    for (const c of cityIndex.rows) {
+      const dLat = (c.lat - lat) * 111;
+      const dLng = (c.lng - lng) * 111 * Math.cos((lat * Math.PI) / 180);
+      const km = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (!best || km < best.km) best = { name: c.name, km };
+    }
+    if (best && best.km <= 75) return best.name.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return null;
+  } catch { return null; }
+}
 
 const reverseCache = new Map<string, string>();
 async function reverseCity(lat: number, lng: number): Promise<string | null> {
@@ -511,7 +545,7 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
   };
   const body = filters[category].map((f) => `${f}(around:${RADIUS_M},${lat},${lng});`).join('\n');
   const query = `[out:json][timeout:12];(\n${body}\n);out body 30;`;
-  for (const host of ['overpass-api.de', 'overpass.kumi.systems']) {
+  for (const host of ['overpass-api.de', 'overpass.kumi.systems', 'overpass.private.coffee', 'maps.mail.ru/osm/tools/overpass']) {
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 12000);
@@ -957,6 +991,7 @@ async function buildNearbyAnswer(input: {
     counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
     notes: results.length ? notes : [...notes, 'No places came back for this location right now, so nothing is shown rather than guesswork.'],
     ...(truncated ? { partial: true } : {}),
+    rev: NEARBY_REV,
   };
   timing.total = Date.now() - startedAt;
   // Persist whenever there are real rows: a list of real places is worth 30 minutes even if its optional extras
@@ -1057,6 +1092,11 @@ const PREWARM_CATEGORIES: NearbyCategory[] = ['all', 'restaurants', 'hotels', 'c
 let prewarmRunning = false;
 
 export async function prewarmNearby(limitCities = PREWARM_CITIES.length): Promise<{ built: number; skipped: number }> {
+  // OFF by default (owner 16 Nov: 'abhi v results nahi aa raha'). Prewarming 70 builds every 20 minutes is what
+  // most likely got our IP throttled by the free map mirrors, and a throttled mirror empties the live list - the
+  // opposite of the intended effect. Stale-while-revalidate already makes real traffic warm; this is an option
+  // (T1S_NEARBY_PREWARM=1), not a default.
+  if (String(process.env.T1S_NEARBY_PREWARM || '') !== '1') return { built: 0, skipped: 0 };
   if (prewarmRunning) return { built: 0, skipped: 0 };
   prewarmRunning = true;
   let built = 0; let skipped = 0;
