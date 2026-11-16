@@ -81,6 +81,16 @@ export interface NearbyAnswer {
 
 const DEFAULT_CITY = 'Pune';
 const RADIUS_M = 2500;
+/**
+ * OWNER 16 Nov: 'cabs/stores/movies' came back empty in whole cities because those kinds of place are sparse - a
+ * taxi stand or a cinema every few kilometres, so a 2.5km circle around a residential GPS fix legitimately holds
+ * none of them. They now search wider instead of showing nothing; restaurants and cafes keep the tight radius where
+ * "nearby" is the point.
+ */
+const WIDE_RADIUS_M = 9000;
+function radiusFor(category: NearbyCategory): number {
+  return category === 'cabs' || category === 'stores' || category === 'movies' ? WIDE_RADIUS_M : RADIUS_M;
+}
 const CACHE_TTL_MS = 30 * 60_000;
 // Owner 13 Nov: opening the Nearby tab waited on a cold build (~14s measured on production). A row set an hour
 // old still names the same restaurants, so an expired payload is SERVED INSTANTLY while it revalidates behind it;
@@ -543,7 +553,7 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
     movies: ['node["amenity"="cinema"]'],
     all: ['node["amenity"="restaurant"]'],
   };
-  const body = filters[category].map((f) => `${f}(around:${RADIUS_M},${lat},${lng});`).join('\n');
+  const body = filters[category].map((f) => `${f}(around:${radiusFor(category)},${lat},${lng});`).join('\n');
   const query = `[out:json][timeout:12];(\n${body}\n);out body 30;`;
   for (const host of ['overpass-api.de', 'overpass.kumi.systems', 'overpass.private.coffee', 'maps.mail.ru/osm/tools/overpass']) {
     try {

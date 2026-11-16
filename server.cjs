@@ -48532,6 +48532,9 @@ __export(aggregator_exports, {
   prewarmNearby: () => prewarmNearby,
   resolveNearbyLocation: () => resolveNearbyLocation
 });
+function radiusFor(category) {
+  return category === "cabs" || category === "stores" || category === "movies" ? WIDE_RADIUS_M : RADIUS_M;
+}
 function memoryGet(key) {
   const hit = memoryCache.get(key);
   if (!hit) return null;
@@ -48885,7 +48888,7 @@ async function overpassNearby(lat, lng, category) {
     movies: ['node["amenity"="cinema"]'],
     all: ['node["amenity"="restaurant"]']
   };
-  const body = filters[category].map((f) => `${f}(around:${RADIUS_M},${lat},${lng});`).join("\n");
+  const body = filters[category].map((f) => `${f}(around:${radiusFor(category)},${lat},${lng});`).join("\n");
   const query = `[out:json][timeout:12];(
 ${body}
 );out body 30;`;
@@ -49445,7 +49448,7 @@ async function nearbyAnswer(input) {
   }
   return build2();
 }
-var DEFAULT_CITY, RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, NEARBY_REV, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, nominatimPausedUntil, cityIndex, reverseCache, GOOGLE_TYPE, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
+var DEFAULT_CITY, RADIUS_M, WIDE_RADIUS_M, CACHE_TTL_MS5, STALE_TTL_MS, OG_BUDGET_MS, PHOTO_BUDGET_MS, PHOTO_LOOKUP_ROWS, FAST_BUDGET_MS, FULL_BUDGET_MS, TIMING, NEARBY_REV, memoryCache, MEMORY_CACHE_MAX, CATEGORY_ALIASES, PUBLIC_ORIGIN, geocodeCache, nominatimPausedUntil, cityIndex, reverseCache, GOOGLE_TYPE, PAGE_CEILING, PREWARM_CITIES, PREWARM_CATEGORIES, prewarmRunning;
 var init_aggregator = __esm({
   "server/nearby/aggregator.ts"() {
     init_db();
@@ -49455,6 +49458,7 @@ var init_aggregator = __esm({
     init_photos();
     DEFAULT_CITY = "Pune";
     RADIUS_M = 2500;
+    WIDE_RADIUS_M = 9e3;
     CACHE_TTL_MS5 = 30 * 6e4;
     STALE_TTL_MS = 12 * 60 * 6e4;
     OG_BUDGET_MS = 2200;
