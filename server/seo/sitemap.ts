@@ -193,6 +193,13 @@ export async function bucketSitemapResponse(bucket: SitemapBucket): Promise<stri
   return sitemapXml(split[bucket]);
 }
 
+/** Rebuild now (used after the nearby thin-page audit finishes), keeping the old copy if the rebuild fails. */
+export async function rebuildSitemapNow(): Promise<void> {
+  if (warming) return;
+  warming = buildWarm().catch(() => warm?.xml || '').finally(() => { warming = null; }) as any;
+  await warming;
+}
+
 /** Boot/self-heal hook: warm the cache without making any request wait for it. */
 export function warmSitemapSoon(): void {
   if (warm || warming) return;

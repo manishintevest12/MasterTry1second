@@ -10,6 +10,7 @@
  *     hydration (Googlebot and link previews read it; users get the app).
  */
 import { resolveSeoPage, listSeoPaths, SEO_HOST } from './data';
+import { isIndexableCityPage } from './indexPolicy';
 import { SAME_AS, CONTACT_EMAIL, BUSINESS_TELEPHONE, BUSINESS_ADDRESS, BUSINESS_LEGAL_NAME } from './agentReady';
 
 const esc = (s: string) => s
@@ -178,6 +179,9 @@ const DEFAULT_DESC = 'Compare live prices across flights, hotels, bus, shopping,
 export function enhanceHtml(html: string, path: string): string {
   const page = resolveSeoPage(path);
   const isNoindex = /^\/(admin|merchant|api)/.test(path);
+  // OWNER 16 Nov: a templated /<vertical>/<city> page with no substance of its own stays reachable for visitors
+  // and links but asks Google not to index it (see indexPolicy.ts). `follow` keeps its links counting.
+  const thinCity = !isNoindex && !isIndexableCityPage(path.split('?')[0].replace(/\/+$/, '') || '/');
   const title = page ? page.title : DEFAULT_TITLE;
   const desc = page ? page.description : DEFAULT_DESC;
   const canonical = `${SEO_HOST}${(path || '/').split('?')[0].replace(/\/+$/, '') || '/'}`;
@@ -199,7 +203,7 @@ export function enhanceHtml(html: string, path: string): string {
     `<meta property="og:url" content="${esc(canonical)}" />`,
     `<meta name="twitter:title" content="${esc(title)}" />`,
     `<meta name="twitter:description" content="${esc(desc)}" />`,
-    `<meta name="robots" content="${isNoindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large, max-snippet:-1'}" />`,
+    `<meta name="robots" content="${isNoindex ? 'noindex, nofollow' : thinCity ? 'noindex, follow' : 'index, follow, max-image-preview:large, max-snippet:-1'}" />`,
     `<meta name="geo.region" content="IN" />`,
     `<meta name="geo.placename" content="India" />`,
     `<meta property="og:site_name" content="Try1Second" />`,

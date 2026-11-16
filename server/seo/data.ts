@@ -19,7 +19,7 @@ import { GUIDE_SLUGS } from './guides';
 import { ANSWER_STATES } from './answerStates';
 import { CITY_STATE, INDIAN_CITIES } from './cityCorpus';
 import { MOVIE_CITY_CONTENT } from './movieCities';
-import { listNearbyPaths } from '../nearby/seo';
+import { listNearbyPaths, isKnownThinNearbyPath } from '../nearby/seo';
 
 export interface SeoFaq { q: string; a: string }
 export interface SeoPage {
@@ -341,6 +341,7 @@ function verticalBySlug(slug: string): VerticalMeta | undefined {
 }
 
 import { brandPage, BRAND_PAGE_PATH } from './brandPage';
+import { isIndexableCityPage } from './indexPolicy';
 
 function routeSlug(a: string, b: string, noun: string): string {
   return `${a}-to-${b}-${noun}`;
@@ -348,9 +349,11 @@ function routeSlug(a: string, b: string, noun: string): string {
 
 // ============ Path resolution ============
 
-export function listSeoPaths(): string[] {
+export function listSeoPaths(includeThin = false): string[] {
   // Nearby & local discovery pages (owner 13 Nov) ride the same sitemap so IndexNow picks them up.
-  const nearbyPaths = listNearbyPaths();
+  // OWNER 16 Nov: a page that rendered with too few real places is kept out of the sitemap, so Google is never
+  // asked to index an empty template (Soft 404 / "Crawled - currently not indexed"). See MIN_INDEXABLE_ROWS.
+  const nearbyPaths = listNearbyPaths().filter((p) => !isKnownThinNearbyPath(p));
   // Editorial guides (server/seo/guides.ts) are part of the AdSense "unique value" surface.
   const guidePaths = GUIDE_SLUGS.map((s) => `/guides/${s}`);
   // OWNER 2 Nov (AdSense "Low value content"): the support/legal URLs are now real pages, so the
@@ -389,7 +392,12 @@ export function listSeoPaths(): string[] {
   }
   for (const [a, b] of FLIGHT_ROUTES) paths.push(`/flights/${routeSlug(a, b, 'flights')}`);
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, 'bus')}`);
-  return [...new Set(paths)];
+  // OWNER 16 Nov: only pages with substance of their own are advertised (see indexPolicy.ts). The thin
+  // templated city pages still resolve for visitors; they are simply not offered to Google or IndexNow.
+  const unique = [...new Set(paths)];
+  // Callers that answer "does this URL exist" pass includeThin: a thin page is still a page we serve (200 +
+  // noindex). Only the advertising surfaces (sitemap, IndexNow, llms.txt) drop them.
+  return includeThin ? unique : unique.filter(isIndexableCityPage);
 }
 
 /** Map a URL path to the SPA vertical id + optional pre-filled search query. */

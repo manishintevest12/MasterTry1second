@@ -82,7 +82,8 @@ function knownPaths(): Set<string> {
   if (knownCache && Date.now() - knownCache.at < 5 * 60_000) return knownCache.set;
   const set = new Set<string>([...APP_PATHS, ...Object.keys(LEGAL_ALIASES)]);
   try {
-    for (const p of listSeoPaths()) set.add(String(p).replace(/\/+$/, '') || '/');
+    // includeThin: a page we serve but ask Google not to index must still answer 200, never 404.
+    for (const p of listSeoPaths(true)) set.add(String(p).replace(/\/+$/, '') || '/');
   } catch { /* SEO corpus is best-effort here; the static sets above always hold */ }
   knownCache = { set, at: Date.now() };
   return set;

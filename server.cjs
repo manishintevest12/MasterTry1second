@@ -59442,12 +59442,15 @@ var init_movieCities = __esm({
 // server/nearby/seo.ts
 var seo_exports = {};
 __export(seo_exports, {
+  MIN_INDEXABLE_ROWS: () => MIN_INDEXABLE_ROWS,
   NEARBY_AREAS: () => NEARBY_AREAS,
   NEARBY_CATEGORIES: () => NEARBY_CATEGORIES,
   escapeHtml: () => escapeHtml2,
+  isKnownThinNearbyPath: () => isKnownThinNearbyPath,
   listNearbyPaths: () => listNearbyPaths,
   renderNearbyHtml: () => renderNearbyHtml,
-  resolveNearbyPage: () => resolveNearbyPage
+  resolveNearbyPage: () => resolveNearbyPage,
+  startNearbyThinAudit: () => startNearbyThinAudit
 });
 function titleCase(slug5) {
   return slug5.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
@@ -59498,6 +59501,68 @@ function card(row) {
 function escapeHtml2(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+function isKnownThinNearbyPath(path18) {
+  return thinPaths.has(path18);
+}
+function recordNearbyVerdict(path18, rowCount) {
+  const rich = rowCount >= MIN_INDEXABLE_ROWS;
+  if (rich) {
+    richPaths.add(path18);
+    thinPaths.delete(path18);
+  } else {
+    thinPaths.add(path18);
+    richPaths.delete(path18);
+  }
+  return rich;
+}
+function startNearbyThinAudit(onDone) {
+  if (auditStarted) return;
+  auditStarted = true;
+  const paths = listNearbyPaths().filter((p) => p.split("/").filter(Boolean).length >= 3);
+  let i = 0;
+  let done = 0;
+  const worker = async () => {
+    while (i < paths.length) {
+      const path18 = paths[i];
+      i += 1;
+      const page = resolveNearbyPage(path18);
+      if (!page) continue;
+      try {
+        const ans = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24 });
+        recordNearbyVerdict(path18, ans?.results?.length || 0);
+        done += 1;
+        if (done % 150 === 0) {
+          try {
+            onDone?.();
+          } catch {
+          }
+        }
+      } catch {
+      }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  };
+  void Promise.all([worker(), worker()]).then(() => {
+    try {
+      onDone?.();
+    } catch {
+    }
+  });
+}
+function hubBody(page) {
+  const cat = page.category === "all" ? null : page.category;
+  const catWord = cat || "places";
+  const cityLinks = HUB_CITY_SLUGS.filter((c) => CITY_SLUGS.has(c)).map((c) => {
+    const name = CITY_SLUGS.get(c);
+    return cat ? `<li><a href="/nearby/${cat}/${c}">${escapeHtml2(cat.charAt(0).toUpperCase() + cat.slice(1))} in ${escapeHtml2(name)}</a></li>` : `<li><a href="/nearby/restaurants/${c}">${escapeHtml2(name)}</a></li>`;
+  }).join("");
+  const catLinks = NEARBY_CATEGORIES.map((c) => `<li><a href="/nearby/${c}">Nearby ${c}</a></li>`).join("");
+  return `<section><h2>How Nearby works</h2>
+<p>Pick a city or let the app use your location, and Try1Second lists ${escapeHtml2(catWord)} around that point, closest first. Names, addresses and distances come from open map data. Ratings, review counts and price levels appear only when a partner feed actually supplies them, so a card with no rating says so instead of showing an invented number.</p>
+<p>Every "Book / website" button goes through our own tracked exit, and every card carries a directions link, so you can go from finding a place to being there without leaving the page.</p></section>
+<section><h2>${cat ? `Browse ${escapeHtml2(cat)} by city` : "Browse by city"}</h2><ul class="links">${cityLinks}</ul></section>
+${cat ? "" : `<section><h2>Browse by category</h2><ul class="links">${catLinks}</ul></section>`}`;
+}
 async function renderNearbyHtml(page, origin2) {
   const label = page.areaLabel || page.city || "your location";
   const catLabel = page.category === "all" ? "places" : page.category;
@@ -59507,7 +59572,9 @@ async function renderNearbyHtml(page, origin2) {
     answer = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24 }).catch(() => null);
   }
   const rows = answer?.results || [];
-  const list = rows.length ? `<ul class="cards">${rows.map(card).join("")}</ul>` : `<p class="empty">We do not have live ${catLabel} data for ${escapeHtml2(label)} right now, so this page lists nothing rather than invented ratings or prices. Search the same place on the
+  const isHub = !page.city && !page.areaLabel;
+  const indexable = isHub ? true : recordNearbyVerdict(page.path, rows.length);
+  const list = isHub ? hubBody(page) : rows.length ? `<ul class="cards">${rows.map(card).join("")}</ul>` : `<p class="empty">We do not have live ${catLabel} data for ${escapeHtml2(label)} right now, so this page lists nothing rather than invented ratings or prices. Search the same place on the
        <a href="/">comparison engine</a> for prices we actually hold.</p>`;
   const notes = (answer?.notes || []).map((n) => `<li>${escapeHtml2(n)}</li>`).join("");
   const faq = {
@@ -59541,6 +59608,7 @@ async function renderNearbyHtml(page, origin2) {
 <title>${escapeHtml2(title)}</title>
 <meta name="description" content="Live nearby ${escapeHtml2(catLabel)} around ${escapeHtml2(label)} with distance, rating and price level where the source actually provides them.">
 <link rel="canonical" href="${origin2}${page.path}">
+${indexable ? '<meta name="robots" content="index, follow, max-image-preview:large">' : '<meta name="robots" content="noindex, follow">'}
 <link rel="stylesheet" href="/seo.css">
 <script type="application/ld+json">${JSON.stringify(faq)}</script>
 ${itemList ? `<script type="application/ld+json">${JSON.stringify(itemList)}</script>` : ""}
@@ -59549,11 +59617,11 @@ ${itemList ? `<script type="application/ld+json">${JSON.stringify(itemList)}</sc
 <p class="lead">Places around ${escapeHtml2(label)}, closest first. Every card states where its data comes from. Clicks to a partner site go through our own tracked exit.</p>
 ${list}
 ${notes ? `<section class="notes"><h2>Data notes</h2><ul>${notes}</ul></section>` : ""}
-<section class="faq"><h2>About this page</h2><p>Ratings and review counts come from Google Places when our key is configured. OpenStreetMap supplies names, addresses and coordinates and has no ratings at all, which is why those cards show distance only. We never invent a rating, a review count or a price.</p></section>
+<section class="faq"><h2>About this page</h2><p>Names, addresses and distances come from open map data. Ratings, review counts and price levels appear only when a partner feed actually supplies them, so we never invent a rating, a review count or a price.</p></section>
 </main>
 <footer><p><a href="/answers">All comparisons</a> &middot; <a href="/">Search prices</a></p></footer></body></html>`;
 }
-var NEARBY_CATEGORIES, NEARBY_AREAS, CITY_SLUGS, AREA_SLUGS;
+var NEARBY_CATEGORIES, NEARBY_AREAS, CITY_SLUGS, AREA_SLUGS, MIN_INDEXABLE_ROWS, thinPaths, richPaths, auditStarted, HUB_CITY_SLUGS;
 var init_seo = __esm({
   "server/nearby/seo.ts"() {
     init_cityCorpus();
@@ -59573,6 +59641,11 @@ var init_seo = __esm({
       const cityName2 = CITY_SLUGS.get(citySlug2) || citySlug2;
       for (const a of areas) AREA_SLUGS.set(`${citySlug2}/${a}`, `${titleCase(a)}, ${cityName2}`);
     }
+    MIN_INDEXABLE_ROWS = 6;
+    thinPaths = /* @__PURE__ */ new Set();
+    richPaths = /* @__PURE__ */ new Set();
+    auditStarted = false;
+    HUB_CITY_SLUGS = ["mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "pune", "ahmedabad", "jaipur", "lucknow", "indore", "bhopal", "chandigarh", "surat", "nagpur", "kochi"];
   }
 });
 
@@ -59637,6 +59710,54 @@ var init_brandPage = __esm({
   }
 });
 
+// server/seo/indexPolicy.ts
+var indexPolicy_exports = {};
+__export(indexPolicy_exports, {
+  INDEXABLE_METROS: () => INDEXABLE_METROS,
+  TEMPLATED_CITY_VERTICALS: () => TEMPLATED_CITY_VERTICALS,
+  isIndexableCityPage: () => isIndexableCityPage,
+  isTemplatedCityPath: () => isTemplatedCityPath
+});
+function isTemplatedCityPath(path18) {
+  const segs = String(path18 || "").split("?")[0].split("/").filter(Boolean);
+  return segs.length === 2 && TEMPLATED_CITY_VERTICALS.has(segs[0]);
+}
+function isIndexableCityPage(path18) {
+  if (!isTemplatedCityPath(path18)) return true;
+  const [vertical, city] = String(path18).split("?")[0].split("/").filter(Boolean);
+  if (INDEXABLE_METROS.has(city)) return true;
+  if (vertical === "movies" && MOVIE_CITY_CONTENT[city]) return true;
+  return false;
+}
+var INDEXABLE_METROS, TEMPLATED_CITY_VERTICALS;
+var init_indexPolicy = __esm({
+  "server/seo/indexPolicy.ts"() {
+    init_movieCities();
+    INDEXABLE_METROS = /* @__PURE__ */ new Set([
+      "mumbai",
+      "delhi",
+      "bengaluru",
+      "hyderabad",
+      "chennai",
+      "kolkata",
+      "pune",
+      "ahmedabad",
+      "jaipur",
+      "lucknow",
+      "indore",
+      "bhopal",
+      "chandigarh",
+      "surat",
+      "nagpur",
+      "kochi",
+      "noida",
+      "gurugram",
+      "goa"
+    ]);
+    TEMPLATED_CITY_VERTICALS = /* @__PURE__ */ new Set(["hotels", "cabs", "grocery", "food", "movies"]);
+  }
+});
+
 // server/seo/data.ts
 function seoVerticals() {
   return VERTICALS2.map((v) => ({ slug: v.slug, label: v.label, title: v.title, description: v.description, h1: v.h1, intro: v.intro, faqs: v.faqs }));
@@ -59647,8 +59768,8 @@ function verticalBySlug(slug5) {
 function routeSlug(a, b, noun) {
   return `${a}-to-${b}-${noun}`;
 }
-function listSeoPaths() {
-  const nearbyPaths = listNearbyPaths();
+function listSeoPaths(includeThin = false) {
+  const nearbyPaths = listNearbyPaths().filter((p) => !isKnownThinNearbyPath(p));
   const guidePaths = GUIDE_SLUGS.map((s) => `/guides/${s}`);
   const paths = [
     ...nearbyPaths,
@@ -59683,7 +59804,8 @@ function listSeoPaths() {
   }
   for (const [a, b] of FLIGHT_ROUTES) paths.push(`/flights/${routeSlug(a, b, "flights")}`);
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, "bus")}`);
-  return [...new Set(paths)];
+  const unique = [...new Set(paths)];
+  return includeThin ? unique : unique.filter(isIndexableCityPage);
 }
 function resolveAppRoute(path18) {
   const seg = path18.replace(/\/+$/, "").split("/").filter(Boolean);
@@ -60051,6 +60173,7 @@ var init_data = __esm({
     init_movieCities();
     init_seo();
     init_brandPage();
+    init_indexPolicy();
     SEO_HOST = "https://www.try1second.com";
     CITIES = INDIAN_CITIES.map((c) => ({ slug: c.slug, name: c.name }));
     TOP_CITIES = ["mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "pune", "ahmedabad"];
@@ -60612,6 +60735,7 @@ __export(sitemap_exports, {
   bucketSitemapResponse: () => bucketSitemapResponse,
   productSitemapPaths: () => productSitemapPaths,
   productSlug: () => productSlug,
+  rebuildSitemapNow: () => rebuildSitemapNow,
   registerSeoRoutes: () => registerSeoRoutes,
   robotsText: () => robotsText,
   sitemapBucketOf: () => sitemapBucketOf,
@@ -60778,6 +60902,13 @@ async function bucketSitemapResponse(bucket) {
   const extras = await productSitemapPaths().catch(() => []);
   const split = splitBuckets([...listSeoPaths(), ...extras]);
   return sitemapXml(split[bucket]);
+}
+async function rebuildSitemapNow() {
+  if (warming) return;
+  warming = buildWarm().catch(() => warm?.xml || "").finally(() => {
+    warming = null;
+  });
+  await warming;
 }
 function warmSitemapSoon() {
   if (warm || warming) return;
@@ -61162,7 +61293,7 @@ function knownPaths() {
   if (knownCache && Date.now() - knownCache.at < 5 * 6e4) return knownCache.set;
   const set = /* @__PURE__ */ new Set([...APP_PATHS, ...Object.keys(LEGAL_ALIASES)]);
   try {
-    for (const p of listSeoPaths()) set.add(String(p).replace(/\/+$/, "") || "/");
+    for (const p of listSeoPaths(true)) set.add(String(p).replace(/\/+$/, "") || "/");
   } catch {
   }
   knownCache = { set, at: Date.now() };
@@ -62707,6 +62838,7 @@ function prerenderBody(path18) {
 function enhanceHtml(html, path18) {
   const page = resolveSeoPage(path18);
   const isNoindex = /^\/(admin|merchant|api)/.test(path18);
+  const thinCity = !isNoindex && !isIndexableCityPage(path18.split("?")[0].replace(/\/+$/, "") || "/");
   const title = page ? page.title : DEFAULT_TITLE;
   const desc = page ? page.description : DEFAULT_DESC;
   const canonical = `${SEO_HOST}${(path18 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
@@ -62729,7 +62861,7 @@ function enhanceHtml(html, path18) {
     `<meta property="og:url" content="${esc8(canonical)}" />`,
     `<meta name="twitter:title" content="${esc8(title)}" />`,
     `<meta name="twitter:description" content="${esc8(desc)}" />`,
-    `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />`,
+    `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : thinCity ? "noindex, follow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />`,
     `<meta name="geo.region" content="IN" />`,
     `<meta name="geo.placename" content="India" />`,
     `<meta property="og:site_name" content="Try1Second" />`,
@@ -62758,6 +62890,7 @@ var esc8, DEFAULT_TITLE, DEFAULT_DESC;
 var init_render = __esm({
   "server/seo/render.ts"() {
     init_data();
+    init_indexPolicy();
     init_agentReady();
     esc8 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     DEFAULT_TITLE = "Try1Second \u2014 One Second Is All It Takes to Find the Lowest Price";
@@ -63198,6 +63331,13 @@ async function createApp() {
   }
   void Promise.resolve().then(() => (init_sitemap(), sitemap_exports)).then((m) => m.warmSitemapSoon()).catch(() => {
   });
+  setTimeout(() => {
+    void Promise.resolve().then(() => (init_seo(), seo_exports)).then((n) => n.startNearbyThinAudit(() => {
+      void Promise.resolve().then(() => (init_sitemap(), sitemap_exports)).then((m) => m.rebuildSitemapNow?.()).catch(() => {
+      });
+    })).catch(() => {
+    });
+  }, 3 * 6e4).unref?.();
   app.get(/^\/google[0-9a-f]+\.html$/i, (req, res) => {
     const name = import_path9.default.basename(req.path);
     const candidates = [import_path9.default.join(dist, name), import_path9.default.join(process.cwd(), "public", name)];
@@ -63229,6 +63369,7 @@ async function createApp() {
       }
       const origin2 = `https://${req.headers.host || "www.try1second.com"}`;
       const html = await renderNearbyHtml2(page, origin2);
+      if (html.includes('<meta name="robots" content="noindex, follow">')) res.setHeader("X-Robots-Tag", "noindex, follow");
       res.setHeader("Cache-Control", "public, max-age=3600");
       res.status(200).type("html").send(html);
     });
@@ -63433,6 +63574,8 @@ async function createApp() {
         return;
       }
       const cacheKey2 = cleanPath;
+      const { isIndexableCityPage: isIndexableCityPage2 } = await Promise.resolve().then(() => (init_indexPolicy(), indexPolicy_exports));
+      if (!isIndexableCityPage2(cleanPath)) res.setHeader("X-Robots-Tag", "noindex, follow");
       const cachedShell = SHELL_TTL_MS > 0 ? shellCache.get(cacheKey2) : void 0;
       if (cachedShell && Date.now() - cachedShell.at < SHELL_TTL_MS) {
         res.setHeader("X-T1S-Shell", "hit");

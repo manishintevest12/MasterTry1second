@@ -281,6 +281,13 @@ export async function createApp(): Promise<express.Express> {
 
   // Warm the sitemap at boot so the first crawler hit is instant (owner 28 Oct).
   void import('./seo/sitemap').then((m) => m.warmSitemapSoon()).catch(() => {});
+  // OWNER 16 Nov: learn which /nearby city pages are too thin to index, a few minutes after boot (so startup and
+  // the first real requests are never slowed), then rebuild the sitemap once without them.
+  setTimeout(() => {
+    void import('./nearby/seo').then((n) => n.startNearbyThinAudit(() => {
+      void import('./seo/sitemap').then((m) => m.rebuildSitemapNow?.()).catch(() => {});
+    })).catch(() => {});
+  }, 3 * 60_000).unref?.();
 
   // GOOGLE SEARCH CONSOLE VERIFICATION (owner 28 Oct): the token file must be served
   // verbatim. The SPA catch-all treats any *.html path as a shell and would hand back
@@ -323,6 +330,9 @@ export async function createApp(): Promise<express.Express> {
       if (!page) { res.status(404).type('text/plain').send('Nearby page not found'); return; }
       const origin = `https://${(req.headers.host as string) || 'www.try1second.com'}`;
       const html = await renderNearbyHtml(page, origin);
+      // The renderer's verdict is in the markup; mirror it as a header so a crawler that reads headers first
+      // (and any cache in between) sees the same instruction. Thin city pages stay reachable, never indexed.
+      if (html.includes('<meta name="robots" content="noindex, follow">')) res.setHeader('X-Robots-Tag', 'noindex, follow');
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.status(200).type('html').send(html);
     });
@@ -595,6 +605,10 @@ export async function createApp(): Promise<express.Express> {
         return;
       }
       const cacheKey = cleanPath;
+      // OWNER 16 Nov: the same verdict the <meta robots> carries, as a header, for crawlers that read headers first
+      // and for any cache in between. Thin templated city pages stay reachable but are never indexed.
+      const { isIndexableCityPage } = await import('./seo/indexPolicy');
+      if (!isIndexableCityPage(cleanPath)) res.setHeader('X-Robots-Tag', 'noindex, follow');
       const cachedShell = SHELL_TTL_MS > 0 ? shellCache.get(cacheKey) : undefined;
       if (cachedShell && Date.now() - cachedShell.at < SHELL_TTL_MS) {
         res.setHeader('X-T1S-Shell', 'hit');
