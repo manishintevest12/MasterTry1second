@@ -438,6 +438,44 @@ class _PageState extends State<_Page> {
         ),
       ],
 
+      // ---- series (OWNER 16 Nov: "reno 16 dala tho result sirf reno 16 ka aaya, pura oppo reno 16 aana chaiye")
+      // Every configuration of the model we hold a verified price for, each with its own cheapest price, so the
+      // range is visible without scrolling into "related".
+      if (page.series.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        SectionTitle('${(page.seriesLabel.isEmpty ? 'MODEL' : page.seriesLabel.toUpperCase())} SERIES · ${page.series.length} CONFIGURATIONS',
+            dot: T1SColors.slate400),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(children: [
+            for (final v in page.series)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: GestureDetector(
+                  onTap: () => widget.onSearch('${v.name} ${v.config}'.trim()),
+                  child: Box(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                    child: Row(children: [
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(v.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: tx(context, 11, w: FontWeight.w800)),
+                          Text(v.config.isEmpty ? 'configuration not stated' : v.config,
+                              style: tx(context, 9, color: muted(context))),
+                          Text('${v.sellerCount} seller${v.sellerCount == 1 ? '' : 's'} priced',
+                              style: tx(context, 9, color: muted(context))),
+                        ]),
+                      ),
+                      Text(inrAmount(v.cheapest), style: tx(context, 12, w: FontWeight.w900, mono: true)),
+                      Icon(Icons.chevron_right, size: 16, color: muted(context)),
+                    ]),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+      ],
+
       // ---- related ----
       if (page.related.isNotEmpty) ...[
         const SizedBox(height: 16),

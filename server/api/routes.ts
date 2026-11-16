@@ -2657,6 +2657,21 @@ apiRouter.post('/product-page', async (req, res) => {
   // pendingRefresh, and the page's poll (600ms later) brings the rest while the loader
   // is still on screen — never an empty shell. Measured event-loop contention was pushing
   // a 750ms cap out to ~865ms, so the ceiling is set with that headroom.
+  // MODEL SERIES (owner 16 Nov: typing "reno 16" must show the whole Oppo Reno 16 range, not one row).
+  // Started here so it runs WHILE the sellers are being searched: the page pays no extra latency for it, and a
+  // series that misses the cap is simply absent rather than blocking the answer.
+  const seriesPromise: Promise<any> = (async () => {
+    if (!lensQuery) return null;
+    try {
+      const { buildSeries } = await import('./productSeries');
+      return await Promise.race([
+        buildSeries(lensQuery, { limit: 800 }),
+        new Promise((res) => setTimeout(() => res(null), 900)),
+      ]);
+    } catch { return null; }
+  })();
+  seriesPromise.catch(() => {});
+  const series = await seriesPromise.catch(() => null);
   const FIRST_PAINT_MS = 550;
   const pollPass = req.body?.paint2 === true;
   const cold = { coldDeadlineMs: pollPass ? 2_400 : FIRST_PAINT_MS } as Partial<SearchInput>;
@@ -3121,7 +3136,7 @@ apiRouter.post('/product-page', async (req, res) => {
     spellingCorrected: Boolean(spellingFix?.corrected),
     spellingFixes: spellingFix?.fixes || [],
     staleSeconds,
-    cheapest, offers, related, history, historyEntity, deal, pageVsCheapest,
+    cheapest, offers, related, series, history, historyEntity, deal, pageVsCheapest,
     servedFrom: responses[0]?.state?.servedFrom,
     // Honest signal for clients: a refresh is still running, so a re-poll can return rows.
     // A capped-out answer IS pending by definition: the page must keep polling, otherwise it

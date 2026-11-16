@@ -1106,6 +1106,10 @@ class ProductPage {
   final List<String> images;
   final List<ProductOffer> offers;
   final List<ProductOffer> related;
+  /// OWNER 16 Nov ("reno 16 dala tho sirf reno 16 ka aaya"): the whole model range, each configuration with its
+  /// own cheapest verified price.
+  final List<SeriesVariant> series;
+  final String seriesLabel;
   final List<HistoryPoint> history;
   final String verdict; // great | good | fair | wait | unknown
   final int score;
@@ -1125,6 +1129,8 @@ class ProductPage {
     this.images = const [],
     this.offers = const [],
     this.related = const [],
+    this.series = const [],
+    this.seriesLabel = '',
     this.history = const [],
     this.verdict = 'unknown',
     this.score = 0,
@@ -1136,6 +1142,23 @@ class ProductPage {
     this.average,
     this.breakup = const [],
   });
+}
+
+/// One configuration of a model range: "Reno 16 5G", "8 GB / 256 GB", cheapest verified price.
+class SeriesVariant {
+  final String key;
+  final String name;
+  final String config;
+  final num cheapest;
+  final int sellerCount;
+  const SeriesVariant({required this.key, required this.name, this.config = '', this.cheapest = 0, this.sellerCount = 0});
+  factory SeriesVariant.fromJson(Map<String, dynamic> j) => SeriesVariant(
+    key: '${j['key'] ?? ''}',
+    name: '${j['name'] ?? ''}',
+    config: '${j['config'] ?? ''}',
+    cheapest: (j['cheapest'] is num) ? j['cheapest'] as num : 0,
+    sellerCount: (j['sellerCount'] is num) ? (j['sellerCount'] as num).toInt() : 0,
+  );
 }
 
 /// One line of the Deal Score Breakup (web parity: label + pts/max).
@@ -1838,6 +1861,11 @@ class Try1SecondApi {
         for (final o in (res['related'] as List? ?? const []))
           if (o is Map<String, dynamic>) ProductOffer.fromJson(o)
       ],
+      series: [
+        for (final v in ((res['series'] is Map ? (res['series'] as Map)['variants'] : null) as List? ?? const []))
+          if (v is Map<String, dynamic>) SeriesVariant.fromJson(v)
+      ],
+      seriesLabel: (res['series'] is Map) ? '${(res['series'] as Map)['label'] ?? ''}' : '',
       history: [
         for (final p in (res['history'] as List? ?? const []))
           if (p is Map<String, dynamic>)

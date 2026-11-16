@@ -32,6 +32,8 @@ interface PageData {
   originalQuery?: string; spellingCorrected?: boolean;
   product?: { title: string | null; merchant: string; domain: string; pagePrice: number | null; image: string | null };
   images?: string[]; cheapest?: Offer | null; offers?: Offer[]; related?: Offer[];
+  /** OWNER 16 Nov: the whole model range ("reno 16" -> Reno 16 / 16 5G / 16c, each configuration priced). */
+  series?: { label: string; total: number; variants: Array<{ key: string; name: string; config: string; cheapest: number; sellerCount: number }> } | null;
   history?: Array<{ price: number; capturedAt: string }>; deal?: Deal;
   pageVsCheapest?: { pagePrice: number; cheapest: number; saving: number } | null;
 }
@@ -406,6 +408,29 @@ export const ProductPageView: React.FC = () => {
             </div>
             <HistoryChart points={hist} total={(data.history || []).length} current={current} />
           </div>
+
+          {/* ---------- series (OWNER 16 Nov: "reno 16" must show the whole range) ---------- */}
+          {data.series && data.series.variants.length > 0 && (
+            <div>
+              <div className="flex items-baseline justify-between mb-3">
+                <h2 className="text-base font-black text-slate-900">{data.series.label} series</h2>
+                <span className="text-[11px] font-bold text-slate-400">{data.series.total} variants with a verified price</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {data.series.variants.map((v) => (
+                  <button key={v.key} onClick={() => openProductPage({ query: `${v.name} ${v.config}`.trim() })}
+                    className="text-left bg-white rounded-2xl border border-slate-200 hover:border-red-300 hover:shadow-md transition-all p-3 cursor-pointer flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-black text-slate-800 truncate">{v.name}</p>
+                      <p className="text-[11px] text-slate-500">{v.config || 'configuration not stated'}</p>
+                      <p className="text-[11px] text-slate-400">{v.sellerCount} seller{v.sellerCount === 1 ? '' : 's'} priced</p>
+                    </div>
+                    <p className="text-sm font-black text-slate-900 whitespace-nowrap">{inr(v.cheapest)}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ---------- related ---------- */}
           {(data.related || []).length > 0 && (

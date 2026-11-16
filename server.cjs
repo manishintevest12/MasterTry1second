@@ -19805,12 +19805,12 @@ function parseDominosMenu(htmlEscaped) {
 function dominosItems(products, source, query) {
   const q3 = query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   if (!q3) return [];
-  const words2 = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "pizza", "order", "buy", "price"].includes(w));
+  const words3 = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "pizza", "order", "buy", "price"].includes(w));
   const pizzaish = /pizza|margherita|farmhouse|paneer|corn|cheese|garlic|bread|taco|burger|chicken|veg|cake|dessert|sides|wings|lava|parcel|meltz|taco/i.test(q3);
   const scored = products.map((p) => {
     const hay = `${p.displayName} ${p.family} ${p.description}`.toLowerCase();
     let score = 0;
-    for (const w of words2) if (hay.includes(w)) score += 1;
+    for (const w of words3) if (hay.includes(w)) score += 1;
     if (hay.includes(q3)) score += 3;
     return { p, score };
   }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.p.currentPrice - b.p.currentPrice);
@@ -19882,11 +19882,11 @@ function pizzaHutItems(rawBody, source, query, pageUrl) {
     }
   }
   const q3 = query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-  const words2 = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "order", "buy", "price"].includes(w));
+  const words3 = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "order", "buy", "price"].includes(w));
   const scored = products.map((p) => {
     const hay = `${p.title} ${p.desc || ""} ${p.type || ""} ${sizeLabel(p)}`.toLowerCase();
     let score = 0;
-    for (const w of words2) if (hay.includes(w)) score += 1;
+    for (const w of words3) if (hay.includes(w)) score += 1;
     if (q3 && hay.includes(q3)) score += 3;
     if (p.popular) score += 0.5;
     return { p, score };
@@ -31586,9 +31586,9 @@ __export(gromo_exports, {
 function keyVariants(key) {
   const raw = String(key || "").toLowerCase();
   const compact = raw.replace(/[^a-z0-9]/g, "");
-  const words2 = raw.replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  const words3 = raw.replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
   const out = /* @__PURE__ */ new Set([compact]);
-  if (words2[0]) out.add(words2[0].replace(/[^a-z0-9]/g, ""));
+  if (words3[0]) out.add(words3[0].replace(/[^a-z0-9]/g, ""));
   for (const suffix of ["creditcard", "creditcards", "card", "cards", "bank", "loan", "insurance"]) {
     if (compact.endsWith(suffix) && compact.length > suffix.length + 2) {
       out.add(compact.slice(0, -suffix.length));
@@ -34836,8 +34836,8 @@ function accessoryScope(title) {
 function declaredTypes(title) {
   const t = ` ${primarySegment(title).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
   const out = /* @__PURE__ */ new Set();
-  for (const [type, words2] of TYPE_WORDS) {
-    if (words2.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))) out.add(type);
+  for (const [type, words3] of TYPE_WORDS) {
+    if (words3.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))) out.add(type);
   }
   return out;
 }
@@ -39739,8 +39739,8 @@ function bestUnitPricesPerStore(name, offers) {
   let bestScore = -1;
   const scored = [];
   for (const [key, rows] of groups) {
-    const words2 = new Set(key.split(" "));
-    const match = want.filter((t) => words2.has(t)).length;
+    const words3 = new Set(key.split(" "));
+    const match = want.filter((t) => words3.has(t)).length;
     if (match === 0 && want.length > 0) continue;
     const sellers = new Set(rows.map((r) => r.seller)).size;
     const min = Math.min(...rows.filter((r) => r.price > 0).map((r) => r.price), Infinity);
@@ -39908,15 +39908,15 @@ function sizeTokens(text) {
   return Array.from(new Set(out)).sort();
 }
 function ccCardKey(title) {
-  const words2 = String(title || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !CC_GENERIC.has(w));
-  return words2.length ? [...new Set(words2)].sort().join(" ") : null;
+  const words3 = String(title || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !CC_GENERIC.has(w));
+  return words3.length ? [...new Set(words3)].sort().join(" ") : null;
 }
 function productSig(title, brand) {
   const t = String(title || "").toLowerCase();
   const sizes = sizeTokens(t).join(",");
-  const words2 = t.replace(UNIT_RE, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !NOISE2.has(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
+  const words3 = t.replace(UNIT_RE, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !NOISE2.has(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
   const b = String(brand || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const uniq = Array.from(new Set(words2));
+  const uniq = Array.from(new Set(words3));
   if (uniq.length < 2) return null;
   return { brand: b, words: uniq, sizes };
 }
@@ -42693,8 +42693,8 @@ function titleFromSlug(u) {
   const segs = decodeURIComponent(u.pathname).split("/").filter(Boolean);
   let best = "";
   for (const seg of segs) {
-    const words2 = seg.replace(/\.(html?|php|aspx?)$/i, "").split(/[-_+]+/).filter(Boolean);
-    const good = words2.filter((w) => !JUNK_SLUG.test(w) && !/^\d{8,}$/.test(w));
+    const words3 = seg.replace(/\.(html?|php|aspx?)$/i, "").split(/[-_+]+/).filter(Boolean);
+    const good = words3.filter((w) => !JUNK_SLUG.test(w) && !/^\d{8,}$/.test(w));
     if (good.length >= 2 && good.join(" ").length > best.length) best = good.join(" ");
   }
   best = best.replace(/\s+/g, " ").trim();
@@ -42731,8 +42731,8 @@ function searchableTitle(t) {
   const paren = t.match(/\(([^)]{2,40})\)/);
   const noParen = t.replace(/\([^)]*\)/g, " ");
   let head3 = noParen.split(/\s*[,|]\s*|\s+-\s+|\s+with\s+/i)[0].replace(/\/(\d+)\b/g, "").replace(/\s+/g, " ").trim();
-  const words2 = head3.split(" ");
-  if (words2.length > 8) head3 = words2.slice(0, 8).join(" ");
+  const words3 = head3.split(" ");
+  if (words3.length > 8) head3 = words3.slice(0, 8).join(" ");
   const cap2 = paren && /\d+\s?(gb|tb|ml|l|kg|g)\b/i.test(paren[1]) ? ` ${paren[1].match(/\d+\s?(gb|tb|ml|l|kg|g)\b/i)[0].replace(/\s+/, "")}` : "";
   return (head3 + cap2).trim() || t.slice(0, 80);
 }
@@ -42935,8 +42935,8 @@ function detectCategoryVertical(text) {
 }
 function cleanCategoryQuery(raw) {
   const cleaned = String(raw || "").replace(QUESTION_NOISE, " ").replace(PLATFORM, " ").replace(/[?!.,;:"']+/g, " ").replace(/\s+/g, " ").trim();
-  const words2 = cleaned.split(" ").filter(Boolean).map((w) => SPELLING[w.toLowerCase()] || w);
-  return words2.join(" ").trim();
+  const words3 = cleaned.split(" ").filter(Boolean).map((w) => SPELLING[w.toLowerCase()] || w);
+  return words3.join(" ").trim();
 }
 var GROCERY_TERMS, FOOD_TERMS, QUESTION_NOISE, PLATFORM, SPELLING, GROCERY_RE, FOOD_RE, QUANTITY_RE;
 var init_verticalLexicon = __esm({
@@ -49734,6 +49734,168 @@ var init_aggregator = __esm({
   }
 });
 
+// server/api/productSeries.ts
+var productSeries_exports = {};
+__export(productSeries_exports, {
+  buildSeries: () => buildSeries,
+  queryIdentity: () => queryIdentity,
+  variantOf: () => variantOf
+});
+function words2(s) {
+  return String(s || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+function queryIdentity(query) {
+  const out = [];
+  for (const w of words2(query)) {
+    if (w.length < 2 || NOISE4.has(w)) continue;
+    if (/^\d+\s*(gb|tb)$/.test(w) || /^(gb|tb)$/.test(w)) continue;
+    out.push(w);
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+function capacities(title) {
+  const out = /* @__PURE__ */ new Set();
+  for (const m of String(title || "").matchAll(/\b(\d{2,4})\s?(gb|tb)\b/gi)) out.add(`${m[1]}${m[2].toLowerCase()}`);
+  return [...out];
+}
+function modelName(title) {
+  const head3 = String(title || "").split(/[,(|–-]/)[0].replace(/\b\d{2,4}\s?(gb|tb)\b/gi, " ");
+  const keep = [];
+  for (const w of words2(head3)) {
+    if (NOISE4.has(w) || /^\d{2,4}(gb|tb)$/.test(w)) continue;
+    if (COLOUR.test(w)) continue;
+    keep.push(w);
+  }
+  const name = keep.join(" ").trim().replace(/\b5g\b/gi, "5g");
+  return name || head3.trim().slice(0, 48);
+}
+function variantOf(title) {
+  const name = modelName(title);
+  const caps = capacities(title).sort();
+  const config = caps.length >= 2 ? `${caps[0].replace("gb", " GB").replace("tb", " TB")} / ${caps[1].replace("gb", " GB").replace("tb", " TB")}` : caps.length === 1 ? caps[0].replace("gb", " GB").replace("tb", " TB") : "";
+  const pretty = name.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\b5G\b/g, "5G");
+  return { key: `${name}|${caps.join("+")}`, name: pretty, config };
+}
+function hasAllWords(title, identity) {
+  const t = String(title || "").toLowerCase();
+  return identity.every((w) => new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(t));
+}
+async function rowsFor(identity, limit) {
+  const store7 = getStore();
+  if (store7.kind !== "mysql") return [];
+  const likeWords = identity.filter((w) => w.length >= 3).slice(0, 2);
+  if (!likeWords.length) return [];
+  let where = "vertical IN ('ecommerce','grocery') AND validation_status != 'INVALID' AND COALESCE(effective_price, mandatory_total) > 0 AND fetched_at > NOW() - INTERVAL 21 DAY";
+  const params = [];
+  for (const w of likeWords) {
+    where += " AND title LIKE ?";
+    params.push(`%${w}%`);
+  }
+  params.push(limit);
+  return store7.query(
+    `SELECT title, COALESCE(vendor, seller) AS seller, COALESCE(effective_price, mandatory_total) AS price, seller_url AS url
+       FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT ?`,
+    params
+  );
+}
+async function buildSeries(query, opts = {}) {
+  const identity = queryIdentity(query);
+  if (!identity.length) return null;
+  try {
+    const rows = await rowsFor(identity, opts.limit ?? 800);
+    const byKey = /* @__PURE__ */ new Map();
+    for (const r of rows) {
+      const title = String(r.title || "").trim();
+      const price2 = Number(r.price) || 0;
+      const seller = String(r.seller || "").trim();
+      if (!title || !seller || price2 <= 0) continue;
+      if (!hasAllWords(title, identity)) continue;
+      const v = variantOf(title);
+      const existing = byKey.get(v.key);
+      if (existing) {
+        const prev = existing.sellers.find((s) => s.seller.toLowerCase() === seller.toLowerCase());
+        if (!prev) existing.sellers.push({ seller, price: price2, url: r.url || null });
+        else if (price2 < prev.price) {
+          prev.price = price2;
+          prev.url = r.url || prev.url;
+        }
+        continue;
+      }
+      byKey.set(v.key, { key: v.key, name: v.name, config: v.config, cheapest: price2, high: price2, sellers: [{ seller, price: price2, url: r.url || null }], sellerCount: 1, image: null });
+    }
+    const variants = [...byKey.values()].map((v) => {
+      v.sellers.sort((a, b) => a.price - b.price);
+      v.cheapest = v.sellers[0].price;
+      v.high = v.sellers[v.sellers.length - 1].price;
+      v.sellerCount = v.sellers.length;
+      return v;
+    });
+    if (variants.length < 2) return null;
+    variants.sort((a, b) => b.sellerCount - a.sellerCount || a.cheapest - b.cheapest);
+    const label = identity.join(" ").replace(/\b\w/g, (c) => c.toUpperCase());
+    return { label, variants: variants.slice(0, 12), total: variants.length };
+  } catch (e2) {
+    log.debug("Api", "series build failed (page keeps the offers column)", { error: String(e2?.message || e2).slice(0, 100) });
+    return null;
+  }
+}
+var NOISE4, COLOUR;
+var init_productSeries = __esm({
+  "server/api/productSeries.ts"() {
+    init_db();
+    init_logger();
+    NOISE4 = /* @__PURE__ */ new Set([
+      "the",
+      "and",
+      "with",
+      "for",
+      "from",
+      "buy",
+      "best",
+      "new",
+      "price",
+      "prices",
+      "india",
+      "online",
+      "offer",
+      "offers",
+      "sale",
+      "deal",
+      "deals",
+      "free",
+      "combo",
+      "bundle",
+      "launched",
+      "latest",
+      "mobile",
+      "mobiles",
+      "phone",
+      "phones",
+      "smartphone",
+      "smartphones",
+      "cellphone",
+      "cell",
+      "gb",
+      "tb",
+      "ram",
+      "rom",
+      "storage",
+      "internal",
+      "memory",
+      "inch",
+      "display",
+      "camera",
+      "battery",
+      "edition",
+      "series",
+      "box",
+      "pack"
+    ]);
+    COLOUR = /\b(starry|twilight|violet|purple|lavender|white|black|blue|green|gold|silver|grey|gray|red|pink|orange|yellow|brown|titan|titanium|midnight|sierra|coral|mint|cream|aqua|marble|graphite|obsidian|sapphire|pearl|ice|glacier|phantom|mystic|chrome|bronze|copper|cyan|teal|indigo|beige|opal|jade|jazz|spark|shimmer|sunset|dawn|desert|forest|ocean|neon)\b/;
+  }
+});
+
 // server/catalogue/productCatalogue.ts
 var productCatalogue_exports = {};
 __export(productCatalogue_exports, {
@@ -52505,7 +52667,7 @@ var init_routes = __esm({
         console.error(JSON.stringify({ dbg: "scrape/live runSearch", q: input.query, v: String(input.vertical), n: response.results.length, servedFrom: response.state.servedFrom }));
       }
       const STOP5 = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
-      const words2 = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP5.has(w));
+      const words3 = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP5.has(w));
       const stem = (w) => w.replace(/(ies|es|s)$/, "");
       const SYNONYM = {
         television: ["tv", "telly"],
@@ -52527,7 +52689,7 @@ var init_routes = __esm({
         smartphone: ["mobile", "phone"],
         powerbank: ["power"]
       };
-      const stems = words2.map(stem);
+      const stems = words3.map(stem);
       const stemMatches = (t, w) => {
         if (new RegExp(`\\b${w}`).test(t)) return true;
         for (const syn of SYNONYM[w] || []) {
@@ -52854,6 +53016,21 @@ var init_routes = __esm({
         const keep = toks2.filter((t) => !caps.has(t.toLowerCase().replace(/\s/g, ""))).slice(0, 4).join(" ");
         return keep && keep !== lensQuery ? keep : "";
       })();
+      const seriesPromise = (async () => {
+        if (!lensQuery) return null;
+        try {
+          const { buildSeries: buildSeries2 } = await Promise.resolve().then(() => (init_productSeries(), productSeries_exports));
+          return await Promise.race([
+            buildSeries2(lensQuery, { limit: 800 }),
+            new Promise((res2) => setTimeout(() => res2(null), 900))
+          ]);
+        } catch {
+          return null;
+        }
+      })();
+      seriesPromise.catch(() => {
+      });
+      const series = await seriesPromise.catch(() => null);
       const FIRST_PAINT_MS = 550;
       const pollPass = req.body?.paint2 === true;
       const cold = { coldDeadlineMs: pollPass ? 2400 : FIRST_PAINT_MS };
@@ -53221,6 +53398,7 @@ var init_routes = __esm({
         cheapest,
         offers,
         related,
+        series,
         history,
         historyEntity,
         deal,
@@ -60756,8 +60934,8 @@ function resolveSeoPage(path18) {
   if (aliasSeg.length && ALIAS[aliasSeg[0]]) clean4 = "/" + [ALIAS[aliasSeg[0]], ...aliasSeg.slice(1)].join("/");
   const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(clean4);
   if (prod) {
-    const words2 = prod[1].split("-").filter((w) => w.length > 1);
-    const label = words2.map((w) => /^[0-9]+$/.test(w) ? w : w[0].toUpperCase() + w.slice(1)).join(" ");
+    const words3 = prod[1].split("-").filter((w) => w.length > 1);
+    const label = words3.map((w) => /^[0-9]+$/.test(w) ? w : w[0].toUpperCase() + w.slice(1)).join(" ");
     return {
       path: clean4,
       title: `${label} \u2014 Live Prices From Every Store | Try1Second`,
