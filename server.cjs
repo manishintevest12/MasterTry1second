@@ -3493,12 +3493,12 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start = -1, inStr = false, esc9 = false;
+  let depth = 0, start = -1, inStr = false, esc10 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc9) esc9 = false;
-      else if (ch === "\\") esc9 = true;
+      if (esc10) esc10 = false;
+      else if (ch === "\\") esc10 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -3613,12 +3613,12 @@ function parseMyntra(html, source, pageUrl) {
     const start = /window\.__myx\s*=\s*\{/.exec(html);
     if (start) {
       const from = start.index + start[0].length - 1;
-      let depth = 0, inStr = false, esc9 = false, end = -1;
+      let depth = 0, inStr = false, esc10 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
         if (inStr) {
-          if (esc9) esc9 = false;
-          else if (ch === "\\") esc9 = true;
+          if (esc10) esc10 = false;
+          else if (ch === "\\") esc10 = true;
           else if (ch === '"') inStr = false;
           continue;
         }
@@ -4508,12 +4508,12 @@ function extractRelianceState(html) {
   if (eq < 0) return null;
   const s = html.slice(eq + 1).trimStart();
   if (s[0] !== "{") return null;
-  let depth = 0, inStr = false, esc9 = false, end = -1;
+  let depth = 0, inStr = false, esc10 = false, end = -1;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
-      if (esc9) esc9 = false;
-      else if (ch === "\\") esc9 = true;
+      if (esc10) esc10 = false;
+      else if (ch === "\\") esc10 = true;
       else if (ch === '"') inStr = false;
     } else if (ch === '"') inStr = true;
     else if (ch === "{") depth++;
@@ -5731,8 +5731,8 @@ async function fetchRateFrom(source) {
     const r = await cffiFetch(source, { timeoutMs: 12e3, headers: { Accept: "application/json" } });
     if (r.status !== 200) return null;
     const d = JSON.parse(r.body);
-    const inr3 = Number(d?.rates?.INR);
-    return Number.isFinite(inr3) && inr3 > 20 && inr3 < 200 ? inr3 : null;
+    const inr4 = Number(d?.rates?.INR);
+    return Number.isFinite(inr4) && inr4 > 20 && inr4 < 200 ? inr4 : null;
   } catch {
     return null;
   }
@@ -6345,12 +6345,12 @@ function extractInitialState(body) {
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
-  let depth = 0, inStr = false, esc9 = false, end = -1;
+  let depth = 0, inStr = false, esc10 = false, end = -1;
   for (; i < body.length; i++) {
     const c = body[i];
     if (inStr) {
-      if (esc9) esc9 = false;
-      else if (c === "\\") esc9 = true;
+      if (esc10) esc10 = false;
+      else if (c === "\\") esc10 = true;
       else if (c === '"') inStr = false;
       continue;
     }
@@ -6481,12 +6481,12 @@ function parseMmtHotelLanding(body) {
       continue;
     }
     const objStart = j;
-    let depth = 0, inStr = false, esc9 = false, end = -1;
+    let depth = 0, inStr = false, esc10 = false, end = -1;
     for (; j < body.length; j++) {
       const c = body[j];
       if (inStr) {
-        if (esc9) esc9 = false;
-        else if (c === "\\") esc9 = true;
+        if (esc10) esc10 = false;
+        else if (c === "\\") esc10 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -12352,15 +12352,15 @@ function extractAaDataSchedule(pageHtml) {
   if (i < 0) return null;
   const start = pageHtml.indexOf("{", i + 20);
   if (start < 0) return null;
-  let depth = 0, end = -1, inStr = false, esc9 = false;
+  let depth = 0, end = -1, inStr = false, esc10 = false;
   for (let k = start; k < pageHtml.length; k++) {
     const c = pageHtml[k];
-    if (esc9) {
-      esc9 = false;
+    if (esc10) {
+      esc10 = false;
       continue;
     }
     if (c === "\\") {
-      esc9 = true;
+      esc10 = true;
       continue;
     }
     if (c === '"') {
@@ -20725,8 +20725,8 @@ function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
   const norm10 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
-  const esc9 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(`^${esc9}\\b`);
+  const esc10 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc10}\\b`);
   return cities.find((c) => norm10(c.name) === t) || cities.find((c) => rx.test(norm10(c.name))) || cities.find((c) => norm10(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
@@ -21621,11 +21621,11 @@ function uberIndiaCityFor(place) {
   const t = canonCity(place);
   const hit = BY_CANON.get(t);
   if (hit) return hit;
-  const esc9 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc10 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let best = null;
   let bestLen = 0;
   for (const [k, v] of BY_CANON) {
-    if (new RegExp(`\\b${esc9(k)}\\b`).test(t) || new RegExp(`\\b${esc9(t)}\\b`).test(k)) {
+    if (new RegExp(`\\b${esc10(k)}\\b`).test(t) || new RegExp(`\\b${esc10(t)}\\b`).test(k)) {
       if (k.length > bestLen) {
         best = v;
         bestLen = k.length;
@@ -28036,12 +28036,12 @@ function ixigoFlightText(html) {
 function parseObjectAt(text, start) {
   let depth = 0;
   let inStr = false;
-  let esc9 = false;
+  let esc10 = false;
   for (let i = start; i < text.length; i += 1) {
     const ch = text[i];
     if (inStr) {
-      if (esc9) esc9 = false;
-      else if (ch === "\\") esc9 = true;
+      if (esc10) esc10 = false;
+      else if (ch === "\\") esc10 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -41215,7 +41215,7 @@ function errorPage(title, message) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc2(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc2(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc2(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
 }
 async function adBlockHtml(slotKey) {
-  const esc9 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const esc10 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   let client = "";
   let slot2 = "";
   let customHtml = "";
@@ -41236,7 +41236,7 @@ async function adBlockHtml(slotKey) {
   }
   if (customHtml.trim()) return customHtml;
   if (!client || !slot2) return "";
-  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc9(client)}" data-ad-slot="${esc9(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc10(client)}" data-ad-slot="${esc10(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
 }
 function renderInterstitialPage(opts) {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -46306,10 +46306,10 @@ async function createNotification(i) {
   return { ok: true, id };
 }
 function priceDropCopy(a, price2, seller) {
-  const inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const inr4 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
   const pct = Math.round((1 - price2 / Number(a.target_price)) * 100);
-  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr3(price2)}`;
-  const body = pct > 0 ? `Your tracked product just hit ${inr3(price2)} on ${seller} \u2014 ${pct}% below your ${inr3(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr3(price2)} on ${seller}, matching your ${inr3(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
+  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr4(price2)}`;
+  const body = pct > 0 ? `Your tracked product just hit ${inr4(price2)} on ${seller} \u2014 ${pct}% below your ${inr4(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr4(price2)} on ${seller}, matching your ${inr4(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
   return { title, body };
 }
 async function recordPriceDropNotification(alert, live) {
@@ -46489,13 +46489,13 @@ function shouldNotify(alert, livePrice) {
   return Number.isFinite(livePrice) && livePrice > 0 && livePrice <= Number(alert.target_price);
 }
 function alertEmail(a, price2, seller, url) {
-  const inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
-  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr3(price2)}`;
+  const inr4 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr4(price2)}`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px">
   <h2 style="color:#E7000B;margin:0 0 8px">Your Try1Second price alert hit</h2>
   <p><strong>${escapeHtml(a.product_title)}</strong></p>
-  <p style="font-size:22px;margin:6px 0"><strong>${inr3(price2)}</strong> on ${escapeHtml(seller)}</p>
-  <p style="color:#475569">Your target was ${inr3(a.target_price)}.</p>
+  <p style="font-size:22px;margin:6px 0"><strong>${inr4(price2)}</strong> on ${escapeHtml(seller)}</p>
+  <p style="color:#475569">Your target was ${inr4(a.target_price)}.</p>
   <p><a href="${url}" style="background:#E7000B;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Open the deal</a></p>
   <p style="color:#94a3b8;font-size:12px">Price observed live by Try1Second. Prices can change quickly.</p></div>`;
   return { subject, html };
@@ -54008,18 +54008,18 @@ var init_routes = __esm({
       } catch {
       }
       const appName = (scheme.split("://")[0] || "app").replace(/^olacabs$/, "ola");
-      const esc9 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const esc10 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Opening ${esc9(appName)}\u2026</title>
+<title>Opening ${esc10(appName)}\u2026</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
 .muted{color:#94a3b8;font-size:13px;margin-top:10px}.ad{margin-top:18px;background:#fff;border-radius:12px;padding:8px;color:#0f172a}</style></head><body><div class="card">
-<h2 style="margin:0 0 6px">Opening ${esc9(appName)}</h2>
-<p class="muted">Handing your pickup and drop to the ${esc9(appName)} app\u2026</p>
-<a class="btn" href="${esc9(tracked)}">Continue on the website</a>
+<h2 style="margin:0 0 6px">Opening ${esc10(appName)}</h2>
+<p class="muted">Handing your pickup and drop to the ${esc10(appName)} app\u2026</p>
+<a class="btn" href="${esc10(tracked)}">Continue on the website</a>
 ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
-<p class="muted">Fare and availability are shown by ${esc9(appName)} itself.</p>
+<p class="muted">Fare and availability are shown by ${esc10(appName)} itself.</p>
 </div>
 <script>
   var scheme = ${JSON.stringify(scheme)};
@@ -54462,12 +54462,12 @@ function parseMyx(html) {
   const start = /window\.__myx\s*=\s*\{/.exec(html);
   if (!start) return null;
   const from = start.index + start[0].length - 1;
-  let depth = 0, inStr = false, esc9 = false, end = -1;
+  let depth = 0, inStr = false, esc10 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc9) esc9 = false;
-      else if (ch === "\\") esc9 = true;
+      if (esc10) esc10 = false;
+      else if (ch === "\\") esc10 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -59776,6 +59776,309 @@ var init_answerStates = __esm({
   }
 });
 
+// server/seo/pricePages.ts
+var pricePages_exports = {};
+__export(pricePages_exports, {
+  MIN_VENDORS: () => MIN_VENDORS,
+  PRICE_FRESH_MS: () => PRICE_FRESH_MS,
+  findPriceEntry: () => findPriceEntry,
+  groupOffers: () => groupOffers,
+  inr: () => inr2,
+  isPriceFresh: () => isPriceFresh,
+  loadPriceIndex: () => loadPriceIndex,
+  pricePath: () => pricePath,
+  pricePathsNow: () => pricePathsNow,
+  renderPriceHtml: () => renderPriceHtml,
+  renderPriceIndexHtml: () => renderPriceIndexHtml,
+  slugify: () => slugify2
+});
+function slugify2(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
+}
+function inr2(n) {
+  const v = Math.round(Number(n) || 0);
+  return `\u20B9${v.toLocaleString("en-IN")}`;
+}
+function pricePath(product, city) {
+  return `/price/${slugify2(product)}-in-${slugify2(city)}`;
+}
+function groupOffers(offers, now = Date.now()) {
+  const cities = /* @__PURE__ */ new Map();
+  for (const c of INDIAN_CITIES) cities.set(c.name.trim().toLowerCase(), { name: c.name, slug: c.slug });
+  const buckets3 = /* @__PURE__ */ new Map();
+  const meta = /* @__PURE__ */ new Map();
+  for (const o of offers) {
+    const title = String(o.title || "").trim();
+    const cityKey = String(o.city || "").trim().toLowerCase();
+    const vendor = String(o.vendor || "").trim();
+    const price2 = Number(o.price);
+    if (!title || title.length < 4 || !cityKey || !vendor || !Number.isFinite(price2) || price2 <= 0) continue;
+    const city = cities.get(cityKey);
+    if (!city) continue;
+    const key = `${slugify2(title)}|${city.slug}`;
+    if (!buckets3.has(key)) {
+      buckets3.set(key, /* @__PURE__ */ new Map());
+      meta.set(key, { product: title, city: city.name, vertical: String(o.vertical || "") });
+    }
+    const perCity = buckets3.get(key);
+    const prev = perCity.get(vendor.toLowerCase());
+    if (!prev || price2 < prev.price) {
+      perCity.set(vendor.toLowerCase(), { vendor, price: price2, url: o.url || null, checkedAt: Number(o.checkedAt) || now });
+    }
+  }
+  const out = [];
+  for (const [key, perCity] of buckets3) {
+    if (perCity.size < MIN_VENDORS) continue;
+    const m = meta.get(key);
+    const vendors = [...perCity.values()].sort((a, b) => a.price - b.price);
+    const low = vendors[0].price;
+    const high = vendors[vendors.length - 1].price;
+    const checked = Math.max(...vendors.map((v) => v.checkedAt));
+    out.push({
+      path: pricePath(m.product, m.city),
+      product: m.product,
+      productSlug: slugify2(m.product),
+      city: m.city,
+      citySlug: slugify2(m.city),
+      vertical: m.vertical,
+      vendors,
+      low,
+      high,
+      checkedAt: checked
+    });
+  }
+  return out.sort((a, b) => b.vendors.length - a.vendors.length || b.checkedAt - a.checkedAt);
+}
+function isPriceFresh(entry, now = Date.now()) {
+  return now - entry.checkedAt <= PRICE_FRESH_MS;
+}
+async function fetchOffers() {
+  const store7 = getStore();
+  if (store7.kind !== "mysql") return [];
+  const rows = await store7.query(
+    `SELECT title, location_city AS city, COALESCE(vendor, seller) AS vendor, COALESCE(effective_price, mandatory_total) AS price,
+            seller_url AS url, UNIX_TIMESTAMP(COALESCE(fetched_at, NOW())) * 1000 AS checkedAt, vertical
+       FROM offers
+      WHERE validation_status != 'INVALID'
+        AND COALESCE(effective_price, mandatory_total) > 0
+        AND location_city IS NOT NULL AND location_city <> ''
+        AND title IS NOT NULL AND CHAR_LENGTH(title) >= 4
+        AND COALESCE(vendor, seller) IS NOT NULL
+        AND fetched_at > NOW() - INTERVAL 14 DAY
+      ORDER BY fetched_at DESC
+      LIMIT 40000`
+  );
+  return (rows || []).map((r) => ({
+    title: String(r.title || ""),
+    city: String(r.city || ""),
+    vendor: String(r.vendor || ""),
+    price: Number(r.price) || 0,
+    url: r.url ? String(r.url) : null,
+    checkedAt: Number(r.checkedAt) || 0,
+    vertical: String(r.vertical || "")
+  }));
+}
+async function loadPriceIndex() {
+  const now = Date.now();
+  if (cache12.entries.length && now - cache12.at < CACHE_TTL_MS6) return cache12.entries;
+  if (cache12.building) return cache12.entries;
+  cache12.building = true;
+  try {
+    const offers = await fetchOffers();
+    const entries2 = groupOffers(offers, now).slice(0, MAX_PAGES);
+    const grew = entries2.length !== cache12.entries.length;
+    cache12 = { at: now, entries: entries2, building: false };
+    log.info("Seo", `price pages built: ${entries2.length} product x city comparisons from ${offers.length} offers`);
+    if (grew) {
+      void (async () => {
+        try {
+          const mod = await Promise.resolve().then(() => (init_sitemap(), sitemap_exports));
+          if (typeof mod.rebuildSitemapNow === "function") await mod.rebuildSitemapNow();
+        } catch (e2) {
+          log.debug("Seo", "sitemap rebuild after price growth failed", { error: String(e2?.message || e2).slice(0, 80) });
+        }
+      })();
+    }
+    return entries2;
+  } catch (e2) {
+    cache12.building = false;
+    log.warn("Seo", "price page index failed (kept the previous one)", { error: String(e2?.message || e2).slice(0, 120) });
+    return cache12.entries;
+  }
+}
+function pricePathsNow() {
+  const now = Date.now();
+  return cache12.entries.filter((e2) => isPriceFresh(e2, now));
+}
+function findPriceEntry(path18) {
+  const p = path18.replace(/\/+$/, "").toLowerCase();
+  return pricePathsNow().find((e2) => e2.path === p) || null;
+}
+function esc4(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function asOf(ms) {
+  return new Date(ms).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
+}
+function renderPriceHtml(entry, siblings, origin2) {
+  const fresh = isPriceFresh(entry);
+  const cheapest = entry.vendors[0];
+  const dearest = entry.vendors[entry.vendors.length - 1];
+  const save = entry.high - entry.low;
+  const title = `${entry.product} price in ${entry.city} - ${inr2(entry.low)} at ${cheapest.vendor}${entry.vendors[1] ? ` vs ${inr2(entry.vendors[1].price)} at ${entry.vendors[1].vendor}` : ""}`;
+  const desc = `${entry.product} price in ${entry.city} today: cheapest is ${inr2(entry.low)} at ${cheapest.vendor}${save > 0 ? `, ${inr2(save)} less than ${dearest.vendor} at ${inr2(dearest.price)}` : ""}. Compared across ${entry.vendors.length} stores, checked ${asOf(entry.checkedAt)}.`;
+  const canonical = `${origin2}${entry.path}`;
+  const rows = entry.vendors.map((v, i) => `
+      <tr${i === 0 ? ' class="best"' : ""}>
+        <td>${i === 0 ? '<span class="tag">Cheapest</span> ' : ""}${esc4(v.vendor)}</td>
+        <td class="num">${inr2(v.price)}</td>
+        <td>${v.url ? `<a href="${esc4(v.url)}" rel="sponsored nofollow noopener" target="_blank">Go to store</a>` : '<span class="muted">no direct link</span>'}</td>
+        <td class="muted">${asOf(v.checkedAt)}</td>
+      </tr>`).join("");
+  const otherCities = siblings.filter((s) => s.productSlug === entry.productSlug && s.citySlug !== entry.citySlug).slice(0, 8);
+  const sameCity = siblings.filter((s) => s.citySlug === entry.citySlug && s.productSlug !== entry.productSlug).slice(0, 8);
+  const faqs = [
+    [
+      `What is the price of ${entry.product} in ${entry.city} today?`,
+      `${inr2(entry.low)} at ${cheapest.vendor}${save > 0 ? `, the lowest of ${entry.vendors.length} stores we checked` : ""}. The same item is ${inr2(entry.high)} at ${dearest.vendor}. Prices checked ${asOf(entry.checkedAt)}.`
+    ],
+    [
+      `Where is ${entry.product} cheapest in ${entry.city}?`,
+      `${cheapest.vendor} shows ${inr2(cheapest.price)}, which is ${save > 0 ? `${inr2(save)} below the highest price we found` : "the only price we could verify"}.`
+    ],
+    [
+      "How often are these prices updated?",
+      `Our catalogue worker re-checks each store through the day. The stamp on this page shows when these numbers were last verified${fresh ? "" : ", and this page is due for a refresh"}.`
+    ]
+  ];
+  const faqHtml = faqs.map(([q3, a]) => `<details><summary>${esc4(q3)}</summary><p>${esc4(a)}</p></details>`).join("\n");
+  const ld = [
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: entry.product,
+      offers: entry.vendors.map((v) => ({ "@type": "Offer", price: v.price, priceCurrency: "INR", seller: { "@type": "Organization", name: v.vendor }, url: v.url || canonical, availability: "https://schema.org/InStock" }))
+    },
+    { "@context": "https://schema.org", "@type": "AggregateOffer", priceCurrency: "INR", lowPrice: entry.low, highPrice: entry.high, offerCount: entry.vendors.length, areaServed: entry.city },
+    { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: `${origin2}/` },
+      { "@type": "ListItem", position: 2, name: "Price comparisons", item: `${origin2}/price` },
+      { "@type": "ListItem", position: 3, name: `${entry.product} in ${entry.city}`, item: canonical }
+    ] },
+    { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map(([q3, a]) => ({ "@type": "Question", name: q3, acceptedAnswer: { "@type": "Answer", text: a } })) }
+  ].map((b) => `<script type="application/ld+json">${JSON.stringify(b)}</script>`).join("\n");
+  const linkList = (items, label) => items.length ? `<h2>${esc4(label)}</h2>
+<ul class="links">${items.map((s) => `<li><a href="${esc4(s.path)}">${esc4(s.product)} in ${esc4(s.city)} - ${inr2(s.low)}</a></li>`).join("")}</ul>` : "";
+  return `<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc4(title)} | Try1Second</title>
+<meta name="description" content="${esc4(desc)}">
+<meta name="robots" content="${fresh ? "index, follow, max-image-preview:large" : "noindex, follow"}">
+<link rel="canonical" href="${esc4(canonical)}">
+<meta property="og:title" content="${esc4(title)}">
+<meta property="og:description" content="${esc4(desc)}">
+<meta property="og:type" content="product">
+<meta property="og:url" content="${esc4(canonical)}">
+<style>
+:root{--ink:#12161c;--mut:#5b6672;--line:#e3e8ee;--good:#0a7d3e;--bg:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 20px 56px}
+nav.crumbs{font-size:13px;color:var(--mut);margin-bottom:14px}nav.crumbs a{color:var(--mut)}
+h1{font-size:clamp(24px,4vw,34px);line-height:1.2;margin:0 0 10px}
+h2{font-size:19px;margin:30px 0 10px}
+.lede{font-size:17px;margin:0 0 8px}.lede b{color:var(--good)}
+.stamp{font-size:13px;color:var(--mut);margin:0 0 18px}
+table{width:100%;border-collapse:collapse;margin:10px 0 6px}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:15px}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
+tr.best td{background:#f3fbf6}.num{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.tag{display:inline-block;background:var(--good);color:#fff;font-size:11px;padding:1px 6px;border-radius:4px;vertical-align:1px}
+.muted{color:var(--mut);font-size:13px}
+a{color:#0b57d0}details{border-bottom:1px solid var(--line);padding:10px 0}summary{cursor:pointer;font-weight:600}
+ul.links{list-style:none;padding:0;margin:0}ul.links li{padding:6px 0;border-bottom:1px solid var(--line);font-size:15px}
+footer{margin-top:32px;font-size:12px;color:var(--mut)}
+</style>
+${ld}
+</head>
+<body>
+<main>
+<nav class="crumbs"><a href="/">Try1Second</a> / <a href="/price">Price comparisons</a> / ${esc4(entry.product)} in ${esc4(entry.city)}</nav>
+<h1>${esc4(entry.product)} price in ${esc4(entry.city)}</h1>
+<p class="lede">Cheapest today: <b>${inr2(entry.low)}</b> at ${esc4(cheapest.vendor)}${save > 0 ? `, ${inr2(save)} less than ${esc4(dearest.vendor)} at ${inr2(dearest.price)}` : ""}. Compared across ${entry.vendors.length} stores.</p>
+<p class="stamp">Prices last verified ${asOf(entry.checkedAt)} IST.${fresh ? "" : " This comparison is due for a refresh and is not offered for indexing until it is."}</p>
+<table>
+<thead><tr><th>Store</th><th>Price</th><th>Buy</th><th>Checked</th></tr></thead>
+<tbody>${rows}
+</tbody></table>
+<p class="muted">Prices and stock change through the day; the store's own checkout is the price you pay. We do not add a markup or invent a discount.</p>
+<h2>${esc4(entry.product)} price in ${esc4(entry.city)}: what the numbers mean</h2>
+<p>The table lists every seller we could verify for ${esc4(entry.product)} in ${esc4(entry.city)}. The spread between the cheapest and the dearest of them is ${inr2(save)}${save > 0 ? `, about ${Math.round(save / entry.high * 100)}% of the highest price` : ""}. Delivery fees, surge and membership offers are applied at the store's checkout, so the best total can differ from the best sticker price when your basket is small.</p>
+${faqHtml}
+${linkList(otherCities, `${esc4(entry.product)} in other cities`)}
+${linkList(sameCity, `Other price comparisons in ${esc4(entry.city)}`)}
+<h2>How Try1Second compares prices</h2>
+<p>We scan the storefront pages of India's marketplaces and quick-commerce apps through the day, keep the price each one shows, and publish the comparison with the time it was checked. When a store shows nothing we can verify, it is left out rather than filled with a guess. <a href="/ecommerce">See every store we scan</a>.</p>
+<footer>Try1Second - independent price comparison, no markup. This page is not sponsored; links to stores may earn a commission at no extra cost to you.</footer>
+</main>
+</body>
+</html>`;
+}
+function renderPriceIndexHtml(entries2, origin2) {
+  const fresh = entries2.filter((e2) => isPriceFresh(e2));
+  const byVertical = /* @__PURE__ */ new Map();
+  for (const e2 of fresh) {
+    const k = e2.vertical || "ecommerce";
+    if (!byVertical.has(k)) byVertical.set(k, []);
+    byVertical.get(k).push(e2);
+  }
+  const sections = [...byVertical.entries()].sort((a, b) => b[1].length - a[1].length).map(([vertical, list]) => {
+    const top = list.slice(0, 40);
+    return `<h2>${esc4(vertical)} - ${list.length} verified comparisons</h2>
+<ul class="links">${top.map((e2) => `<li><a href="${esc4(e2.path)}">${esc4(e2.product)} in ${esc4(e2.city)} - ${inr2(e2.low)}</a> <span class="muted">${e2.vendors.length} stores</span></li>`).join("")}</ul>`;
+  }).join("\n");
+  const title = `Product price comparison - ${fresh.length} live comparisons across India`;
+  const desc = `Today's verified prices for everyday products and gadgets in ${new Set(fresh.map((e2) => e2.city)).size} Indian cities, compared across the stores that sell them. Cheapest seller first, with the time we checked.`;
+  return `<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc4(title)} | Try1Second</title>
+<meta name="description" content="${esc4(desc)}">
+<meta name="robots" content="${fresh.length >= 20 ? "index, follow, max-image-preview:large" : "noindex, follow"}">
+<link rel="canonical" href="${esc4(origin2)}/price">
+<style>
+body{margin:0;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#12161c}
+main{max-width:860px;margin:0 auto;padding:24px 20px 56px}h1{font-size:clamp(24px,4vw,34px);margin:0 0 10px}
+h2{font-size:19px;margin:28px 0 8px;text-transform:capitalize}.lede{color:#5b6672}
+ul.links{list-style:none;padding:0;margin:0}ul.links li{padding:7px 0;border-bottom:1px solid #e3e8ee}
+a{color:#0b57d0}.muted{color:#5b6672;font-size:13px}
+</style>
+</head>
+<body><main>
+<h1>Product price comparison in India</h1>
+<p class="lede">${esc4(desc)}</p>
+${sections || '<p class="lede">Our catalogue is still filling. Comparisons appear here as soon as two stores show a verified price for the same product in the same city.</p>'}
+<p class="muted">Prices are checked through the day and stamped per page. No markup, no invented discounts.</p>
+</main></body></html>`;
+}
+var PRICE_FRESH_MS, MIN_VENDORS, MAX_PAGES, CACHE_TTL_MS6, cache12;
+var init_pricePages = __esm({
+  "server/seo/pricePages.ts"() {
+    init_logger();
+    init_db();
+    init_cityCorpus();
+    PRICE_FRESH_MS = 7 * 24 * 60 * 60 * 1e3;
+    MIN_VENDORS = 2;
+    MAX_PAGES = 4e3;
+    CACHE_TTL_MS6 = 6 * 60 * 60 * 1e3;
+    cache12 = { at: 0, entries: [], building: false };
+  }
+});
+
 // server/seo/movieCities.ts
 var MOVIE_CITY_CONTENT;
 var init_movieCities = __esm({
@@ -60375,6 +60678,10 @@ function listSeoPaths(includeThin = false) {
   }
   for (const [a, b] of FLIGHT_ROUTES) paths.push(`/flights/${routeSlug(a, b, "flights")}`);
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, "bus")}`);
+  {
+    paths.push("/price");
+    for (const e2 of pricePathsNow()) paths.push(e2.path);
+  }
   const unique = [...new Set(paths)];
   return includeThin ? unique : unique.filter(isIndexableCityPage);
 }
@@ -60741,6 +61048,7 @@ var init_data = __esm({
     init_guides();
     init_answerStates();
     init_cityCorpus();
+    init_pricePages();
     init_movieCities();
     init_seo();
     init_brandPage();
@@ -61732,16 +62040,16 @@ function blocksHtml(page) {
         out.push("<ul>");
         inList = true;
       }
-      out.push(`<li>${esc4(b.x)}</li>`);
+      out.push(`<li>${esc5(b.x)}</li>`);
       continue;
     }
     closeList();
-    if (b.t === "p") out.push(`<p>${esc4(b.x)}</p>`);
+    if (b.t === "p") out.push(`<p>${esc5(b.x)}</p>`);
     else {
       if (!seenFirstHeading) {
-        out.push(`<h1>${esc4(b.x)}</h1>`);
+        out.push(`<h1>${esc5(b.x)}</h1>`);
         seenFirstHeading = true;
-      } else out.push(`<h2>${esc4(b.x)}</h2>`);
+      } else out.push(`<h2>${esc5(b.x)}</h2>`);
     }
   }
   closeList();
@@ -61757,14 +62065,14 @@ function renderLegalPage(slug5, origin2) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc4(page.title)}</title>
-<meta name="description" content="${esc4(page.description)}" />
-<link rel="canonical" href="${esc4(canonical)}" />
+<title>${esc5(page.title)}</title>
+<meta name="description" content="${esc5(page.description)}" />
+<link rel="canonical" href="${esc5(canonical)}" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="${esc4(page.title)}" />
-<meta property="og:description" content="${esc4(page.description)}" />
-<meta property="og:url" content="${esc4(canonical)}" />
+<meta property="og:title" content="${esc5(page.title)}" />
+<meta property="og:description" content="${esc5(page.description)}" />
+<meta property="og:url" content="${esc5(canonical)}" />
 <style>
 :root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
 *{box-sizing:border-box}
@@ -61805,11 +62113,11 @@ ${blocksHtml(page)}
 </body>
 </html>`;
 }
-var esc4, NAV_LABEL, LEGAL_ALIASES;
+var esc5, NAV_LABEL, LEGAL_ALIASES;
 var init_legalPages = __esm({
   "server/seo/legalPages.ts"() {
     init_legalContent();
-    esc4 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc5 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     NAV_LABEL = {
       about: "About",
       "privacy-policy": "Privacy",
@@ -62749,17 +63057,17 @@ function monetisationHtml(page) {
   const vertical = (page.path.split("/").filter(Boolean)[1] || "").replace(/[^a-z-]/g, "");
   const slot2 = (process.env.T1S_ANSWER_AD_SLOT || "").trim();
   const ad = slot2 ? `<div class="adwrap"><span class="adlabel">Advertisement</span>
-<ins class="adsbygoogle" style="display:block" data-ad-client="${ADSENSE_CLIENT}" data-ad-slot="${esc5(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins>
+<ins class="adsbygoogle" style="display:block" data-ad-client="${ADSENSE_CLIENT}" data-ad-slot="${esc6(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins>
 <script>(adsbygoogle=window.adsbygoogle||[]).push({});</script></div>` : "";
   const cta = vertical ? `<div class="cta"><a href="/${vertical}"><strong>Compare live prices now</strong><span>Run one search across every seller in this vertical, cheapest first.</span></a></div>` : "";
   return `${ad}${cta}`;
 }
 function renderAnswerHtml(page) {
   const canonical = `${ORIGIN}${page.path}`;
-  const crumbs = page.breadcrumbs.map((b) => `<a href="${b.path}">${esc5(b.name)}</a>`).join(" &rsaquo; ");
+  const crumbs = page.breadcrumbs.map((b) => `<a href="${b.path}">${esc6(b.name)}</a>`).join(" &rsaquo; ");
   const sellerTable = page.sellers.length ? `<h2>Sellers compared on this page</h2>
 <table><thead><tr><th>Seller</th><th>What we read</th></tr></thead><tbody>
-${page.sellers.map((s) => `<tr><td>${esc5(s)}</td><td>Live price returned during your search</td></tr>`).join("\n")}
+${page.sellers.map((s) => `<tr><td>${esc6(s)}</td><td>Live price returned during your search</td></tr>`).join("\n")}
 </tbody></table>
 <p>Names are the sources this engine scans for the vertical. Availability per search depends on the seller answering; a seller that returns nothing is not shown rather than guessed.</p>` : "";
   return `<!doctype html>
@@ -62767,15 +63075,15 @@ ${page.sellers.map((s) => `<tr><td>${esc5(s)}</td><td>Live price returned during
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc5(page.title)}</title>
-<meta name="description" content="${esc5(page.description)}">
+<title>${esc6(page.title)}</title>
+<meta name="description" content="${esc6(page.description)}">
 <link rel="canonical" href="${canonical}">
 <link rel="alternate" type="text/markdown" href="${canonical}">
 <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="${esc5(BRAND)}">
-<meta property="og:title" content="${esc5(page.title)}">
-<meta property="og:description" content="${esc5(page.description)}">
+<meta property="og:site_name" content="${esc6(BRAND)}">
+<meta property="og:title" content="${esc6(page.title)}">
+<meta property="og:description" content="${esc6(page.description)}">
 <meta property="og:url" content="${canonical}">
 <meta name="twitter:card" content="summary_large_image">
 <style>${STYLE2}</style>
@@ -62785,19 +63093,19 @@ ${jsonLd(page)}
 <body>
 <main>
 <nav class="crumbs">${crumbs}</nav>
-<h1>${esc5(page.h1)}</h1>
-<p class="answer"><strong>Direct answer:</strong> ${esc5(page.quickAnswer)}</p>
+<h1>${esc6(page.h1)}</h1>
+<p class="answer"><strong>Direct answer:</strong> ${esc6(page.quickAnswer)}</p>
 ${monetisationHtml(page)}
-${page.body.map((p) => `<p>${esc5(p)}</p>`).join("\n")}
+${page.body.map((p) => `<p>${esc6(p)}</p>`).join("\n")}
 ${sellerTable}
 <h2>Frequently asked questions</h2>
-${page.faqs.map((f) => `<h3>${esc5(f.q)}</h3>
-<p>${esc5(f.a)}</p>`).join("\n")}
+${page.faqs.map((f) => `<h3>${esc6(f.q)}</h3>
+<p>${esc6(f.a)}</p>`).join("\n")}
 <h2>Keep comparing</h2>
 <ul class="links">
-${page.links.map((l) => `<li><a href="${l.href}">${esc5(l.label)}</a></li>`).join("\n")}
+${page.links.map((l) => `<li><a href="${l.href}">${esc6(l.label)}</a></li>`).join("\n")}
 </ul>
-<footer>${esc5(BRAND)} is an independent comparison engine. Prices are read live from sellers at search time; bookings happen on the seller's own site. ${esc5(BUSINESS_LEGAL_NAME)}, ${esc5(BUSINESS_ADDRESS.addressLocality)}, ${esc5(BUSINESS_ADDRESS.addressRegion)} \xB7 <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> \xB7 <a href="/about">About</a> \xB7 <a href="/terms">Terms</a> \xB7 <a href="/privacy-policy">Privacy</a></footer>
+<footer>${esc6(BRAND)} is an independent comparison engine. Prices are read live from sellers at search time; bookings happen on the seller's own site. ${esc6(BUSINESS_LEGAL_NAME)}, ${esc6(BUSINESS_ADDRESS.addressLocality)}, ${esc6(BUSINESS_ADDRESS.addressRegion)} \xB7 <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> \xB7 <a href="/about">About</a> \xB7 <a href="/terms">Terms</a> \xB7 <a href="/privacy-policy">Privacy</a></footer>
 </main>
 </body>
 </html>`;
@@ -62820,7 +63128,7 @@ function renderAnswerMarkdown(page) {
     ""
   ].filter((l) => l !== void 0).join("\n");
 }
-var ORIGIN, SELLERS, esc5, sellersFor, verticalLinks, STYLE2, ADSENSE_CLIENT, ADSENSE_LOADER;
+var ORIGIN, SELLERS, esc6, sellersFor, verticalLinks, STYLE2, ADSENSE_CLIENT, ADSENSE_LOADER;
 var init_answerPages = __esm({
   "server/seo/answerPages.ts"() {
     init_data();
@@ -62838,7 +63146,7 @@ var init_answerPages = __esm({
       grocery: ["Blinkit", "Zepto", "BigBasket", "JioMart"],
       food: ["Swiggy", "Zomato"]
     };
-    esc5 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc6 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     sellersFor = (slug5, label) => {
       const direct = SELLERS[slug5];
       if (direct) return direct;
@@ -62975,15 +63283,15 @@ function renderSnapshotHtml(snapshot, heading) {
   if (!snapshot || !snapshot.rows.length) return "";
   const items = snapshot.rows.map((r) => `
     <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
-      <span style="min-width:0;font-size:13.5px;color:#111827">${esc6(r.title)}</span>
-      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc6(inr2(r.price))}</span>
-      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc6(r.seller)}</span>
+      <span style="min-width:0;font-size:13.5px;color:#111827">${esc7(r.title)}</span>
+      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc7(inr3(r.price))}</span>
+      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc7(r.seller)}</span>
     </li>`).join("");
   return [
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:0 16px 8px">`,
-    `<h2 style="font-size:15px;margin:18px 0 6px">${esc6(heading)}</h2>`,
+    `<h2 style="font-size:15px;margin:18px 0 6px">${esc7(heading)}</h2>`,
     `<ul style="list-style:none;padding:0;margin:0">${items}</ul>`,
-    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc6(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
+    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc7(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
     `</section>`
   ].join("");
 }
@@ -63019,7 +63327,7 @@ async function snapshotForPath(path18) {
   const page = stateAnswer ? null : resolveSeoPage(path18);
   if (!page && !stateAnswer) return null;
   const key = (path18 || "/").replace(/\/+$/, "") || "/";
-  const hit = cache12.get(key);
+  const hit = cache13.get(key);
   if (hit && Date.now() - hit.at < (hit.ttl ?? SNAPSHOT_TTL_MS)) return hit.snap;
   let snap = null;
   const stateMatch = /^\/best\/([a-z0-9-]+)\/([a-z0-9-]+)$/.exec(key);
@@ -63052,7 +63360,7 @@ async function snapshotForPath(path18) {
     } catch {
       snap = null;
     }
-    cache12.set(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
+    cache13.set(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
     return snap;
   }
   try {
@@ -63092,21 +63400,21 @@ async function snapshotForPath(path18) {
   } catch {
     snap = null;
   }
-  cache12.set(key, { at: Date.now(), snap });
+  cache13.set(key, { at: Date.now(), snap });
   return snap;
 }
 function clearSnapshotCache() {
-  cache12.clear();
+  cache13.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache12, esc6, inr2, slugOf3;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache13, esc7, inr3, slugOf3;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
     SNAPSHOT_TTL_MS = 10 * 6e4;
     MAX_ROWS = 6;
-    cache12 = /* @__PURE__ */ new Map();
-    esc6 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-    inr2 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+    cache13 = /* @__PURE__ */ new Map();
+    esc7 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf3 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
   }
 });
@@ -63120,9 +63428,9 @@ __export(guidePages_exports, {
 });
 function blocksHtml2(g) {
   return g.blocks.map((b) => {
-    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${esc7(i)}</li>`).join("")}</ul>`;
-    if (b.t === "p") return `<p>${esc7(b.x)}</p>`;
-    return `<${b.t}>${esc7(b.x)}</${b.t}>`;
+    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${esc8(i)}</li>`).join("")}</ul>`;
+    if (b.t === "p") return `<p>${esc8(b.x)}</p>`;
+    return `<${b.t}>${esc8(b.x)}</${b.t}>`;
   }).join("\n");
 }
 function faqJsonLd(g) {
@@ -63164,19 +63472,19 @@ function renderGuidePage(slug5, origin2) {
   if (!g) return void 0;
   const canonical = `${origin2}/guides/${slug5}`;
   const related = GUIDES.filter((x) => x.slug !== slug5).slice(0, 3);
-  const verticalLinks2 = g.verticals.map((v) => `<a class="cta" href="/${v}">Compare ${esc7(v)} prices</a>`).join(" ");
+  const verticalLinks2 = g.verticals.map((v) => `<a class="cta" href="/${v}">Compare ${esc8(v)} prices</a>`).join(" ");
   return `${head2(g.title, g.description, canonical, articleJsonLd(g, origin2) + faqJsonLd(g))}
 <body>
 ${nav()}
 <main>
-<h1>${esc7(g.title)}</h1>
-<p class="meta">Try1Second editorial \xB7 Updated ${esc7(g.updated)} \xB7 ${g.verticals.length} vertical${g.verticals.length > 1 ? "s" : ""} covered</p>
-<p class="lede">${esc7(g.headline)} \u2014 ${esc7(g.description)}</p>
+<h1>${esc8(g.title)}</h1>
+<p class="meta">Try1Second editorial \xB7 Updated ${esc8(g.updated)} \xB7 ${g.verticals.length} vertical${g.verticals.length > 1 ? "s" : ""} covered</p>
+<p class="lede">${esc8(g.headline)} \u2014 ${esc8(g.description)}</p>
 ${blocksHtml2(g)}
 <p>${verticalLinks2}</p>
 <h2>More buying guides</h2>
 ${related.map(
-    (r) => `<div class="card"><h3><a href="/guides/${r.slug}">${esc7(r.title)}</a></h3><p>${esc7(r.description)}</p></div>`
+    (r) => `<div class="card"><h3><a href="/guides/${r.slug}">${esc8(r.title)}</a></h3><p>${esc8(r.description)}</p></div>`
   ).join("")}
 </main>
 ${footer()}
@@ -63197,18 +63505,18 @@ ${nav()}
 <p class="meta">Try1Second editorial \xB7 ${GUIDES.length} guides \xB7 Updated ${GUIDES[0]?.updated || ""}</p>
 <p class="lede">Every guide explains how a price is built, which fees the headline number leaves out, and what to check before you pay. We write these from the mechanics of each marketplace, not from sponsored placements.</p>
 ${GUIDES.map(
-    (g) => `<div class="card"><h3><a href="/guides/${g.slug}">${esc7(g.title)}</a></h3><p>${esc7(g.description)}</p></div>`
+    (g) => `<div class="card"><h3><a href="/guides/${g.slug}">${esc8(g.title)}</a></h3><p>${esc8(g.description)}</p></div>`
   ).join("\n")}
 </main>
 ${footer()}
 </body>
 </html>`;
 }
-var esc7, STYLE3, head2, nav, footer, GUIDE_SLUGS2;
+var esc8, STYLE3, head2, nav, footer, GUIDE_SLUGS2;
 var init_guidePages = __esm({
   "server/seo/guidePages.ts"() {
     init_guides();
-    esc7 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc8 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     STYLE3 = `
 :root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
 *{box-sizing:border-box}
@@ -63240,14 +63548,14 @@ footer a{color:var(--muted);text-decoration:none;margin:0 6px}
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc7(title)}</title>
-<meta name="description" content="${esc7(description)}" />
-<link rel="canonical" href="${esc7(canonical)}" />
+<title>${esc8(title)}</title>
+<meta name="description" content="${esc8(description)}" />
+<link rel="canonical" href="${esc8(canonical)}" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="${esc7(title)}" />
-<meta property="og:description" content="${esc7(description)}" />
-<meta property="og:url" content="${esc7(canonical)}" />
+<meta property="og:title" content="${esc8(title)}" />
+<meta property="og:description" content="${esc8(description)}" />
+<meta property="og:url" content="${esc8(canonical)}" />
 <style>${STYLE3}</style>
 ${extra}</head>`;
     nav = () => `<header>
@@ -63369,7 +63677,7 @@ function prerenderLoader(page) {
       </div>`).join("");
   return `<div data-t1s-prerender="loader" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f9f9fb;min-height:100vh">
     <div style="max-width:720px;margin:0 auto;padding:28px 16px 8px">
-      <h2 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc8(page.h1)}</h2>
+      <h2 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc9(page.h1)}</h2>
       <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#374151;margin-bottom:10px">
         <span style="width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block"></span>
         <span>Checking live prices&hellip;</span>
@@ -63389,16 +63697,16 @@ function prerenderBody(path18) {
   const page = resolveSeoPage(path18);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
-    <dt>${esc8(f.q)}</dt><dd>${esc8(f.a)}</dd>`).join("");
-  const links = page.links.slice(0, 10).map((l) => `<a href="${esc8(l.href)}">${esc8(l.label)}</a>`).join("");
+    <dt>${esc9(f.q)}</dt><dd>${esc9(f.a)}</dd>`).join("");
+  const links = page.links.slice(0, 10).map((l) => `<a href="${esc9(l.href)}">${esc9(l.label)}</a>`).join("");
   return [
     prerenderLoader(page),
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 40px">`,
     `<nav aria-label="Breadcrumb" style="font-size:12px;color:#6b7280;margin-bottom:8px">`,
-    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc8(b.name) : `<a href="${esc8(b.path)}" style="color:#6b7280">${esc8(b.name)}</a>`)).join(""),
+    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc9(b.name) : `<a href="${esc9(b.path)}" style="color:#6b7280">${esc9(b.name)}</a>`)).join(""),
     `</nav>`,
-    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc8(page.h1)}</h1>`,
-    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc8(p)}</p>`),
+    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc9(page.h1)}</h1>`,
+    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc9(p)}</p>`),
     `<h2 style="font-size:15px;margin:20px 0 8px">Frequently asked questions</h2>`,
     `<dl style="font-size:13.5px;line-height:1.6;color:#374151">${faqHtml}</dl>`,
     links ? `<h2 style="font-size:15px;margin:20px 0 8px">Popular comparisons</h2><p style="font-size:13px;line-height:2">${links}</p>` : "",
@@ -63414,24 +63722,24 @@ function enhanceHtml(html, path18) {
   const desc = page ? page.description : DEFAULT_DESC;
   const canonical = `${SEO_HOST}${(path18 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
-  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc8(title)}</title>`);
+  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc9(title)}</title>`);
   out = out.replace(
     /<meta name="description" content="[^"]*" \/>/,
-    `<meta name="description" content="${esc8(desc)}" />`
+    `<meta name="description" content="${esc9(desc)}" />`
   );
   out = out.replace(
     /<meta property="og:title" content="[^"]*" \/>/,
-    `<meta property="og:title" content="${esc8(title)}" />`
+    `<meta property="og:title" content="${esc9(title)}" />`
   );
   out = out.replace(
     /<meta property="og:description" content="[^"]*" \/>/,
-    `<meta property="og:description" content="${esc8(desc)}" />`
+    `<meta property="og:description" content="${esc9(desc)}" />`
   );
   const head3 = [
-    `<link rel="canonical" href="${esc8(canonical)}" />`,
-    `<meta property="og:url" content="${esc8(canonical)}" />`,
-    `<meta name="twitter:title" content="${esc8(title)}" />`,
-    `<meta name="twitter:description" content="${esc8(desc)}" />`,
+    `<link rel="canonical" href="${esc9(canonical)}" />`,
+    `<meta property="og:url" content="${esc9(canonical)}" />`,
+    `<meta name="twitter:title" content="${esc9(title)}" />`,
+    `<meta name="twitter:description" content="${esc9(desc)}" />`,
     `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : thinCity ? "noindex, follow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />`,
     `<meta name="geo.region" content="IN" />`,
     `<meta name="geo.placename" content="India" />`,
@@ -63443,8 +63751,8 @@ function enhanceHtml(html, path18) {
     `<meta property="og:image:alt" content="Try1Second \u2014 live price comparison across flights, hotels, cabs, groceries and finance in India" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:image" content="${SEO_HOST}/og-image.jpg" />`,
-    `<link rel="alternate" hreflang="en-in" href="${esc8(canonical)}" />`,
-    `<link rel="alternate" hreflang="x-default" href="${esc8(canonical)}" />`
+    `<link rel="alternate" hreflang="en-in" href="${esc9(canonical)}" />`,
+    `<link rel="alternate" hreflang="x-default" href="${esc9(canonical)}" />`
   ];
   if (!isNoindex) for (const b of jsonLd2(path18)) head3.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head3.join("\n")}
@@ -63457,13 +63765,13 @@ function enhanceHtml(html, path18) {
   }
   return out;
 }
-var esc8, DEFAULT_TITLE, DEFAULT_DESC;
+var esc9, DEFAULT_TITLE, DEFAULT_DESC;
 var init_render = __esm({
   "server/seo/render.ts"() {
     init_data();
     init_indexPolicy();
     init_agentReady();
-    esc8 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc9 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     DEFAULT_TITLE = "Try1Second \u2014 One Second Is All It Takes to Find the Lowest Price";
     DEFAULT_DESC = "Compare live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in one second.";
   }
@@ -63936,6 +64244,29 @@ async function createApp() {
     }
     res.status(404).send("Not found");
   });
+  {
+    app.get(["/price", "/price/:product"], async (req, res, next) => {
+      if (/\.[a-z0-9]{2,5}$/i.test(req.path)) return next();
+      const { loadPriceIndex: loadPriceIndex2, renderPriceIndexHtml: renderPriceIndexHtml2, findPriceEntry: findPriceEntry2, renderPriceHtml: renderPriceHtml2 } = await Promise.resolve().then(() => (init_pricePages(), pricePages_exports));
+      const entries2 = await loadPriceIndex2();
+      const origin2 = `https://${req.headers.host || "www.try1second.com"}`;
+      const entry = findPriceEntry2(req.path);
+      if (entry) {
+        const html = renderPriceHtml2(entry, entries2, origin2);
+        const fresh = Date.now() - entry.checkedAt <= 7 * 24 * 60 * 60 * 1e3;
+        res.setHeader("X-Robots-Tag", fresh ? "index, follow" : "noindex, follow");
+        res.setHeader("Cache-Control", "public, max-age=900, stale-while-revalidate=86400");
+        res.type("html").send(html);
+        return;
+      }
+      if (req.path.replace(/\/+$/, "") !== "/price") {
+        next();
+        return;
+      }
+      res.setHeader("Cache-Control", "public, max-age=900, stale-while-revalidate=86400");
+      res.type("html").send(renderPriceIndexHtml2(entries2, origin2));
+    });
+  }
   {
     const { resolveAnswerPage: resolveAnswerPage2, renderAnswerHtml: renderAnswerHtml2, renderAnswerMarkdown: renderAnswerMarkdown2 } = await Promise.resolve().then(() => (init_answerPages(), answerPages_exports));
     app.get(["/nearby", "/nearby/:category", "/nearby/:category/:city", "/nearby/:category/:city/:area"], async (req, res, next) => {

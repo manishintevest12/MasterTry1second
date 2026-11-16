@@ -18,6 +18,7 @@ export const SEO_HOST = 'https://www.try1second.com';
 import { GUIDE_SLUGS } from './guides';
 import { ANSWER_STATES } from './answerStates';
 import { CITY_STATE, INDIAN_CITIES } from './cityCorpus';
+import { pricePathsNow } from './pricePages';
 import { MOVIE_CITY_CONTENT } from './movieCities';
 import { listNearbyPaths, isKnownThinNearbyPath, isRichNearbyPath } from '../nearby/seo';
 
@@ -400,6 +401,12 @@ export function listSeoPaths(includeThin = false): string[] {
   }
   for (const [a, b] of FLIGHT_ROUTES) paths.push(`/flights/${routeSlug(a, b, 'flights')}`);
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, 'bus')}`);
+  // Product price pages (owner 16 Nov): built from live offers, listed only while their prices are fresh, so the
+  // sitemap grows with the catalogue instead of with a copy-paste.
+  {
+    paths.push('/price');
+    for (const e of pricePathsNow()) paths.push(e.path);
+  }
   // OWNER 16 Nov: only pages with substance of their own are advertised (see indexPolicy.ts). The thin
   // templated city pages still resolve for visitors; they are simply not offered to Google or IndexNow.
   const unique = [...new Set(paths)];

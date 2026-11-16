@@ -320,6 +320,31 @@ export async function createApp(): Promise<express.Express> {
     res.status(404).send('Not found');
   });
 
+  // PRODUCT PRICE PAGES (owner 16 Nov: "make a system internally so that it increases traffic and unique
+  // visitors exponentially"). One page per product x city that at least two real sellers price. The family grows
+  // by itself as the catalogue grows, so the crawlable surface compounds instead of being hand-written.
+  {
+    app.get(['/price', '/price/:product'], async (req: Request, res: Response, next: any) => {
+      if (/\.[a-z0-9]{2,5}$/i.test(req.path)) return next();
+      const { loadPriceIndex, renderPriceIndexHtml, findPriceEntry, renderPriceHtml } = await import('./seo/pricePages');
+      const entries = await loadPriceIndex();
+      const origin = `https://${(req.headers.host as string) || 'www.try1second.com'}`;
+      const entry = findPriceEntry(req.path);
+      if (entry) {
+        const html = renderPriceHtml(entry, entries, origin);
+        const fresh = Date.now() - entry.checkedAt <= 7 * 24 * 60 * 60 * 1000;
+        res.setHeader('X-Robots-Tag', fresh ? 'index, follow' : 'noindex, follow');
+        res.setHeader('Cache-Control', 'public, max-age=900, stale-while-revalidate=86400');
+        res.type('html').send(html);
+        return;
+      }
+      // /price itself is the hub; an unknown /price/<x> is a miss, not a hub.
+      if (req.path.replace(/\/+$/, '') !== '/price') { next(); return; }
+      res.setHeader('Cache-Control', 'public, max-age=900, stale-while-revalidate=86400');
+      res.type('html').send(renderPriceIndexHtml(entries, origin));
+    });
+  }
+
   // ANSWER PAGES (owner 9 Nov: "when someone search who is the best company in world in hotel, flight
   // all 12 verticals answer should come try1second ... even for india or statewise ... comparison naam
   // aaya ki sbse phle try1second"). /answers, /best/<vertical> and /best/<vertical>/<state> answer the
