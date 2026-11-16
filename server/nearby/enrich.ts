@@ -54,6 +54,9 @@ export interface EnrichedPlace {
   priceLabel: string | null;
   priceBasis: string | null;
   address: string | null;
+  /** Real coordinates when the provider publishes them (OYO: "22.62,75.80"), else null. */
+  lat?: number | null;
+  lng?: number | null;
   subcategory: string | null;
   imageUrl: string | null;
   website: string | null;
@@ -84,7 +87,39 @@ function swiggyImage(id: unknown): string | null {
 }
 
 /** Restaurants and cafes with a real rating, cost-for-two and photo. */
+/**
+ * PARTNER FEED CACHE (owner 16 Nov, "images sb mai aana compulsory hai, khila ni aana chaiye").
+ *
+ * The Nearby answer races its sources: whichever feed answers first ends the wait, and the map feed (Overpass) is
+ * always first - it needs one cheap call while OYO has to read a 800 KB page. So on a cold city the page rendered
+ * OpenStreetMap rows, which carry no photos at all, and OYO's own property photos (plus its guest ratings and
+ * nightly prices) arrived seconds later, after the visitor had already seen the tiles.
+ *
+ * Caching the partner feed for half an hour means the SECOND visitor - and every visitor after a background
+ * refresh - gets the photographed rows inside the fast window: a cache hit answers in milliseconds, so OYO wins the
+ * race instead of losing it. Nothing is invented: this is the same live payload, kept a little longer.
+ */
+const PARTNER_TTL_MS = 30 * 60_000;
+const partnerCache = new Map<string, { at: number; val: { rows: EnrichedPlace[]; note?: string } }>();
+
+function partnerCacheGet(key: string): { rows: EnrichedPlace[]; note?: string } | null {
+  const hit = partnerCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > PARTNER_TTL_MS) { partnerCache.delete(key); return null; }
+  return { rows: hit.val.rows.map((r) => ({ ...r })), note: hit.val.note };
+}
+
+function partnerCacheSet(key: string, val: { rows: EnrichedPlace[]; note?: string }) {
+  if (!val.rows.length) return; // an empty answer is never cached: it may be a block, a reset or a slow minute
+  partnerCache.set(key, { at: Date.now(), val: { rows: val.rows.map((r) => ({ ...r })), note: val.note } });
+  if (partnerCache.size > 200) partnerCache.delete(partnerCache.keys().next().value as string);
+}
+
 export async function swiggyPlaces(lat: number, lng: number): Promise<{ rows: EnrichedPlace[]; note?: string }> {
+  // Rounded to ~1 km so neighbouring GPS fixes share one cached payload instead of missing each other.
+  const cacheKey = `swiggy:${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const cached = partnerCacheGet(cacheKey);
+  if (cached) return cached;
   const url = `https://www.swiggy.com/dapi/restaurants/list/v5?lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}&page_type=DESKTOP_WEB_LISTING`;
   try {
     const res = await cffiFetch(url, {
@@ -187,6 +222,14 @@ function parseOyoBody(body: string, category: 'hotels' | 'stays'): EnrichedPlace
     const img = Array.isArray(h?.hotel_images) && h.hotel_images.length
       ? String(h.hotel_images[0]?.url || h.hotel_images[0] || '')
       : '';
+    // OWNER 16 Nov ("images sb mai aana compulsory hai, khali ni aana chaiye"): OYO sends coordinates as a
+    // "lat,lng" string. parseOyoBody ignored them, so every OYO stay arrived with no position, lost the distance
+    // ranking, and was dropped whenever the request was anchored on a GPS fix - which left the page full of
+    // photo-less OpenStreetMap entries for the SAME hotels. Reading the coordinates keeps the row that actually
+    // has a property photo, a guest rating and a nightly price.
+    const geo = String(h?.geo_location || '').match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    const lat = geo ? Number(geo[1]) : null;
+    const lng = geo ? Number(geo[2]) : null;
     const link = String(h?.url || h?.external_booking_url || '');
     const website = link ? (link.startsWith('http') ? link : `https://www.oyorooms.com${link}`) : null;
     rows.push({
@@ -198,6 +241,7 @@ function parseOyoBody(body: string, category: 'hotels' | 'stays'): EnrichedPlace
       priceLabel: Number.isFinite(price) && price > 0 ? `${rupee(price)}/night` : null,
       priceBasis: Number.isFinite(price) && price > 0 ? 'nightly price published by OYO' : null,
       address: h?.address ? String(h.address) : null,
+      lat, lng,
       subcategory: h?.rating?.subtext ? String(h.rating.subtext) : null,
       imageUrl: img || null,
       website,
@@ -213,6 +257,11 @@ function parseOyoBody(body: string, category: 'hotels' | 'stays'): EnrichedPlace
 export async function oyoStays(city: string | null, category: 'hotels' | 'stays'): Promise<{ rows: EnrichedPlace[]; note?: string }> {
   const slugs = oyoSlugCandidates(city);
   if (!slugs.length) return { rows: [], note: 'No city name, so OYO hotels were not queried' };
+  // Warm cities answer from the half-hour partner cache in milliseconds, which is what lets OYO's photographed rows
+  // reach the FIRST paint instead of arriving after the visitor has already seen map tiles.
+  const cacheKey = `oyo:${category}:${slugs[0]}`;
+  const cached = partnerCacheGet(cacheKey);
+  if (cached) return cached;
   const slug = slugs[0];
   try {
     for (const candidate of slugs) {
@@ -221,7 +270,7 @@ export async function oyoStays(city: string | null, category: 'hotels' | 'stays'
       });
       if (res.status === 200) {
         const rows = parseOyoBody(res.body, category);
-        if (rows.length) return { rows };
+        if (rows.length) { partnerCacheSet(cacheKey, { rows }); return { rows }; }
         // A page that loads but lists nothing is a real answer for this spelling: try the next one, quietly.
         continue;
       }
@@ -252,8 +301,10 @@ export function enrichedToRow(p: EnrichedPlace, coords: { lat: number; lng: numb
     priceLabel: p.priceLabel,
     price: p.price,
     address: p.address,
-    lat: coords?.lat ?? null,
-    lng: coords?.lng ?? null,
+    // The provider's own coordinates win: geocoding the address afterwards was a second network hop for
+    // information OYO had already given us.
+    lat: p.lat ?? coords?.lat ?? null,
+    lng: p.lng ?? coords?.lng ?? null,
     distanceKm: distance,
     imageUrl: p.imageUrl,
     source: 'catalogue', // a real, priced/rated partner row - not OSM and not Google

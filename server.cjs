@@ -47933,7 +47933,24 @@ function swiggyImage(id) {
   if (!v) return null;
   return `https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400/${v}`;
 }
+function partnerCacheGet(key) {
+  const hit = partnerCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > PARTNER_TTL_MS) {
+    partnerCache.delete(key);
+    return null;
+  }
+  return { rows: hit.val.rows.map((r) => ({ ...r })), note: hit.val.note };
+}
+function partnerCacheSet(key, val) {
+  if (!val.rows.length) return;
+  partnerCache.set(key, { at: Date.now(), val: { rows: val.rows.map((r) => ({ ...r })), note: val.note } });
+  if (partnerCache.size > 200) partnerCache.delete(partnerCache.keys().next().value);
+}
 async function swiggyPlaces(lat, lng) {
+  const cacheKey2 = `swiggy:${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const cached3 = partnerCacheGet(cacheKey2);
+  if (cached3) return cached3;
   const url = `https://www.swiggy.com/dapi/restaurants/list/v5?lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}&page_type=DESKTOP_WEB_LISTING`;
   try {
     const res = await cffiFetch(url, {
@@ -48033,6 +48050,9 @@ function parseOyoBody(body, category) {
     const count = Number(h?.rating?.count);
     const price2 = Number(h?.pricing?.bookingPrice);
     const img = Array.isArray(h?.hotel_images) && h.hotel_images.length ? String(h.hotel_images[0]?.url || h.hotel_images[0] || "") : "";
+    const geo = String(h?.geo_location || "").match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    const lat = geo ? Number(geo[1]) : null;
+    const lng = geo ? Number(geo[2]) : null;
     const link = String(h?.url || h?.external_booking_url || "");
     const website = link ? link.startsWith("http") ? link : `https://www.oyorooms.com${link}` : null;
     rows.push({
@@ -48044,6 +48064,8 @@ function parseOyoBody(body, category) {
       priceLabel: Number.isFinite(price2) && price2 > 0 ? `${rupee(price2)}/night` : null,
       priceBasis: Number.isFinite(price2) && price2 > 0 ? "nightly price published by OYO" : null,
       address: h?.address ? String(h.address) : null,
+      lat,
+      lng,
       subcategory: h?.rating?.subtext ? String(h.rating.subtext) : null,
       imageUrl: img || null,
       website,
@@ -48056,6 +48078,9 @@ function parseOyoBody(body, category) {
 async function oyoStays(city, category) {
   const slugs = oyoSlugCandidates(city);
   if (!slugs.length) return { rows: [], note: "No city name, so OYO hotels were not queried" };
+  const cacheKey2 = `oyo:${category}:${slugs[0]}`;
+  const cached3 = partnerCacheGet(cacheKey2);
+  if (cached3) return cached3;
   const slug5 = slugs[0];
   try {
     for (const candidate of slugs) {
@@ -48066,7 +48091,10 @@ async function oyoStays(city, category) {
       });
       if (res.status === 200) {
         const rows = parseOyoBody(res.body, category);
-        if (rows.length) return { rows };
+        if (rows.length) {
+          partnerCacheSet(cacheKey2, { rows });
+          return { rows };
+        }
         continue;
       }
       if (res.status !== 404 && res.status !== 410) return { rows: [], note: `OYO could not be read today (${res.status})` };
@@ -48089,8 +48117,10 @@ function enrichedToRow(p, coords, distance) {
     priceLabel: p.priceLabel,
     price: p.price,
     address: p.address,
-    lat: coords?.lat ?? null,
-    lng: coords?.lng ?? null,
+    // The provider's own coordinates win: geocoding the address afterwards was a second network hop for
+    // information OYO had already given us.
+    lat: p.lat ?? coords?.lat ?? null,
+    lng: p.lng ?? coords?.lng ?? null,
     distanceKm: distance,
     imageUrl: p.imageUrl,
     source: "catalogue",
@@ -48158,7 +48188,7 @@ async function ogImage(pageUrl) {
   ogCache.set(url, { url: found, at: Date.now() });
   return found;
 }
-var CATEGORY_TILES, ogCache;
+var CATEGORY_TILES, PARTNER_TTL_MS, partnerCache, ogCache;
 var init_enrich = __esm({
   "server/nearby/enrich.ts"() {
     init_logger();
@@ -48173,6 +48203,8 @@ var init_enrich = __esm({
       movies: ["/nearby-assets/movies.jpg", "/nearby-assets/movies-2.jpg", "/nearby-assets/movies-3.jpg", "/nearby-assets/movies-4.jpg"],
       all: ["/nearby-assets/all.jpg", "/nearby-assets/all-2.jpg", "/nearby-assets/all-3.jpg", "/nearby-assets/all-4.jpg"]
     };
+    PARTNER_TTL_MS = 30 * 6e4;
+    partnerCache = /* @__PURE__ */ new Map();
     ogCache = /* @__PURE__ */ new Map();
   }
 });
@@ -49179,15 +49211,28 @@ async function catalogueNearby(city, category) {
 }
 function dedupe(rows) {
   const kept = [];
+  const sameSpot = (a, b) => {
+    if (!a.lat || !b.lat || !a.lng || !b.lng) return true;
+    return distanceKm2({ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }) < 0.3;
+  };
+  const contains = (a, b) => a.length >= 8 && b.length >= 8 && (a.includes(b) || b.includes(a));
+  const weight = (r) => (r.rating !== null ? 4 : 0) + (r.price !== null ? 3 : 0) + (r.imageUrl && !/\/nearby-assets\//.test(r.imageUrl) ? 2 : 0) + (r.website ? 1 : 0);
   for (const row of rows) {
     const name = norm9(row.name);
-    const clash = kept.find((k) => {
-      if (norm9(k.name) !== name) return false;
-      if (!k.lat || !row.lat || !k.lng || !row.lng) return true;
-      return distanceKm2({ lat: k.lat, lng: k.lng }, { lat: row.lat, lng: row.lng }) < 0.2;
-    });
+    const clash = kept.find((k) => (norm9(k.name) === name || contains(norm9(k.name), name)) && sameSpot(k, row));
     if (clash) {
-      if ((row.rating ?? -1) > (clash.rating ?? -1)) Object.assign(clash, row);
+      const [win, lose] = weight(row) > weight(clash) ? [row, clash] : [clash, row];
+      const merged = {
+        ...lose,
+        ...win,
+        imageUrl: win.imageUrl || lose.imageUrl,
+        lat: win.lat ?? lose.lat,
+        lng: win.lng ?? lose.lng,
+        distanceKm: win.distanceKm ?? lose.distanceKm,
+        website: win.website || lose.website
+      };
+      const at = kept.indexOf(clash);
+      kept[at] = merged;
       continue;
     }
     kept.push(row);
@@ -49196,7 +49241,8 @@ function dedupe(rows) {
 }
 function sortRows(rows, category) {
   const byDistance = (a, b) => (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
-  const score = (r) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0);
+  const ownPhoto = (r) => Boolean(r.imageUrl) && !/\/nearby-assets\//.test(String(r.imageUrl));
+  const score = (r) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0) + (ownPhoto(r) ? 1 : 0);
   return [...rows].sort((a, b) => {
     const rank = score(b) - score(a);
     if (rank !== 0) return rank;
@@ -49280,7 +49326,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const wantsFood = category === "all" || category === "restaurants" || category === "cafes";
   const wantsStay = category === "all" || category === "hotels" || category === "stays";
   const isFull = budgetMs >= FULL_BUDGET_MS;
-  const srcCap = isFull ? 6e3 : Math.max(900, Math.min(2e3, budgetMs + 400));
+  const srcCap = isFull ? Math.max(6e3, Math.min(1e4, budgetMs - 1500)) : Math.max(900, Math.min(2e3, budgetMs + 400));
   const sourcePromise = (name, p) => ({ name, p });
   const sources2 = [
     sourcePromise("google", googleNearby(location.lat, location.lng, category)),
@@ -49578,6 +49624,10 @@ async function nearbyAnswer(input) {
   const fullBuilds = globalThis.__t1sNearbyFull ||= /* @__PURE__ */ new Map();
   const finishInBackground = () => {
     if (fullBuilds.has(cacheKey2)) return;
+    const refreshes = globalThis.__t1sNearbyRefresh ||= /* @__PURE__ */ new Map();
+    const last = refreshes.get(cacheKey2) || 0;
+    if (Date.now() - last < 10 * 6e4) return;
+    refreshes.set(cacheKey2, Date.now());
     const p = buildNearbyAnswer(input, FULL_BUDGET_MS).then((ans) => {
       memoryPut(cacheKey2, ans);
       return ans;
@@ -49585,9 +49635,15 @@ async function nearbyAnswer(input) {
     fullBuilds.set(cacheKey2, p);
     void p;
   };
+  const tileShare = (answer) => {
+    const rows = answer.results || [];
+    if (!rows.length) return 0;
+    const tiles = rows.filter((r) => !r.imageUrl || /\/nearby-assets\//.test(String(r.imageUrl))).length;
+    return tiles / rows.length;
+  };
   const serve = (answer, extra) => {
     memoryPut(cacheKey2, answer);
-    if (answer.partial) finishInBackground();
+    if (answer.partial || tileShare(answer) > 0.3) finishInBackground();
     return { ...answer, ...extra, ms: Date.now() - started3 };
   };
   const warm2 = memoryGet(cacheKey2);
@@ -49774,7 +49830,7 @@ function variantOf(title) {
   const name = modelName(title);
   const caps = capacities(title).sort();
   const config = caps.length >= 2 ? `${caps[0].replace("gb", " GB").replace("tb", " TB")} / ${caps[1].replace("gb", " GB").replace("tb", " TB")}` : caps.length === 1 ? caps[0].replace("gb", " GB").replace("tb", " TB") : "";
-  const pretty = name.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\b5G\b/g, "5G");
+  const pretty = name.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\b5g\b/gi, "5G");
   return { key: `${name}|${caps.join("+")}`, name: pretty, config };
 }
 function hasAllWords(title, identity) {

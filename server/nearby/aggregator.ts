@@ -872,18 +872,37 @@ async function catalogueNearby(city: string | null, category: NearbyCategory): P
 
 /* ------------------------------------------------------------------ merge + cache */
 
+/**
+ * One row per real place. OWNER 16 Nov ("images sb mai aana compulsory hai, aisa khali ni aana chaiye"): the old
+ * check only merged EXACT name matches, so OYO's "Townhouse 135 Gandhi Hall" and OpenStreetMap's "OYO Townhouse 135
+ * Gandhi Hall" were two cards for one hotel - the OYO card carrying a real property photo, a guest rating and a
+ * nightly price, the OSM card carrying a grey tile. Names now also match by containment (one name inside the other)
+ * when the coordinates agree, and the surviving row is the one carrying the most verified facts AND a real photo.
+ */
 function dedupe(rows: NearbyRow[]): NearbyRow[] {
   const kept: NearbyRow[] = [];
+  const sameSpot = (a: NearbyRow, b: NearbyRow) => {
+    if (!a.lat || !b.lat || !a.lng || !b.lng) return true; // no coordinates to disagree with
+    return distanceKm({ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }) < 0.3;
+  };
+  const contains = (a: string, b: string) => a.length >= 8 && b.length >= 8 && (a.includes(b) || b.includes(a));
+  const weight = (r: NearbyRow) => (r.rating !== null ? 4 : 0) + (r.price !== null ? 3 : 0)
+    + (r.imageUrl && !/\/nearby-assets\//.test(r.imageUrl) ? 2 : 0) + (r.website ? 1 : 0);
   for (const row of rows) {
     const name = norm(row.name);
-    const clash = kept.find((k) => {
-      if (norm(k.name) !== name) return false;
-      if (!k.lat || !row.lat || !k.lng || !row.lng) return true;
-      return distanceKm({ lat: k.lat, lng: k.lng }, { lat: row.lat, lng: row.lng }) < 0.2;
-    });
+    const clash = kept.find((k) => (norm(k.name) === name || contains(norm(k.name), name)) && sameSpot(k, row));
     if (clash) {
-      // Prefer the row that carries a rating/price, so Google wins over OSM for the same place.
-      if ((row.rating ?? -1) > (clash.rating ?? -1)) Object.assign(clash, row);
+      const [win, lose] = weight(row) > weight(clash) ? [row, clash] : [clash, row];
+      // Merge without ever losing a fact the winner lacks: photo, rating, price, website, coordinates.
+      const merged: NearbyRow = {
+        ...lose, ...win,
+        imageUrl: win.imageUrl || lose.imageUrl,
+        lat: win.lat ?? lose.lat, lng: win.lng ?? lose.lng,
+        distanceKm: win.distanceKm ?? lose.distanceKm,
+        website: win.website || lose.website,
+      } as NearbyRow;
+      const at = kept.indexOf(clash);
+      kept[at] = merged;
       continue;
     }
     kept.push(row);
@@ -896,7 +915,10 @@ function sortRows(rows: NearbyRow[], category: NearbyCategory): NearbyRow[] {
   // A card that can show a real rating and price earns the top of the list; the map-only rows (name, address,
   // distance) follow, closest first. Before this, a rated Swiggy/OYO row with no coordinates sank to the bottom
   // behind unrated OSM rows, which made the enrichment look broken when it was working.
-  const score = (r: NearbyRow) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0);
+  // A card with its OWN photo outranks a card showing a generic category tile at equal facts: the first screen
+  // is then made of real places, and a place we could not photograph sits at the end instead of in view.
+  const ownPhoto = (r: NearbyRow) => Boolean(r.imageUrl) && !/\/nearby-assets\//.test(String(r.imageUrl));
+  const score = (r: NearbyRow) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0) + (ownPhoto(r) ? 1 : 0);
   return [...rows].sort((a, b) => {
     const rank = score(b) - score(a);
     if (rank !== 0) return rank;
@@ -1006,7 +1028,10 @@ async function buildNearbyAnswer(input: {
   // OWNER 16 Nov: a category with no fast source (cabs, measured 3.8s) used to pay 3.4s just to prove it. The
   // budgeted build now gives its sources ~1.3s and answers with whatever is real, so no request can approach the
   // proxy's timeout again.
-  const srcCap = isFull ? 6_000 : Math.max(900, Math.min(2000, budgetMs + 400));
+  // The background "finish" build is not holding anyone: give the partner feeds (OYO reads a 800 KB page) room to
+  // answer, because those are the rows that carry real property photos, guest ratings and nightly prices. At 6s the
+  // OYO page regularly lost the race and the finished answer was still map rows with category tiles.
+  const srcCap = isFull ? Math.max(6_000, Math.min(10_000, budgetMs - 1_500)) : Math.max(900, Math.min(2000, budgetMs + 400));
   const sourcePromise = (name: string, p: Promise<{ rows: any[]; note?: string }>) => ({ name, p });
   const sources: Array<{ name: string; p: Promise<{ rows: any[]; note?: string }> }> = [
     sourcePromise('google', googleNearby(location.lat, location.lng, category)),
@@ -1382,6 +1407,12 @@ export async function nearbyAnswer(input: {
   /** The finish: no user is waiting, so it gets the whole budget and replaces the thin answer in the cache. */
   const finishInBackground = (): void => {
     if (fullBuilds.has(cacheKey)) return;
+    // One refresh per key per ten minutes: a build that still comes back `partial` would otherwise re-run on every
+    // single request and keep the partner feeds busy for nothing.
+    const refreshes = ((globalThis as any).__t1sNearbyRefresh ||= new Map<string, number>()) as Map<string, number>;
+    const last = refreshes.get(cacheKey) || 0;
+    if (Date.now() - last < 10 * 60_000) return;
+    refreshes.set(cacheKey, Date.now());
     const p = buildNearbyAnswer(input, FULL_BUDGET_MS)
       .then((ans) => { memoryPut(cacheKey, ans); return ans; })
       .catch(() => undefined as any)
@@ -1390,10 +1421,26 @@ export async function nearbyAnswer(input: {
     void p;
   };
 
+  /**
+   * OWNER 16 Nov ("images sb mai aana compulsory hai, aisa khali ni aana chaiye").
+   *
+   * An answer made mostly of category tiles looks broken to a visitor, and it used to be served for the whole cache
+   * lifetime: the durable row written before the OYO photo fix kept answering for hours, and even a fresh finish
+   * could end up tile-heavy when the map feed beat the partner feed. A tile-heavy answer is therefore never treated
+   * as finished - it is served immediately, and the rich version is rebuilt behind it and replaces it in the cache.
+   */
+  const tileShare = (answer: NearbyAnswer): number => {
+    const rows = answer.results || [];
+    if (!rows.length) return 0;
+    const tiles = rows.filter((r) => !r.imageUrl || /\/nearby-assets\//.test(String(r.imageUrl))).length;
+    return tiles / rows.length;
+  };
+
   const serve = (answer: NearbyAnswer, extra: Partial<NearbyAnswer>): NearbyAnswer => {
     memoryPut(cacheKey, answer);
-    // A partial answer is still being completed, so the next open must not be served it as if it were final.
-    if (answer.partial) finishInBackground();
+    // A partial answer is still being completed, and a mostly-tile answer is still missing its real photos: the next
+    // open must not be served either as if it were final.
+    if (answer.partial || tileShare(answer) > 0.3) finishInBackground();
     return { ...answer, ...extra, ms: Date.now() - started };
   };
 

@@ -103,6 +103,30 @@ export default function NearbyView() {
       try {
         sessionStorage.setItem(key, JSON.stringify({ results: pageRows, notes: data.notes || [], where: whereName, total: nextTotal, hasMore: more && pageRows.length > 0, at: Date.now() }));
       } catch { /* quota: the paint cache is optional */ }
+      // OWNER 16 Nov ("images sb mai aana compulsory hai, aisa khali ni aana chaiye"): a cold city answers from
+      // whichever map feed comes first, and those rows have no photos of their own - the photographed partner rows
+      // (OYO/Swiggy) land a moment later in the background build. So when the cards on screen are mostly category
+      // tiles, the page quietly asks once more about 1.4s later and swaps in the rows that carry real photos.
+      const tiles = pageRows.filter((r: NearbyRow) => !r.imageUrl || /\/nearby-assets\//.test(String(r.imageUrl))).length;
+      if (tiles > 0 && pageRows.length > 0) {
+        const anchorQ = q.toString();
+        window.setTimeout(async () => {
+          if (ctrl.signal.aborted) return;
+          try {
+            const again = await fetch(`/api/nearby?${anchorQ}`, { signal: ctrl.signal });
+            const fresh = await again.json();
+            const next = (fresh?.results || []) as NearbyRow[];
+            if (!next.length) return;
+            const own = (rows: NearbyRow[]) => rows.filter((r) => r.imageUrl && !/\/nearby-assets\//.test(String(r.imageUrl))).length;
+            if (own(next) > own(pageRows)) {
+              setRows(next);
+              setNotes(fresh.notes || []);
+              setTotal(Number(fresh.total) || next.length);
+              setHasMore(fresh.hasMore === true);
+            }
+          } catch { /* the first paint stays; nothing is lost */ }
+        }, 1400);
+      }
     } catch (e: any) {
       if (e?.name === 'AbortError') return; // superseded by a newer search
       setError(String(e?.message || e).slice(0, 120));
