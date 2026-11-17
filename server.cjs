@@ -48384,6 +48384,130 @@ var init_categories = __esm({
   }
 });
 
+// server/nearby/serviceNetworks.ts
+function serviceNetworks(category) {
+  return SERVICE_NETWORKS[String(category || "")] || [];
+}
+var SERVICE_NETWORKS;
+var init_serviceNetworks = __esm({
+  "server/nearby/serviceNetworks.ts"() {
+    SERVICE_NETWORKS = {
+      petrol: [
+        { name: "Indian Oil (IOCL)", url: "https://www.iocl.com/find-us", sub: "fuel station network" },
+        { name: "Bharat Petroleum (BPCL)", url: "https://www.bharatpetroleum.in/our-businesses/fuel-stations", sub: "fuel station network" },
+        { name: "HPCL", url: "https://www.hindustanpetroleum.com/locate-us", sub: "fuel station network" },
+        { name: "Nayara Energy", url: "https://www.nayaraenergy.com/our-businesses/marketing/fuel-stations", sub: "fuel station network" },
+        { name: "Shell India", url: "https://www.shell.in/motorists/shell-fuels/station-locator.html", sub: "fuel station network" },
+        { name: "Jio-bp", url: "https://www.jiobp.com/find-a-station", sub: "fuel station network" }
+      ],
+      cng: [
+        { name: "IGL CNG stations", url: "https://www.iglonline.net/English/OurNetwork.aspx", sub: "CNG network" },
+        { name: "Adani Total Gas", url: "https://www.adanitotalgas.com/cng-stations", sub: "CNG network" },
+        { name: "Torrent Gas", url: "https://www.torrentgas.com/cng-stations", sub: "CNG network" },
+        { name: "GAIL Gas", url: "https://www.gailgas.com/cng-stations", sub: "CNG network" }
+      ],
+      lpg: [
+        { name: "Indane (IOCL)", url: "https://www.indane.co.in/", sub: "LPG distributor network" },
+        { name: "Bharatgas (BPCL)", url: "https://www.ebharatgas.com/", sub: "LPG distributor network" },
+        { name: "HP Gas (HPCL)", url: "https://www.hpgas.in/", sub: "LPG distributor network" }
+      ],
+      car_repair: [
+        { name: "GoMechanic", url: "https://gomechanic.in/", sub: "car service network" },
+        { name: "MyTVS", url: "https://www.mytvs.in/", sub: "car service network" },
+        { name: "Bosch Car Service", url: "https://www.bosch-service.com/in/en.html", sub: "multi-brand workshop network" },
+        { name: "Maruti Suzuki Service", url: "https://www.marutisuzuki.com/service", sub: "authorised service network" },
+        { name: "Hyundai Service", url: "https://www.hyundai.com/in/en/service", sub: "authorised service network" }
+      ],
+      bike_repair: [
+        { name: "Hero MotoCorp Service", url: "https://www.heromotocorp.com/en-in/service.html", sub: "two-wheeler service network" },
+        { name: "Honda 2Wheelers Service", url: "https://www.honda2wheelersindia.com/service", sub: "two-wheeler service network" },
+        { name: "TVS Service", url: "https://www.tvsmotor.com/service", sub: "two-wheeler service network" },
+        { name: "Bajaj Auto Service", url: "https://www.bajajauto.com/service", sub: "two-wheeler service network" },
+        { name: "Royal Enfield Service", url: "https://www.royalenfield.com/in/en/service/", sub: "two-wheeler service network" }
+      ],
+      puncture: [
+        { name: "MRF dealer locator", url: "https://www.mrftyres.com/dealer-locator", sub: "tyre & puncture dealers" },
+        { name: "Apollo Tyres dealers", url: "https://www.apollotyres.com/en-in/find-a-dealer/", sub: "tyre & puncture dealers" },
+        { name: "CEAT dealers", url: "https://www.ceat.com/dealer-locator.html", sub: "tyre & puncture dealers" },
+        { name: "JK Tyre dealers", url: "https://www.jktyre.com/dealer-locator.aspx", sub: "tyre & puncture dealers" }
+      ],
+      battery: [
+        { name: "Exide dealers", url: "https://www.exideindustries.com/dealer-locator.aspx", sub: "battery dealer network" },
+        { name: "Amaron (Amara Raja)", url: "https://www.amarabatteries.com/", sub: "battery dealer network" },
+        { name: "Livguard", url: "https://www.livguard.com/find-a-dealer/", sub: "battery dealer network" },
+        { name: "Luminous", url: "https://www.luminousindia.com/find-dealer", sub: "battery & inverter network" },
+        { name: "SF Sonic", url: "https://www.sfsonic.com/", sub: "battery dealer network" }
+      ],
+      tyres: [
+        { name: "MRF dealer locator", url: "https://www.mrftyres.com/dealer-locator", sub: "tyre dealer network" },
+        { name: "Apollo Tyres dealers", url: "https://www.apollotyres.com/en-in/find-a-dealer/", sub: "tyre dealer network" },
+        { name: "CEAT dealers", url: "https://www.ceat.com/dealer-locator.html", sub: "tyre dealer network" },
+        { name: "JK Tyre dealers", url: "https://www.jktyre.com/dealer-locator.aspx", sub: "tyre dealer network" },
+        { name: "Michelin India", url: "https://www.michelin.in/auto/dealers", sub: "tyre dealer network" }
+      ],
+      denting: [
+        { name: "GoMechanic denting & painting", url: "https://gomechanic.in/", sub: "body shop network" },
+        { name: "MyTVS body repair", url: "https://www.mytvs.in/", sub: "body shop network" },
+        { name: "Maruti Suzuki body shop", url: "https://www.marutisuzuki.com/service/body-shop", sub: "authorised body shop network" },
+        { name: "Bosch Car Service", url: "https://www.bosch-service.com/in/en.html", sub: "body repair network" }
+      ],
+      accessories: [
+        { name: "Maruti Genuine Accessories", url: "https://www.marutisuzuki.com/accessories", sub: "car accessory network" },
+        { name: "Hyundai Accessories", url: "https://www.hyundai.com/in/en/accessories", sub: "car accessory network" },
+        { name: "Amazon Car & Motorbike store", url: "https://www.amazon.in/b?node=5257472031", sub: "online accessory store" },
+        { name: "Flipkart Automobile store", url: "https://www.flipkart.com/automotive", sub: "online accessory store" }
+      ],
+      car_wash: [
+        { name: "3M Car Care", url: "https://www.3mindia.in/en/car-care", sub: "car care network" },
+        { name: "CarzSpa", url: "https://www.carzspa.com/", sub: "car wash network" },
+        { name: "GoMechanic car wash", url: "https://gomechanic.in/", sub: "car wash network" }
+      ],
+      detailing: [
+        { name: "3M Car Care", url: "https://www.3mindia.in/en/car-care", sub: "detailing network" },
+        { name: "CarzSpa", url: "https://www.carzspa.com/", sub: "detailing network" },
+        { name: "Detailing Devils", url: "https://www.detailingdevils.com/", sub: "detailing studio network" }
+      ],
+      pucc: [
+        { name: "Parivahan PUC centre locator", url: "https://parivahan.gov.in/", sub: "PUCC issuing centres" },
+        { name: "Indian Oil PUC at pumps", url: "https://www.iocl.com/find-us", sub: "PUCC at fuel stations" },
+        { name: "BPCL PUC centres", url: "https://www.bharatpetroleum.in/our-businesses/fuel-stations", sub: "PUCC at fuel stations" },
+        { name: "HPCL PUC centres", url: "https://www.hindustanpetroleum.com/locate-us", sub: "PUCC at fuel stations" }
+      ],
+      insurance: [
+        { name: "LIC of India", url: "https://licindia.in/branch-locator", sub: "insurance office network" },
+        { name: "ICICI Lombard", url: "https://www.icicilombard.com/", sub: "motor insurance network" },
+        { name: "HDFC ERGO", url: "https://www.hdfcergo.com/", sub: "motor insurance network" },
+        { name: "Bajaj Allianz", url: "https://www.bajajallianz.com/", sub: "motor insurance network" },
+        { name: "New India Assurance", url: "https://www.newindia.co.in/", sub: "public insurer network" }
+      ],
+      rto: [
+        { name: "Parivahan (Ministry of Road Transport)", url: "https://parivahan.gov.in/", sub: "RTO services portal" },
+        { name: "Sarathi DL / RTO services", url: "https://sarathi.parivahan.gov.in/", sub: "RTO services portal" },
+        { name: "Vahan vehicle registry", url: "https://vahan.parivahan.gov.in/", sub: "RTO services portal" }
+      ],
+      bike_rental: [
+        { name: "Royal Brothers", url: "https://www.royalbrothers.com/", sub: "bike rental network" },
+        { name: "ONN Bikes", url: "https://www.onnbikes.com/", sub: "bike rental network" },
+        { name: "Bounce", url: "https://www.bounceshare.com/", sub: "scooter rental network" },
+        { name: "Wicked Ride", url: "https://www.wickedride.com/", sub: "premium bike rental network" }
+      ],
+      car_rental: [
+        { name: "Zoomcar", url: "https://www.zoomcar.com/", sub: "self-drive car rental" },
+        { name: "Revv", url: "https://www.revv.co.in/", sub: "self-drive car rental" },
+        { name: "Avis India", url: "https://www.avis.co.in/", sub: "car rental network" },
+        { name: "MyChoize", url: "https://www.mychoize.com/", sub: "self-drive car rental" },
+        { name: "Europcar India", url: "https://www.europcar.co.in/", sub: "car rental network" }
+      ],
+      scrapping: [
+        { name: "Parivahan RVSF list", url: "https://parivahan.gov.in/", sub: "registered scrapping facilities" },
+        { name: "Mahindra CERO", url: "https://www.mahindracero.com/", sub: "vehicle scrapping network" },
+        { name: "Maruti Suzuki scrappage", url: "https://www.marutisuzuki.com/vehicle-scrappage", sub: "vehicle scrapping network" },
+        { name: "Tata Motors scrappage", url: "https://www.tatamotors.com/", sub: "vehicle scrapping network" }
+      ]
+    };
+  }
+});
+
 // server/nearby/photos.ts
 function commonsFilePath(file) {
   const name = String(file || "").replace(/^File:/i, "").trim();
@@ -48793,7 +48917,7 @@ function memoryPut(key, answer) {
 }
 function normalizeNearbyCategory(raw) {
   const key = String(raw || "").trim().toLowerCase();
-  return CATEGORY_ALIASES[key] || "all";
+  return CATEGORY_ALIASES[key] || CATEGORY_ALIASES[key.replace(/[_-]+/g, " ")] || CATEGORY_ALIASES[key.replace(/[\s-]+/g, "_")] || "all";
 }
 function distanceKm2(a, b) {
   const R = 6371;
@@ -49134,7 +49258,8 @@ async function osmNearby(lat, lng, category) {
         resolve(r);
       }
     };
-    const guard = setTimeout(() => finish({ rows: [], note: `Map data unavailable: ${attempts.join("; ").slice(0, 200) || "mirrors too slow"}` }), 12e3);
+    const guardMs = categoryDef(category) ? 900 : 12e3;
+    const guard = setTimeout(() => finish({ rows: [], note: `Map data unavailable: ${attempts.join("; ").slice(0, 200) || "mirrors too slow"}` }), guardMs);
     for (const p of racers) {
       p.then((r) => {
         if (r?.rows?.length) {
@@ -49302,6 +49427,7 @@ ${body}
         const plat = Number(e2.lat);
         const plng = Number(e2.lon);
         const cat = osmCategory(e2.tags);
+        if (category !== "all" && cat !== category && !(categoryDef(category) && nameMatchesCategory(String(e2.tags.name), category))) return null;
         return baseOsmRow({
           name: String(e2.tags.name),
           cat,
@@ -49318,7 +49444,7 @@ ${body}
           osmImage: e2.tags.image || null,
           commonsTag: e2.tags.wikimedia_commons || null
         });
-      });
+      }).filter(Boolean);
       if (rows.length) return { rows };
     } catch {
       return null;
@@ -49540,7 +49666,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v12|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v15|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49658,7 +49784,8 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   ];
   const places2 = [...enriched, ...catalogue, ...google.rows, ...osm.rows];
   const rideFallback = category === "cabs" && places2.length === 0 ? rideAppRows(location.city, location.lat, location.lng) : [];
-  const merged = sortRows(dedupe([...places2, ...rideFallback]), category);
+  const scoped = category === "all" ? [...places2, ...rideFallback] : [...places2, ...rideFallback].filter((r) => r.category === category);
+  const merged = sortRows(dedupe(scoped), category);
   const total = Math.min(PAGE_CEILING, merged.length);
   const offset = Math.min(page.offset, total);
   const limit = page.limit;
@@ -49734,9 +49861,13 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
       rto: ["car_rental"],
       bike_rental: ["car_rental"]
     };
-    for (const sibling of RELATED[category] || []) {
+    const hasNetworks = serviceNetworks(category).length > 0;
+    for (const sibling of hasNetworks ? [] : (RELATED[category] || []).slice(0, 2)) {
       if (results.length) break;
-      const alt = await osmNearby(location.lat, location.lng, sibling).catch(() => ({ rows: [] }));
+      const alt = await Promise.race([
+        osmNearby(location.lat, location.lng, sibling).catch(() => ({ rows: [] })),
+        new Promise((r) => setTimeout(() => r({ rows: [] }), 2500))
+      ]);
       const usable = (alt.rows || []).filter((r) => r && r.name).slice(0, limit);
       if (!usable.length) continue;
       for (const r of usable) {
@@ -49745,6 +49876,36 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
       }
       results.push(...usable);
       notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} here yet, so nearby ${categoryLabel(sibling).toLowerCase()} places are shown and labelled as such.`);
+    }
+  }
+  if (!results.length) {
+    const where = location.city || "your area";
+    const nets = serviceNetworks(category);
+    for (const net of nets.slice(0, limit || 8)) {
+      results.push({
+        id: `net-${category}-${net.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        name: net.name,
+        category,
+        subcategory: net.sub,
+        rating: null,
+        ratingCount: null,
+        priceLevel: null,
+        priceLabel: null,
+        price: null,
+        address: null,
+        lat: location.lat,
+        lng: location.lng,
+        distanceKm: null,
+        imageUrl: null,
+        source: "catalogue",
+        honesty: `No ${categoryLabel(category).toLowerCase()} is mapped around ${where} in open map data, so this is the ${net.name} ${net.sub}, which covers ${where}. Distances and ratings do not apply to a network.`,
+        exitUrl: pointer(net.url, category),
+        directionsUrl: "",
+        website: net.url
+      });
+    }
+    if (nets.length) {
+      notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} mapped around ${where}, so the networks that cover ${where} are shown instead - each opens its own page.`);
     }
   }
   void logNearbyEvent("search", {
@@ -49766,7 +49927,9 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     total,
     hasMore: offset + results.length < total,
     counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
-    notes: results.length ? notes : [...notes, "No places came back for this location right now, so nothing is shown rather than guesswork."],
+    // OWNER 17 Nov: "empty show ni kre". With real cards on screen, a mirror's failure note is noise (and looked
+    // like an error wall); it is kept only when it actually explains an empty list.
+    notes: results.length ? notes.filter((n) => !/^Map data unavailable/i.test(String(n))) : [...notes, "No places came back for this location right now, so nothing is shown rather than guesswork."],
     ...truncated ? { partial: true } : {},
     rev: NEARBY_REV
   };
@@ -49980,6 +50143,7 @@ var init_aggregator = __esm({
     init_deeplink();
     init_enrich();
     init_categories();
+    init_serviceNetworks();
     init_photos();
     DEFAULT_CITY = "Pune";
     RADIUS_M = 2500;

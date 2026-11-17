@@ -21,6 +21,7 @@ import { INDIAN_CITIES } from '../seo/cityCorpus';
 import { createMaskingPointer } from '../affiliate/deeplink';
 import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords, ogImage, CATEGORY_TILE, CATEGORY_TILES } from './enrich';
 import { categoryDef, categoryFilters, categoryTerms, categoryLabel, nameMatchesCategory, NEARBY_CATEGORIES } from './categories';
+import { serviceNetworks } from './serviceNetworks';
 import { resolvePlacePhoto, categoryTile, type PhotoEvidence } from './photos';
 
 export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies' | 'all'
@@ -187,7 +188,13 @@ const CATEGORY_ALIASES: Record<string, NearbyCategory> = {
 
 export function normalizeNearbyCategory(raw: unknown): NearbyCategory {
   const key = String(raw || '').trim().toLowerCase();
-  return CATEGORY_ALIASES[key] || 'all';
+  // OWNER 17 Nov: the new chips travel as ids ("car_rental", "car_wash"), but the alias table is written the way
+  // people type them ("car rental"). An un-normalised id fell through to 'all', which is how a Car Rentals chip was
+  // answered with cafés and hotels. Underscores, hyphens and spaces are the same word here.
+  return CATEGORY_ALIASES[key]
+    || CATEGORY_ALIASES[key.replace(/[_-]+/g, ' ')]
+    || CATEGORY_ALIASES[key.replace(/[\s-]+/g, '_')]
+    || 'all';
 }
 
 /** Great-circle distance in km, used for the "1.2 km away" label. */
@@ -621,7 +628,10 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
     let open = racers.length;
     let settled = false;
     const finish = (r: { rows: NearbyRow[]; note?: string }) => { if (!settled) { settled = true; resolve(r); } };
-    const guard = setTimeout(() => finish({ rows: [], note: `Map data unavailable: ${attempts.join('; ').slice(0, 200) || 'mirrors too slow'}` }), 12_000);
+    // OWNER 17 Nov ("results aana compulsory hai"): a vehicle chip is answered by its service-network tier almost
+    // instantly, so it must not sit on a 12-second mirror guard first. Two and a half seconds, then the fallback.
+    const guardMs = categoryDef(category) ? 900 : 12_000;
+    const guard = setTimeout(() => finish({ rows: [], note: `Map data unavailable: ${attempts.join('; ').slice(0, 200) || 'mirrors too slow'}` }), guardMs);
     for (const p of racers) {
       p.then((r) => {
         if (r?.rows?.length) { clearTimeout(guard); finish(r); return; }
@@ -812,6 +822,11 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
         .map((e: any) => {
           const plat = Number(e.lat); const plng = Number(e.lon);
           const cat = osmCategory(e.tags);
+          // OWNER 17 Nov: a rental chip was answered with OYO HOTELS because the tag query returned every node in the
+          // box and nothing filtered it. A row survives only if it belongs to the requested category, unless its name
+          // proves the category.
+          if (category !== 'all' && cat !== category
+            && !(categoryDef(category) && nameMatchesCategory(String(e.tags.name), category))) return null;
           return baseOsmRow({
             name: String(e.tags.name), cat, plat, plng, lat, lng,
             addr: [e.tags['addr:housenumber'], e.tags['addr:street'], e.tags['addr:suburb'], e.tags['addr:city']].filter(Boolean).join(', ') || null,
@@ -823,7 +838,8 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
             osmImage: e.tags.image || null,
             commonsTag: e.tags.wikimedia_commons || null,
           });
-        });
+        })
+        .filter(Boolean) as NearbyRow[];
       if (rows.length) return { rows };
     } catch { return null; }
     return null;
@@ -1081,7 +1097,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v12|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v15|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1238,7 +1254,14 @@ async function buildNearbyAnswer(input: {
   const rideFallback = category === 'cabs' && places.length === 0
     ? rideAppRows(location.city, location.lat, location.lng)
     : [];
-  const merged = sortRows(dedupe([...places, ...rideFallback]), category);
+  /**
+   * OWNER 17 Nov (a rental chip was answered with ice-cream cafes): every source is supposed to filter by category,
+   * but the enrichment layer (Swiggy) answers with its own category and slipped through. One gate here, on the merged
+   * list, makes a leak impossible for any source, now or later. 'all' keeps everything by definition.
+   */
+  const scoped = category === 'all' ? [...places, ...rideFallback]
+    : [...places, ...rideFallback].filter((r) => r.category === category);
+  const merged = sortRows(dedupe(scoped), category);
   // Paging: we hold at most PAGE_CEILING rows for a spot, and hand out one page at a time with an honest
   // `total`/`hasMore` so the app can offer "Load more" instead of pretending the list is endless.
   const total = Math.min(PAGE_CEILING, merged.length);
@@ -1354,9 +1377,13 @@ async function buildNearbyAnswer(input: {
       lpg: ['petrol'], cng: ['petrol'], bike_repair: ['accessories', 'car_repair'],
       scrapping: ['car_repair'], insurance: ['car_rental'], rto: ['car_rental'], bike_rental: ['car_rental'],
     };
-    for (const sibling of RELATED[category] || []) {
+    const hasNetworks = serviceNetworks(category).length > 0;
+    for (const sibling of (hasNetworks ? [] : (RELATED[category] || []).slice(0, 2))) {
       if (results.length) break;
-      const alt = await osmNearby(location.lat, location.lng, sibling as NearbyCategory).catch(() => ({ rows: [] as NearbyRow[] }));
+      const alt = await Promise.race([
+        osmNearby(location.lat, location.lng, sibling as NearbyCategory).catch(() => ({ rows: [] as NearbyRow[] })),
+        new Promise<{ rows: NearbyRow[] }>((r) => setTimeout(() => r({ rows: [] }), 2_500)),
+      ]);
       const usable = (alt.rows || []).filter((r: any) => r && r.name).slice(0, limit);
       if (!usable.length) continue;
       for (const r of usable) {
@@ -1365,6 +1392,45 @@ async function buildNearbyAnswer(input: {
       }
       results.push(...usable);
       notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} here yet, so nearby ${categoryLabel(sibling).toLowerCase()} places are shown and labelled as such.`);
+    }
+  }
+
+  /**
+   * OWNER 17 Nov: "ye sb mai results aana compulsory hai, agar results ni aa raha tho empty show ni kre".
+   *
+   * Third and last tier. When open map data has neither the category nor a sibling around this spot, the visitor gets
+   * the actual businesses that serve every Indian city for that errand - workshop chains, brand dealer locators, the
+   * government portals - each opening its own real page. They are labelled as a network covering the city, never as a
+   * particular shop, so nothing about a specific address, rating or price is invented.
+   */
+  if (!results.length) {
+    const where = location.city || 'your area';
+    const nets = serviceNetworks(category);
+    for (const net of nets.slice(0, limit || 8)) {
+      results.push({
+        id: `net-${category}-${net.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        name: net.name,
+        category,
+        subcategory: net.sub,
+        rating: null,
+        ratingCount: null,
+        priceLevel: null,
+        priceLabel: null,
+        price: null,
+        address: null,
+        lat: location.lat,
+        lng: location.lng,
+        distanceKm: null,
+        imageUrl: null,
+        source: 'catalogue' as const,
+        honesty: `No ${categoryLabel(category).toLowerCase()} is mapped around ${where} in open map data, so this is the ${net.name} ${net.sub}, which covers ${where}. Distances and ratings do not apply to a network.`,
+        exitUrl: pointer(net.url, category),
+        directionsUrl: '',
+        website: net.url,
+      } as unknown as NearbyRow);
+    }
+    if (nets.length) {
+      notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} mapped around ${where}, so the networks that cover ${where} are shown instead - each opens its own page.`);
     }
   }
 
@@ -1387,7 +1453,9 @@ async function buildNearbyAnswer(input: {
     total,
     hasMore: offset + results.length < total,
     counts: { google: google.rows.length, osm: osm.rows.length, catalogue: catalogue.length + enriched.length },
-    notes: results.length ? notes : [...notes, 'No places came back for this location right now, so nothing is shown rather than guesswork.'],
+    // OWNER 17 Nov: "empty show ni kre". With real cards on screen, a mirror's failure note is noise (and looked
+    // like an error wall); it is kept only when it actually explains an empty list.
+    notes: results.length ? notes.filter((n) => !/^Map data unavailable/i.test(String(n))) : [...notes, 'No places came back for this location right now, so nothing is shown rather than guesswork.'],
     ...(truncated ? { partial: true } : {}),
     rev: NEARBY_REV,
   };
