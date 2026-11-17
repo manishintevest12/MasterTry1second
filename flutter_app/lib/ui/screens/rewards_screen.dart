@@ -644,9 +644,15 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
   bool _spinning = false;
   bool _copied = false;
   late final VoidCallback _unsub;
+  /// OWNER 17 Nov (screenshot: signed in but "Sign in to get your own referral link"): this screen asked for the
+  /// member's code once in initState. If Rewards was opened while the saved session was still being restored the token
+  /// was not there yet, the fetch returned early and nothing ever retried, so a signed-in member saw a sign-in prompt
+  /// and a dead Copy button. The screen now listens to the auth state and asks again the moment sign-in lands.
+  late final VoidCallback _authSub;
   final _nameCtl = TextEditingController();
   final _emailCtl = TextEditingController();
   String? _refCode;
+  bool _refFetching = false;
   /// The link the server minted for THIS member (/r/<code>). Null until the code is known, and never faked:
   /// the old fallback was a hardcoded "T1S-WELCOME", so every member shared the same code and every friend
   /// credited the same account (owner 17 Nov: "id unique hona chaiye hr user ka").
@@ -660,6 +666,11 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
     _c.addListener(() {
       if (mounted) setState(() => _rotation = _c.value * _spinTarget);
     });
+    _authSub = () {
+      if (!mounted) return;
+      if (_refCode == null && AuthService.instance.signedIn) _refreshReferralCode();
+    };
+    AuthService.instance.addListener(_authSub);
     _refreshReferralCode();
   }
 
@@ -669,6 +680,7 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
     _nameCtl.dispose();
     _emailCtl.dispose();
     _unsub();
+    AuthService.instance.removeListener(_authSub);
     super.dispose();
   }
 
@@ -678,17 +690,36 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
 
   Future<void> _refreshReferralCode() async {
     final auth = AuthService.instance;
+    // Signed out: nothing to fetch (the card then shows the honest sign-in hint).
     if (!auth.signedIn || auth.token == null) return;
+    if (_refFetching) return;
+    _refFetching = true;
     try {
-      final me = await AppState.instance.api.referralMe(auth.token!);
-      if (mounted) setState(() {
-        _refCode = me?['code'] as String?;
-        _shareLink = (me?['shareLink'] as String?) ?? (me?['link'] as String?);
-      });
-      // A code that arrived through a deep link before sign-in is claimed as soon as there is an account to
-      // credit it to, so an invite is never silently lost.
-      await DeepLinks.claimPendingReferral();
-    } catch (_) {/* honest: link falls back to the plain site URL */}
+      // Three attempts (1.5s apart) because the first call can land while the session is being refreshed or the
+      // phone is flapping between networks; a code is minted server-side, so a later attempt always succeeds.
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          final me = await AppState.instance.api.referralMe(AuthService.instance.token ?? auth.token!);
+          final code = (me?['code'] as String?)?.trim();
+          final share = ((me?['shareLink'] as String?) ?? (me?['link'] as String?))?.trim();
+          if (code != null && code.isNotEmpty) {
+            if (mounted) setState(() {
+              _refCode = code;
+              _shareLink = (share != null && share.isNotEmpty) ? share : null;
+              _refFetching = false;
+            });
+            // A code that arrived through a deep link before sign-in is claimed as soon as there is an account to
+            // credit it to, so an invite is never silently lost.
+            await DeepLinks.claimPendingReferral();
+            return;
+          }
+        } catch (_) {/* try again below */}
+        if (attempt < 2) await Future<void>.delayed(const Duration(milliseconds: 1500));
+      }
+    } finally {
+      _refFetching = false;
+      if (mounted) setState(() {});
+    }
   }
 
   /// The member's OWN link, or an honest empty string when there is no code yet (sign-in pending): the invite
@@ -713,7 +744,19 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
 
   Future<void> _copyLink() async {
     if (_referralLink.isEmpty) {
-      toast(context, 'Sign in to get your own referral link', error: true);
+      if (AuthService.instance.signedIn) {
+        // Signed in but the code has not landed yet: ask again instead of telling the member to sign in.
+        await _refreshReferralCode();
+        if (_referralLink.isNotEmpty) {
+          await Clipboard.setData(ClipboardData(text: _referralLink));
+          if (mounted) setState(() => _copied = true);
+          toast(context, 'Referral link copied');
+        } else {
+          toast(context, 'Link still loading — tap Copy again in a moment', error: true);
+        }
+      } else {
+        toast(context, 'Sign in to get your own referral link', error: true);
+      }
       return;
     }
     await Clipboard.setData(ClipboardData(text: _referralLink));
@@ -828,7 +871,10 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                   decoration: BoxDecoration(color: Colors.grey.shade50, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(12)),
-                  child: Text(_referralLink.isEmpty ? 'Sign in to get your own referral link' : _referralLink,
+                  child: Text(
+                    _referralLink.isNotEmpty
+                        ? _referralLink
+                        : (AuthService.instance.signedIn ? 'Preparing your link…' : 'Sign in to get your own referral link'),
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: tx(context, 10.5, w: FontWeight.w600, color: _referralLink.isEmpty ? T1SColors.slate400 : T1SColors.slate800)),
                 ),
@@ -1186,6 +1232,7 @@ class _ReferralTabState extends State<_ReferralTab> {
   bool _applyOk = false;
   bool _applying = false;
   VoidCallback? _unsub;
+  VoidCallback? _authSub;
 
   @override
   void initState() {
@@ -1194,12 +1241,19 @@ class _ReferralTabState extends State<_ReferralTab> {
     _unsub = _wallet.listen(() {
       if (mounted) setState(() {});
     });
+    // Same reason as the Refer card above: a session restored a moment after this tab mounted must still produce
+    // the member's own link, so the fetch follows the auth state instead of running once.
+    _authSub = () {
+      if (mounted && _code == null && _auth.signedIn) _load();
+    };
+    _auth.addListener(_authSub!);
     _load();
   }
 
   @override
   void dispose() {
     _unsub?.call();
+    if (_authSub != null) _auth.removeListener(_authSub!);
     _applyCtl.dispose();
     _nameCtl.dispose();
     _emailCtl.dispose();
@@ -1228,6 +1282,8 @@ class _ReferralTabState extends State<_ReferralTab> {
   Future<void> _load() async {
     final t = _auth.token;
     if (!_auth.signedIn || t == null) return;
+    // A link that arrives after this tab mounted still renders, instead of leaving the tab on "sign in". 
+    // (The retry is driven by the auth listener above.)
     setState(() => _busy = true);
     try {
       final me = await _state.api.referralMe(t);
