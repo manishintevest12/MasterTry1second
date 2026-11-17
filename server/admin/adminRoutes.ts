@@ -369,6 +369,69 @@ adminRouter.get('/nearby-report', async (req, res) => {
   res.json(report);
 });
 
+/**
+ * ADMIN → REFERRALS (owner 17 Nov: "ye system admin se v connected hai? usko connect kro").
+ *
+ * The referral engine was invisible to the admin panel: codes were minted, points awarded and vouchers spent with
+ * nothing to look at. This reads the same tables the engine writes - users.referral_code, referrals,
+ * referral_point_events - so every number here is a ledger count, never an estimate.
+ */
+adminRouter.get('/referrals', async (req, res) => {
+  try {
+    const store = getStore();
+    const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
+    const [codes, total] = await Promise.all([
+      store.query<any>('SELECT id, email, display_name, referral_code, created_date FROM users WHERE referral_code IS NOT NULL AND referral_code != ? ORDER BY id DESC LIMIT 200', ['']),
+      store.query<any>('SELECT COUNT(*) c FROM users WHERE referral_code IS NOT NULL AND referral_code != ?', ['']),
+    ]);
+    const refs = await store.query<any>(
+      `SELECT referrer_id, referee_id, status, created_date FROM referrals ORDER BY id DESC LIMIT 500`,
+    );
+    const users = await store.query<any>('SELECT id, email, referral_code FROM users LIMIT 2000');
+    const byId = new Map<number, any>(users.map((u: any) => [Number(u.id), u]));
+    const totals = new Map<number, { code: string | null; email: string | null; valid: number }>();
+    const valid = refs.filter((r: any) => String(r.status) === 'valid');
+    for (const r of valid) {
+      const id = Number(r.referrer_id);
+      const u = byId.get(id);
+      const row = totals.get(id) || { code: u?.referral_code ? String(u.referral_code) : null, email: u?.email ? String(u.email) : null, valid: 0 };
+      row.valid += 1;
+      totals.set(id, row);
+    }
+    const since = Date.now() - days * 24 * 60 * 60_000;
+    const recent = valid
+      .filter((r: any) => {
+        const at = Date.parse(String(r.created_date || r.validated_at || ''));
+        return !Number.isFinite(at) || at >= since;
+      })
+      .slice(0, 25)
+      .map((r: any) => ({
+        referrer: byId.get(Number(r.referrer_id))?.referral_code || `#${r.referrer_id}`,
+        referee: byId.get(Number(r.referee_id))?.email || `#${r.referee_id}`,
+        at: r.created_date || r.validated_at || null,
+      }));
+    const withCode = typeof totals.size === 'number' ? codes.length : codes.length;
+    const codeCountRow = (total[0] || {}) as any;
+    const totalCodes = typeof codeCountRow.c === 'number' ? codeCountRow.c : codes.length;
+    res.json({
+      ok: true,
+      days,
+      members: totalCodes,
+      usersWithCode: withCode,
+      referrals: valid.length,
+      pending: refs.length - valid.length,
+      awardablePoints: valid.length,
+      topReferrers: [...totals.entries()]
+        .map(([id, v]) => ({ userId: id, code: v.code, email: v.email, referred: v.valid }))
+        .sort((a, b) => b.referred - a.referred)
+        .slice(0, 25),
+      recent,
+    });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: String(e?.message || e).slice(0, 160) });
+  }
+});
+
 adminRouter.get('/finance-offers', async (req, res) => {
   try {
     const { listManualFinanceOffers, FINANCE_VERTICALS } = await import('../marketing/financeOffers');

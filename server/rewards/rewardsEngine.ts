@@ -315,5 +315,12 @@ export async function referralStats(userId: number): Promise<{ referredCount: nu
     const u = await store.query<any>('SELECT referral_code FROM users WHERE id = ?', [referrerId]);
     referredByCode = u[0]?.referral_code ? String(u[0].referral_code) : null;
   }
-  return { referredCount: Number(referred[0]?.c || 0), referredByCode };
+  // The alias is `c` on MySQL, but the file-store emulator used in dev answers a COUNT(*) with the matching ROWS
+  // instead of an aggregate row, which read as "0 referrals" while the points had clearly been awarded. Both shapes
+  // are now counted honestly.
+  const first = (referred[0] || {}) as any;
+  const referredCount = typeof first.c === 'number'
+    ? first.c
+    : (first.referrer_id !== undefined ? referred.length : 0);
+  return { referredCount, referredByCode };
 }
