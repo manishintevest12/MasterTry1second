@@ -464,12 +464,18 @@ export function getStore(): DataStore {
       const pool = mysql.createPool({
         uri: settings.mysqlUrl,
         waitForConnections: true,
-        connectionLimit: 10,
+        // Slightly wider pool: Hostinger's MySQL allows well beyond this, and the previous 10 connections was
+        // the bottleneck that kept 250 writes waiting behind one wide search.
+        connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 14),
         // OWNER 30 Oct ('close all database connections properly'): a bounded wait queue
         // and idle reaping. Without maxIdle/idleTimeout mysql2 keeps every connection it
         // ever opened until the process dies, which on shared hosting counts against the
         // account's connection limit.
-        queueLimit: 25,
+        // OWNER 17 Nov (log: 100 x "Queue limit reached." from entity resolution plus three prune tasks
+        // skipped): a 25-deep queue overflowed whenever one wide search had several hundred writes in flight,
+        // and the overflow also cancelled the background prunes. A deeper queue absorbs the burst instead of
+        // rejecting it; it is bounded and tunable so shared hosting can still be dialled down with DB_QUEUE_LIMIT.
+        queueLimit: Number(process.env.DB_QUEUE_LIMIT || 250),
         maxIdle: 4,
         idleTimeout: 60_000,
         enableKeepAlive: true,

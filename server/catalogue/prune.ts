@@ -99,6 +99,21 @@ export async function pruneCatalogue(scale = 1): Promise<number> {
       removed += n;
       if (n > 0) log.info('Prune', `Deleted ${n} stale rows from ${name}`);
     } catch (e: any) {
+      // OWNER 17 Nov (log: searches / price_history / affiliate_offers prune all "skipped" with
+      // "Queue limit reached."): a busy pool is a come-back-later answer, not a dead table, so a queue
+      // overflow is retried once after a short pause before the row is skipped for this cadence.
+      if (/Queue limit reached|ER_CON_COUNT_ERROR|Too many connections/i.test(String(e?.message || e))) {
+        try {
+          await new Promise((r) => setTimeout(r, 1500));
+          const n = await batchedDelete(sql, params);
+          removed += n;
+          if (n > 0) log.info('Prune', `Deleted ${n} stale rows from ${name}`);
+          continue;
+        } catch (retryErr: any) {
+          log.warn('Prune', `${name} prune skipped`, { error: String(retryErr?.message || retryErr).slice(0, 140) });
+          continue;
+        }
+      }
       // A missing table or a privilege quirk must never break the workers.
       log.warn('Prune', `${name} prune skipped`, { error: String(e?.message || e).slice(0, 140) });
     }
