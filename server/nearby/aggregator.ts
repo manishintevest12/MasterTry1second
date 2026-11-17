@@ -20,7 +20,7 @@ import { log } from '../common/logger';
 import { INDIAN_CITIES } from '../seo/cityCorpus';
 import { createMaskingPointer } from '../affiliate/deeplink';
 import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords, ogImage, CATEGORY_TILE, CATEGORY_TILES } from './enrich';
-import { categoryDef, categoryFilters, categoryTerms, nameMatchesCategory, NEARBY_CATEGORIES } from './categories';
+import { categoryDef, categoryFilters, categoryTerms, categoryLabel, nameMatchesCategory, NEARBY_CATEGORIES } from './categories';
 import { resolvePlacePhoto, categoryTile, type PhotoEvidence } from './photos';
 
 export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies' | 'all'
@@ -693,7 +693,13 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
       const timer = setTimeout(() => ctrl.abort(), 4000);
       try {
         const res = await fetch(url, { signal: ctrl.signal, headers: { 'user-agent': 'Try1Second/1.0 (https://www.try1second.com; nearby)' } }).finally(() => clearTimeout(timer));
-        if (!res.ok) { if (!data.length) return { rows: [], note: `Nominatim answered ${res.status}` }; break; }
+        if (!res.ok) {
+          // OWNER 17 Nov: our own retry ladder tripped Nominatim's 1 req/s policy and a 429 then emptied the whole
+          // category, so a throttled answer now stops the ladder immediately instead of asking again and again.
+          if (res.status === 429) return { rows: [], note: 'Map data rate-limited (Nominatim 429) - try again in a minute' };
+          if (!data.length) return { rows: [], note: `Nominatim answered ${res.status}` };
+          break;
+        }
         const page = (await res.json()) as any[];
         if (Array.isArray(page) && page.length) { data = page; break; }
         data = [];
@@ -1075,7 +1081,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v11|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v12|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1326,6 +1332,39 @@ async function buildNearbyAnswer(input: {
     if (!row.imageUrl) {
       row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
       row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+    }
+  }
+
+  /**
+   * OWNER 17 Nov (screenshot: "Battery Shops" answered "No places came back..."): OpenStreetMap holds almost no
+   * named battery / puncture / detailing shops in most Indian cities, and a chip that answers with a red error wall
+   * is worse than one that shows the real businesses around it. When a vehicle category has nothing of its own, we
+   * fall back to its closest sibling - clearly labelled as a sibling and never re-badged as the requested category -
+   * so the visitor still gets true, nearby, tappable places instead of an apology.
+   */
+  if (!results.length && categoryDef(category)) {
+    // Tried in order: the closest sibling first, then whatever that category's neighbours are. The first one that
+    // actually has real places wins, so a thin chip never ends on an apology if a related business exists nearby.
+    const RELATED: Record<string, string[]> = {
+      battery: ['accessories', 'car_repair', 'petrol'],
+      puncture: ['tyres', 'car_repair', 'petrol'],
+      detailing: ['car_wash', 'car_repair'],
+      denting: ['car_repair', 'accessories'],
+      pucc: ['petrol', 'car_repair'],
+      lpg: ['petrol'], cng: ['petrol'], bike_repair: ['accessories', 'car_repair'],
+      scrapping: ['car_repair'], insurance: ['car_rental'], rto: ['car_rental'], bike_rental: ['car_rental'],
+    };
+    for (const sibling of RELATED[category] || []) {
+      if (results.length) break;
+      const alt = await osmNearby(location.lat, location.lng, sibling as NearbyCategory).catch(() => ({ rows: [] as NearbyRow[] }));
+      const usable = (alt.rows || []).filter((r: any) => r && r.name).slice(0, limit);
+      if (!usable.length) continue;
+      for (const r of usable) {
+        r.subcategory = `${r.subcategory || ''} · related: ${categoryLabel(sibling)}`.trim();
+        r.honesty = `${r.honesty || ''} No ${categoryLabel(category).toLowerCase()} is mapped in this area by open map data, so this nearby ${categoryLabel(sibling).toLowerCase()} place is shown instead.`.trim();
+      }
+      results.push(...usable);
+      notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} here yet, so nearby ${categoryLabel(sibling).toLowerCase()} places are shown and labelled as such.`);
     }
   }
 

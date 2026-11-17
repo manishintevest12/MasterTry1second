@@ -49203,6 +49203,7 @@ async function nominatimNearby(lat, lng, term, category) {
       try {
         const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (https://www.try1second.com; nearby)" } }).finally(() => clearTimeout(timer));
         if (!res.ok) {
+          if (res.status === 429) return { rows: [], note: "Map data rate-limited (Nominatim 429) - try again in a minute" };
           if (!data.length) return { rows: [], note: `Nominatim answered ${res.status}` };
           break;
         }
@@ -49539,7 +49540,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v11|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v12|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49716,6 +49717,34 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     if (!row.imageUrl) {
       row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
       row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+    }
+  }
+  if (!results.length && categoryDef(category)) {
+    const RELATED = {
+      battery: ["accessories", "car_repair", "petrol"],
+      puncture: ["tyres", "car_repair", "petrol"],
+      detailing: ["car_wash", "car_repair"],
+      denting: ["car_repair", "accessories"],
+      pucc: ["petrol", "car_repair"],
+      lpg: ["petrol"],
+      cng: ["petrol"],
+      bike_repair: ["accessories", "car_repair"],
+      scrapping: ["car_repair"],
+      insurance: ["car_rental"],
+      rto: ["car_rental"],
+      bike_rental: ["car_rental"]
+    };
+    for (const sibling of RELATED[category] || []) {
+      if (results.length) break;
+      const alt = await osmNearby(location.lat, location.lng, sibling).catch(() => ({ rows: [] }));
+      const usable = (alt.rows || []).filter((r) => r && r.name).slice(0, limit);
+      if (!usable.length) continue;
+      for (const r of usable) {
+        r.subcategory = `${r.subcategory || ""} \xB7 related: ${categoryLabel(sibling)}`.trim();
+        r.honesty = `${r.honesty || ""} No ${categoryLabel(category).toLowerCase()} is mapped in this area by open map data, so this nearby ${categoryLabel(sibling).toLowerCase()} place is shown instead.`.trim();
+      }
+      results.push(...usable);
+      notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} here yet, so nearby ${categoryLabel(sibling).toLowerCase()} places are shown and labelled as such.`);
     }
   }
   void logNearbyEvent("search", {
