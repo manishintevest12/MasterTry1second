@@ -1104,7 +1104,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v17|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v18|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1191,7 +1191,12 @@ async function buildNearbyAnswer(input: {
   });
   const google = got.google || empty;
   const osm = got.osm || empty;
-  const catalogue = (got.catalogue || { rows: [] }) as any;
+  // LIVE CRASH 17 Nov ("catalogue is not iterable"): catalogueNearby resolves to an ARRAY, but a source that has not
+  // settled when the budget lands is stored as the shared `empty` OBJECT - and `[...catalogue]` on that object threw,
+  // which the route turned into the error wall for hotels / stays / all (the only tabs that query the catalogue).
+  const catalogue = (Array.isArray(got.catalogue)
+    ? got.catalogue
+    : ((got.catalogue as any)?.rows || [])) as NearbyRow[];
   const swiggy = got.swiggy || empty;
   const oyo = got.oyo || empty;
 
@@ -1453,6 +1458,21 @@ async function buildNearbyAnswer(input: {
     }
     if (nets.length) {
       notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} mapped around ${where}, so the networks that cover ${where} are shown instead - each opens its own page.`);
+    }
+  }
+
+  // OWNER 17 Nov: rows created after the photo pass (the related-category tier and the city-wide service networks)
+  // shipped with imageUrl null and an empty directions link. Every card that leaves here is complete: its own drawn
+  // tile when no real photo exists, a map destination when the network page is the only place to go.
+  for (const row of results) {
+    if (!row.imageUrl) {
+      row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
+      row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+    }
+    if (!row.directionsUrl) row.directionsUrl = mapsSearch(row.name, row.lat, row.lng);
+    if (!row.exitUrl) {
+      row.mapOnly = true;
+      row.exitUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ''}`.trim())}`;
     }
   }
 

@@ -49673,7 +49673,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v17|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v18|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49743,7 +49743,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   });
   const google = got.google || empty;
   const osm = got.osm || empty;
-  const catalogue = got.catalogue || { rows: [] };
+  const catalogue = Array.isArray(got.catalogue) ? got.catalogue : got.catalogue?.rows || [];
   const swiggy = got.swiggy || empty;
   const oyo = got.oyo || empty;
   const notes = [];
@@ -49926,6 +49926,17 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     }
     if (nets.length) {
       notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} mapped around ${where}, so the networks that cover ${where} are shown instead - each opens its own page.`);
+    }
+  }
+  for (const row of results) {
+    if (!row.imageUrl) {
+      row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
+      row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+    }
+    if (!row.directionsUrl) row.directionsUrl = mapsSearch(row.name, row.lat, row.lng);
+    if (!row.exitUrl) {
+      row.mapOnly = true;
+      row.exitUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ""}`.trim())}`;
     }
   }
   void logNearbyEvent("search", {
