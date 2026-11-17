@@ -136,6 +136,9 @@ export function safeDomain(url: string): string {
 const CUELINKS_BASE_MERCHANTS = [
   // open (approved on this publisher account, measured via pub_api/v3/campaigns 10 Nov)
   'makemytrip.com', 'goibibo.com', 'shopsy.in', 'cleartrip.com', 'nykaa.com', 'croma.com', 'easemytrip.com',
+  // OWNER 17 Nov: DigiHaat (digihaat.in) is our partner through Cuelinks - added here so every DigiHaat exit is
+  // wrapped by the linkkit hop and pays on click/conversion, on the website and in the app alike.
+  'digihaat.in',
   // applied / pending approval (access_status=pending) - wrapped so the day approval lands the click already pays,
   // and measured safe today: linksredirect passes the exact deep path straight through while unapproved
   'myntra.com', 'ajio.com', 'flipkart.com', 'abhibus.com', 'agoda.com', 'snapdeal.com', 'tatacliq.com',
@@ -665,6 +668,9 @@ export function merchantSearchFallback(vendor: string, title: string, vertical?:
   // Shopsy (shopsy.in) replaced Meesho on 5 Nov. The exit is a plain search URL; the
   // Cuelinks linkkit hop is applied by cuelinksMerchantUrl() (publisher 278473).
   if (has('shopsy')) return `https://www.shopsy.in/search?q=${q}`;
+  // DigiHaat (ONDC multi-seller marketplace; owner's Cuelinks partner 17 Nov). Its search page is the honest
+  // destination: the term is carried in ?q= and the Cuelinks hop in front of it is applied by the caller.
+  if (has('digihaat')) return `https://digihaat.in/en/search?q=${q}`;
   if (has('myntra')) return `https://www.myntra.com/${encodeURIComponent(String(title || '').trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '-').slice(0, 60))}`;
   if (has('ajio')) return `https://www.ajio.com/search/?text=${q}`;
   if (has('tata') && has('cliq')) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q}`;

@@ -27,6 +27,7 @@ const MERCHANTS: Array<[RegExp, string]> = [
   [/(^|\.)ajio\.com$/, 'Ajio'],
   [/(^|\.)tatacliq\.com$/, 'Tata CLiQ'],
   [/(^|\.)shopsy\.in$/, 'Shopsy'],
+  [/(^|\.)digihaat\.in$/, 'DigiHaat'],
   [/(^|\.)nykaa\.com$/, 'Nykaa'],
   [/(^|\.)croma\.com$/, 'Croma'],
   [/(^|\.)reliancedigital\.in$/, 'Reliance Digital'],

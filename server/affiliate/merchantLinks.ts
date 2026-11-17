@@ -133,6 +133,8 @@ function buildMerchantDeepLink(merchant: string, title: string, vertical?: strin
   if (has('flipkart')) return `https://www.flipkart.com/search?q=${q}`;
   // Shopsy (shopsy.in) replaced Meesho on 5 Nov; the Cuelinks hop is applied in the deeplink layer.
   if (has('shopsy')) return `https://www.shopsy.in/search?q=${q}`;
+  // DigiHaat (digihaat.in) - owner's Cuelinks partner (17 Nov); the Cuelinks hop is applied one level up.
+  if (has('digihaat')) return `https://digihaat.in/en/search?q=${q}`;
   if (has('myntra')) return `https://www.myntra.com/${slug(t)}`;
   if (has('ajio')) return `https://www.ajio.com/search/?text=${q}`;
   if (has('tata') && has('cliq')) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q}`;

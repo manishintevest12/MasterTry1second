@@ -113,6 +113,7 @@ const KEY_DOMAIN: Record<string, string> = {
   tatacliq: 'tatacliq.com',
   tata: 'tatacliq.com',
   shopsy: 'shopsy.in',
+  digihaat: 'digihaat.in',
   nykaa: 'nykaa.com',
   snapdeal: 'snapdeal.com',
   jiomart: 'jiomart.com',

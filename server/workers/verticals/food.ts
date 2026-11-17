@@ -13,6 +13,7 @@ import { parseDominosMenu, dominosItems } from '../parsers/dominos';
 import { pizzaHutItems } from '../parsers/pizzaHut';
 import { toingShellGroups, toingShellCursor, toingMenuDishes, toingItem, toingFingerprint } from '../parsers/toing';
 import { cffiFetch } from '../../common/curlCffiFetch';
+import { fetchDigihaat, parseDigihaat, digihaatPlace, digihaatSearchUrl } from '../parsers/digihaat';
 
 /** Zomato city slugs for major Indian cities (others are tried as lowercase city names). */
 const ZOMATO_SLUGS: Record<string, string> = {
@@ -351,6 +352,30 @@ export const foodWorker: VerticalWorker = {
           throw new AcquisitionError('EMPTY_RESPONSE', `Toing feed listed ${groups.size} restaurants (pages=${pages}) but none matched "${term}"`);
         }
         return items.slice(0, 40);
+      },
+    },
+    {
+      // DigiHaat (digihaat.in) — the owner's Cuelinks partner (17 Nov: "ecommerce, food aur others me add karo").
+      // DigiHaat's food domain (ONDC:RET11) lists cooked dishes — biryani, pizza, burger, samosa — with the
+      // seller kitchen's own live price, so a dish query gets a real compare-able row from a partner store.
+      sourceId: 'w_food_digihaat',
+      name: 'Food worker: DigiHaat (ONDC food sellers, live prices)',
+      priority: 12,
+      run: async (ctx) => {
+        const term = String(ctx.query.entityName || ctx.query.rawQuery || '').replace(/\b(in|near)\s+[a-z\s]+$/i, '').trim();
+        if (!term) return [];
+        const place = digihaatPlace(ctx.query.location);
+        let body: string;
+        try {
+          body = await fetchDigihaat(term, place);
+        } catch (e: any) {
+          const msg = String(e?.message || e);
+          const code = /HTTP 40[13]/.test(msg) ? 'ACCESS_CHALLENGE' : /HTTP 429/.test(msg) ? 'RATE_LIMITED' : 'SERVER_ERROR';
+          throw new AcquisitionError(code, `DigiHaat: ${msg}`.slice(0, 300));
+        }
+        const all = parseDigihaat(body, ctx.source, digihaatSearchUrl(term));
+        if (!all.length) throw new AcquisitionError('EMPTY_RESPONSE', `DigiHaat food sellers had no priced dish for "${term}"`);
+        return all.slice(0, 30);
       },
     },
   ],
