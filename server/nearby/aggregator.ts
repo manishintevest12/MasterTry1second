@@ -1109,7 +1109,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v20|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v21|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1441,7 +1441,12 @@ async function buildNearbyAnswer(input: {
         // mt rkho" - these chips carry no picture at all on either surface. The card is a name, a distance and
         // directions; a drawn tile standing in for a petrol pump reads as a broken photo, and a real photo cannot be
         // found for every pump, so the honest card for an errand has no image frame.
-        row.imageUrl = null;
+        // OWNER 17 Nov, second look ("petrol pump mai kya issue hai usko v rkho"): the complaint was the DRAWN
+        // placeholders, not real photographs. A petrol pump that open data actually photographed keeps its picture;
+        // only the stand-in tile is dropped, so a card never shows a gradient rectangle pretending to be a station.
+        const img = String(row.imageUrl || '');
+        const isTile = !img || img.includes('/api/nearby/tile') || img.includes('/nearby-assets/');
+        if (isTile) row.imageUrl = null;
         row.honesty = String(row.honesty || '').replace(' Photo is a category tile, not this place.', '').trim();
         continue;
       }

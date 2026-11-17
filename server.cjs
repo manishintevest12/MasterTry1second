@@ -49694,7 +49694,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v20|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v21|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49937,7 +49937,9 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     for (const row of results) {
       if (SERVICE_ONLY.has(String(row.category))) {
         row.serviceOnly = true;
-        row.imageUrl = null;
+        const img = String(row.imageUrl || "");
+        const isTile = !img || img.includes("/api/nearby/tile") || img.includes("/nearby-assets/");
+        if (isTile) row.imageUrl = null;
         row.honesty = String(row.honesty || "").replace(" Photo is a category tile, not this place.", "").trim();
         continue;
       }
