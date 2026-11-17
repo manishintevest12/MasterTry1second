@@ -24,6 +24,7 @@ import { parseMmtHotelLanding } from '../parsers/mmtHotelLanding';
 import { parseMmtHotelListing, mmtListingUrl, mmtPageMatchesStay } from '../parsers/mmtListing';
 import { rescueFetch } from '../../sources/rescueFetch';
 import { cffiFetch } from '../../common/curlCffiFetch';
+import { photoPool, poolHash } from '../../nearby/photos';
 import { newRawItem } from '../../sources/contract';
 import type { RawSourceItem } from '../../types';
 import { AcquisitionError } from '../../common/httpClient';
@@ -604,12 +605,29 @@ export const hotelsWorker: VerticalWorker = {
           }
           if (!live) {
             if (!cachedDead) cleartripArtDeadUntil = Date.now() + 60 * 60_000;
+            // OWNER 17 Nov (runtime log "Cleartrip CDN art dead — images stripped" and then cards with no photo):
+            // stripping left every Cleartrip card blank, which breaks the standing rule that no card may render
+            // without an image. The CDN is dead, not the hotels, so each row keeps a REAL photograph of that kind
+            // of place from the credited pool, picked by the row's own name (stable between reloads) and unique
+            // within the batch — never the same picture on two cards, never an invented photo of that hotel.
+            const pool = photoPool('hotels');
+            const used = new Set<string>();
             for (const r of rows as any[]) {
-              if (r.attributes?.image_url) delete r.attributes.image_url;
-              if (r.attributes?.image_urls) delete r.attributes.image_urls;
+              if (!pool.length) {
+                if (r.attributes?.image_url) delete r.attributes.image_url;
+                if (r.attributes?.image_urls) delete r.attributes.image_urls;
+                continue;
+              }
+              const seed = String(r.title || r.attributes?.name || r.identifiers?.vendorProductId || 'hotel');
+              let pick = pool[poolHash(seed) % pool.length];
+              for (let step = 1; used.has(pick) && step <= pool.length; step += 1) {
+                pick = pool[(poolHash(seed) + step) % pool.length];
+              }
+              used.add(pick);
+              r.attributes = { ...(r.attributes || {}), image_url: pick, image_urls: pick, image_source: 'kind_pool' };
             }
             if (!cachedDead) {
-              log.warn('Hotels worker', 'Cleartrip CDN art dead — images stripped; hourly re-probe will re-arm art (self-healing)', { probe: String(firstImg).slice(0, 80) });
+              log.warn('Hotels worker', 'Cleartrip CDN art dead — keeping credited kind-pool photos so no card is blank; hourly re-probe re-arms real art', { probe: String(firstImg).slice(0, 80), pool: pool.length });
             }
           }
         }
