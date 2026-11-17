@@ -9227,8 +9227,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
             let lastBody = "";
-            for (const path18 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path18}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
+            for (const path19 of oyoCityPaths(city)) {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path19}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -9238,7 +9238,7 @@ var init_hotels = __esm({
               if (r.status !== 200) continue;
               const state = parseOyoPreloadedState(r.body);
               const hotels = parseOyoHotels(state || {});
-              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path18 });
+              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path19 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
@@ -9258,8 +9258,8 @@ var init_hotels = __esm({
             if (!city || city.length < 3) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
-            for (const path18 of emtCityPaths(city)) {
-              const r = await cffiFetch(`https://www.easemytrip.com/${path18}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+            for (const path19 of emtCityPaths(city)) {
+              const r = await cffiFetch(`https://www.easemytrip.com/${path19}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
@@ -9270,7 +9270,7 @@ var init_hotels = __esm({
               if (!items.length) continue;
               const links = parseEmtHotelLinks(r.body);
               const hotels = parseEmtHotels(items, links);
-              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path18 });
+              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path19 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
@@ -20795,24 +20795,24 @@ var init_indriveIntercity = __esm({
 });
 
 // server/common/geoProxy.ts
-async function throttledNominatim(path18) {
-  const hit = cache4.get(path18);
+async function throttledNominatim(path19) {
+  const hit = cache4.get(path19);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCallAt = Date.now();
   try {
-    const r = await fetch(`${NOMINATIM}${path18}`, {
+    const r = await fetch(`${NOMINATIM}${path19}`, {
       headers: { "User-Agent": UA2, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path18.slice(0, 60)}`);
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path19.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(path18, { at: Date.now(), value });
+    cache4.set(path19, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -20822,16 +20822,16 @@ async function throttledNominatim(path18) {
 async function geoSearch(q3, limit = 6) {
   const clean4 = q3.trim().slice(0, 120);
   if (clean4.length < 2) return [];
-  const path18 = `/search?q=${encodeURIComponent(clean4)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
-  const rows = await throttledNominatim(path18);
+  const path19 = `/search?q=${encodeURIComponent(clean4)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path19);
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
 }
 async function geoReverse(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const la = lat.toFixed(6), lo = lng.toFixed(6);
-  const path18 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
-  const row = await throttledNominatim(path18);
+  const path19 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path19);
   const a = row?.address;
   if (!row || !a) return null;
   const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
@@ -20846,24 +20846,24 @@ async function geoReverse(lat, lng) {
     pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
   };
 }
-async function throttledPhoton(path18) {
-  const hit = cache4.get(path18);
+async function throttledPhoton(path19) {
+  const hit = cache4.get(path19);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastPhotonAt + PHOTON_MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastPhotonAt = Date.now();
   try {
-    const r = await fetch(`${PHOTON}${path18}`, {
+    const r = await fetch(`${PHOTON}${path19}`, {
       headers: { "User-Agent": UA2, Accept: "application/json" },
       signal: AbortSignal.timeout(6e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path18.slice(0, 60)}`);
+      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path19.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(`photon:${path18}`, { at: Date.now(), value });
+    cache4.set(`photon:${path19}`, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Photon unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -20952,9 +20952,9 @@ async function rapidoServedCities(fetchText) {
   const xml = await fetchText(CITIES_SITEMAP);
   const cities = [];
   for (const m of xml.matchAll(/<loc>https:\/\/www\.rapido\.bike\/([^/]+)\/main-page<\/loc>/g)) {
-    const path18 = m[1];
-    if (!path18 || path18.includes(".")) continue;
-    cities.push({ name: decodeURIComponent(path18).replace(/[_%20]/g, " ").trim(), mainPagePath: path18 });
+    const path19 = m[1];
+    if (!path19 || path19.includes(".")) continue;
+    cities.push({ name: decodeURIComponent(path19).replace(/[_%20]/g, " ").trim(), mainPagePath: path19 });
   }
   if (!cities.length) throw new Error(`Rapido cities sitemap carried no city pages (len=${xml.length})`);
   citiesCache = { at: Date.now(), cities };
@@ -26936,9 +26936,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path18, timeoutMs = 12e3) {
+async function gwJson(host, path19, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path18}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path19}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -38896,7 +38896,7 @@ var init_readPathCache = __esm({
 
 // server/search/deepLinkHub.ts
 function fallbackFor(m, vertical, ctx) {
-  const path18 = m.path?.[vertical] ?? "";
+  const path19 = m.path?.[vertical] ?? "";
   if (m.domain === "booking.com" && vertical === "hotels") {
     const q3 = new URLSearchParams({ ss: ctx.city || "India", selected_currency: "INR", lang: "en-gb" });
     if (ctx.depart) q3.set("checkin", ctx.depart);
@@ -38904,9 +38904,9 @@ function fallbackFor(m, vertical, ctx) {
     return `https://www.booking.com/searchresults.html?${q3.toString()}`;
   }
   if (m.domain === "agoda.com") return `https://www.agoda.com/search?q=${encodeURIComponent(ctx.city || "India")}`;
-  const base = `https://www.${m.domain}/${path18}`;
-  if (!path18) return `https://www.${m.domain}/`;
-  return /\.html?$/.test(path18) || path18.includes("searchresults") ? base : `${base.replace(/\/+$/, "")}/`;
+  const base = `https://www.${m.domain}/${path19}`;
+  if (!path19) return `https://www.${m.domain}/`;
+  return /\.html?$/.test(path19) || path19.includes("searchresults") ? base : `${base.replace(/\/+$/, "")}/`;
 }
 function sellersPresent(rows) {
   const out = /* @__PURE__ */ new Set();
@@ -46606,15 +46606,15 @@ function hostAllowed(url) {
   const host = hostOf4(url);
   if (!host || !/^https?:\/\//i.test(url)) return false;
   if (BAD_HOSTS.some((b) => host.includes(b))) return false;
-  const path18 = (() => {
+  const path19 = (() => {
     try {
       return new URL(url).pathname.toLowerCase();
     } catch {
       return "";
     }
   })();
-  if (BAD_WORDS.test(path18)) return false;
-  return IMAGE_EXT.test(path18) || IMAGE_CDN_HINT.test(host);
+  if (BAD_WORDS.test(path19)) return false;
+  return IMAGE_EXT.test(path19) || IMAGE_CDN_HINT.test(host);
 }
 function decodeEntities(s) {
   return s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\\u002f/gi, "/").replace(/\\\//g, "/");
@@ -48405,6 +48405,49 @@ var init_serviceNetworks = __esm({
         { name: "Miraj Cinemas", url: "https://www.mirajcinemas.com/", sub: "cinema chain" },
         { name: "MovieMax", url: "https://www.moviemax.co.in/", sub: "cinema chain" }
       ],
+      /**
+       * OWNER 17 Nov: the same floor for the ordinary verticals. A cold start answered Indore's Restaurants tab with a
+       * 2.3s empty response because the map mirror was silent inside the budget; every vertical now has real businesses
+       * that serve any Indian city, so no tab can end on an apology.
+       */
+      restaurants: [
+        { name: "Zomato", url: "https://www.zomato.com/india", sub: "restaurant delivery and dining" },
+        { name: "Swiggy", url: "https://www.swiggy.com/", sub: "restaurant delivery" },
+        { name: "Domino's India", url: "https://www.dominos.co.in/", sub: "pizza chain" },
+        { name: "Barbeque Nation", url: "https://www.barbequenation.com/", sub: "dining chain" },
+        { name: "Pizza Hut India", url: "https://www.pizzahut.co.in/", sub: "pizza chain" }
+      ],
+      cafes: [
+        { name: "Starbucks India", url: "https://www.starbucks.in/", sub: "coffee chain" },
+        { name: "Cafe Coffee Day", url: "https://www.cafecoffeeday.com/", sub: "coffee chain" },
+        { name: "Chaayos", url: "https://www.chaayos.com/", sub: "tea cafe chain" },
+        { name: "Barista", url: "https://www.barista.co.in/", sub: "coffee chain" },
+        { name: "Third Wave Coffee", url: "https://thirdwavecoffee.in/", sub: "coffee chain" }
+      ],
+      hotels: [
+        { name: "OYO Rooms", url: "https://www.oyorooms.com/", sub: "hotel chain" },
+        { name: "Treebo", url: "https://www.treebo.com/", sub: "hotel chain" },
+        { name: "FabHotels", url: "https://www.fabhotels.com/", sub: "hotel chain" },
+        { name: "MakeMyTrip hotels", url: "https://www.makemytrip.com/hotels/", sub: "hotel booking" }
+      ],
+      stays: [
+        { name: "Airbnb India", url: "https://www.airbnb.co.in/", sub: "homestays and villas" },
+        { name: "OYO Homes", url: "https://www.oyorooms.com/", sub: "budget stays" },
+        { name: "MakeMyTrip homestays", url: "https://www.makemytrip.com/homestays/", sub: "homestay booking" },
+        { name: "Booking.com India", url: "https://www.booking.com/country/in.html", sub: "stay booking" }
+      ],
+      cinemas: [
+        { name: "PVR INOX", url: "https://www.pvrcinemas.com/", sub: "cinema chain" },
+        { name: "BookMyShow", url: "https://in.bookmyshow.com/explore/cinemas", sub: "cinema listings" },
+        { name: "Cinepolis India", url: "https://www.cinepolisindia.com/", sub: "cinema chain" },
+        { name: "Miraj Cinemas", url: "https://www.mirajcinemas.com/", sub: "cinema chain" }
+      ],
+      all: [
+        { name: "DMart", url: "https://www.dmart.in/", sub: "supermarket chain" },
+        { name: "Zomato", url: "https://www.zomato.com/india", sub: "restaurants" },
+        { name: "PVR INOX", url: "https://www.pvrcinemas.com/", sub: "cinema chain" },
+        { name: "OYO Rooms", url: "https://www.oyorooms.com/", sub: "hotel chain" }
+      ],
       stores: [
         { name: "DMart", url: "https://www.dmart.in/", sub: "supermarket chain" },
         { name: "Reliance Smart Bazaar", url: "https://www.relianceretail.com/", sub: "supermarket chain" },
@@ -48756,6 +48799,19 @@ async function resolvePlacePhoto(input) {
   if (found) log.info("nearby", `photo resolved (${found.tier}) for "${input.name}"`, { city });
   return found;
 }
+function photoPool(category) {
+  const cat = String(category || "all");
+  return PHOTO_POOL[cat] || PHOTO_POOL.all || [];
+}
+function poolHash(seed) {
+  let h = 2166136261;
+  const s = String(seed || "place");
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
+}
 function categoryTile(category, seed, tiles) {
   const cat = String(category || "all");
   const name = String(seed || "place").slice(0, 80);
@@ -48769,9 +48825,11 @@ function isTileUrl(url) {
   const u = String(url || "");
   return /\/nearby-assets\//.test(u) || u.includes("/api/nearby/tile");
 }
-var GENERIC_TOKENS, CATEGORY_WORDS, NOT_A_PLACE2, NOT_A_PHOTO, IS_PHOTO, UA6, COMMONS_WIDTH, MAX_KM, cache10, CACHE_TTL_MS4, MISS_TTL_MS3;
+var import_node_fs9, import_node_path8, GENERIC_TOKENS, CATEGORY_WORDS, NOT_A_PLACE2, NOT_A_PHOTO, IS_PHOTO, UA6, COMMONS_WIDTH, MAX_KM, cache10, CACHE_TTL_MS4, MISS_TTL_MS3, PHOTO_POOL;
 var init_photos = __esm({
   "server/nearby/photos.ts"() {
+    import_node_fs9 = __toESM(require("node:fs"), 1);
+    import_node_path8 = __toESM(require("node:path"), 1);
     init_logger();
     init_webImages();
     GENERIC_TOKENS = /* @__PURE__ */ new Set([
@@ -48907,6 +48965,23 @@ var init_photos = __esm({
     cache10 = /* @__PURE__ */ new Map();
     CACHE_TTL_MS4 = 12 * 60 * 6e4;
     MISS_TTL_MS3 = 20 * 6e4;
+    PHOTO_POOL = (() => {
+      const out = {};
+      const roots = [import_node_path8.default.resolve("public/nearby-photos"), import_node_path8.default.resolve("../public/nearby-photos")];
+      for (const root of roots) {
+        try {
+          if (!import_node_fs9.default.existsSync(root)) continue;
+          for (const entry of import_node_fs9.default.readdirSync(root, { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue;
+            const files = import_node_fs9.default.readdirSync(import_node_path8.default.join(root, entry.name)).filter((f) => /\.jpe?g$/i.test(f)).sort();
+            if (files.length) out[entry.name] = files.map((f) => `/nearby-photos/${entry.name}/${f}`);
+          }
+          break;
+        } catch {
+        }
+      }
+      return out;
+    })();
   }
 });
 
@@ -49694,7 +49769,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v21|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v23|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49933,28 +50008,54 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     "scrapping"
   ]);
   const finalizeRows = () => {
-    const seenImage = /* @__PURE__ */ new Set();
+    const used = /* @__PURE__ */ new Set();
+    const TILE_NOTE = " Photo is a category tile, not this place.";
+    const takePool = (category2, seed) => {
+      const list = photoPool(category2);
+      if (!list.length) return null;
+      const start = poolHash(seed) % list.length;
+      for (let k = 0; k < list.length; k += 1) {
+        const url = list[(start + k) % list.length];
+        if (!used.has(url)) return url;
+      }
+      return null;
+    };
     for (const row of results) {
-      if (SERVICE_ONLY.has(String(row.category))) {
-        row.serviceOnly = true;
-        const img = String(row.imageUrl || "");
-        const isTile = !img || img.includes("/api/nearby/tile") || img.includes("/nearby-assets/");
-        if (isTile) row.imageUrl = null;
-        row.honesty = String(row.honesty || "").replace(" Photo is a category tile, not this place.", "").trim();
-        continue;
+      const category2 = String(row.category);
+      if (SERVICE_ONLY.has(category2)) row.serviceOnly = true;
+      let img = String(row.imageUrl || "");
+      const ownPhoto = img && !isTileUrl(img);
+      const cleanHonesty = () => {
+        row.honesty = String(row.honesty || "").replace(TILE_NOTE, "").trim();
+      };
+      if (!ownPhoto) {
+        const pool2 = takePool(category2, `${row.name || ""}#${row.id}`);
+        if (pool2) {
+          cleanHonesty();
+          row.imageUrl = pool2;
+          row.honesty = `${row.honesty} Photo: a typical ${categoryLabel(category2).toLowerCase()}, not this exact place (Wikimedia Commons).`.trim();
+          img = pool2;
+        } else {
+          row.imageUrl = categoryTile(category2, `${row.name || ""}#${row.id}`, CATEGORY_TILES);
+          cleanHonesty();
+          row.honesty = `${row.honesty}${TILE_NOTE}`.trim();
+          img = String(row.imageUrl);
+        }
+      } else {
+        cleanHonesty();
       }
-      if (row.imageUrl && seenImage.has(String(row.imageUrl))) {
-        row.imageUrl = categoryTile(row.category, `${row.name || ""}#${row.id}`, CATEGORY_TILES);
-        row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+      if (used.has(img)) {
+        const pool2 = takePool(category2, `${row.name || ""}#${row.id}#dup`);
+        if (pool2) {
+          row.imageUrl = pool2;
+          row.honesty = `${row.honesty} Photo: a typical ${categoryLabel(category2).toLowerCase()}, not this exact place (Wikimedia Commons).`.trim();
+          img = pool2;
+        }
       }
-      if (row.imageUrl) seenImage.add(String(row.imageUrl));
-      if (!row.imageUrl) {
-        row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
-        row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
-      }
+      if (img) used.add(img);
     }
   };
-  if (!results.length && categoryDef(category)) {
+  if (results.length < 3 && categoryDef(category)) {
     const RELATED = {
       battery: ["accessories", "car_repair", "petrol"],
       puncture: ["tyres", "car_repair", "petrol"],
@@ -49964,6 +50065,16 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
       lpg: ["petrol"],
       cng: ["petrol"],
       bike_repair: ["accessories", "car_repair"],
+      // OWNER 17 Nov: a cold start answered Pune's Cafes tab with a single card because the map mirror that holds
+      // the cafes had not spoken yet. Thin answers, not just empty ones, now borrow the nearest real siblings.
+      cafes: ["restaurants", "stores"],
+      restaurants: ["cafes"],
+      cinemas: ["cafes", "stores"],
+      stores: ["all"],
+      hotels: ["stays"],
+      stays: ["hotels"],
+      cabs: [],
+      all: [],
       scrapping: ["car_repair"],
       insurance: ["car_rental"],
       rto: ["car_rental"],
@@ -49980,7 +50091,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
       if (!usable.length) continue;
       for (const r of usable) {
         r.subcategory = `${r.subcategory || ""} \xB7 related: ${categoryLabel(sibling)}`.trim();
-        r.honesty = `${r.honesty || ""} No ${categoryLabel(category).toLowerCase()} is mapped in this area by open map data, so this nearby ${categoryLabel(sibling).toLowerCase()} place is shown instead.`.trim();
+        r.honesty = (results.length ? `${r.honesty || ""} Open map data lists only a couple of ${categoryLabel(category).toLowerCase()} here, so this nearby ${categoryLabel(sibling).toLowerCase()} place is shown too.` : `${r.honesty || ""} No ${categoryLabel(category).toLowerCase()} is mapped in this area by open map data, so this nearby ${categoryLabel(sibling).toLowerCase()} place is shown instead.`).trim();
       }
       results.push(...usable);
       notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} here yet, so nearby ${categoryLabel(sibling).toLowerCase()} places are shown and labelled as such.`);
@@ -52487,11 +52598,11 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path8, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, cuelinksProbe, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN2, absoluteLogo, validHex, bannerGradient;
+var import_promises2, import_node_path9, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, cuelinksProbe, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN2, absoluteLogo, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
-    import_node_path8 = require("node:path");
+    import_node_path9 = require("node:path");
     import_express2 = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
@@ -53304,7 +53415,7 @@ var init_routes = __esm({
       let bundle = null;
       let html = null;
       try {
-        html = await (0, import_promises2.readFile)((0, import_node_path8.join)(process.cwd(), "dist/index.html"), "utf8");
+        html = await (0, import_promises2.readFile)((0, import_node_path9.join)(process.cwd(), "dist/index.html"), "utf8");
         bundle = (html.match(/assets\/index-[A-Za-z0-9_-]+\.js/) || [null])[0];
       } catch {
         bundle = null;
@@ -53312,7 +53423,7 @@ var init_routes = __esm({
       let assetsOnDisk = 0;
       let missing = [];
       try {
-        assetsOnDisk = (await (0, import_promises2.readdir)((0, import_node_path8.join)(process.cwd(), "dist/assets"))).length;
+        assetsOnDisk = (await (0, import_promises2.readdir)((0, import_node_path9.join)(process.cwd(), "dist/assets"))).length;
       } catch {
         assetsOnDisk = 0;
       }
@@ -53320,7 +53431,7 @@ var init_routes = __esm({
         const refs = [...html.matchAll(/\/assets\/([A-Za-z0-9_.-]+\.(?:js|css))/g)].map((m) => m[1]);
         const onDisk = /* @__PURE__ */ new Set();
         try {
-          for (const f of await (0, import_promises2.readdir)((0, import_node_path8.join)(process.cwd(), "dist/assets"))) onDisk.add(f);
+          for (const f of await (0, import_promises2.readdir)((0, import_node_path9.join)(process.cwd(), "dist/assets"))) onDisk.add(f);
         } catch {
         }
         missing = [...new Set(refs)].filter((f) => !onDisk.has(f));
@@ -59422,18 +59533,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path18, params = {}) {
+      async apiGet(path19, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path18}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path19}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path18, params);
+          return this.apiGet(path19, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path18} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path19} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -59473,9 +59584,9 @@ var init_admitad = __esm({
         }
         for (const wid of websiteIds) {
           if (offers.length >= maxOffers) break;
-          const path18 = `/coupons/website/${encodeURIComponent(wid)}/`;
+          const path19 = `/coupons/website/${encodeURIComponent(wid)}/`;
           for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-            const j = await this.apiGet(path18, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+            const j = await this.apiGet(path19, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
             const results = j?.results || [];
             if (results.length === 0) break;
             for (const c of results) {
@@ -59650,12 +59761,12 @@ var init_cuelinks = __esm({
       }
       async authenticate() {
       }
-      async api(path18, init) {
-        const res = await fetch(`${settings.cuelinks.apiBase}${path18}`, {
+      async api(path19, init) {
+        const res = await fetch(`${settings.cuelinks.apiBase}${path19}`, {
           ...init,
           headers: { Authorization: `Token ${settings.cuelinks.apiKey}`, "Content-Type": "application/json", ...init?.headers || {} }
         });
-        if (!res.ok) throw new Error(`cuelinks: ${path18} HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`cuelinks: ${path19} HTTP ${res.status}`);
         return res.json();
       }
       /** Live coupons/deals across joined campaigns. Paginates a few pages; every
@@ -61051,8 +61162,8 @@ function pricePathsNow() {
   const now = Date.now();
   return cache12.entries.filter((e2) => isPriceFresh(e2, now));
 }
-function findPriceEntry(path18) {
-  const p = path18.replace(/\/+$/, "").toLowerCase();
+function findPriceEntry(path19) {
+  const p = path19.replace(/\/+$/, "").toLowerCase();
   return pricePathsNow().find((e2) => e2.path === p) || null;
 }
 function esc4(s) {
@@ -61345,13 +61456,13 @@ __export(indexPolicy_exports, {
   isIndexableCityPage: () => isIndexableCityPage,
   isTemplatedCityPath: () => isTemplatedCityPath
 });
-function isTemplatedCityPath(path18) {
-  const segs = String(path18 || "").split("?")[0].split("/").filter(Boolean);
+function isTemplatedCityPath(path19) {
+  const segs = String(path19 || "").split("?")[0].split("/").filter(Boolean);
   return segs.length === 2 && TEMPLATED_CITY_VERTICALS.has(segs[0]);
 }
-function isIndexableCityPage(path18) {
-  if (!isTemplatedCityPath(path18)) return true;
-  const [vertical, city] = String(path18).split("?")[0].split("/").filter(Boolean);
+function isIndexableCityPage(path19) {
+  if (!isTemplatedCityPath(path19)) return true;
+  const [vertical, city] = String(path19).split("?")[0].split("/").filter(Boolean);
   if (INDEXABLE_METROS.has(city)) return true;
   if (vertical === "movies" && MOVIE_CITY_CONTENT[city]) return true;
   return false;
@@ -61402,20 +61513,20 @@ __export(seo_exports, {
 function titleCase(slug5) {
   return slug5.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
-function resolveNearbyPage(path18) {
-  const parts = String(path18 || "").split("?")[0].split("/").filter(Boolean);
+function resolveNearbyPage(path19) {
+  const parts = String(path19 || "").split("?")[0].split("/").filter(Boolean);
   if (parts[0] !== "nearby") return null;
-  if (parts.length === 1) return { path: path18, category: "all", city: "", areaLabel: null };
+  if (parts.length === 1) return { path: path19, category: "all", city: "", areaLabel: null };
   const category = normalizeNearbyCategory(parts[1]);
   if (category === "all" && parts[1] !== "all") return null;
-  if (parts.length === 2) return { path: path18, category, city: "", areaLabel: null };
+  if (parts.length === 2) return { path: path19, category, city: "", areaLabel: null };
   const citySlug2 = String(parts[2] || "").toLowerCase();
   const city = CITY_SLUGS.get(citySlug2);
   if (!city) return null;
-  if (parts.length === 3) return { path: path18, category, city, areaLabel: null };
+  if (parts.length === 3) return { path: path19, category, city, areaLabel: null };
   const areaLabel = AREA_SLUGS.get(`${citySlug2}/${String(parts[3] || "").toLowerCase()}`);
   if (!areaLabel) return null;
-  return { path: path18, category, city, areaLabel };
+  return { path: path19, category, city, areaLabel };
 }
 function listNearbyPaths() {
   const paths = ["/nearby"];
@@ -61448,20 +61559,20 @@ function card(row) {
 function escapeHtml2(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-function isKnownThinNearbyPath(path18) {
-  return thinPaths.has(path18);
+function isKnownThinNearbyPath(path19) {
+  return thinPaths.has(path19);
 }
-function isRichNearbyPath(path18) {
-  return richPaths.has(path18);
+function isRichNearbyPath(path19) {
+  return richPaths.has(path19);
 }
-function recordNearbyVerdict(path18, rowCount, floor = MIN_INDEXABLE_ROWS) {
+function recordNearbyVerdict(path19, rowCount, floor = MIN_INDEXABLE_ROWS) {
   const rich = rowCount >= floor;
   if (rich) {
-    richPaths.add(path18);
-    thinPaths.delete(path18);
+    richPaths.add(path19);
+    thinPaths.delete(path19);
   } else {
-    thinPaths.add(path18);
-    richPaths.delete(path18);
+    thinPaths.add(path19);
+    richPaths.delete(path19);
   }
   return rich;
 }
@@ -61476,13 +61587,13 @@ function startNearbyThinAudit(onDone) {
   let done = 0;
   const worker = async () => {
     while (i < paths.length) {
-      const path18 = paths[i];
+      const path19 = paths[i];
       i += 1;
-      const page = resolveNearbyPage(path18);
+      const page = resolveNearbyPage(path19);
       if (!page) continue;
       try {
         const ans = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true, noPhotos: true });
-        recordNearbyVerdict(path18, ans?.results?.length || 0);
+        recordNearbyVerdict(path19, ans?.results?.length || 0);
         done += 1;
         if (done % 20 === 0) {
           try {
@@ -61827,8 +61938,8 @@ function listSeoPaths(includeThin = false) {
   const unique = [...new Set(paths)];
   return includeThin ? unique : unique.filter(isIndexableCityPage);
 }
-function resolveAppRoute(path18) {
-  const seg = path18.replace(/\/+$/, "").split("/").filter(Boolean);
+function resolveAppRoute(path19) {
+  const seg = path19.replace(/\/+$/, "").split("/").filter(Boolean);
   if (seg.length === 0) return null;
   const head3 = seg[0];
   const tail = seg[1];
@@ -61881,8 +61992,8 @@ function resolveAppRoute(path18) {
   }
   return { vertical: vid };
 }
-function resolveSeoPage(path18) {
-  let clean4 = path18.split("?")[0].replace(/\/+$/, "") || "/";
+function resolveSeoPage(path19) {
+  let clean4 = path19.split("?")[0].replace(/\/+$/, "") || "/";
   if (clean4 === BRAND_PAGE_PATH) return brandPage();
   const ALIAS = {
     movie: "movies",
@@ -62723,14 +62834,14 @@ var init_staticPages = __esm({
   .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 22px; margin: 14px 0; }
   footer { border-top: 1px solid #e2e8f0; margin-top: 30px; padding-top: 16px; color: #64748b; font-size: 13px; }
 `;
-    shell = (title, description, path18, body) => `<!doctype html>
+    shell = (title, description, path19, body) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${title}</title>
 <meta name="description" content="${description}" />
-<link rel="canonical" href="${SEO_HOST}${path18}" />
+<link rel="canonical" href="${SEO_HOST}${path19}" />
 <meta name="robots" content="index, follow" />
 <meta property="og:title" content="${title}" />
 <meta property="og:description" content="${description}" />
@@ -62858,18 +62969,18 @@ async function productSitemapPaths(limit = 200) {
 }
 function readWarmFile() {
   try {
-    const fs18 = require("node:fs");
-    if (fs18.existsSync(WARM_FILE)) return fs18.readFileSync(WARM_FILE, "utf8");
+    const fs19 = require("node:fs");
+    if (fs19.existsSync(WARM_FILE)) return fs19.readFileSync(WARM_FILE, "utf8");
   } catch {
   }
   return null;
 }
 function writeWarmFile(xml) {
   try {
-    const fs18 = require("node:fs");
-    const path18 = require("node:path");
-    fs18.mkdirSync(path18.dirname(WARM_FILE), { recursive: true });
-    fs18.writeFileSync(WARM_FILE, xml);
+    const fs19 = require("node:fs");
+    const path19 = require("node:path");
+    fs19.mkdirSync(path19.dirname(WARM_FILE), { recursive: true });
+    fs19.writeFileSync(WARM_FILE, xml);
   } catch {
   }
 }
@@ -62937,14 +63048,14 @@ function warmSitemapSoon() {
     warming = null;
   });
 }
-function churnsDaily(path18) {
-  if (path18 === "/" || !path18.startsWith("/")) return true;
-  if (/^\/(best|answers|guides|product|about|privacy|terms|contact)\b/.test(path18)) return false;
-  return path18.split("/").filter(Boolean).length > 1;
+function churnsDaily(path19) {
+  if (path19 === "/" || !path19.startsWith("/")) return true;
+  if (/^\/(best|answers|guides|product|about|privacy|terms|contact)\b/.test(path19)) return false;
+  return path19.split("/").filter(Boolean).length > 1;
 }
-function sitemapPriority(path18) {
-  if (path18 === "/") return "1.0";
-  const segs = path18.split("/").filter(Boolean);
+function sitemapPriority(path19) {
+  if (path19 === "/") return "1.0";
+  const segs = path19.split("/").filter(Boolean);
   if (segs.length === 1) return "0.9";
   if (segs[0] === "best" && segs.length === 2) return "0.8";
   if (segs[0] === "guides") return "0.8";
@@ -62956,8 +63067,8 @@ function sitemapPriority(path18) {
   }
   return "0.7";
 }
-function sitemapBucketOf(path18) {
-  const segs = path18.split("/").filter(Boolean);
+function sitemapBucketOf(path19) {
+  const segs = path19.split("/").filter(Boolean);
   if (segs[0] === "product") return "products";
   if (CITY_VERTICALS.includes(segs[0]) && segs.length === 2) return "cities";
   return "core";
@@ -63306,8 +63417,8 @@ __export(agentReady_exports, {
   registerAgentFileRoutes: () => registerAgentFileRoutes,
   serverCard: () => serverCard
 });
-function isSecretPortalPath(path18) {
-  const clean4 = String(path18 || "/").split("?")[0].replace(/\/+$/, "").toLowerCase() || "/";
+function isSecretPortalPath(path19) {
+  const clean4 = String(path19 || "/").split("?")[0].replace(/\/+$/, "").toLowerCase() || "/";
   return SECRET_PORTAL_PATHS.has(clean4);
 }
 function knownPaths() {
@@ -63320,16 +63431,16 @@ function knownPaths() {
   knownCache = { set, at: Date.now() };
   return set;
 }
-function isKnownPath(path18) {
-  const clean4 = String(path18 || "/").split("?")[0].replace(/\/+$/, "") || "/";
+function isKnownPath(path19) {
+  const clean4 = String(path19 || "/").split("?")[0].replace(/\/+$/, "") || "/";
   if (clean4 === "/") return true;
   if (clean4 === "/llms.txt" || clean4 === "/llms-full.txt" || clean4 === "/mcp") return true;
   if (clean4.startsWith("/.well-known/")) return true;
   if (knownPaths().has(clean4)) return true;
   return APP_PREFIXES.some((p) => clean4.startsWith(p));
 }
-function origin(path18) {
-  const clean4 = String(path18 || "/").split("?")[0].replace(/\/+$/, "");
+function origin(path19) {
+  const clean4 = String(path19 || "/").split("?")[0].replace(/\/+$/, "");
   return `${SEO_HOST}${clean4 || "/"}`;
 }
 function keyPages() {
@@ -63408,8 +63519,8 @@ function llmsFullText() {
   lines.push("");
   return lines.join("\n");
 }
-function markdownForPath(path18) {
-  const clean4 = String(path18 || "/").split("?")[0].replace(/\/+$/, "") || "/";
+function markdownForPath(path19) {
+  const clean4 = String(path19 || "/").split("?")[0].replace(/\/+$/, "") || "/";
   const page = resolveSeoPage(clean4);
   const title = page?.title || (clean4 === "/" ? `${BRAND} \u2014 one second price comparison` : clean4);
   const description = page?.description || SUMMARY;
@@ -63480,8 +63591,8 @@ function serverCard() {
     documentation: `${SEO_HOST}/llms.txt`
   };
 }
-function notFoundHtml(path18) {
-  const safe = String(path18 || "/").replace(/[<>&"]/g, "");
+function notFoundHtml(path19) {
+  const safe = String(path19 || "/").replace(/[<>&"]/g, "");
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -63795,18 +63906,18 @@ async function mysqlLock(name) {
   }
 }
 function fileLock(name) {
-  const file = import_node_path9.default.join(dataDir, `singleton-${name}.lock`);
+  const file = import_node_path10.default.join(dataDir, `singleton-${name}.lock`);
   try {
-    const st = import_node_fs9.default.statSync(file);
+    const st = import_node_fs10.default.statSync(file);
     if (Date.now() - st.mtimeMs < STALE_MS) return false;
-    import_node_fs9.default.unlinkSync(file);
+    import_node_fs10.default.unlinkSync(file);
   } catch {
   }
   try {
-    import_node_fs9.default.mkdirSync(dataDir, { recursive: true });
-    const fd = import_node_fs9.default.openSync(file, "wx");
-    import_node_fs9.default.writeSync(fd, String(process.pid));
-    import_node_fs9.default.closeSync(fd);
+    import_node_fs10.default.mkdirSync(dataDir, { recursive: true });
+    const fd = import_node_fs10.default.openSync(file, "wx");
+    import_node_fs10.default.writeSync(fd, String(process.pid));
+    import_node_fs10.default.closeSync(fd);
     return true;
   } catch {
     return false;
@@ -63835,11 +63946,11 @@ async function runSingleton(name, fn) {
   await fn();
   return true;
 }
-var import_node_fs9, import_node_path9, import_promise3, STALE_MS;
+var import_node_fs10, import_node_path10, import_promise3, STALE_MS;
 var init_singleton = __esm({
   "server/common/singleton.ts"() {
-    import_node_fs9 = __toESM(require("node:fs"), 1);
-    import_node_path9 = __toESM(require("node:path"), 1);
+    import_node_fs10 = __toESM(require("node:fs"), 1);
+    import_node_path10 = __toESM(require("node:path"), 1);
     import_promise3 = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();
@@ -64124,8 +64235,8 @@ function hubPage() {
     ]
   };
 }
-function resolveAnswerPage(path18) {
-  const clean4 = ("/" + String(path18 || "").replace(/^\/+|\/+$/g, "")).toLowerCase();
+function resolveAnswerPage(path19) {
+  const clean4 = ("/" + String(path19 || "").replace(/^\/+|\/+$/g, "")).toLowerCase();
   if (clean4 === "/answers" || clean4 === "/best") return hubPage();
   const m = /^\/best\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?$/.exec(clean4);
   if (!m) return null;
@@ -64336,8 +64447,8 @@ __export(liveSnapshot_exports, {
   snapshotForPath: () => snapshotForPath,
   snapshotJsonLd: () => snapshotJsonLd
 });
-function pagePlacement(path18) {
-  const clean4 = (path18 || "/").replace(/\/+$/, "");
+function pagePlacement(path19) {
+  const clean4 = (path19 || "/").replace(/\/+$/, "");
   if (clean4 === "" || clean4 === "/") return {};
   if (/^\/(product|best|guides|answers)\b/.test(clean4)) return {};
   const segs = clean4.split("/").filter(Boolean);
@@ -64370,12 +64481,12 @@ function pickCityDiverseRows(groups, max = MAX_ROWS) {
   }
   return out;
 }
-function placementTokens(path18) {
-  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path18.replace(/\/+$/, ""));
+function placementTokens(path19) {
+  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path19.replace(/\/+$/, ""));
   if (prod) {
     return prod[1].split("-").filter((t) => t.length > 1 && !/^(the|and|for|with)$/.test(t));
   }
-  const route2 = resolveAppRoute(path18);
+  const route2 = resolveAppRoute(path19);
   const hint = `${route2?.query || ""}`.replace(/\([^)]*\)/g, " ").toLowerCase();
   return hint.replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
 }
@@ -64387,9 +64498,9 @@ function productMatches(slug5, title) {
   const hit = want.filter((t) => have.has(t) || [...have].some((h) => h.startsWith(t) || t.startsWith(h))).length;
   return hit / want.length >= 0.8;
 }
-function selectSnapshotRows(candidates, path18, max = MAX_ROWS, bySlug = false) {
+function selectSnapshotRows(candidates, path19, max = MAX_ROWS, bySlug = false) {
   if (bySlug) {
-    const slug5 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path18.replace(/\/+$/, ""))?.[1] || "";
+    const slug5 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path19.replace(/\/+$/, ""))?.[1] || "";
     const pool3 = candidates.filter((r) => productMatches(slug5, r.title));
     const seen0 = /* @__PURE__ */ new Set();
     const out0 = [];
@@ -64402,7 +64513,7 @@ function selectSnapshotRows(candidates, path18, max = MAX_ROWS, bySlug = false) 
     }
     return out0;
   }
-  const tokens3 = placementTokens(path18);
+  const tokens3 = placementTokens(path19);
   const relevant = tokens3.length ? candidates.filter((r) => {
     const t = ` ${r.title.toLowerCase()} ${String(r.seller || "").toLowerCase()} `;
     return tokens3.every((tok) => t.includes(tok));
@@ -64437,9 +64548,9 @@ function renderSnapshotHtml(snapshot, heading) {
     `</section>`
   ].join("");
 }
-function snapshotJsonLd(snapshot, path18) {
+function snapshotJsonLd(snapshot, path19) {
   if (!snapshot || !snapshot.rows.length) return null;
-  const page = resolveSeoPage(path18);
+  const page = resolveSeoPage(path19);
   return JSON.stringify({
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -64461,14 +64572,14 @@ function snapshotJsonLd(snapshot, path18) {
     }))
   });
 }
-function isStateAnswerPath(path18) {
-  return /^\/best\/[a-z0-9-]+\/[a-z0-9-]+$/.test((path18 || "").replace(/\/+$/, ""));
+function isStateAnswerPath(path19) {
+  return /^\/best\/[a-z0-9-]+\/[a-z0-9-]+$/.test((path19 || "").replace(/\/+$/, ""));
 }
-async function snapshotForPath(path18) {
-  const stateAnswer = isStateAnswerPath(path18);
-  const page = stateAnswer ? null : resolveSeoPage(path18);
+async function snapshotForPath(path19) {
+  const stateAnswer = isStateAnswerPath(path19);
+  const page = stateAnswer ? null : resolveSeoPage(path19);
   if (!page && !stateAnswer) return null;
-  const key = (path18 || "/").replace(/\/+$/, "") || "/";
+  const key = (path19 || "/").replace(/\/+$/, "") || "/";
   const hit = cache13.get(key);
   if (hit && Date.now() - hit.at < (hit.ttl ?? SNAPSHOT_TTL_MS)) return hit.snap;
   let snap = null;
@@ -64506,7 +64617,7 @@ async function snapshotForPath(path18) {
     return snap;
   }
   try {
-    const route2 = resolveAppRoute(path18);
+    const route2 = resolveAppRoute(path19);
     const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(key);
     const verticals = prod ? ["ecommerce", "grocery"] : route2?.vertical ? [route2.vertical] : [];
     if (verticals.length) {
@@ -64719,8 +64830,8 @@ __export(render_exports, {
   enhanceHtml: () => enhanceHtml,
   listSeoPaths: () => listSeoPaths
 });
-function jsonLd2(path18) {
-  const page = resolveSeoPage(path18);
+function jsonLd2(path19) {
+  const page = resolveSeoPage(path19);
   const blocks = [];
   const org = {
     "@context": "https://schema.org",
@@ -64759,7 +64870,7 @@ function jsonLd2(path18) {
     description: "Independent metasearch engine comparing live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in India."
   };
   blocks.push(JSON.stringify(org));
-  if (path18 === "/") {
+  if (path19 === "/") {
     blocks.push(JSON.stringify({
       "@context": "https://schema.org",
       "@type": "WebSite",
@@ -64835,8 +64946,8 @@ function prerenderLoader(page) {
     </div>
   </div>`;
 }
-function prerenderBody(path18) {
-  const page = resolveSeoPage(path18);
+function prerenderBody(path19) {
+  const page = resolveSeoPage(path19);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
     <dt>${esc9(f.q)}</dt><dd>${esc9(f.a)}</dd>`).join("");
@@ -64856,13 +64967,13 @@ function prerenderBody(path18) {
     `</section>`
   ].join("");
 }
-function enhanceHtml(html, path18) {
-  const page = resolveSeoPage(path18);
-  const isNoindex = /^\/(admin|merchant|api)/.test(path18);
-  const thinCity = !isNoindex && !isIndexableCityPage(path18.split("?")[0].replace(/\/+$/, "") || "/");
+function enhanceHtml(html, path19) {
+  const page = resolveSeoPage(path19);
+  const isNoindex = /^\/(admin|merchant|api)/.test(path19);
+  const thinCity = !isNoindex && !isIndexableCityPage(path19.split("?")[0].replace(/\/+$/, "") || "/");
   const title = page ? page.title : DEFAULT_TITLE;
   const desc = page ? page.description : DEFAULT_DESC;
-  const canonical = `${SEO_HOST}${(path18 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
+  const canonical = `${SEO_HOST}${(path19 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
   out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc9(title)}</title>`);
   out = out.replace(
@@ -64896,11 +65007,11 @@ function enhanceHtml(html, path18) {
     `<link rel="alternate" hreflang="en-in" href="${esc9(canonical)}" />`,
     `<link rel="alternate" hreflang="x-default" href="${esc9(canonical)}" />`
   ];
-  if (!isNoindex) for (const b of jsonLd2(path18)) head3.push(`<script type="application/ld+json">${b}</script>`);
+  if (!isNoindex) for (const b of jsonLd2(path19)) head3.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head3.join("\n")}
 </head>`);
   if (!isNoindex) {
-    const body = prerenderBody(path18);
+    const body = prerenderBody(path19);
     if (body) {
       out = out.replace(/<div id="root"><\/div>/, `<div id="root">${body}</div>`);
     }
@@ -65034,14 +65145,14 @@ var TRUTH_POST_PATHS = [
   "/api/client-diag"
 ];
 var isMaskable = (req) => {
-  const path18 = (req.path || req.originalUrl || "").split("?")[0];
-  if (!path18.startsWith("/api/")) return false;
-  if (path18.startsWith("/api/admin")) return false;
-  if (path18.startsWith("/api/version") || path18.startsWith("/api/health")) return false;
-  if (path18.startsWith("/api/client-diag")) return false;
+  const path19 = (req.path || req.originalUrl || "").split("?")[0];
+  if (!path19.startsWith("/api/")) return false;
+  if (path19.startsWith("/api/admin")) return false;
+  if (path19.startsWith("/api/version") || path19.startsWith("/api/health")) return false;
+  if (path19.startsWith("/api/client-diag")) return false;
   if (req.method === "GET" || req.method === "HEAD") return true;
   if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
-    return !TRUTH_POST_PATHS.some((p) => path18.startsWith(p));
+    return !TRUTH_POST_PATHS.some((p) => path19.startsWith(p));
   }
   return false;
 };
@@ -65062,7 +65173,7 @@ function gracefulPublicStatus(app, options = {}) {
       }
       res.status(200);
       const base = body && typeof body === "object" && !Array.isArray(body) ? body : {};
-      const path18 = String(req.path || req.originalUrl || "").split("?")[0];
+      const path19 = String(req.path || req.originalUrl || "").split("?")[0];
       const masked = {
         ...base,
         success: false,
@@ -65072,7 +65183,7 @@ function gracefulPublicStatus(app, options = {}) {
         retryAfterSec: 4,
         notice: "Still gathering results from the sources. Retrying automatically."
       };
-      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path18)) {
+      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path19)) {
         const current = Array.isArray(masked.results) ? masked.results : [];
         if (!current.length) {
           try {
@@ -65103,18 +65214,18 @@ init_jsonMemo();
 
 // server/common/canonicalHost.ts
 var APEX_HOST = "try1second.com";
-function isVerificationPath(path18) {
-  return String(path18 || "").toLowerCase().startsWith("/.well-known/");
+function isVerificationPath(path19) {
+  return String(path19 || "").toLowerCase().startsWith("/.well-known/");
 }
 function apexRedirectEnabled() {
   return String(process.env.FORCE_WWW_REDIRECT || "").trim() === "1";
 }
-function shouldRedirectApexToWww(host, path18) {
+function shouldRedirectApexToWww(host, path19) {
   if (!apexRedirectEnabled()) return false;
   const h = String(host || "").toLowerCase();
   const isApex = h === APEX_HOST || new RegExp(`^${APEX_HOST.replace(/\./g, "\\.")}:\\d+$`).test(h);
   if (!isApex) return false;
-  if (isVerificationPath(String(path18 || ""))) return false;
+  if (isVerificationPath(String(path19 || ""))) return false;
   return true;
 }
 function canonicalWwwUrl(originalUrl) {
@@ -65153,15 +65264,15 @@ var lastSweep = Date.now();
 function clientKey(req) {
   return String(req.ip || req.socket?.remoteAddress || "unknown");
 }
-var defaultMatch = (path18, method) => method !== "GET" && (path18.startsWith("/api/search") || path18.startsWith("/api/scrape") || path18.startsWith("/api/out") || path18.startsWith("/api/lead"));
+var defaultMatch = (path19, method) => method !== "GET" && (path19.startsWith("/api/search") || path19.startsWith("/api/scrape") || path19.startsWith("/api/out") || path19.startsWith("/api/lead"));
 function apiRateLimit(opts) {
   const match = opts.match || defaultMatch;
   return (req, res, next) => {
     try {
-      const path18 = String(req.path || "");
-      if (!match(path18, String(req.method || "GET").toUpperCase())) return next();
+      const path19 = String(req.path || "");
+      if (!match(path19, String(req.method || "GET").toUpperCase())) return next();
       const now = Date.now();
-      const key = `${clientKey(req)}|${path18.split("/").slice(0, 3).join("/")}`;
+      const key = `${clientKey(req)}|${path19.split("/").slice(0, 3).join("/")}`;
       const refillPerMs = opts.limit / opts.windowMs;
       let b = buckets.get(key);
       if (!b) {
@@ -65268,8 +65379,8 @@ async function createApp() {
       next(err);
       return;
     }
-    const path18 = String(req?.path || req?.originalUrl || "");
-    const publicRead = path18.startsWith("/api/") && !path18.startsWith("/api/admin");
+    const path19 = String(req?.path || req?.originalUrl || "");
+    const publicRead = path19.startsWith("/api/") && !path19.startsWith("/api/admin");
     res.status(publicRead ? 200 : 400).json({
       success: false,
       ok: false,

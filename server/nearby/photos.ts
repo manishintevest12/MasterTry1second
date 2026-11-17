@@ -21,6 +21,8 @@
  * Attribution: Commons files carry a licence, so the credit is built from `extmetadata` and appended to the
  * card's honesty text. Nothing is described as "this place" unless a tier A/B match actually proved it.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { log } from '../common/logger';
 import { bingImages, proxiedImage, imageFetchOk } from './webImages';
 
@@ -401,6 +403,51 @@ export async function resolvePlacePhoto(input: {
   }
   if (found) log.info('nearby', `photo resolved (${found.tier}) for "${input.name}"`, { city });
   return found;
+}
+
+
+/**
+ * The real-photo pool (owner 17 Nov: "abhi v image ke bina card aa raha hai").
+ *
+ * Wikimedia Commons is fetched once by scripts/fetch-nearby-photos.mjs into public/nearby-photos/<vertical>/*.jpg.
+ * A card for a small cafe or a taxi stand has no photo of its own anywhere free, and the drawn gradient tile read as
+ * a broken image on every ordinary vertical. These are real photographs of that kind of place, free-licensed and
+ * credited in the card's honesty line - used only when the place itself has no photo, never pretending to be it.
+ */
+const PHOTO_POOL: Record<string, string[]> = (() => {
+  const out: Record<string, string[]> = {};
+  const roots = [path.resolve('public/nearby-photos'), path.resolve('../public/nearby-photos')];
+  for (const root of roots) {
+    try {
+      if (!fs.existsSync(root)) continue;
+      for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const files = fs.readdirSync(path.join(root, entry.name)).filter((f) => /\.jpe?g$/i.test(f)).sort();
+        if (files.length) out[entry.name] = files.map((f) => `/nearby-photos/${entry.name}/${f}`);
+      }
+      break;
+    } catch {
+      /* a missing pool is not fatal: the drawn tile still answers */
+    }
+  }
+  return out;
+})();
+
+/** Real photographs of a kind of place, for cards that have no photo of the place itself. */
+export function photoPool(category: string): string[] {
+  const cat = String(category || 'all');
+  return PHOTO_POOL[cat] || PHOTO_POOL.all || [];
+}
+
+/** Stable non-negative hash, so a place keeps the same pool photo between reloads. */
+export function poolHash(seed: string): number {
+  let h = 2166136261;
+  const s = String(seed || 'place');
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
 }
 
 /**

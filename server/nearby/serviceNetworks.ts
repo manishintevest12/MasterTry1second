@@ -32,6 +32,49 @@ export const SERVICE_NETWORKS: Record<string, ServiceNetwork[]> = {
     { name: 'Miraj Cinemas', url: 'https://www.mirajcinemas.com/', sub: 'cinema chain' },
     { name: 'MovieMax', url: 'https://www.moviemax.co.in/', sub: 'cinema chain' },
   ],
+  /**
+   * OWNER 17 Nov: the same floor for the ordinary verticals. A cold start answered Indore's Restaurants tab with a
+   * 2.3s empty response because the map mirror was silent inside the budget; every vertical now has real businesses
+   * that serve any Indian city, so no tab can end on an apology.
+   */
+  restaurants: [
+    { name: 'Zomato', url: 'https://www.zomato.com/india', sub: 'restaurant delivery and dining' },
+    { name: 'Swiggy', url: 'https://www.swiggy.com/', sub: 'restaurant delivery' },
+    { name: "Domino's India", url: 'https://www.dominos.co.in/', sub: 'pizza chain' },
+    { name: 'Barbeque Nation', url: 'https://www.barbequenation.com/', sub: 'dining chain' },
+    { name: 'Pizza Hut India', url: 'https://www.pizzahut.co.in/', sub: 'pizza chain' },
+  ],
+  cafes: [
+    { name: 'Starbucks India', url: 'https://www.starbucks.in/', sub: 'coffee chain' },
+    { name: 'Cafe Coffee Day', url: 'https://www.cafecoffeeday.com/', sub: 'coffee chain' },
+    { name: 'Chaayos', url: 'https://www.chaayos.com/', sub: 'tea cafe chain' },
+    { name: 'Barista', url: 'https://www.barista.co.in/', sub: 'coffee chain' },
+    { name: 'Third Wave Coffee', url: 'https://thirdwavecoffee.in/', sub: 'coffee chain' },
+  ],
+  hotels: [
+    { name: 'OYO Rooms', url: 'https://www.oyorooms.com/', sub: 'hotel chain' },
+    { name: 'Treebo', url: 'https://www.treebo.com/', sub: 'hotel chain' },
+    { name: 'FabHotels', url: 'https://www.fabhotels.com/', sub: 'hotel chain' },
+    { name: 'MakeMyTrip hotels', url: 'https://www.makemytrip.com/hotels/', sub: 'hotel booking' },
+  ],
+  stays: [
+    { name: 'Airbnb India', url: 'https://www.airbnb.co.in/', sub: 'homestays and villas' },
+    { name: 'OYO Homes', url: 'https://www.oyorooms.com/', sub: 'budget stays' },
+    { name: 'MakeMyTrip homestays', url: 'https://www.makemytrip.com/homestays/', sub: 'homestay booking' },
+    { name: 'Booking.com India', url: 'https://www.booking.com/country/in.html', sub: 'stay booking' },
+  ],
+  cinemas: [
+    { name: 'PVR INOX', url: 'https://www.pvrcinemas.com/', sub: 'cinema chain' },
+    { name: 'BookMyShow', url: 'https://in.bookmyshow.com/explore/cinemas', sub: 'cinema listings' },
+    { name: 'Cinepolis India', url: 'https://www.cinepolisindia.com/', sub: 'cinema chain' },
+    { name: 'Miraj Cinemas', url: 'https://www.mirajcinemas.com/', sub: 'cinema chain' },
+  ],
+  all: [
+    { name: 'DMart', url: 'https://www.dmart.in/', sub: 'supermarket chain' },
+    { name: 'Zomato', url: 'https://www.zomato.com/india', sub: 'restaurants' },
+    { name: 'PVR INOX', url: 'https://www.pvrcinemas.com/', sub: 'cinema chain' },
+    { name: 'OYO Rooms', url: 'https://www.oyorooms.com/', sub: 'hotel chain' },
+  ],
   stores: [
     { name: 'DMart', url: 'https://www.dmart.in/', sub: 'supermarket chain' },
     { name: 'Reliance Smart Bazaar', url: 'https://www.relianceretail.com/', sub: 'supermarket chain' },

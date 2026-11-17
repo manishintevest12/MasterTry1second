@@ -22,7 +22,7 @@ import { createMaskingPointer } from '../affiliate/deeplink';
 import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords, ogImage, CATEGORY_TILE, CATEGORY_TILES } from './enrich';
 import { categoryDef, categoryFilters, categoryTerms, categoryLabel, nameMatchesCategory, NEARBY_CATEGORIES } from './categories';
 import { serviceNetworks } from './serviceNetworks';
-import { resolvePlacePhoto, categoryTile, isTileUrl, type PhotoEvidence } from './photos';
+import { resolvePlacePhoto, categoryTile, isTileUrl, photoPool, poolHash, type PhotoEvidence } from './photos';
 
 export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies' | 'all'
   // OWNER 17 Nov: the vehicle & paperwork errands, answered from the same OSM data (see nearby/categories.ts).
@@ -1109,7 +1109,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v21|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v23|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1433,35 +1433,56 @@ async function buildNearbyAnswer(input: {
    * five cards with no image while the tile pass had already run).
    */
   const finalizeRows = () => {
-    const seenImage = new Set<string>();
+    const used = new Set<string>();
+    const TILE_NOTE = ' Photo is a category tile, not this place.';
+    /** A real photograph of this KIND of place, never one already used on another card in this list. */
+    const takePool = (category: string, seed: string): string | null => {
+      const list = photoPool(category);
+      if (!list.length) return null;
+      const start = poolHash(seed) % list.length;
+      for (let k = 0; k < list.length; k += 1) {
+        const url = list[(start + k) % list.length];
+        if (!used.has(url)) return url;
+      }
+      return null;
+    };
     for (const row of results) {
-      if (SERVICE_ONLY.has(String(row.category))) {
-        row.serviceOnly = true;
-        // OWNER 17 Nov (screenshot: CNG Stations full of dull gradient tiles): "images mai vehicle and services mai
-        // mt rkho" - these chips carry no picture at all on either surface. The card is a name, a distance and
-        // directions; a drawn tile standing in for a petrol pump reads as a broken photo, and a real photo cannot be
-        // found for every pump, so the honest card for an errand has no image frame.
-        // OWNER 17 Nov, second look ("petrol pump mai kya issue hai usko v rkho"): the complaint was the DRAWN
-        // placeholders, not real photographs. A petrol pump that open data actually photographed keeps its picture;
-        // only the stand-in tile is dropped, so a card never shows a gradient rectangle pretending to be a station.
-        const img = String(row.imageUrl || '');
-        const isTile = !img || img.includes('/api/nearby/tile') || img.includes('/nearby-assets/');
-        if (isTile) row.imageUrl = null;
-        row.honesty = String(row.honesty || '').replace(' Photo is a category tile, not this place.', '').trim();
-        continue;
+      const category = String(row.category);
+      if (SERVICE_ONLY.has(category)) row.serviceOnly = true;
+      let img = String(row.imageUrl || '');
+      const ownPhoto = img && !isTileUrl(img);
+      const cleanHonesty = () => {
+        row.honesty = String(row.honesty || '').replace(TILE_NOTE, '').trim();
+      };
+      // OWNER 17 Nov ("abhi v image ke bina card aa raha hai"): a card is never left as a gradient rectangle. The
+      // drawn tile is the last resort only; every card now gets a real photograph - the place's own when open data
+      // has one, otherwise a free-licensed picture of that kind of place, credited as such in the honesty line.
+      if (!ownPhoto) {
+        const pool = takePool(category, `${row.name || ''}#${row.id}`);
+        if (pool) {
+          cleanHonesty();
+          row.imageUrl = pool;
+          row.honesty = `${row.honesty} Photo: a typical ${categoryLabel(category).toLowerCase()}, not this exact place (Wikimedia Commons).`.trim();
+          img = pool;
+        } else {
+          row.imageUrl = categoryTile(category, `${row.name || ''}#${row.id}`, CATEGORY_TILES);
+          cleanHonesty();
+          row.honesty = `${row.honesty}${TILE_NOTE}`.trim();
+          img = String(row.imageUrl);
+        }
+      } else {
+        cleanHonesty();
       }
-      // OWNER 17 Nov ("same image"): the hard rule is one picture per card. If a real photo or a tile is already used
-      // by another card in this list, this card gets its own drawn tile instead - seeded with the row id, so it is
-      // unique even when two places share a name.
-      if (row.imageUrl && seenImage.has(String(row.imageUrl))) {
-        row.imageUrl = categoryTile(row.category, `${row.name || ''}#${row.id}`, CATEGORY_TILES);
-        row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+      // One picture per card, whatever the source: a real photo already used on another card falls back to the pool.
+      if (used.has(img)) {
+        const pool = takePool(category, `${row.name || ''}#${row.id}#dup`);
+        if (pool) {
+          row.imageUrl = pool;
+          row.honesty = `${row.honesty} Photo: a typical ${categoryLabel(category).toLowerCase()}, not this exact place (Wikimedia Commons).`.trim();
+          img = pool;
+        }
       }
-      if (row.imageUrl) seenImage.add(String(row.imageUrl));
-      if (!row.imageUrl) {
-        row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
-        row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
-      }
+      if (img) used.add(img);
     }
   };
 
@@ -1472,7 +1493,7 @@ async function buildNearbyAnswer(input: {
    * fall back to its closest sibling - clearly labelled as a sibling and never re-badged as the requested category -
    * so the visitor still gets true, nearby, tappable places instead of an apology.
    */
-  if (!results.length && categoryDef(category)) {
+  if (results.length < 3 && categoryDef(category)) {
     // Tried in order: the closest sibling first, then whatever that category's neighbours are. The first one that
     // actually has real places wins, so a thin chip never ends on an apology if a related business exists nearby.
     const RELATED: Record<string, string[]> = {
@@ -1482,6 +1503,10 @@ async function buildNearbyAnswer(input: {
       denting: ['car_repair', 'accessories'],
       pucc: ['petrol', 'car_repair'],
       lpg: ['petrol'], cng: ['petrol'], bike_repair: ['accessories', 'car_repair'],
+      // OWNER 17 Nov: a cold start answered Pune's Cafes tab with a single card because the map mirror that holds
+      // the cafes had not spoken yet. Thin answers, not just empty ones, now borrow the nearest real siblings.
+      cafes: ['restaurants', 'stores'], restaurants: ['cafes'], cinemas: ['cafes', 'stores'],
+      stores: ['all'], hotels: ['stays'], stays: ['hotels'], cabs: [], all: [],
       scrapping: ['car_repair'], insurance: ['car_rental'], rto: ['car_rental'], bike_rental: ['car_rental'],
     };
     const hasNetworks = serviceNetworks(category).length > 0;
@@ -1495,7 +1520,9 @@ async function buildNearbyAnswer(input: {
       if (!usable.length) continue;
       for (const r of usable) {
         r.subcategory = `${r.subcategory || ''} · related: ${categoryLabel(sibling)}`.trim();
-        r.honesty = `${r.honesty || ''} No ${categoryLabel(category).toLowerCase()} is mapped in this area by open map data, so this nearby ${categoryLabel(sibling).toLowerCase()} place is shown instead.`.trim();
+        r.honesty = (results.length
+          ? `${r.honesty || ''} Open map data lists only a couple of ${categoryLabel(category).toLowerCase()} here, so this nearby ${categoryLabel(sibling).toLowerCase()} place is shown too.`
+          : `${r.honesty || ''} No ${categoryLabel(category).toLowerCase()} is mapped in this area by open map data, so this nearby ${categoryLabel(sibling).toLowerCase()} place is shown instead.`).trim();
       }
       results.push(...usable);
       notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} here yet, so nearby ${categoryLabel(sibling).toLowerCase()} places are shown and labelled as such.`);
