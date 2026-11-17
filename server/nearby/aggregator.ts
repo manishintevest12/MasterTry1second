@@ -22,7 +22,7 @@ import { createMaskingPointer } from '../affiliate/deeplink';
 import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords, ogImage, CATEGORY_TILE, CATEGORY_TILES } from './enrich';
 import { categoryDef, categoryFilters, categoryTerms, categoryLabel, nameMatchesCategory, NEARBY_CATEGORIES } from './categories';
 import { serviceNetworks } from './serviceNetworks';
-import { resolvePlacePhoto, categoryTile, type PhotoEvidence } from './photos';
+import { resolvePlacePhoto, categoryTile, isTileUrl, type PhotoEvidence } from './photos';
 
 export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies' | 'all'
   // OWNER 17 Nov: the vehicle & paperwork errands, answered from the same OSM data (see nearby/categories.ts).
@@ -1016,7 +1016,7 @@ function dedupe(rows: NearbyRow[]): NearbyRow[] {
   };
   const contains = (a: string, b: string) => a.length >= 8 && b.length >= 8 && (a.includes(b) || b.includes(a));
   const weight = (r: NearbyRow) => (r.rating !== null ? 4 : 0) + (r.price !== null ? 3 : 0)
-    + (r.imageUrl && !/\/nearby-assets\//.test(r.imageUrl) ? 2 : 0) + (r.website ? 1 : 0);
+    + (r.imageUrl && !isTileUrl(r.imageUrl) ? 2 : 0) + (r.website ? 1 : 0);
   for (const row of rows) {
     const name = norm(row.name);
     const clash = kept.find((k) => (norm(k.name) === name || contains(norm(k.name), name)) && sameSpot(k, row));
@@ -1046,7 +1046,7 @@ function sortRows(rows: NearbyRow[], category: NearbyCategory): NearbyRow[] {
   // behind unrated OSM rows, which made the enrichment look broken when it was working.
   // A card with its OWN photo outranks a card showing a generic category tile at equal facts: the first screen
   // is then made of real places, and a place we could not photograph sits at the end instead of in view.
-  const ownPhoto = (r: NearbyRow) => Boolean(r.imageUrl) && !/\/nearby-assets\//.test(String(r.imageUrl));
+  const ownPhoto = (r: NearbyRow) => Boolean(r.imageUrl) && !isTileUrl(r.imageUrl);
   const score = (r: NearbyRow) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0) + (ownPhoto(r) ? 1 : 0);
   return [...rows].sort((a, b) => {
     const rank = score(b) - score(a);
@@ -1104,7 +1104,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v16|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v17|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1369,7 +1369,7 @@ async function buildNearbyAnswer(input: {
   const photoRank = (r: any) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0);
   for (const row of [...results].sort((a: any, b: any) => photoRank(b) - photoRank(a))) {
     const url = String(row.imageUrl || '');
-    if (!url || /\/nearby-assets\//.test(url)) continue;
+    if (!url || isTileUrl(url)) continue;
     if (usedPhoto.has(url)) { row.imageUrl = null; continue; }
     usedPhoto.add(url);
   }
@@ -1620,6 +1620,66 @@ export async function prewarmNearby(limitCities = PREWARM_CITIES.length): Promis
  *  3. concurrent requests for the same key share ONE build (single-flight), so several open tabs or the web
  *     prefetch cannot stampede the providers into each other's timeouts.
  */
+/**
+ * EMERGENCY ANSWER (owner 17 Nov: "ye error kyun aa raha hai abhi v").
+ *
+ * Live, hotels / stays / all were answered with the red "Nearby discovery is unavailable right now" wall while
+ * restaurants and battery worked: an exception somewhere in the full pipeline, and the route turned it into an
+ * apology for the whole tab. Whatever the cause, a visitor must never be shown that wall for a city where real
+ * hotels exist, so this builds a small honest answer straight from OpenStreetMap (one request, no partner feeds,
+ * no photos) and, if even that fails, from the city-wide service networks. It is used only when the pipeline throws.
+ */
+export async function nearbyEmergencyAnswer(input: {
+  lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number;
+}): Promise<NearbyAnswer> {
+  const category = normalizeNearbyCategory(input.category);
+  const started = Date.now();
+  let location: { lat: number; lng: number; city: string | null; resolvedFrom: string };
+  try {
+    location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
+  } catch {
+    location = { lat: 22.7196, lng: 75.8577, city: 'Indore', resolvedFrom: 'fallback' };
+  }
+  const page = nearPage(input);
+  let rows: NearbyRow[] = [];
+  try {
+    const osm = await osmNearby(location.lat, location.lng, category);
+    rows = (osm.rows || []) as NearbyRow[];
+  } catch { rows = []; }
+  if (!rows.length) {
+    rows = serviceNetworks(category).map((n) => ({
+      id: `net-${category}-${norm(n.name).replace(/ /g, '-').slice(0, 30)}`,
+      name: n.name, category, subcategory: n.sub || null, rating: null, ratingCount: null, priceLevel: null,
+      priceLabel: null, price: null, address: location.city ? String(location.city) : null,
+      lat: null, lng: null, distanceKm: null, imageUrl: null, source: 'osm' as const,
+      honesty: 'A network that covers this city, not a specific shop.', exitUrl: '',
+      directionsUrl: mapsSearch(`${n.name} ${location.city || ''}`.trim(), null, null), website: n.url || null,
+    })) as any;
+  }
+  const merged = sortRows(dedupe(rows), category);
+  const total = Math.min(PAGE_CEILING, merged.length);
+  const results = merged.slice(page.offset, Math.min(page.offset + page.limit, total)).map((r) => {
+    const row: NearbyRow = { ...r };
+    if (!row.imageUrl) row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
+    if (!row.exitUrl) {
+      if (row.website) row.exitUrl = pointer(row.website, row.category);
+      else {
+        row.mapOnly = true;
+        row.exitUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ''}`.trim())}`;
+      }
+    }
+    if (!row.directionsUrl) row.directionsUrl = mapsSearch(row.name, row.lat, row.lng);
+    return row;
+  });
+  return {
+    ok: results.length > 0, category, location, results, total, offset: page.offset, limit: page.limit,
+    hasMore: page.offset + results.length < total, partial: false, servedFrom: 'emergency',
+    notes: ['Answered from the map feed while the partner feeds are being repaired.'],
+    counts: { google: 0, osm: rows.length, catalogue: 0 },
+    ms: Date.now() - started,
+  } as unknown as NearbyAnswer;
+}
+
 export async function nearbyAnswer(input: {
   lat?: number | null; lng?: number | null; city?: string | null; category?: unknown; limit?: number; offset?: number;
   /** Crawler/audit mode: build with the full budget so a cold process does not measure a rich page as empty. */
@@ -1672,7 +1732,7 @@ export async function nearbyAnswer(input: {
   const tileShare = (answer: NearbyAnswer): number => {
     const rows = answer.results || [];
     if (!rows.length) return 0;
-    const tiles = rows.filter((r) => !r.imageUrl || /\/nearby-assets\//.test(String(r.imageUrl))).length;
+    const tiles = rows.filter((r) => !r.imageUrl || isTileUrl(r.imageUrl)).length;
     return tiles / rows.length;
   };
 

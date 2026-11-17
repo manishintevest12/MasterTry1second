@@ -1730,10 +1730,43 @@ async function nearbyHandler(req: any, res: Response): Promise<void> {
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(answer.results) } : answer);
   } catch (e: any) {
-    log.warn('Api', 'nearby failed', { error: String(e?.message || e).slice(0, 120) });
+    // OWNER 17 Nov: this used to answer the whole tab with an apology. A city that has real hotels must never be
+    // answered with an error wall, so the failure now falls back to a small honest map-only answer while keeping the
+    // exception on record (see /api/nearby/diag) so the root cause is fixed instead of hidden.
+    const message = String(e?.message || e).slice(0, 300);
+    const stack = String(e?.stack || '').split('\n').slice(1, 4).join(' | ').slice(0, 400);
+    (globalThis as any).__t1sNearbyLastError = { at: new Date().toISOString(), category: String(req.query.category || ''), message, stack };
+    log.warn('Api', 'nearby failed', { error: message.slice(0, 120) });
+    try {
+      const { nearbyEmergencyAnswer } = await import('../nearby/aggregator');
+      const answer = await nearbyEmergencyAnswer({
+        lat: req.query.lat === undefined ? null : Number(req.query.lat),
+        lng: req.query.lng === undefined ? null : Number(req.query.lng),
+        city: req.query.city ? String(req.query.city) : null,
+        category: req.query.category,
+        limit: Number(req.query.limit) || undefined,
+      });
+      if (answer.results.length) {
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({ ...answer, recovered: true, notice: 'Answered from the map feed while the partner feeds recover.' });
+        return;
+      }
+    } catch (again: any) {
+      log.warn('Api', 'nearby emergency answer failed', { error: String(again?.message || again).slice(0, 120) });
+    }
     res.status(503).json({ ok: false, results: [], error: 'Nearby discovery is unavailable right now' });
   }
 }
+/**
+ * Last Nearby exception, for support. Deliberately tiny: the message and the top stack frames only, no request data
+ * and no environment values. This exists so "ye error kyun aa raha hai" can be answered from the live server instead
+ * of guessing at it.
+ */
+apiRouter.get('/nearby/diag', (_req: any, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ lastError: (globalThis as any).__t1sNearbyLastError || null });
+});
+
 apiRouter.get('/nearby', nearbyHandler);
 apiRouter.get('/v1/nearby', nearbyHandler);
 
@@ -1753,6 +1786,26 @@ apiRouter.get('/nearby/photo', async (req: any, res: Response) => {
     const buf = Buffer.from(await upstream.arrayBuffer());
     res.send(buf);
   } catch { res.status(502).type('text/plain').send('photo unavailable'); }
+});
+
+/**
+ * PLACE TILE (owner 17 Nov: "site pr image same kyun aa raha hai"). A card with no real photo still needs an image,
+ * and two cards must never show the same picture. This draws a tile from the place's own name, so every card is
+ * distinct, honest (a backdrop, never a claim to be the place) and identical on web and app. Immutable, so a place's
+ * tile is fetched once and cached forever at the edge.
+ */
+apiRouter.get('/nearby/tile', (req: any, res: Response) => {
+  try {
+    const { placeTile } = require('../nearby/tilePng');
+    const png = placeTile(String(req.query.c || 'all'), String(req.query.n || 'place').slice(0, 80));
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('ETag', `"t-${png.length}-${String(req.query.n || '').length}"`);
+    res.send(png);
+  } catch (e: any) {
+    log.warn('Api', 'tile failed', { error: String(e?.message || e).slice(0, 100) });
+    res.status(503).type('text/plain').send('tile unavailable');
+  }
 });
 
 /** Web-photo proxy for Nearby cards: signed token in, image bytes out (see server/nearby/webImages.ts). */

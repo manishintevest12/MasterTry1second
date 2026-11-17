@@ -408,9 +408,20 @@ export async function resolvePlacePhoto(input: {
  * stable hash of the place name, so the same shop keeps the same tile between reloads.
  */
 export function categoryTile(category: string, seed: string, tiles: Record<string, string[]>): string {
-  const list = tiles[category] || tiles.all || ['/nearby-assets/all.jpg'];
-  let h = 0;
-  const s = String(seed || '');
-  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) % 100000;
-  return list[h % list.length];
+  // OWNER 17 Nov ("image same aa raha hai"): rotating three files per vertical put the same picture on ten cards.
+  // The tile is now drawn from the place's own name, so every card differs while staying honest about being a
+  // backdrop; the old static files are kept only as a fallback if drawing ever fails.
+  const cat = String(category || 'all');
+  const name = String(seed || 'place').slice(0, 80);
+  if (!name) {
+    const list = tiles[cat] || tiles.all || ['/nearby-assets/all.jpg'];
+    return list[0];
+  }
+  return `/api/nearby/tile?c=${encodeURIComponent(cat)}&n=${encodeURIComponent(name)}`;
+}
+
+/** Is this URL one of our drawn/category tiles rather than a photo of the place? */
+export function isTileUrl(url: string | null | undefined): boolean {
+  const u = String(url || '');
+  return /\/nearby-assets\//.test(u) || u.includes('/api/nearby/tile');
 }

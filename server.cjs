@@ -12801,20 +12801,20 @@ function parseStarAirAvailability(html, depIso) {
   const out = [];
   const parts = b.split(/<div class="js-journey"/);
   for (const part of parts.slice(1)) {
-    const chunk = part;
+    const chunk2 = part;
     const attr2 = (name) => {
-      const m = chunk.match(new RegExp(`data-${name}="(\\d+)"`));
+      const m = chunk2.match(new RegExp(`data-${name}="(\\d+)"`));
       return m ? m[1] : "";
     };
     const stops = Number(attr2("stop-count") ?? 0);
     const durationSec = Number(attr2("journey-duration") ?? 0);
     const depEpoch = Number(attr2("dep-date") ?? 0);
     const arrEpoch = Number(attr2("arr-date") ?? 0);
-    const flightNo2 = ((chunk.match(/class="flight-no">([^<]+)</) || [])[1] || "").replace(/\s+/g, "");
+    const flightNo2 = ((chunk2.match(/class="flight-no">([^<]+)</) || [])[1] || "").replace(/\s+/g, "");
     if (!flightNo2) continue;
-    const times = [...chunk.matchAll(/<span class="time">\s*(\d{1,2}:\d{2})\s*</g)].map((m) => m[1]);
-    const ports = [...chunk.matchAll(/class="port">\s*[^<]*?\(([A-Z]{3})\)\s*</g)].map((m) => m[1]);
-    const dateTexts = [...chunk.matchAll(/class="date">\s*([^<]+?)\s*</g)].map((m) => m[1]);
+    const times = [...chunk2.matchAll(/<span class="time">\s*(\d{1,2}:\d{2})\s*</g)].map((m) => m[1]);
+    const ports = [...chunk2.matchAll(/class="port">\s*[^<]*?\(([A-Z]{3})\)\s*</g)].map((m) => m[1]);
+    const dateTexts = [...chunk2.matchAll(/class="date">\s*([^<]+?)\s*</g)].map((m) => m[1]);
     const depTime = times[0] || "";
     const arrTime = times[times.length - 1] || "";
     const fromCode = ports[0] || "";
@@ -12823,7 +12823,7 @@ function parseStarAirAvailability(html, depIso) {
     if (!depTime || !arrTime || !fromCode || !toCode) continue;
     if (depDateIso !== depIso) continue;
     let fareEconomy = 0, fareBusiness = 0;
-    for (const fm of chunk.matchAll(/price-block\s+cabin-name-([^"]*)"[^>]*>\s*(?:<span[^>]*>\s*INR\s*<\/span>)?\s*<span[^>]*(?:price-best-offer|price)[^>]*>\s*([\d,]+)/g)) {
+    for (const fm of chunk2.matchAll(/price-block\s+cabin-name-([^"]*)"[^>]*>\s*(?:<span[^>]*>\s*INR\s*<\/span>)?\s*<span[^>]*(?:price-best-offer|price)[^>]*>\s*([\d,]+)/g)) {
       const cabin = fm[1].toUpperCase();
       const amount = Number(fm[2].replace(/,/g, ""));
       if (!amount) continue;
@@ -18588,8 +18588,8 @@ var init_flights = __esm({
             const fromLabel = `${rt.from} (${fromA.code})`;
             const toLabel = `${rt.to} (${toA.code})`;
             const UA8 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
-            const H = { "User-Agent": UA8, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
-            const home = await cffiFetch(SL_HOME, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
+            const H2 = { "User-Agent": UA8, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
+            const home = await cffiFetch(SL_HOME, { impersonate: "chrome", timeoutMs: 18e3, headers: H2, returnCookies: true });
             const homeBody = home.body || "";
             if (slIsImpervaStub(homeBody)) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan homepage Imperva-gated from this IP (probe self-activates on a clean production IP)", 403);
             if (home.status !== 200) throw new AcquisitionError("SERVER_ERROR", `SriLankan homepage HTTP ${home.status}`, home.status);
@@ -18600,7 +18600,7 @@ var init_flights = __esm({
               timeoutMs: 2e4,
               method: "POST",
               body: slOverrideBody(fromA.code, toA.code, fromLabel, toLabel, dep, idxxui),
-              headers: { ...H, "Content-Type": "application/x-www-form-urlencoded", Origin: "https://www.srilankan.com", Referer: SL_HOME },
+              headers: { ...H2, "Content-Type": "application/x-www-form-urlencoded", Origin: "https://www.srilankan.com", Referer: SL_HOME },
               cookies
             });
             if (ov.status !== 200 || slIsImpervaStub(ov.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan override page gated (Imperva)", 403);
@@ -18611,7 +18611,7 @@ var init_flights = __esm({
               timeoutMs: 25e3,
               method: "POST",
               body: `SITE=${SL_IBE_SITE}&LANGUAGE=GB&EMBEDDED_TRANSACTION=FlexPricerAvailability&ENCT=1&ENC=${enc2}`,
-              headers: { ...H, "Content-Type": "application/x-www-form-urlencoded", Origin: "https://www.srilankan.com", Referer: "https://www.srilankan.com/" }
+              headers: { ...H2, "Content-Type": "application/x-www-form-urlencoded", Origin: "https://www.srilankan.com", Referer: "https://www.srilankan.com/" }
             });
             if (slIsImpervaStub(ibe.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", 'SriLankan IBE Imperva-gated ("Pardon Our Interruption")', 403);
             if (ibe.status !== 200) throw new AcquisitionError("SERVER_ERROR", `SriLankan IBE HTTP ${ibe.status}`, ibe.status);
@@ -18646,13 +18646,13 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const H = {
+            const H2 = {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
               Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
               "Accept-Language": "en-US,en;q=0.9",
               Referer: STAR_HOME
             };
-            const r = await cffiFetch(starAvailUrl(fromA.code, toA.code, dep), { impersonate: "chrome", timeoutMs: 25e3, headers: H });
+            const r = await cffiFetch(starAvailUrl(fromA.code, toA.code, dep), { impersonate: "chrome", timeoutMs: 25e3, headers: H2 });
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Star Air availability HTTP ${r.status}`, r.status);
             const journeys = parseStarAirAvailability(r.body || "", dep);
             if (!journeys.length) return [];
@@ -18692,8 +18692,8 @@ var init_flights = __esm({
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
             const dateHuman = (/* @__PURE__ */ new Date(dep + "T00:00:00Z")).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
             const UA8 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
-            const H = { "User-Agent": UA8, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
-            const boot2 = await cffiFetch(SIA_CHAT_PAGE, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
+            const H2 = { "User-Agent": UA8, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
+            const boot2 = await cffiFetch(SIA_CHAT_PAGE, { impersonate: "chrome", timeoutMs: 18e3, headers: H2, returnCookies: true });
             if (siaIsGated(boot2.status, boot2.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", "Singapore Airlines Akamai-gated from this IP (probe self-activates on a clean production IP)", boot2.status);
             const cookies = boot2.cookies || {};
             const uuid = () => typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
@@ -18706,7 +18706,7 @@ var init_flights = __esm({
               timeoutMs: 4e4,
               method: "POST",
               body: siaChatBody(siaChatPrompt(fromA.code, toA.code, dep, dateHuman), uuid),
-              headers: { ...H, "Content-Type": "application/json", Origin: "https://www.singaporeair.com", Referer: SIA_CHAT_PAGE, Accept: "text/event-stream" },
+              headers: { ...H2, "Content-Type": "application/json", Origin: "https://www.singaporeair.com", Referer: SIA_CHAT_PAGE, Accept: "text/event-stream" },
               cookies
             });
             const stream = chat.body || "";
@@ -18747,7 +18747,7 @@ var init_flights = __esm({
             const UA8 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
             const sid = String(globalThis.crypto.randomUUID());
             const referer = `https://www.qatarairways.com/app/booking/flight-selection?fromStation=${fromA.code}&toStation=${toA.code}&departing=${dep}`;
-            const H = { "User-Agent": UA8, ...qrHeaders(sid, referer) };
+            const H2 = { "User-Agent": UA8, ...qrHeaders(sid, referer) };
             const rungs = [
               { imp: "chrome", label: "chrome" },
               { imp: "safari", label: "safari" },
@@ -18761,7 +18761,7 @@ var init_flights = __esm({
                   timeoutMs: 3e4,
                   method: "POST",
                   body: qrFlightOffersBody(fromA.code, toA.code, dep),
-                  headers: H
+                  headers: H2
                 });
                 if (r.status === 403) {
                   offersBlocked = true;
@@ -18784,7 +18784,7 @@ var init_flights = __esm({
               timeoutMs: 3e4,
               method: "POST",
               body: qrFareCalendarsBody(fromA.code, toA.code, dep),
-              headers: H
+              headers: H2
             });
             if (cal.status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", `Qatar Airways fare-calendar gated (HTTP ${cal.status})`, cal.status);
             if (cal.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Qatar fare-calendar HTTP ${cal.status}`, cal.status);
@@ -20346,14 +20346,14 @@ var init_food = __esm({
             const c = CITY_COORDS[cityKey] || CITY_COORDS["new delhi"];
             const city = ctx.query.location?.city || "New Delhi";
             const shellUrl = `https://disc.swiggy.com/api/v1/json/shell/toing-app?lat=${c[0]}&lng=${c[1]}`;
-            const H = { "Accept": "application/json", "Content-Type": "application/json" };
+            const H2 = { "Accept": "application/json", "Content-Type": "application/json" };
             const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
             const groups = /* @__PURE__ */ new Map();
             let body = "{}";
             let pages = 0;
             let firstJson = "";
             for (let i = 0; i < 3; i++) {
-              const r = await cffiFetch(shellUrl, { impersonate: "chrome", method: "POST", body, timeoutMs: 7e3, headers: H });
+              const r = await cffiFetch(shellUrl, { impersonate: "chrome", method: "POST", body, timeoutMs: 7e3, headers: H2 });
               if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Toing shell HTTP ${r.status}`, r.status);
               if (!firstJson) firstJson = r.body;
               const g = toingShellGroups(r.body);
@@ -20389,7 +20389,7 @@ var init_food = __esm({
                 if (items.length >= 24) break;
                 if (left() < 5500) break;
                 try {
-                  const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: "chrome", method: "POST", body: "{}", timeoutMs: 5e3, headers: H });
+                  const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: "chrome", method: "POST", body: "{}", timeoutMs: 5e3, headers: H2 });
                   if (m.status !== 200) continue;
                   const dishes = toingMenuDishes(m.body);
                   for (const d of dishes) {
@@ -24177,8 +24177,8 @@ function parseUberSessionCookie(raw) {
   const out = {};
   const text = String(raw ?? "").replace(/^\s*cookie\s*:/i, "").replace(/[\u201c\u201d\u2018\u2019"'`]/g, "").replace(/\r/g, "").trim();
   if (!text) return out;
-  for (const chunk of text.split(/[\n,;]+/)) {
-    const part = chunk.trim();
+  for (const chunk2 of text.split(/[\n,;]+/)) {
+    const part = chunk2.trim();
     if (!part) continue;
     const eq = part.indexOf("=");
     if (eq > 0) {
@@ -24475,8 +24475,8 @@ async function olaRateCards(cityId, timezone) {
   const p = await cffiFetch(`${OLA_RC_BASE}/merchandising/rate-card?api_ver=v1`, { impersonate: "chrome", timeoutMs: 2e4, returnCookies: true, headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9" } });
   const jar = Object.entries(p.cookies || {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("; ");
   const xsrf = (p.cookies || {})["XSRF-TOKEN"] || "";
-  const H = { "Content-Type": "application/json", Accept: "application/json", "X-Client-Key": OLA_RC_KEY, "X-TraceId": `t1s-${Date.now()}`, "csrf-token": xsrf, Cookie: jar, Referer: `${OLA_RC_BASE}/merchandising/rate-card?api_ver=v1`, Origin: OLA_RC_BASE };
-  const r = await cffiFetch(`${OLA_RC_BASE}/fleet/pricing/v1/ratecard/all`, { impersonate: "chrome", timeoutMs: 3e4, method: "POST", headers: { ...H, "x-timezone": timezone || "IST" }, body: JSON.stringify({ city_id: cityId, country: "IN", service_type: { p2p: null }, user_request_time: null }) });
+  const H2 = { "Content-Type": "application/json", Accept: "application/json", "X-Client-Key": OLA_RC_KEY, "X-TraceId": `t1s-${Date.now()}`, "csrf-token": xsrf, Cookie: jar, Referer: `${OLA_RC_BASE}/merchandising/rate-card?api_ver=v1`, Origin: OLA_RC_BASE };
+  const r = await cffiFetch(`${OLA_RC_BASE}/fleet/pricing/v1/ratecard/all`, { impersonate: "chrome", timeoutMs: 3e4, method: "POST", headers: { ...H2, "x-timezone": timezone || "IST" }, body: JSON.stringify({ city_id: cityId, country: "IN", service_type: { p2p: null }, user_request_time: null }) });
   if (r.status !== 200 || !(r.body || "").includes("p2p")) throw new AcquisitionError("SERVER_ERROR", `Ola rate-card DB HTTP ${r.status}`, r.status);
   const j = JSON.parse(r.body || "{}");
   const now = Date.now();
@@ -40122,15 +40122,15 @@ var init_productGrouping = __esm({
 // server/auth/authService.ts
 function hashPassword(password) {
   const salt = import_crypto25.default.randomBytes(16).toString("hex");
-  const hash = import_crypto25.default.scryptSync(password, salt, 32).toString("hex");
-  return `scrypt$${salt}$${hash}`;
+  const hash2 = import_crypto25.default.scryptSync(password, salt, 32).toString("hex");
+  return `scrypt$${salt}$${hash2}`;
 }
 function verifyPassword(password, stored2) {
   try {
-    const [scheme, salt, hash] = stored2.split("$");
+    const [scheme, salt, hash2] = stored2.split("$");
     if (scheme !== "scrypt") return false;
     const candidate = import_crypto25.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto25.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
+    return import_crypto25.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash2));
   } catch {
     return false;
   }
@@ -40331,8 +40331,8 @@ var init_mailer = __esm({
 // server/auth/otpService.ts
 function hashOtp(code) {
   const salt = import_crypto26.default.randomBytes(8).toString("hex");
-  const hash = import_crypto26.default.scryptSync(code, salt, 32).toString("hex");
-  return `scrypt$${salt}$${hash}`;
+  const hash2 = import_crypto26.default.scryptSync(code, salt, 32).toString("hex");
+  return `scrypt$${salt}$${hash2}`;
 }
 function verifyOtpHash(code, stored2) {
   const parts = String(stored2 || "").split("$");
@@ -43994,17 +43994,17 @@ function repairPlace(token) {
 function transliterateHindi(text) {
   if (!DEVA_RE.test(text)) return { text, changed: false };
   let changed = false;
-  const out = String(text).split(/(\s+)/).map((chunk) => {
-    if (!DEVA_RE.test(chunk)) return chunk;
-    const lead = (chunk.match(/^[^\u0900-\u097F]+/) || [""])[0];
-    const tail = (chunk.match(/[^\u0900-\u097F]+$/) || [""])[0];
-    const core = chunk.slice(lead.length, chunk.length - tail.length);
+  const out = String(text).split(/(\s+)/).map((chunk2) => {
+    if (!DEVA_RE.test(chunk2)) return chunk2;
+    const lead = (chunk2.match(/^[^\u0900-\u097F]+/) || [""])[0];
+    const tail = (chunk2.match(/[^\u0900-\u097F]+$/) || [""])[0];
+    const core = chunk2.slice(lead.length, chunk2.length - tail.length);
     const hit = DEVA_TO_LATIN[core];
     if (hit) {
       changed = true;
       return lead + hit + tail;
     }
-    return chunk;
+    return chunk2;
   }).join("");
   return { text: out, changed };
 }
@@ -44027,16 +44027,16 @@ function normalizeAssistantQuestion(raw) {
   text = text.replace(JUNK_PHRASES, " ");
   text = text.replace(/[₹]/g, " ").replace(/\brs\.?\b/gi, " ");
   const repaired = [];
-  text = text.split(/(\s+)/).map((chunk) => {
-    if (!chunk.trim()) return chunk;
-    const fixed = repairWord(chunk);
-    if (fixed !== chunk) repaired.push(`${chunk}->${fixed}`);
+  text = text.split(/(\s+)/).map((chunk2) => {
+    if (!chunk2.trim()) return chunk2;
+    const fixed = repairWord(chunk2);
+    if (fixed !== chunk2) repaired.push(`${chunk2}->${fixed}`);
     return fixed;
   }).join("");
-  text = text.split(/(\s+)/).map((chunk) => {
-    if (!chunk.trim()) return chunk;
-    const fixed = repairPlace(chunk);
-    if (fixed !== chunk) repaired.push(`${chunk}->${fixed}`);
+  text = text.split(/(\s+)/).map((chunk2) => {
+    if (!chunk2.trim()) return chunk2;
+    const fixed = repairPlace(chunk2);
+    if (fixed !== chunk2) repaired.push(`${chunk2}->${fixed}`);
     return fixed;
   }).join("");
   let routeHint;
@@ -45591,12 +45591,12 @@ function fixSpelling(query) {
   const original = String(query || "").trim();
   if (!original) return { query: original, original, corrected: false, fixes: [] };
   const fixes = [];
-  const out = original.split(/(\s+)/).map((chunk) => {
-    if (!chunk.trim()) return chunk;
-    if (!/^[A-Za-z]{4,}$/.test(chunk)) return chunk;
-    const fixed = closestWord(chunk);
-    if (!fixed || fixed === chunk.toLowerCase()) return chunk;
-    fixes.push({ from: chunk, to: fixed });
+  const out = original.split(/(\s+)/).map((chunk2) => {
+    if (!chunk2.trim()) return chunk2;
+    if (!/^[A-Za-z]{4,}$/.test(chunk2)) return chunk2;
+    const fixed = closestWord(chunk2);
+    if (!fixed || fixed === chunk2.toLowerCase()) return chunk2;
+    fixes.push({ from: chunk2, to: fixed });
     return fixed;
   }).join("");
   if (!fixes.length) return { query: original, original, corrected: false, fixes: [] };
@@ -46635,12 +46635,12 @@ async function bingImages(query, opts = {}) {
     });
     if (res.status === 200 && res.body) {
       const chunks = String(res.body).split("murl&quot;:&quot;").slice(1);
-      for (const chunk of chunks) {
-        const image = decodeEntities((chunk.match(/^([^&"]+)/) || [])[1] || "").trim();
+      for (const chunk2 of chunks) {
+        const image = decodeEntities((chunk2.match(/^([^&"]+)/) || [])[1] || "").trim();
         if (!/^https?:\/\//i.test(image)) continue;
         if (!hostAllowed(image)) continue;
-        const title = decodeEntities((chunk.match(/t&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
-        const page = decodeEntities((chunk.match(/purl&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
+        const title = decodeEntities((chunk2.match(/t&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
+        const page = decodeEntities((chunk2.match(/purl&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
         rows.push({ image, page, title, host: hostOf4(image) });
       }
     }
@@ -48736,11 +48736,17 @@ async function resolvePlacePhoto(input) {
   return found;
 }
 function categoryTile(category, seed, tiles) {
-  const list = tiles[category] || tiles.all || ["/nearby-assets/all.jpg"];
-  let h = 0;
-  const s = String(seed || "");
-  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) % 1e5;
-  return list[h % list.length];
+  const cat = String(category || "all");
+  const name = String(seed || "place").slice(0, 80);
+  if (!name) {
+    const list = tiles[cat] || tiles.all || ["/nearby-assets/all.jpg"];
+    return list[0];
+  }
+  return `/api/nearby/tile?c=${encodeURIComponent(cat)}&n=${encodeURIComponent(name)}`;
+}
+function isTileUrl(url) {
+  const u = String(url || "");
+  return /\/nearby-assets\//.test(u) || u.includes("/api/nearby/tile");
 }
 var GENERIC_TOKENS, CATEGORY_WORDS, NOT_A_PLACE2, NOT_A_PHOTO, IS_PHOTO, UA6, COMMONS_WIDTH, MAX_KM, cache10, CACHE_TTL_MS4, MISS_TTL_MS3;
 var init_photos = __esm({
@@ -48888,6 +48894,7 @@ var aggregator_exports = {};
 __export(aggregator_exports, {
   distanceKm: () => distanceKm2,
   nearbyAnswer: () => nearbyAnswer,
+  nearbyEmergencyAnswer: () => nearbyEmergencyAnswer,
   nearbyReport: () => nearbyReport,
   normalizeNearbyCategory: () => normalizeNearbyCategory,
   prewarmNearby: () => prewarmNearby,
@@ -49589,7 +49596,7 @@ function dedupe(rows) {
     return distanceKm2({ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }) < 0.3;
   };
   const contains = (a, b) => a.length >= 8 && b.length >= 8 && (a.includes(b) || b.includes(a));
-  const weight = (r) => (r.rating !== null ? 4 : 0) + (r.price !== null ? 3 : 0) + (r.imageUrl && !/\/nearby-assets\//.test(r.imageUrl) ? 2 : 0) + (r.website ? 1 : 0);
+  const weight = (r) => (r.rating !== null ? 4 : 0) + (r.price !== null ? 3 : 0) + (r.imageUrl && !isTileUrl(r.imageUrl) ? 2 : 0) + (r.website ? 1 : 0);
   for (const row of rows) {
     const name = norm9(row.name);
     const clash = kept.find((k) => (norm9(k.name) === name || contains(norm9(k.name), name)) && sameSpot(k, row));
@@ -49614,7 +49621,7 @@ function dedupe(rows) {
 }
 function sortRows(rows, category) {
   const byDistance = (a, b) => (a.distanceKm ?? 99) - (b.distanceKm ?? 99);
-  const ownPhoto = (r) => Boolean(r.imageUrl) && !/\/nearby-assets\//.test(String(r.imageUrl));
+  const ownPhoto = (r) => Boolean(r.imageUrl) && !isTileUrl(r.imageUrl);
   const score = (r) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0) + (ownPhoto(r) ? 1 : 0);
   return [...rows].sort((a, b) => {
     const rank = score(b) - score(a);
@@ -49666,7 +49673,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v16|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v17|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49846,7 +49853,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const photoRank = (r) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0);
   for (const row of [...results].sort((a, b) => photoRank(b) - photoRank(a))) {
     const url = String(row.imageUrl || "");
-    if (!url || /\/nearby-assets\//.test(url)) continue;
+    if (!url || isTileUrl(url)) continue;
     if (usedPhoto.has(url)) {
       row.imageUrl = null;
       continue;
@@ -50076,6 +50083,77 @@ async function prewarmNearby(limitCities = PREWARM_CITIES.length) {
   if (TIMING || built) log.info("Nearby", "prewarm done", { built, skipped });
   return { built, skipped };
 }
+async function nearbyEmergencyAnswer(input) {
+  const category = normalizeNearbyCategory(input.category);
+  const started3 = Date.now();
+  let location;
+  try {
+    location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
+  } catch {
+    location = { lat: 22.7196, lng: 75.8577, city: "Indore", resolvedFrom: "fallback" };
+  }
+  const page = nearPage(input);
+  let rows = [];
+  try {
+    const osm = await osmNearby(location.lat, location.lng, category);
+    rows = osm.rows || [];
+  } catch {
+    rows = [];
+  }
+  if (!rows.length) {
+    rows = serviceNetworks(category).map((n) => ({
+      id: `net-${category}-${norm9(n.name).replace(/ /g, "-").slice(0, 30)}`,
+      name: n.name,
+      category,
+      subcategory: n.sub || null,
+      rating: null,
+      ratingCount: null,
+      priceLevel: null,
+      priceLabel: null,
+      price: null,
+      address: location.city ? String(location.city) : null,
+      lat: null,
+      lng: null,
+      distanceKm: null,
+      imageUrl: null,
+      source: "osm",
+      honesty: "A network that covers this city, not a specific shop.",
+      exitUrl: "",
+      directionsUrl: mapsSearch(`${n.name} ${location.city || ""}`.trim(), null, null),
+      website: n.url || null
+    }));
+  }
+  const merged = sortRows(dedupe(rows), category);
+  const total = Math.min(PAGE_CEILING, merged.length);
+  const results = merged.slice(page.offset, Math.min(page.offset + page.limit, total)).map((r) => {
+    const row = { ...r };
+    if (!row.imageUrl) row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
+    if (!row.exitUrl) {
+      if (row.website) row.exitUrl = pointer(row.website, row.category);
+      else {
+        row.mapOnly = true;
+        row.exitUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ""}`.trim())}`;
+      }
+    }
+    if (!row.directionsUrl) row.directionsUrl = mapsSearch(row.name, row.lat, row.lng);
+    return row;
+  });
+  return {
+    ok: results.length > 0,
+    category,
+    location,
+    results,
+    total,
+    offset: page.offset,
+    limit: page.limit,
+    hasMore: page.offset + results.length < total,
+    partial: false,
+    servedFrom: "emergency",
+    notes: ["Answered from the map feed while the partner feeds are being repaired."],
+    counts: { google: 0, osm: rows.length, catalogue: 0 },
+    ms: Date.now() - started3
+  };
+}
 async function nearbyAnswer(input) {
   const started3 = Date.now();
   const category = normalizeNearbyCategory(input.category);
@@ -50100,7 +50178,7 @@ async function nearbyAnswer(input) {
   const tileShare = (answer) => {
     const rows = answer.results || [];
     if (!rows.length) return 0;
-    const tiles = rows.filter((r) => !r.imageUrl || /\/nearby-assets\//.test(String(r.imageUrl))).length;
+    const tiles = rows.filter((r) => !r.imageUrl || isTileUrl(r.imageUrl)).length;
     return tiles / rows.length;
   };
   const serve = (answer, extra) => {
@@ -50339,6 +50417,134 @@ var init_aggregator = __esm({
     PREWARM_CITIES = ["pune", "mumbai", "delhi", "bengaluru", "hyderabad", "chennai", "kolkata", "indore", "bhopal", "jaipur"];
     PREWARM_CATEGORIES = ["all", "restaurants", "hotels", "cabs"];
     prewarmRunning = false;
+  }
+});
+
+// server/nearby/tilePng.ts
+var tilePng_exports = {};
+__export(tilePng_exports, {
+  placeTile: () => placeTile
+});
+function hash(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function hsl(h, s, l) {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)))));
+  };
+  return [f(0), f(8), f(4)];
+}
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i += 1) {
+    c ^= buf[i];
+    for (let k = 0; k < 8; k += 1) c = c >>> 1 ^ 3988292384 & -(c & 1);
+  }
+  return ~c >>> 0;
+}
+function chunk(type, data) {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length, 0);
+  const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body), 0);
+  return Buffer.concat([len, body, crc]);
+}
+function placeTile(category, seed) {
+  const h = hash(`${category}|${seed}`);
+  const base = (FAMILY[String(category || "")] ?? 250) + h % 26 - 13;
+  const hue = (base % 360 + 360) % 360;
+  const hue2 = (hue + 26 + h % 18) % 360;
+  const dark = hsl(hue / 360, 0.52, 0.28);
+  const light = hsl(hue2 / 360, 0.64, 0.62);
+  const stripe = hsl((hue + 180) % 360 / 360, 0.55, 0.5);
+  const raw = Buffer.alloc((W * 3 + 1) * H);
+  let p = 0;
+  for (let y = 0; y < H; y += 1) {
+    raw[p] = 0;
+    p += 1;
+    const v = y / (H - 1);
+    for (let x = 0; x < W; x += 1) {
+      const u = x / (W - 1);
+      const t = Math.min(1, Math.max(0, u * 0.7 + v * 0.3));
+      let r = dark[0] + (light[0] - dark[0]) * t;
+      let g = dark[1] + (light[1] - dark[1]) * t;
+      let b = dark[2] + (light[2] - dark[2]) * t;
+      const dx = u - 0.34;
+      const dy = v - 0.42;
+      const glow = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) * 1.9);
+      r += (255 - r) * glow * 0.22;
+      g += (255 - g) * glow * 0.22;
+      b += (255 - b) * glow * 0.22;
+      if ((x + y + h % 40) % 23 < 1) {
+        r += (stripe[0] - r) * 0.18;
+        g += (stripe[1] - g) * 0.18;
+        b += (stripe[2] - b) * 0.18;
+      }
+      raw[p] = Math.max(0, Math.min(255, Math.round(r)));
+      p += 1;
+      raw[p] = Math.max(0, Math.min(255, Math.round(g)));
+      p += 1;
+      raw[p] = Math.max(0, Math.min(255, Math.round(b)));
+      p += 1;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(W, 0);
+  ihdr.writeUInt32BE(H, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", (0, import_node_zlib2.deflateSync)(raw, { level: 9 })),
+    chunk("IEND", Buffer.alloc(0))
+  ]);
+}
+var import_node_zlib2, W, H, FAMILY;
+var init_tilePng = __esm({
+  "server/nearby/tilePng.ts"() {
+    import_node_zlib2 = require("node:zlib");
+    W = 220;
+    H = 124;
+    FAMILY = {
+      restaurants: 12,
+      cafes: 28,
+      hotels: 232,
+      stays: 258,
+      cabs: 45,
+      stores: 320,
+      movies: 280,
+      petrol: 38,
+      cng: 150,
+      lpg: 20,
+      car_repair: 205,
+      bike_repair: 190,
+      puncture: 8,
+      battery: 48,
+      tyres: 215,
+      denting: 265,
+      accessories: 300,
+      car_wash: 185,
+      detailing: 200,
+      pucc: 165,
+      insurance: 210,
+      rto: 222,
+      bike_rental: 140,
+      car_rental: 170,
+      scrapping: 95,
+      all: 250
+    };
   }
 });
 
@@ -51211,9 +51417,9 @@ async function tableColumns(store7, table) {
 async function importRows(store7, table, cols, rows) {
   let ok3 = 0;
   let skipped = 0;
-  const chunk = 100;
-  for (let i = 0; i < rows.length; i += chunk) {
-    const batch = rows.slice(i, i + chunk).filter((r) => r && typeof r === "object");
+  const chunk2 = 100;
+  for (let i = 0; i < rows.length; i += chunk2) {
+    const batch = rows.slice(i, i + chunk2).filter((r) => r && typeof r === "object");
     if (batch.length === 0) continue;
     const useCols = cols.filter((c) => batch.every((r) => Object.prototype.hasOwnProperty.call(r, c)));
     if (useCols.length === 0) {
@@ -51892,7 +52098,27 @@ async function nearbyHandler(req, res) {
     res.setHeader("Cache-Control", "public, max-age=300");
     res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(answer.results) } : answer);
   } catch (e2) {
-    log.warn("Api", "nearby failed", { error: String(e2?.message || e2).slice(0, 120) });
+    const message = String(e2?.message || e2).slice(0, 300);
+    const stack = String(e2?.stack || "").split("\n").slice(1, 4).join(" | ").slice(0, 400);
+    globalThis.__t1sNearbyLastError = { at: (/* @__PURE__ */ new Date()).toISOString(), category: String(req.query.category || ""), message, stack };
+    log.warn("Api", "nearby failed", { error: message.slice(0, 120) });
+    try {
+      const { nearbyEmergencyAnswer: nearbyEmergencyAnswer2 } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
+      const answer = await nearbyEmergencyAnswer2({
+        lat: req.query.lat === void 0 ? null : Number(req.query.lat),
+        lng: req.query.lng === void 0 ? null : Number(req.query.lng),
+        city: req.query.city ? String(req.query.city) : null,
+        category: req.query.category,
+        limit: Number(req.query.limit) || void 0
+      });
+      if (answer.results.length) {
+        res.setHeader("Cache-Control", "no-store");
+        res.json({ ...answer, recovered: true, notice: "Answered from the map feed while the partner feeds recover." });
+        return;
+      }
+    } catch (again) {
+      log.warn("Api", "nearby emergency answer failed", { error: String(again?.message || again).slice(0, 120) });
+    }
     res.status(503).json({ ok: false, results: [], error: "Nearby discovery is unavailable right now" });
   }
 }
@@ -52941,6 +53167,10 @@ var init_routes = __esm({
       });
     });
     cuelinksProbe = null;
+    apiRouter.get("/nearby/diag", (_req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ lastError: globalThis.__t1sNearbyLastError || null });
+    });
     apiRouter.get("/nearby", nearbyHandler);
     apiRouter.get("/v1/nearby", nearbyHandler);
     apiRouter.get("/nearby/photo", async (req, res) => {
@@ -52962,6 +53192,19 @@ var init_routes = __esm({
         res.send(buf);
       } catch {
         res.status(502).type("text/plain").send("photo unavailable");
+      }
+    });
+    apiRouter.get("/nearby/tile", (req, res) => {
+      try {
+        const { placeTile: placeTile2 } = (init_tilePng(), __toCommonJS(tilePng_exports));
+        const png = placeTile2(String(req.query.c || "all"), String(req.query.n || "place").slice(0, 80));
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        res.setHeader("ETag", `"t-${png.length}-${String(req.query.n || "").length}"`);
+        res.send(png);
+      } catch (e2) {
+        log.warn("Api", "tile failed", { error: String(e2?.message || e2).slice(0, 100) });
+        res.status(503).type("text/plain").send("tile unavailable");
       }
     });
     apiRouter.get("/nearby/img", async (req, res) => {
@@ -55396,13 +55639,13 @@ function extractAmazonCardDeals(html) {
   const out = [];
   const idx = [...html.matchAll(/data-asin="([A-Z0-9]{10})"/g)].map((m) => m.index);
   for (let c = 0; c < idx.length && out.length < 30; c++) {
-    const chunk = html.slice(idx[c], c + 1 < idx.length ? idx[c + 1] : html.length);
-    const coupon = COUPON_TXT.exec(chunk);
+    const chunk2 = html.slice(idx[c], c + 1 < idx.length ? idx[c + 1] : html.length);
+    const coupon = COUPON_TXT.exec(chunk2);
     if (!coupon) continue;
-    const asin = /data-asin="([A-Z0-9]{10})"/.exec(chunk)[1];
-    const title = strip((/<span class="a-size-medium[^"]*"[^>]*>(.*?)<\/span>/.exec(chunk) || [])[1] || (/<h2[^>]*>(.*?)<\/h2>/.exec(chunk) || [])[1] || "").replace(/<[^>]+>/g, "");
+    const asin = /data-asin="([A-Z0-9]{10})"/.exec(chunk2)[1];
+    const title = strip((/<span class="a-size-medium[^"]*"[^>]*>(.*?)<\/span>/.exec(chunk2) || [])[1] || (/<h2[^>]*>(.*?)<\/h2>/.exec(chunk2) || [])[1] || "").replace(/<[^>]+>/g, "");
     if (!title) continue;
-    const whole = Number((/class="a-price-whole">([\d,]+)/.exec(chunk) || [])[1]?.replace(/,/g, ""));
+    const whole = Number((/class="a-price-whole">([\d,]+)/.exec(chunk2) || [])[1]?.replace(/,/g, ""));
     const amount = Number(coupon[1] || coupon[2] || 0) || null;
     const pct = coupon[3] ? Number(coupon[3]) : null;
     out.push({
@@ -57189,10 +57432,10 @@ var init_adsenseRevenue = __esm({
 var xlsx_exports = {};
 __export(xlsx_exports, {
   buildXlsx: () => buildXlsx,
-  crc32: () => crc32,
+  crc32: () => crc322,
   zipStore: () => zipStore
 });
-function crc32(buf) {
+function crc322(buf) {
   let c = 4294967295;
   for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 255] ^ c >>> 8;
   return (c ^ 4294967295) >>> 0;
@@ -57203,7 +57446,7 @@ function zipStore(files) {
   let offset = 0;
   for (const f of files) {
     const name = Buffer.from(f.name, "utf8");
-    const crc = crc32(f.data);
+    const crc = crc322(f.data);
     const lh = Buffer.alloc(30);
     lh.writeUInt32LE(67324752, 0);
     lh.writeUInt16LE(20, 4);
@@ -63586,13 +63829,13 @@ function registerIndexNowRoutes(app) {
       return;
     }
     const results = [];
-    for (const chunk of indexNowPayloads()) {
+    for (const chunk2 of indexNowPayloads()) {
       for (const endpoint of INDEXNOW_ENDPOINTS) {
         try {
           const r = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json; charset=utf-8" },
-            body: JSON.stringify(chunk)
+            body: JSON.stringify(chunk2)
           });
           results.push({ endpoint, status: r.status });
         } catch (e2) {
@@ -65230,8 +65473,8 @@ async function createApp() {
         return html;
       }
       const missing = [];
-      const healed = html.replace(/\/assets\/([A-Za-z0-9_]+)[-.]([A-Za-z0-9_-]+)\.(js|css)/g, (m, logical, hash, ext) => {
-        const exact = `${logical}-${hash}.${ext}`;
+      const healed = html.replace(/\/assets\/([A-Za-z0-9_]+)[-.]([A-Za-z0-9_-]+)\.(js|css)/g, (m, logical, hash2, ext) => {
+        const exact = `${logical}-${hash2}.${ext}`;
         if (files.includes(exact)) return m;
         const cand = files.filter((f) => f.startsWith(`${logical}-`) && f.endsWith(`.${ext}`));
         if (cand.length === 1) return `/assets/${cand[0]}`;
