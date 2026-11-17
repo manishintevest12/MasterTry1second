@@ -56,7 +56,7 @@ import { directAppTarget, androidIntentUrl, isAndroid, keepsWebviewExit } from '
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { cachedSection } from './cachedSections';
-import { beginScrape, send429, send504, withDeadline } from './requestGuard';
+import { beginScrape, send429, withDeadline } from './requestGuard';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
@@ -2064,11 +2064,28 @@ apiRouter.post('/scrape/live', async (req, res) => {
   // abandoned and the client gets a 504 JSON answer (never a hung socket, never another job).
   // Above the longest per-vertical cold ceiling (movies/hotels 20s) and still far below the ~55s
   // front-proxy wall, so the enriched answer can actually be returned instead of being cut at 15s.
-  const hardDeadlineMs = Math.max(5_000, Number(process.env.T1S_HARD_REQUEST_MS || 26_000));
+  // OWNER 17 Nov (5xx analytics: POST /api/scrape/live answered 503 after 12.5s, Try1Second/1.8.48+55):
+  // the front proxy gives up at ~12.5s, so a 26s internal deadline could never be reached - the edge
+  // answered 503 and the client lost the answer it was still waiting for. The deadline now sits under
+  // that wall and answers honestly instead of erroring.
+  const hardDeadlineMs = Math.max(4_000, Number(process.env.T1S_HARD_REQUEST_MS || 10_000));
   const hardTimer = setTimeout(() => {
     if (res.writableEnded || res.headersSent) return;
     liveAbort.abort();
-    send504(res, String(input.vertical), searchStart);
+    // OWNER 9 Nov rule, applied here too: a momentarily missing answer is not an outage. The client gets
+    // a 200 it will quietly retry (its pipeline keeps running and the replay window fills in), never a 5xx.
+    try {
+      res.status(200).json({
+        ok: true,
+        results: [],
+        pendingRefresh: true,
+        degraded: true,
+        honestNotice: 'Live sources are still scanning. Results appear here automatically in a few seconds.',
+        sourcesAttempted: [], sourcesSucceeded: [], sourcesFailed: [],
+        servedFrom: 'deadline', resultsCount: 0,
+        latencyMs: Date.now() - searchStart,
+      });
+    } catch { /* socket already gone */ }
   }, hardDeadlineMs);
   if (typeof (hardTimer as any).unref === 'function') (hardTimer as any).unref();
   res.on('close', () => clearTimeout(hardTimer));
@@ -2082,9 +2099,8 @@ apiRouter.post('/scrape/live', async (req, res) => {
   // chance: if the fast answer carries nothing, wait for the in-flight pipeline (never a second scrape)
   // and adopt it when it is better. Ceilings sit under the 26s hard request cap.
   const firstAnswerBudget = (v: string) =>
-    (['flights'].includes(v) ? 14_000
-      : ['hotels', 'movies', 'movie'].includes(v) ? 16_000
-      : v === 'bus' ? 12_000 : 9_000);
+    (['flights', 'hotels', 'movies', 'movie'].includes(v) ? 7_000
+      : v === 'bus' ? 7_000 : 6_000);
   let response = (await Promise.race([
     searchedLive,
     new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.min(resultDeadlineMs(), 2000))),
@@ -2118,10 +2134,12 @@ apiRouter.post('/scrape/live', async (req, res) => {
     // OWNER 3 Nov (cab): Ola's rate-card chain and Rapido's signed fare call measured 2.1s warm / ~7s
     // cold in this sandbox, so a cab answer cut at 9s dropped their real fares even though both
     // produce priced rows. Cab gets a middle ceiling; the instant verticals keep 9s.
+    // OWNER 17 Nov: same edge wall as the hard deadline above - a ceiling past ~12.5s never returns a
+    // body at all. Every vertical now settles inside the wall, and the pipeline keeps filling the cache
+    // behind the answer, so the client's next poll/replay picks up the rest.
     const coldCeilingMs = Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 0)
-      || (['movies', 'movie', 'hotels'].includes(String(input.vertical)) ? 20_000
-        : String(input.vertical) === 'flights' ? 16_000
-        : String(input.vertical) === 'cab' ? 14_000 : 9_000);
+      || (['movies', 'movie', 'hotels', 'flights'].includes(String(input.vertical)) ? 8_500
+        : String(input.vertical) === 'cab' ? 8_000 : 7_000);
     const coldCeiling = Math.max(2000, coldCeilingMs);
     const late = (await Promise.race([
       searchedLive,
