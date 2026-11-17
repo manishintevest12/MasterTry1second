@@ -414,6 +414,8 @@ export async function resolvePlacePhoto(input: {
  * a broken image on every ordinary vertical. These are real photographs of that kind of place, free-licensed and
  * credited in the card's honesty line - used only when the place itself has no photo, never pretending to be it.
  */
+const ASSET_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || 'https://www.try1second.com').replace(/\/+$/, '');
+
 const PHOTO_POOL: Record<string, string[]> = (() => {
   const out: Record<string, string[]> = {};
   const roots = [path.resolve('public/nearby-photos'), path.resolve('../public/nearby-photos')];
@@ -423,7 +425,11 @@ const PHOTO_POOL: Record<string, string[]> = (() => {
       for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
         const files = fs.readdirSync(path.join(root, entry.name)).filter((f) => /\.jpe?g$/i.test(f)).sort();
-        if (files.length) out[entry.name] = files.map((f) => `/nearby-photos/${entry.name}/${f}`);
+        // OWNER 17 Nov (same cause as the logo initials): a pool photo sent as a RELATIVE path is resolved by
+        // the installed Flutter app against its API base (the relay), which answers 401 to Image.network — so
+        // the card renders blank in the app while the website is fine. Absolute origin URLs fix every installed
+        // build at once, with no app release.
+        if (files.length) out[entry.name] = files.map((f) => `${ASSET_ORIGIN}/nearby-photos/${entry.name}/${f}`);
       }
       break;
     } catch {
@@ -461,10 +467,10 @@ export function categoryTile(category: string, seed: string, tiles: Record<strin
   const cat = String(category || 'all');
   const name = String(seed || 'place').slice(0, 80);
   if (!name) {
-    const list = tiles[cat] || tiles.all || ['/nearby-assets/all.jpg'];
+    const list = tiles[cat] || tiles.all || [`${ASSET_ORIGIN}/nearby-assets/all.jpg`];
     return list[0];
   }
-  return `/api/nearby/tile?c=${encodeURIComponent(cat)}&n=${encodeURIComponent(name)}`;
+  return `${ASSET_ORIGIN}/api/nearby/tile?c=${encodeURIComponent(cat)}&n=${encodeURIComponent(name)}`;
 }
 
 /** Is this URL one of our drawn/category tiles rather than a photo of the place? */
