@@ -8,7 +8,10 @@ import { MapPin, Navigation, Star, Loader2, Compass, ChevronDown } from 'lucide-
  * server key exists, OpenStreetMap gives name, address and distance and nothing else. That is why a card can
  * legitimately show "rating unknown" - we never print an invented star count.
  */
-type Category = 'all' | 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies';
+type Category = 'all' | 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies'
+  // OWNER 17 Nov: the vehicle & paperwork errands, served by the same OSM data.
+  | 'petrol' | 'cng' | 'lpg' | 'car_repair' | 'bike_repair' | 'puncture' | 'battery' | 'tyres' | 'denting'
+  | 'accessories' | 'car_wash' | 'detailing' | 'pucc' | 'insurance' | 'rto' | 'bike_rental' | 'car_rental' | 'scrapping';
 
 interface NearbyRow {
   id: string; name: string; category: string; subcategory?: string | null;
@@ -26,6 +29,32 @@ const PILLS: { key: Category; label: string }[] = [
   { key: 'cabs', label: 'Cabs' },
   { key: 'movies', label: 'Cinemas' },
   { key: 'stores', label: 'Stores' },
+];
+
+/**
+ * OWNER 17 Nov: "nearby mai petrol pumps, cng stations, lpg, car repair, ... add these features".
+ * They live on their own row so the everyday chips stay where they were and the vehicle errands are one tap away
+ * instead of buried at the end of a 26-item scroll.
+ */
+const VEHICLE_PILLS: { key: Category; label: string }[] = [
+  { key: 'petrol', label: 'Petrol Pumps' },
+  { key: 'cng', label: 'CNG Stations' },
+  { key: 'lpg', label: 'LPG & Gas' },
+  { key: 'car_repair', label: 'Car Repair' },
+  { key: 'bike_repair', label: 'Bike Repair' },
+  { key: 'puncture', label: 'Puncture' },
+  { key: 'battery', label: 'Battery Shops' },
+  { key: 'tyres', label: 'Tyre Shops' },
+  { key: 'denting', label: 'Denting & Painting' },
+  { key: 'accessories', label: 'Accessories' },
+  { key: 'car_wash', label: 'Car Wash' },
+  { key: 'detailing', label: 'Detailing' },
+  { key: 'pucc', label: 'PUCC Centres' },
+  { key: 'insurance', label: 'Insurance Offices' },
+  { key: 'rto', label: 'RTO Office' },
+  { key: 'bike_rental', label: 'Bike & Scooty Rentals' },
+  { key: 'car_rental', label: 'Car Rentals' },
+  { key: 'scrapping', label: 'Vehicle Scrapping' },
 ];
 
 export default function NearbyView() {
@@ -244,6 +273,23 @@ export default function NearbyView() {
             onClick={() => { setCategory(p.key); void load({ category: p.key }); }}
             className={`px-3 py-1.5 rounded-full text-xs font-bold border whitespace-nowrap cursor-pointer ${
               category === p.key ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Vehicle & paperwork errands (owner 17 Nov) — same behaviour, own row so they are not a 26th scroll. */}
+      <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
+        <span className="text-[10px] font-black uppercase tracking-wide text-slate-400 whitespace-nowrap pr-1">Vehicle &amp; services</span>
+        {VEHICLE_PILLS.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => { setCategory(p.key); void load({ category: p.key }); }}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border whitespace-nowrap cursor-pointer ${
+              category === p.key ? 'bg-[#E7000B] text-white border-[#E7000B]' : 'bg-white text-slate-700 border-slate-200'
             }`}
           >
             {p.label}

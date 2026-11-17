@@ -20,9 +20,13 @@ import { log } from '../common/logger';
 import { INDIAN_CITIES } from '../seo/cityCorpus';
 import { createMaskingPointer } from '../affiliate/deeplink';
 import { swiggyPlaces, oyoStays, enrichedToRow, photonCoords, ogImage, CATEGORY_TILE, CATEGORY_TILES } from './enrich';
+import { categoryDef, categoryFilters, categoryTerms, nameMatchesCategory, NEARBY_CATEGORIES } from './categories';
 import { resolvePlacePhoto, categoryTile, type PhotoEvidence } from './photos';
 
-export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies' | 'all';
+export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies' | 'all'
+  // OWNER 17 Nov: the vehicle & paperwork errands, answered from the same OSM data (see nearby/categories.ts).
+  | 'petrol' | 'cng' | 'lpg' | 'car_repair' | 'bike_repair' | 'puncture' | 'battery' | 'tyres' | 'denting'
+  | 'accessories' | 'car_wash' | 'detailing' | 'pucc' | 'insurance' | 'rto' | 'bike_rental' | 'car_rental' | 'scrapping';
 
 export interface NearbyRow {
   id: string;
@@ -90,6 +94,10 @@ const RADIUS_M = 2500;
  */
 const WIDE_RADIUS_M = 9000;
 function radiusFor(category: NearbyCategory): number {
+  // OWNER 17 Nov: a puncture shop or an RTO office is not on every corner, so the new chips use their own radius
+  // (the registry's radiusM) instead of the tight 2km circle that suits restaurants.
+  const def = categoryDef(category);
+  if (def?.radiusM) return Math.min(WIDE_RADIUS_M * 2, def.radiusM);
   return category === 'cabs' || category === 'stores' || category === 'movies' ? WIDE_RADIUS_M : RADIUS_M;
 }
 // OWNER 16 Nov: our own load was tripping Nominatim's 1-request-per-second policy (notes in the API: 'Nominatim
@@ -156,6 +164,25 @@ const CATEGORY_ALIASES: Record<string, NearbyCategory> = {
   hotel: 'hotels', hotels: 'hotels', stay: 'stays', stays: 'stays', homestay: 'stays',
   cab: 'cabs', cabs: 'cabs', taxi: 'cabs', store: 'stores', stores: 'stores', shop: 'stores',
   movie: 'movies', movies: 'movies', cinema: 'movies', cinemas: 'movies', theatre: 'movies', theater: 'movies', theatres: 'movies', theaters: 'movies',
+  // OWNER 17 Nov: the vehicle & paperwork errands.
+  petrol: 'petrol', 'petrol pump': 'petrol', 'petrol pumps': 'petrol', fuel: 'petrol', 'fuel station': 'petrol', 'gas station': 'petrol',
+  cng: 'cng', 'cng station': 'cng', 'cng stations': 'cng', 'cng pump': 'cng',
+  lpg: 'lpg', gas: 'lpg', 'gas agency': 'lpg', 'lpg agency': 'lpg', 'gas cylinder': 'lpg',
+  'car repair': 'car_repair', car_repair: 'car_repair', garage: 'car_repair', 'car service': 'car_repair', 'car servicing': 'car_repair',
+  'bike repair': 'bike_repair', bike_repair: 'bike_repair', 'two wheeler repair': 'bike_repair', 'scooter repair': 'bike_repair', mechanic: 'bike_repair',
+  puncture: 'puncture', 'puncture repair': 'puncture', 'tyre repair': 'puncture', 'tire repair': 'puncture',
+  battery: 'battery', 'battery shop': 'battery', 'battery shops': 'battery', batteries: 'battery',
+  tyres: 'tyres', tyre: 'tyres', tire: 'tyres', tires: 'tyres', 'tyre shop': 'tyres', 'tyre shops': 'tyres',
+  denting: 'denting', painting: 'denting', 'denting and painting': 'denting', 'denting & painting': 'denting', 'body shop': 'denting',
+  accessories: 'accessories', accessory: 'accessories', 'accessory shop': 'accessories', 'accessory shops': 'accessories', 'car accessories': 'accessories', 'spare parts': 'accessories',
+  'car wash': 'car_wash', car_wash: 'car_wash', carwash: 'car_wash', 'bike wash': 'car_wash',
+  detailing: 'detailing', 'detailing studio': 'detailing', 'detailing studios': 'detailing', 'ceramic coating': 'detailing',
+  pucc: 'pucc', puc: 'pucc', 'pucc centre': 'pucc', 'pucc centers': 'pucc', 'pollution certificate': 'pucc', pollution: 'pucc',
+  insurance: 'insurance', 'insurance office': 'insurance', 'insurance offices': 'insurance', 'insurance agent': 'insurance',
+  rto: 'rto', 'rto office': 'rto', 'transport office': 'rto', 'regional transport office': 'rto',
+  'bike rental': 'bike_rental', 'bike rentals': 'bike_rental', 'bike and scooty rental': 'bike_rental', 'scooter rental': 'bike_rental', 'scooty rental': 'bike_rental', 'two wheeler rental': 'bike_rental',
+  'car rental': 'car_rental', 'car rentals': 'car_rental', 'car hire': 'car_rental', 'self drive': 'car_rental',
+  scrapping: 'scrapping', scrap: 'scrapping', 'vehicle scrapping': 'scrapping', 'scrap yard': 'scrapping', kabadi: 'scrapping',
 };
 
 export function normalizeNearbyCategory(raw: unknown): NearbyCategory {
@@ -568,10 +595,11 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
   // Text search needs a word people actually put on a shopfront: 'shop' is an OSM tag, not a name, so a text
   // search for it returns nothing named (measured: stores 0 rows after 15s). 'supermarket' is what those POIs
   // are called on the ground.
-  const term: Record<NearbyCategory, string> = {
+  const term: Partial<Record<NearbyCategory, string>> = {
     restaurants: 'restaurant', cafes: 'cafe', hotels: 'hotel', stays: 'guest house', cabs: 'taxi', stores: 'supermarket', movies: 'cinema', all: 'restaurant',
   };
-  const want = term[category] || 'restaurant';
+  // A new chip gets a human search phrase ("puncture repair", "RTO office") because those sources only take words.
+  const want = categoryDef(category)?.search || term[category] || 'restaurant';
   const attempts: string[] = [];
 
   // OWNER 16 Nov: these three ran ONE AFTER ANOTHER, so a cold "cabs in Indore" paid Photon, then Nominatim,
@@ -622,7 +650,14 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
       const plng = Number(coords[0]); const plat = Number(coords[1]);
       if (!p.name || !Number.isFinite(plat) || !Number.isFinite(plng)) continue;
       if (isJunkName(String(p.name))) continue;
-      const cat = osmCategory({ amenity: p.osm_key === 'amenity' ? p.osm_value : '', tourism: p.osm_key === 'tourism' ? p.osm_value : '', shop: p.osm_key === 'shop' ? p.shop || 'yes' : '' });
+      const cat = osmCategory({
+        amenity: p.osm_key === 'amenity' ? p.osm_value : '',
+        tourism: p.osm_key === 'tourism' ? p.osm_value : '',
+        // OWNER 17 Nov: the VALUE matters now ("car_repair", "tyres", "car_parts"), not just the presence of a shop.
+        shop: p.osm_key === 'shop' ? p.osm_value : '',
+        office: p.osm_key === 'office' ? p.osm_value : '',
+        name: String(p.name || ''),
+      });
       if (category !== 'all' && cat !== category) continue;
       const addr = [p.housenumber, p.street, p.district, p.city].filter(Boolean).join(', ') || null;
       rows.push(baseOsmRow({ name: String(p.name), cat, plat, plng, lat, lng, addr, sub: p.osm_value ? String(p.osm_value).replace(/_/g, ' ') : null, osmId: `ph-${p.osm_id || p.name}` }));
@@ -643,12 +678,27 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
     const SEARCH_BOX_M = 8000;
     const d = SEARCH_BOX_M / 111_000;
     const viewbox = `${(lng - d).toFixed(4)},${(lat + d).toFixed(4)},${(lng + d).toFixed(4)},${(lat - d).toFixed(4)}`;
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(term)}&viewbox=${viewbox}&bounded=1&format=jsonv2&limit=30`;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 4000);
-    const res = await fetch(url, { signal: ctrl.signal, headers: { 'user-agent': 'Try1Second/1.0 (https://www.try1second.com; nearby)' } }).finally(() => clearTimeout(timer));
-    if (!res.ok) return { rows: [], note: `Nominatim answered ${res.status}` };
-    const data: any[] = (await res.json()) as any[];
+    // OWNER 17 Nov: a name search only answers the words a shopfront actually carries. "car repair garage" returned
+    // nothing while "car repair" returned six real garages, so a new chip now tries its own phrase and then its
+    // plain keywords, stopping at the first one that names real places (Nominatim allows 1 request/second, so the
+    // attempts are spaced and capped).
+    const phrases = categoryDef(category)
+      ? [...new Set([term, ...categoryTerms(category)])].slice(0, 3)
+      : [term];
+    let data: any[] = [];
+    for (let i = 0; i < phrases.length; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 950));
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(phrases[i])}&viewbox=${viewbox}&bounded=1&format=jsonv2&limit=30`;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4000);
+      try {
+        const res = await fetch(url, { signal: ctrl.signal, headers: { 'user-agent': 'Try1Second/1.0 (https://www.try1second.com; nearby)' } }).finally(() => clearTimeout(timer));
+        if (!res.ok) { if (!data.length) return { rows: [], note: `Nominatim answered ${res.status}` }; break; }
+        const page = (await res.json()) as any[];
+        if (Array.isArray(page) && page.length) { data = page; break; }
+        data = [];
+      } catch { if (!data.length && i === phrases.length - 1) return { rows: [], note: 'Nominatim unreachable' }; }
+    }
     const rows: NearbyRow[] = [];
     for (const r of Array.isArray(data) ? data : []) {
       const plat = Number(r.lat); const plng = Number(r.lon);
@@ -658,13 +708,24 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
       if (!r.name && STREET_WORD.test(name)) continue;
       if (isJunkName(name)) continue;
       const rt = String(r.type || '');
+      // OWNER 17 Nov: Nominatim answers with class=null and the OSM type in `type` ("car_repair", "tyres"), so the
+      // new vehicle chips were classified as generic shops and then filtered out of their own category. The value
+      // and the place name now travel with the classification.
+      const AMENITY_LIKE = new Set(['cinema', 'restaurant', 'cafe', 'fast_food', 'taxi', 'fuel', 'car_wash', 'car_rental', 'car_sharing', 'motorcycle_rental', 'driving_school', 'recycling']);
+      const SHOP_LIKE = new Set(['supermarket', 'convenience', 'car_repair', 'car_service', 'motorcycle_repair', 'motorcycle', 'tyres', 'car_parts', 'car_accessories', 'battery', 'gas', 'insurance', 'car_wash', 'rental']);
+      const OFFICE_LIKE = new Set(['insurance', 'government']);
       const cat = osmCategory({
-        amenity: r.class === 'amenity' || ['cinema','restaurant','cafe','fast_food','taxi'].includes(rt) ? rt : '',
-        tourism: r.class === 'tourism' || ['hotel','guest_house','apartment','hostel','motel'].includes(rt) ? rt : '',
-        shop: r.class === 'shop' || rt === 'shop' ? 'yes' : '',
+        amenity: r.class === 'amenity' ? rt : (AMENITY_LIKE.has(rt) ? rt : ''),
+        tourism: r.class === 'tourism' || ['hotel', 'guest_house', 'apartment', 'hostel', 'motel'].includes(rt) ? rt : '',
+        shop: r.class === 'shop' ? rt : (SHOP_LIKE.has(rt) ? rt : ''),
+        office: r.class === 'office' ? rt : (OFFICE_LIKE.has(rt) ? rt : ''),
+        name: String(name || ''),
       });
-      if (category !== 'all' && cat !== category) continue;
-      rows.push(baseOsmRow({ name, cat, plat, plng, lat, lng, addr: r.display_name ? String(r.display_name) : null, sub: r.type ? String(r.type).replace(/_/g, ' ') : null, osmId: `nm-${r.osm_id || r.place_id}` }));
+      // A place whose NAME proves the category counts even when its OSM type is generic ("Anmol Motors" for car
+      // repair). The original eight keep the strict type test so unrelated shops never leak into them.
+      const proven = categoryDef(category) ? nameMatchesCategory(name, category) : false;
+      if (category !== 'all' && cat !== category && !proven) continue;
+      rows.push(baseOsmRow({ name, cat: proven && cat !== category ? category : cat, plat, plng, lat, lng, addr: r.display_name ? String(r.display_name) : null, sub: r.type ? String(r.type).replace(/_/g, ' ') : null, osmId: `nm-${r.osm_id || r.place_id}` }));
     }
     return rows.length ? { rows } : { rows: [], note: 'Nominatim returned no matching places' };
   } catch (e: any) {
@@ -711,7 +772,7 @@ function rideAppRows(city: string | null, lat: number, lng: number): NearbyRow[]
 
 async function overpassNearby(lat: number, lng: number, category: NearbyCategory):
 Promise<{ rows: NearbyRow[]; note?: string }> {
-  const filters: Record<NearbyCategory, string[]> = {
+  const filters: Partial<Record<NearbyCategory, string[]>> = {
     restaurants: ['node["amenity"="restaurant"]'],
     cafes: ['node["amenity"="cafe"]'],
     hotels: ['node["tourism"="hotel"]'],
@@ -721,7 +782,9 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
     movies: ['node["amenity"="cinema"]'],
     all: ['node["amenity"="restaurant"]'],
   };
-  const body = filters[category].map((f) => `${f}(around:${radiusFor(category)},${lat},${lng});`).join('\n');
+  // OWNER 17 Nov: the new vehicle/paperwork chips are answered from the tag registry instead of a hand-written map.
+  const list = categoryDef(category) ? categoryFilters(category) : filters[category];
+  const body = (list || []).map((f) => `${f}(around:${radiusFor(category)},${lat},${lng});`).join('\n');
   const query = `[out:json][timeout:12];(\n${body}\n);out body 30;`;
   // OWNER 16 Nov: these were tried one after another with a 12s timeout each, so a single cold request could sit
   // on Overpass for 48 seconds - longer than the proxy in front of us keeps a connection open, which is how the
@@ -824,6 +887,43 @@ function isJunkName(name: string): boolean {
 
 function osmCategory(tags: any): NearbyCategory {
   const a = String(tags?.amenity || ''); const t = String(tags?.tourism || '');
+  // OWNER 17 Nov: the vehicle & paperwork errands (the name-based checks come first, because a petrol pump that
+  // also issues PUC certificates is both, and the user asked for them as separate chips).
+  {
+    const name = String(tags?.name || '');
+    const n = name.toLowerCase();
+    const hit = (id: string) => nameMatchesCategory(name, id);
+    if (a === 'fuel' || a === 'fuel;charging') {
+      if (/cng|compressed natural gas/.test(n)) return 'cng';
+      if (/puc|pucc|pollution/.test(n)) return 'pucc';
+      if (/lpg/.test(n)) return 'lpg';
+      return 'petrol';
+    }
+    if (a === 'car_wash') return hit('detailing') ? 'detailing' : 'car_wash';
+    if (a === 'car_rental' || a === 'car_sharing') return hit('bike_rental') ? 'bike_rental' : 'car_rental';
+    if (a === 'motorcycle_rental') return 'bike_rental';
+    if (a === 'driving_school' && hit('rto')) return 'rto';
+    if (a === 'recycling' && (hit('scrapping') || /scrap|kabadi/.test(n))) return 'scrapping';
+    if (t === 'apartment') { /* stays below */ }
+    const shop = String(tags?.shop || '');
+    if (shop === 'car_repair' || shop === 'car_service') {
+      if (hit('denting')) return 'denting';
+      if (hit('detailing')) return 'detailing';
+      if (hit('pucc')) return 'pucc';
+      if (hit('scrapping')) return 'scrapping';
+      return 'car_repair';
+    }
+    if (shop === 'motorcycle_repair') return 'bike_repair';
+    if (shop === 'motorcycle') return hit('battery') ? 'battery' : (hit('bike_repair') ? 'bike_repair' : 'bike_repair');
+    if (shop === 'tyres') return hit('puncture') ? 'puncture' : 'tyres';
+    if (shop === 'car_parts' || shop === 'car_accessories') return hit('battery') ? 'battery' : 'accessories';
+    if (shop === 'battery') return 'battery';
+    if (shop === 'gas') return 'lpg';
+    if (shop === 'insurance') return 'insurance';
+    if (shop === 'car_wash') return hit('detailing') ? 'detailing' : 'car_wash';
+    if (String(tags?.office || '') === 'insurance') return 'insurance';
+    if (String(tags?.office || '') === 'government' && hit('rto')) return 'rto';
+  }
   if (a === 'restaurant' || a === 'fast_food') return 'restaurants';
   if (a === 'cafe') return 'cafes';
   if (t === 'hotel') return 'hotels';
@@ -1210,6 +1310,17 @@ async function buildNearbyAnswer(input: {
       row.imageUrl = url;
       row.honesty = `${row.honesty} Photo is from the business's own page.`.trim();
     }
+  }
+  // OWNER 17 Nov ("maine kaha tha real image, aur yaha ek hi image hr jagah hai"): two DIFFERENT places must never
+  // share one photo - a repeated picture is a false claim about both cards. The best row (most verified facts) keeps
+  // the photo; a row that would have to reuse it falls back to its labelled tile instead.
+  const usedPhoto = new Set<string>();
+  const photoRank = (r: any) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0);
+  for (const row of [...results].sort((a: any, b: any) => photoRank(b) - photoRank(a))) {
+    const url = String(row.imageUrl || '');
+    if (!url || /\/nearby-assets\//.test(url)) continue;
+    if (usedPhoto.has(url)) { row.imageUrl = null; continue; }
+    usedPhoto.add(url);
   }
   for (const row of results) {
     if (!row.imageUrl) {

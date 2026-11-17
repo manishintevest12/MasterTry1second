@@ -10,6 +10,7 @@
  */
 import { INDIAN_CITIES, CITY_STATE } from '../seo/cityCorpus';
 import { INDEXABLE_METROS } from '../seo/indexPolicy';
+import { categoryLabel } from './categories';
 import { nearbyAnswer, normalizeNearbyCategory, type NearbyAnswer, type NearbyCategory } from './aggregator';
 
 export const NEARBY_CATEGORIES: NearbyCategory[] = ['restaurants', 'cafes', 'hotels', 'stays', 'cabs', 'stores'];
@@ -235,7 +236,7 @@ ${cat ? '' : `<section><h2>Browse by category</h2><ul class="links">${catLinks}<
 }
 
 /** What people actually search for, per category. A title says 'cinemas', not 'movies'. */
-const CATEGORY_NOUN: Record<NearbyCategory, { one: string; many: string }> = {
+const CATEGORY_NOUN: Partial<Record<NearbyCategory, { one: string; many: string }>> = {
   restaurants: { one: 'restaurant', many: 'restaurants' },
   cafes: { one: 'cafe', many: 'cafes' },
   hotels: { one: 'hotel', many: 'hotels' },
@@ -247,7 +248,9 @@ const CATEGORY_NOUN: Record<NearbyCategory, { one: string; many: string }> = {
 };
 
 function prettyCategory(cat: NearbyCategory): string {
-  return CATEGORY_NOUN[cat].many;
+  // OWNER 17 Nov: the new chips (petrol, puncture, RTO, ...) carry their own label, so the page copy never falls
+  // back to a generic 'places' for a real, indexed category.
+  return CATEGORY_NOUN[cat]?.many || categoryLabel(cat).toLowerCase();
 }
 
 function cap(s: string): string {
@@ -286,8 +289,8 @@ function relatedLinks(page: NearbyPage): string {
 
 export async function renderNearbyHtml(page: NearbyPage, origin: string): Promise<string> {
   const label = page.areaLabel || page.city || 'your location';
-  const noun = CATEGORY_NOUN[page.category];
-  const catLabel = noun.many;
+  const noun = CATEGORY_NOUN[page.category] || { one: categoryLabel(page.category).replace(/s$/, '').toLowerCase(), many: categoryLabel(page.category).toLowerCase() };
+  const catLabel = noun?.many || categoryLabel(page.category).toLowerCase();
   const isHub = !page.city && !page.areaLabel;
   const citySlug = String(page.city || '').toLowerCase().replace(/\s+/g, '-');
   let answer: NearbyAnswer | null = null;

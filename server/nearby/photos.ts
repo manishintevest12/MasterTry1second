@@ -136,8 +136,13 @@ function titleMatches(title: string, tokens: string[], category: string | null):
   const lower = String(title || '').toLowerCase();
   if (NOT_A_PLACE.test(lower)) return false;
   const hits = tokens.filter((t) => lower.includes(t));
-  const strong = hits.filter((t) => t.length >= 4);
-  const catHit = (CATEGORY_WORDS[String(category || 'all')] || CATEGORY_WORDS.all).some((w) => lower.includes(w));
+  const catWords = CATEGORY_WORDS[String(category || 'all')] || CATEGORY_WORDS.all;
+  // OWNER 17 Nov ("yaha ek hi image hr jagah hai, usko fix kro"): a CATEGORY word is not a name. A Commons file
+  // called "Hotel in Indore" used to satisfy the 'hotel' token and could be handed to every hotel on the page, so
+  // two different hotels showed the same building. Only a distinctive word of the place's own name can qualify now.
+  const isCat = (t: string) => catWords.some((w) => w === t || (t.length >= 4 && w.startsWith(t)));
+  const strong = hits.filter((t) => t.length >= 4 && !isCat(t));
+  const catHit = catWords.some((w) => lower.includes(w));
   // Every distinctive word of a multi-word name present: "Marz-O-Rin", "Alka Talkies" -> strongest evidence.
   if (tokens.length >= 2 && hits.length === tokens.length) return true;
   if (strong.length >= 2) return true;

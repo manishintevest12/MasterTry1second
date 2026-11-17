@@ -20,6 +20,42 @@ class NearbyScreen extends StatefulWidget {
 
 class _NearbyScreenState extends State<NearbyScreen> {
   static const _categories = <String>['all', 'restaurants', 'cafes', 'hotels', 'stays', 'cabs', 'stores', 'movies'];
+  /// OWNER 17 Nov: petrol, CNG, LPG, repairs, tyres, battery, denting, car wash, detailing, PUCC, insurance, RTO,
+  /// rentals and scrapping — the everyday errands around a vehicle, answered by the same OSM data as the rest.
+  static const _vehicleCategories = <String>[
+    'petrol', 'cng', 'lpg', 'car_repair', 'bike_repair', 'puncture', 'battery', 'tyres', 'denting',
+    'accessories', 'car_wash', 'detailing', 'pucc', 'insurance', 'rto', 'bike_rental', 'car_rental', 'scrapping',
+  ];
+
+  /// The id is the API contract; the label is what a person reads (an underscore would look like a bug).
+  static const _categoryLabels = <String, String>{
+    'all': 'All',
+    'restaurants': 'Restaurants',
+    'cafes': 'Cafes',
+    'hotels': 'Hotels',
+    'stays': 'Stays',
+    'cabs': 'Cabs',
+    'stores': 'Stores',
+    'movies': 'Cinemas',
+    'petrol': 'Petrol Pumps',
+    'cng': 'CNG Stations',
+    'lpg': 'LPG & Gas',
+    'car_repair': 'Car Repair',
+    'bike_repair': 'Bike Repair',
+    'puncture': 'Puncture',
+    'battery': 'Battery Shops',
+    'tyres': 'Tyre Shops',
+    'denting': 'Denting & Painting',
+    'accessories': 'Accessories',
+    'car_wash': 'Car Wash',
+    'detailing': 'Detailing',
+    'pucc': 'PUCC Centres',
+    'insurance': 'Insurance Offices',
+    'rto': 'RTO Office',
+    'bike_rental': 'Bike & Scooty Rentals',
+    'car_rental': 'Car Rentals',
+    'scrapping': 'Vehicle Scrapping',
+  };
   final _cityController = TextEditingController();
   String _category = 'all';
   List<NearbyPlace> _rows = const [];
@@ -348,8 +384,40 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       border: Border.all(color: active ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0)),
                     ),
                     child: Text(
-                      c[0].toUpperCase() + c.substring(1),
+                      _categoryLabels[c] ?? (c[0].toUpperCase() + c.substring(1)),
                       style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: active ? Colors.white : const Color(0xFF0F172A)),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          // Vehicle & paperwork errands (owner 17 Nov): same tap behaviour, on their own scrollable row.
+          SizedBox(
+            height: 40,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              itemCount: _vehicleCategories.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                final c = _vehicleCategories[i];
+                final active = c == _category;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _category = c);
+                    _load(lat: _lat, lng: _lng, located: _located);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: active ? T1SColors.red : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: active ? T1SColors.red : const Color(0xFFE2E8F0)),
+                    ),
+                    child: Text(
+                      _categoryLabels[c] ?? c,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: active ? Colors.white : const Color(0xFF0F172A)),
                     ),
                   ),
                 );

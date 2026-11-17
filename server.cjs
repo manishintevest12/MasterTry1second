@@ -48211,6 +48211,179 @@ var init_enrich = __esm({
   }
 });
 
+// server/nearby/categories.ts
+function categoryDef(id) {
+  return BY_ID.get(String(id || "")) || null;
+}
+function categoryLabel(id) {
+  return BY_ID.get(String(id || ""))?.label || String(id || "");
+}
+function categoryFilters(id) {
+  return BY_ID.get(String(id || ""))?.filters || [];
+}
+function categoryTerms(id) {
+  const def = BY_ID.get(String(id || ""));
+  return def ? [def.search, ...def.terms] : [];
+}
+function nameMatchesCategory(name, id) {
+  const def = BY_ID.get(String(id || ""));
+  if (!def) return false;
+  const n = String(name || "").toLowerCase();
+  return def.terms.some((t) => new RegExp(`(^|[^a-z])${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z]|$)`).test(n));
+}
+var NEARBY_CATEGORIES, BY_ID;
+var init_categories = __esm({
+  "server/nearby/categories.ts"() {
+    NEARBY_CATEGORIES = [
+      {
+        id: "petrol",
+        label: "Petrol Pumps",
+        filters: ['node["amenity"="fuel"]', 'way["amenity"="fuel"]'],
+        terms: ["petrol", "fuel", "filling station", "hp", "indian oil", "iocl", "bharat petroleum", "bpcl", "shell", "nayara", "jio-bp", "essar"],
+        search: "petrol pump",
+        radiusM: 6e3
+      },
+      {
+        id: "cng",
+        label: "CNG Stations",
+        filters: ['node["amenity"="fuel"]["fuel:cng"="yes"]', 'node["amenity"="fuel"]["name"~"CNG",i]', 'way["amenity"="fuel"]["fuel:cng"="yes"]'],
+        terms: ["cng", "compressed natural gas"],
+        search: "CNG",
+        radiusM: 12e3
+      },
+      {
+        id: "lpg",
+        label: "LPG & Gas",
+        filters: ['node["shop"="gas"]', 'node["amenity"="fuel"]["fuel:lpg"="yes"]', 'way["shop"="gas"]'],
+        terms: ["lpg", "gas agency", "indane", "hp gas", "bharat gas", "gas cylinder", "gobar gas"],
+        search: "gas agency",
+        radiusM: 1e4
+      },
+      {
+        id: "car_repair",
+        label: "Car Repair",
+        filters: ['node["shop"="car_repair"]', 'way["shop"="car_repair"]', 'node["shop"="car_service"]'],
+        terms: ["car repair", "car service", "garage", "auto works", "motors", "workshop", "service centre", "service center"],
+        search: "car repair",
+        radiusM: 6e3
+      },
+      {
+        id: "bike_repair",
+        label: "Bike Repair",
+        filters: ['node["shop"="motorcycle_repair"]', 'node["shop"="motorcycle"]', 'way["shop"="motorcycle_repair"]'],
+        terms: ["bike repair", "bike service", "two wheeler", "scooter repair", "motorcycle", "mechanic"],
+        search: "two wheeler",
+        radiusM: 6e3
+      },
+      {
+        id: "puncture",
+        label: "Puncture",
+        filters: ['node["shop"="tyres"]["service:tyres"="yes"]', 'node["shop"="tyres"]["name"~"puncture|tyre|tire",i]', 'node["amenity"="fuel"]["name"~"puncture",i]'],
+        terms: ["puncture", "tyre repair", "tire repair", "tyre shop", "tire shop"],
+        search: "puncture",
+        radiusM: 6e3
+      },
+      {
+        id: "battery",
+        label: "Battery Shops",
+        filters: ['node["shop"="car_parts"]["name"~"battery",i]', 'node["shop"="motorcycle"]["name"~"battery",i]', 'node["shop"="battery"]'],
+        terms: ["battery", "exide", "amaron", "battery shop", "inverter battery"],
+        search: "battery",
+        radiusM: 6e3
+      },
+      {
+        id: "tyres",
+        label: "Tyre Shops",
+        filters: ['node["shop"="tyres"]', 'way["shop"="tyres"]'],
+        terms: ["tyre", "tire", "mrf", "apollo tyres", "ceat", "j-k tyre", "jk tyre", "tyre house"],
+        search: "tyre",
+        radiusM: 6e3
+      },
+      {
+        id: "denting",
+        label: "Denting & Painting",
+        filters: ['node["shop"="car_repair"]["name"~"denting|painting|paint|body shop",i]', 'node["shop"="car_repair"]["service:car_repair"="paint"]'],
+        terms: ["denting", "painting", "paint shop", "body shop", "dent"],
+        search: "denting",
+        radiusM: 8e3
+      },
+      {
+        id: "accessories",
+        label: "Accessories",
+        filters: ['node["shop"="car_parts"]', 'way["shop"="car_parts"]', 'node["shop"="car_accessories"]', 'node["shop"="motorcycle"]["name"~"accessor|helmet|spare",i]'],
+        terms: ["accessories", "accessory", "spare parts", "car parts", "helmet", "seat cover"],
+        search: "accessories",
+        radiusM: 6e3
+      },
+      {
+        id: "car_wash",
+        label: "Car Wash",
+        filters: ['node["amenity"="car_wash"]', 'way["amenity"="car_wash"]', 'node["shop"="car_wash"]'],
+        terms: ["car wash", "carwash", "bike wash", "foam wash", "water wash"],
+        search: "car wash",
+        radiusM: 8e3
+      },
+      {
+        id: "detailing",
+        label: "Detailing",
+        filters: ['node["shop"="car_repair"]["name"~"detailing|detail|ceramic|coating|ppf|polish",i]', 'node["shop"="car_wash"]["name"~"detailing|ceramic|coating",i]'],
+        terms: ["detailing", "detailing studio", "ceramic coating", "ppf", "paint protection", "polishing"],
+        search: "detailing",
+        radiusM: 1e4
+      },
+      {
+        id: "pucc",
+        label: "PUCC Centres",
+        filters: ['node["amenity"="fuel"]["name"~"PUC|PUCC|pollution",i]', 'node["shop"="car_repair"]["name"~"PUC|PUCC|pollution",i]', 'node["office"="government"]["name"~"pollution",i]'],
+        terms: ["puc", "pucc", "pollution certificate", "pollution check", "emission test"],
+        search: "pollution",
+        radiusM: 1e4
+      },
+      {
+        id: "insurance",
+        label: "Insurance Offices",
+        filters: ['node["office"="insurance"]', 'way["office"="insurance"]', 'node["shop"="insurance"]'],
+        terms: ["insurance", "lic", "policy bazaar", "insurance office", "general insurance"],
+        search: "insurance",
+        radiusM: 8e3
+      },
+      {
+        id: "rto",
+        label: "RTO Office",
+        filters: ['node["office"="government"]["name"~"RTO|transport",i]', 'node["amenity"="driving_school"]["name"~"RTO",i]', 'way["office"="government"]["name"~"RTO|transport",i]'],
+        terms: ["rto", "regional transport office", "transport office", "parivahan"],
+        search: "RTO",
+        radiusM: 2e4
+      },
+      {
+        id: "bike_rental",
+        label: "Bike & Scooty Rentals",
+        filters: ['node["amenity"="motorcycle_rental"]', 'node["amenity"="bicycle_rental"]["name"~"bike|scooter|scooty|two wheeler",i]', 'node["shop"="rental"]["name"~"bike|scooter|scooty",i]'],
+        terms: ["bike rental", "scooter rental", "scooty rental", "two wheeler rental", "bike on rent", "royal brothers", "bounce", "vogo", "onn bikes"],
+        search: "bike rental",
+        radiusM: 12e3
+      },
+      {
+        id: "car_rental",
+        label: "Car Rentals",
+        filters: ['node["amenity"="car_rental"]', 'way["amenity"="car_rental"]', 'node["amenity"="car_sharing"]'],
+        terms: ["car rental", "car hire", "self drive", "taxi service", "zoomcar", "revv", "car on rent"],
+        search: "car rental",
+        radiusM: 12e3
+      },
+      {
+        id: "scrapping",
+        label: "Vehicle Scrapping",
+        filters: ['node["shop"="car_repair"]["name"~"scrap|scrapping|scrap yard|kabadi",i]', 'node["amenity"="recycling"]["name"~"vehicle|car|scrap|kabadi",i]', 'node["shop"="car_parts"]["name"~"scrap|scrap yard",i]'],
+        terms: ["scrap", "scrapping", "vehicle scrapping", "scrap yard", "kabadi", "car market", "rvsf"],
+        search: "scrap",
+        radiusM: 2e4
+      }
+    ];
+    BY_ID = new Map(NEARBY_CATEGORIES.map((c) => [c.id, c]));
+  }
+});
+
 // server/nearby/photos.ts
 function commonsFilePath(file) {
   const name = String(file || "").replace(/^File:/i, "").trim();
@@ -48246,8 +48419,10 @@ function titleMatches(title, tokens3, category) {
   const lower = String(title || "").toLowerCase();
   if (NOT_A_PLACE2.test(lower)) return false;
   const hits = tokens3.filter((t) => lower.includes(t));
-  const strong = hits.filter((t) => t.length >= 4);
-  const catHit = (CATEGORY_WORDS[String(category || "all")] || CATEGORY_WORDS.all).some((w) => lower.includes(w));
+  const catWords = CATEGORY_WORDS[String(category || "all")] || CATEGORY_WORDS.all;
+  const isCat = (t) => catWords.some((w) => w === t || t.length >= 4 && w.startsWith(t));
+  const strong = hits.filter((t) => t.length >= 4 && !isCat(t));
+  const catHit = catWords.some((w) => lower.includes(w));
   if (tokens3.length >= 2 && hits.length === tokens3.length) return true;
   if (strong.length >= 2) return true;
   if (strong.length >= 1 && catHit) return true;
@@ -48595,6 +48770,8 @@ __export(aggregator_exports, {
   resolveNearbyLocation: () => resolveNearbyLocation
 });
 function radiusFor(category) {
+  const def = categoryDef(category);
+  if (def?.radiusM) return Math.min(WIDE_RADIUS_M * 2, def.radiusM);
   return category === "cabs" || category === "stores" || category === "movies" ? WIDE_RADIUS_M : RADIUS_M;
 }
 function memoryGet(key) {
@@ -48940,7 +49117,7 @@ async function osmNearby(lat, lng, category) {
     movies: "cinema",
     all: "restaurant"
   };
-  const want = term[category] || "restaurant";
+  const want = categoryDef(category)?.search || term[category] || "restaurant";
   const attempts = [];
   const racers = [
     photonNearby(lat, lng, want, category),
@@ -48994,7 +49171,14 @@ async function photonNearby(lat, lng, term, category) {
       const plat = Number(coords[1]);
       if (!p.name || !Number.isFinite(plat) || !Number.isFinite(plng)) continue;
       if (isJunkName(String(p.name))) continue;
-      const cat = osmCategory({ amenity: p.osm_key === "amenity" ? p.osm_value : "", tourism: p.osm_key === "tourism" ? p.osm_value : "", shop: p.osm_key === "shop" ? p.shop || "yes" : "" });
+      const cat = osmCategory({
+        amenity: p.osm_key === "amenity" ? p.osm_value : "",
+        tourism: p.osm_key === "tourism" ? p.osm_value : "",
+        // OWNER 17 Nov: the VALUE matters now ("car_repair", "tyres", "car_parts"), not just the presence of a shop.
+        shop: p.osm_key === "shop" ? p.osm_value : "",
+        office: p.osm_key === "office" ? p.osm_value : "",
+        name: String(p.name || "")
+      });
       if (category !== "all" && cat !== category) continue;
       const addr = [p.housenumber, p.street, p.district, p.city].filter(Boolean).join(", ") || null;
       rows.push(baseOsmRow({ name: String(p.name), cat, plat, plng, lat, lng, addr, sub: p.osm_value ? String(p.osm_value).replace(/_/g, " ") : null, osmId: `ph-${p.osm_id || p.name}` }));
@@ -49009,12 +49193,29 @@ async function nominatimNearby(lat, lng, term, category) {
     const SEARCH_BOX_M = 8e3;
     const d = SEARCH_BOX_M / 111e3;
     const viewbox = `${(lng - d).toFixed(4)},${(lat + d).toFixed(4)},${(lng + d).toFixed(4)},${(lat - d).toFixed(4)}`;
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(term)}&viewbox=${viewbox}&bounded=1&format=jsonv2&limit=30`;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 4e3);
-    const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (https://www.try1second.com; nearby)" } }).finally(() => clearTimeout(timer));
-    if (!res.ok) return { rows: [], note: `Nominatim answered ${res.status}` };
-    const data = await res.json();
+    const phrases = categoryDef(category) ? [.../* @__PURE__ */ new Set([term, ...categoryTerms(category)])].slice(0, 3) : [term];
+    let data = [];
+    for (let i = 0; i < phrases.length; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 950));
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(phrases[i])}&viewbox=${viewbox}&bounded=1&format=jsonv2&limit=30`;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4e3);
+      try {
+        const res = await fetch(url, { signal: ctrl.signal, headers: { "user-agent": "Try1Second/1.0 (https://www.try1second.com; nearby)" } }).finally(() => clearTimeout(timer));
+        if (!res.ok) {
+          if (!data.length) return { rows: [], note: `Nominatim answered ${res.status}` };
+          break;
+        }
+        const page = await res.json();
+        if (Array.isArray(page) && page.length) {
+          data = page;
+          break;
+        }
+        data = [];
+      } catch {
+        if (!data.length && i === phrases.length - 1) return { rows: [], note: "Nominatim unreachable" };
+      }
+    }
     const rows = [];
     for (const r of Array.isArray(data) ? data : []) {
       const plat = Number(r.lat);
@@ -49024,13 +49225,19 @@ async function nominatimNearby(lat, lng, term, category) {
       if (!r.name && STREET_WORD.test(name)) continue;
       if (isJunkName(name)) continue;
       const rt = String(r.type || "");
+      const AMENITY_LIKE = /* @__PURE__ */ new Set(["cinema", "restaurant", "cafe", "fast_food", "taxi", "fuel", "car_wash", "car_rental", "car_sharing", "motorcycle_rental", "driving_school", "recycling"]);
+      const SHOP_LIKE = /* @__PURE__ */ new Set(["supermarket", "convenience", "car_repair", "car_service", "motorcycle_repair", "motorcycle", "tyres", "car_parts", "car_accessories", "battery", "gas", "insurance", "car_wash", "rental"]);
+      const OFFICE_LIKE = /* @__PURE__ */ new Set(["insurance", "government"]);
       const cat = osmCategory({
-        amenity: r.class === "amenity" || ["cinema", "restaurant", "cafe", "fast_food", "taxi"].includes(rt) ? rt : "",
+        amenity: r.class === "amenity" ? rt : AMENITY_LIKE.has(rt) ? rt : "",
         tourism: r.class === "tourism" || ["hotel", "guest_house", "apartment", "hostel", "motel"].includes(rt) ? rt : "",
-        shop: r.class === "shop" || rt === "shop" ? "yes" : ""
+        shop: r.class === "shop" ? rt : SHOP_LIKE.has(rt) ? rt : "",
+        office: r.class === "office" ? rt : OFFICE_LIKE.has(rt) ? rt : "",
+        name: String(name || "")
       });
-      if (category !== "all" && cat !== category) continue;
-      rows.push(baseOsmRow({ name, cat, plat, plng, lat, lng, addr: r.display_name ? String(r.display_name) : null, sub: r.type ? String(r.type).replace(/_/g, " ") : null, osmId: `nm-${r.osm_id || r.place_id}` }));
+      const proven = categoryDef(category) ? nameMatchesCategory(name, category) : false;
+      if (category !== "all" && cat !== category && !proven) continue;
+      rows.push(baseOsmRow({ name, cat: proven && cat !== category ? category : cat, plat, plng, lat, lng, addr: r.display_name ? String(r.display_name) : null, sub: r.type ? String(r.type).replace(/_/g, " ") : null, osmId: `nm-${r.osm_id || r.place_id}` }));
     }
     return rows.length ? { rows } : { rows: [], note: "Nominatim returned no matching places" };
   } catch (e2) {
@@ -49072,7 +49279,8 @@ async function overpassNearby(lat, lng, category) {
     movies: ['node["amenity"="cinema"]'],
     all: ['node["amenity"="restaurant"]']
   };
-  const body = filters[category].map((f) => `${f}(around:${radiusFor(category)},${lat},${lng});`).join("\n");
+  const list = categoryDef(category) ? categoryFilters(category) : filters[category];
+  const body = (list || []).map((f) => `${f}(around:${radiusFor(category)},${lat},${lng});`).join("\n");
   const query = `[out:json][timeout:12];(
 ${body}
 );out body 30;`;
@@ -49166,6 +49374,42 @@ function isJunkName(name) {
 function osmCategory(tags) {
   const a = String(tags?.amenity || "");
   const t = String(tags?.tourism || "");
+  {
+    const name = String(tags?.name || "");
+    const n = name.toLowerCase();
+    const hit = (id) => nameMatchesCategory(name, id);
+    if (a === "fuel" || a === "fuel;charging") {
+      if (/cng|compressed natural gas/.test(n)) return "cng";
+      if (/puc|pucc|pollution/.test(n)) return "pucc";
+      if (/lpg/.test(n)) return "lpg";
+      return "petrol";
+    }
+    if (a === "car_wash") return hit("detailing") ? "detailing" : "car_wash";
+    if (a === "car_rental" || a === "car_sharing") return hit("bike_rental") ? "bike_rental" : "car_rental";
+    if (a === "motorcycle_rental") return "bike_rental";
+    if (a === "driving_school" && hit("rto")) return "rto";
+    if (a === "recycling" && (hit("scrapping") || /scrap|kabadi/.test(n))) return "scrapping";
+    if (t === "apartment") {
+    }
+    const shop = String(tags?.shop || "");
+    if (shop === "car_repair" || shop === "car_service") {
+      if (hit("denting")) return "denting";
+      if (hit("detailing")) return "detailing";
+      if (hit("pucc")) return "pucc";
+      if (hit("scrapping")) return "scrapping";
+      return "car_repair";
+    }
+    if (shop === "motorcycle_repair") return "bike_repair";
+    if (shop === "motorcycle") return hit("battery") ? "battery" : hit("bike_repair") ? "bike_repair" : "bike_repair";
+    if (shop === "tyres") return hit("puncture") ? "puncture" : "tyres";
+    if (shop === "car_parts" || shop === "car_accessories") return hit("battery") ? "battery" : "accessories";
+    if (shop === "battery") return "battery";
+    if (shop === "gas") return "lpg";
+    if (shop === "insurance") return "insurance";
+    if (shop === "car_wash") return hit("detailing") ? "detailing" : "car_wash";
+    if (String(tags?.office || "") === "insurance") return "insurance";
+    if (String(tags?.office || "") === "government" && hit("rto")) return "rto";
+  }
   if (a === "restaurant" || a === "fast_food") return "restaurants";
   if (a === "cafe") return "cafes";
   if (t === "hotel") return "hotels";
@@ -49457,6 +49701,17 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
       row.honesty = `${row.honesty} Photo is from the business's own page.`.trim();
     }
   }
+  const usedPhoto = /* @__PURE__ */ new Set();
+  const photoRank = (r) => (r.rating !== null ? 2 : 0) + (r.price !== null ? 1 : 0);
+  for (const row of [...results].sort((a, b) => photoRank(b) - photoRank(a))) {
+    const url = String(row.imageUrl || "");
+    if (!url || /\/nearby-assets\//.test(url)) continue;
+    if (usedPhoto.has(url)) {
+      row.imageUrl = null;
+      continue;
+    }
+    usedPhoto.add(url);
+  }
   for (const row of results) {
     if (!row.imageUrl) {
       row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
@@ -49695,6 +49950,7 @@ var init_aggregator = __esm({
     init_cityCorpus();
     init_deeplink();
     init_enrich();
+    init_categories();
     init_photos();
     DEFAULT_CITY = "Pune";
     RADIUS_M = 2500;
@@ -49736,7 +49992,95 @@ var init_aggregator = __esm({
       theatre: "movies",
       theater: "movies",
       theatres: "movies",
-      theaters: "movies"
+      theaters: "movies",
+      // OWNER 17 Nov: the vehicle & paperwork errands.
+      petrol: "petrol",
+      "petrol pump": "petrol",
+      "petrol pumps": "petrol",
+      fuel: "petrol",
+      "fuel station": "petrol",
+      "gas station": "petrol",
+      cng: "cng",
+      "cng station": "cng",
+      "cng stations": "cng",
+      "cng pump": "cng",
+      lpg: "lpg",
+      gas: "lpg",
+      "gas agency": "lpg",
+      "lpg agency": "lpg",
+      "gas cylinder": "lpg",
+      "car repair": "car_repair",
+      car_repair: "car_repair",
+      garage: "car_repair",
+      "car service": "car_repair",
+      "car servicing": "car_repair",
+      "bike repair": "bike_repair",
+      bike_repair: "bike_repair",
+      "two wheeler repair": "bike_repair",
+      "scooter repair": "bike_repair",
+      mechanic: "bike_repair",
+      puncture: "puncture",
+      "puncture repair": "puncture",
+      "tyre repair": "puncture",
+      "tire repair": "puncture",
+      battery: "battery",
+      "battery shop": "battery",
+      "battery shops": "battery",
+      batteries: "battery",
+      tyres: "tyres",
+      tyre: "tyres",
+      tire: "tyres",
+      tires: "tyres",
+      "tyre shop": "tyres",
+      "tyre shops": "tyres",
+      denting: "denting",
+      painting: "denting",
+      "denting and painting": "denting",
+      "denting & painting": "denting",
+      "body shop": "denting",
+      accessories: "accessories",
+      accessory: "accessories",
+      "accessory shop": "accessories",
+      "accessory shops": "accessories",
+      "car accessories": "accessories",
+      "spare parts": "accessories",
+      "car wash": "car_wash",
+      car_wash: "car_wash",
+      carwash: "car_wash",
+      "bike wash": "car_wash",
+      detailing: "detailing",
+      "detailing studio": "detailing",
+      "detailing studios": "detailing",
+      "ceramic coating": "detailing",
+      pucc: "pucc",
+      puc: "pucc",
+      "pucc centre": "pucc",
+      "pucc centers": "pucc",
+      "pollution certificate": "pucc",
+      pollution: "pucc",
+      insurance: "insurance",
+      "insurance office": "insurance",
+      "insurance offices": "insurance",
+      "insurance agent": "insurance",
+      rto: "rto",
+      "rto office": "rto",
+      "transport office": "rto",
+      "regional transport office": "rto",
+      "bike rental": "bike_rental",
+      "bike rentals": "bike_rental",
+      "bike and scooty rental": "bike_rental",
+      "scooter rental": "bike_rental",
+      "scooty rental": "bike_rental",
+      "two wheeler rental": "bike_rental",
+      "car rental": "car_rental",
+      "car rentals": "car_rental",
+      "car hire": "car_rental",
+      "self drive": "car_rental",
+      scrapping: "scrapping",
+      scrap: "scrapping",
+      "vehicle scrapping": "scrapping",
+      "scrap yard": "scrapping",
+      kabadi: "scrapping"
     };
     PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
     geocodeCache = /* @__PURE__ */ new Map();
@@ -60538,7 +60882,7 @@ var seo_exports = {};
 __export(seo_exports, {
   MIN_INDEXABLE_ROWS: () => MIN_INDEXABLE_ROWS,
   NEARBY_AREAS: () => NEARBY_AREAS,
-  NEARBY_CATEGORIES: () => NEARBY_CATEGORIES,
+  NEARBY_CATEGORIES: () => NEARBY_CATEGORIES3,
   escapeHtml: () => escapeHtml2,
   isKnownThinNearbyPath: () => isKnownThinNearbyPath,
   isRichNearbyPath: () => isRichNearbyPath,
@@ -60567,12 +60911,12 @@ function resolveNearbyPage(path18) {
 }
 function listNearbyPaths() {
   const paths = ["/nearby"];
-  for (const c of NEARBY_CATEGORIES) paths.push(`/nearby/${c}`);
+  for (const c of NEARBY_CATEGORIES3) paths.push(`/nearby/${c}`);
   const cities = [...CITY_SLUGS.keys()];
-  for (const c of NEARBY_CATEGORIES) for (const city of cities) paths.push(`/nearby/${c}/${city}`);
+  for (const c of NEARBY_CATEGORIES3) for (const city of cities) paths.push(`/nearby/${c}/${city}`);
   for (const key of AREA_SLUGS.keys()) {
     const citySlug2 = key.split("/")[0];
-    for (const c of NEARBY_CATEGORIES) paths.push(`/nearby/${c}/${key}`);
+    for (const c of NEARBY_CATEGORIES3) paths.push(`/nearby/${c}/${key}`);
     void citySlug2;
   }
   return [...new Set(paths)];
@@ -60657,7 +61001,7 @@ function hubBody(page) {
     const name = CITY_SLUGS.get(c);
     return cat ? `<li><a href="/nearby/${cat}/${c}">${escapeHtml2(cat.charAt(0).toUpperCase() + cat.slice(1))} in ${escapeHtml2(name)}</a></li>` : `<li><a href="/nearby/restaurants/${c}">${escapeHtml2(name)}</a></li>`;
   }).join("");
-  const catLinks = NEARBY_CATEGORIES.map((c) => `<li><a href="/nearby/${c}">Nearby ${c}</a></li>`).join("");
+  const catLinks = NEARBY_CATEGORIES3.map((c) => `<li><a href="/nearby/${c}">Nearby ${c}</a></li>`).join("");
   return `<section><h2>How Nearby works</h2>
 <p>Pick a city or let the app use your location, and Try1Second lists ${escapeHtml2(catWord)} around that point, closest first. Names, addresses and distances come from open map data. Ratings, review counts and price levels appear only when a partner feed actually supplies them, so a card with no rating says so instead of showing an invented number.</p>
 <p>Every "Book / website" button goes through our own tracked exit, and every card carries a directions link, so you can go from finding a place to being there without leaving the page.</p></section>
@@ -60665,7 +61009,7 @@ function hubBody(page) {
 ${cat ? "" : `<section><h2>Browse by category</h2><ul class="links">${catLinks}</ul></section>`}`;
 }
 function prettyCategory(cat) {
-  return CATEGORY_NOUN[cat].many;
+  return CATEGORY_NOUN[cat]?.many || categoryLabel(cat).toLowerCase();
 }
 function cap(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -60678,7 +61022,7 @@ function stateNameFor(cityName2) {
 function relatedLinks(page) {
   const citySlug2 = String(page.city || "").toLowerCase().replace(/\s+/g, "-");
   const others = [...CITY_SLUGS.keys()].filter((c) => c !== citySlug2);
-  const sameCityOtherCats = NEARBY_CATEGORIES.filter((c) => c !== page.category).map((c) => `<li><a href="/nearby/${c}/${citySlug2}">${escapeHtml2(prettyCategory(c))} in ${escapeHtml2(page.city)}</a></li>`).join("");
+  const sameCityOtherCats = NEARBY_CATEGORIES3.filter((c) => c !== page.category).map((c) => `<li><a href="/nearby/${c}/${citySlug2}">${escapeHtml2(prettyCategory(c))} in ${escapeHtml2(page.city)}</a></li>`).join("");
   const picks = [...HUB_CITY_SLUGS.filter((c) => c !== citySlug2 && CITY_SLUGS.has(c)), ...others.sort()].slice(0, 6);
   const cityLinks = picks.map((c) => `<li><a href="/nearby/${page.category}/${c}">${escapeHtml2(prettyCategory(page.category))} in ${escapeHtml2(CITY_SLUGS.get(c))}</a></li>`).join("");
   const comparePath = { hotels: "/hotels", cabs: "/cabs", movies: "/movies", stores: "/grocery", restaurants: "/food", cafes: "/food" }[page.category];
@@ -60692,8 +61036,8 @@ function relatedLinks(page) {
 }
 async function renderNearbyHtml(page, origin2) {
   const label = page.areaLabel || page.city || "your location";
-  const noun = CATEGORY_NOUN[page.category];
-  const catLabel = noun.many;
+  const noun = CATEGORY_NOUN[page.category] || { one: categoryLabel(page.category).replace(/s$/, "").toLowerCase(), many: categoryLabel(page.category).toLowerCase() };
+  const catLabel = noun?.many || categoryLabel(page.category).toLowerCase();
   const isHub = !page.city && !page.areaLabel;
   const citySlug2 = String(page.city || "").toLowerCase().replace(/\s+/g, "-");
   let answer = null;
@@ -60774,7 +61118,7 @@ ${indexable ? '<meta name="robots" content="index, follow, max-image-preview:lar
 <script type="application/ld+json">${JSON.stringify(breadcrumbLd)}</script>
 <script type="application/ld+json">${JSON.stringify(faq)}</script>
 ${itemList ? `<script type="application/ld+json">${JSON.stringify(itemList)}</script>` : ""}
-</head><body><header><a href="/">Try1Second</a><nav><a href="/nearby">Nearby</a>${NEARBY_CATEGORIES.map((c) => `<a href="/nearby/${c}">${prettyCategory(c)}</a>`).join("")}</nav></header>
+</head><body><header><a href="/">Try1Second</a><nav><a href="/nearby">Nearby</a>${NEARBY_CATEGORIES3.map((c) => `<a href="/nearby/${c}">${prettyCategory(c)}</a>`).join("")}</nav></header>
 <main><nav class="crumbs" aria-label="Breadcrumb">${crumbTrail}</nav>
 <h1>${escapeHtml2(h1)}</h1>
 <p class="lead">${rows.length ? `${rows.length} ${catLabel} around ${escapeHtml2(placeOf)}, closest first. Every card says where its data came from, and every partner click goes through our own tracked exit.` : `Places around ${escapeHtml2(placeOf)}, closest first. Every card says where its data came from.`}</p>
@@ -60786,13 +61130,14 @@ ${page.city && !page.areaLabel ? relatedLinks(page) : ""}
 </main>
 <footer><p><a href="/answers">All comparisons</a> &middot; <a href="/">Search prices</a> &middot; <a href="/about">About</a></p></footer></body></html>`;
 }
-var NEARBY_CATEGORIES, NEARBY_AREAS, CITY_SLUGS, AREA_SLUGS, NEARBY_CSS, MIN_INDEXABLE_ROWS, thinPaths, richPaths, auditStarted, HUB_CITY_SLUGS, CATEGORY_NOUN;
+var NEARBY_CATEGORIES3, NEARBY_AREAS, CITY_SLUGS, AREA_SLUGS, NEARBY_CSS, MIN_INDEXABLE_ROWS, thinPaths, richPaths, auditStarted, HUB_CITY_SLUGS, CATEGORY_NOUN;
 var init_seo = __esm({
   "server/nearby/seo.ts"() {
     init_cityCorpus();
     init_indexPolicy();
+    init_categories();
     init_aggregator();
-    NEARBY_CATEGORIES = ["restaurants", "cafes", "hotels", "stays", "cabs", "stores"];
+    NEARBY_CATEGORIES3 = ["restaurants", "cafes", "hotels", "stays", "cabs", "stores"];
     NEARBY_AREAS = {
       pune: ["koregaon-park", "baner", "hinjewadi", "viman-nagar"],
       mumbai: ["andheri", "bandra", "powai", "lower-parel"],
