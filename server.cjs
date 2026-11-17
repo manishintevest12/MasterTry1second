@@ -49694,7 +49694,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v19|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v20|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49935,7 +49935,12 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const finalizeRows = () => {
     const seenImage = /* @__PURE__ */ new Set();
     for (const row of results) {
-      if (SERVICE_ONLY.has(String(row.category))) row.serviceOnly = true;
+      if (SERVICE_ONLY.has(String(row.category))) {
+        row.serviceOnly = true;
+        row.imageUrl = null;
+        row.honesty = String(row.honesty || "").replace(" Photo is a category tile, not this place.", "").trim();
+        continue;
+      }
       if (row.imageUrl && seenImage.has(String(row.imageUrl))) {
         row.imageUrl = categoryTile(row.category, `${row.name || ""}#${row.id}`, CATEGORY_TILES);
         row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();

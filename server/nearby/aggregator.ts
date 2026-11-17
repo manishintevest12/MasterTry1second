@@ -1109,7 +1109,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v19|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v20|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1435,7 +1435,16 @@ async function buildNearbyAnswer(input: {
   const finalizeRows = () => {
     const seenImage = new Set<string>();
     for (const row of results) {
-      if (SERVICE_ONLY.has(String(row.category))) row.serviceOnly = true;
+      if (SERVICE_ONLY.has(String(row.category))) {
+        row.serviceOnly = true;
+        // OWNER 17 Nov (screenshot: CNG Stations full of dull gradient tiles): "images mai vehicle and services mai
+        // mt rkho" - these chips carry no picture at all on either surface. The card is a name, a distance and
+        // directions; a drawn tile standing in for a petrol pump reads as a broken photo, and a real photo cannot be
+        // found for every pump, so the honest card for an errand has no image frame.
+        row.imageUrl = null;
+        row.honesty = String(row.honesty || '').replace(' Photo is a category tile, not this place.', '').trim();
+        continue;
+      }
       // OWNER 17 Nov ("same image"): the hard rule is one picture per card. If a real photo or a tile is already used
       // by another card in this list, this card gets its own drawn tile instead - seeded with the row id, so it is
       // unique even when two places share a name.
