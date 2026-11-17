@@ -68,6 +68,8 @@ export interface DiscoveryReport {
   durationMs: number;
   /** Set when the run was skipped by the zero-pass backoff instead of probing again. */
   skipped?: string;
+  /** Set when the strict budget found nothing and slower-but-alive exits were kept instead. */
+  wideFallbackMs?: number;
 }
 
 const POOL_FILE = path.join(process.cwd(), 'data', 'proxy-pool.json');
@@ -144,6 +146,18 @@ const PROBE_TARGET = process.env.T1S_PROXY_PROBE_URL || 'https://api.ipify.org?f
 
 export function proxyLatencyBudget(): number {
   return Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
+}
+
+/**
+ * OWNER 17 Nov (runtime log: `probed 60, passed 0 under 500ms - backing off 2m (streak 1)` repeated, and every gated
+ * worker circuit-opening behind it). The 500ms ceiling is the RIGHT first filter - the owner asked for sub-500ms exits
+ * - but free lists rarely answer a TLS CONNECT inside it, so the pool stayed empty and the rotator had nothing to
+ * offer any worker. A candidate that DID answer 200 and was only rejected for being slow is a real working exit, not
+ * a dead one, so when the strict pass finds nothing we re-probe just those slow-but-alive candidates once with a wide
+ * ceiling and keep the fastest few. Wide exits are still verified, still measured, and never invented.
+ */
+export function proxyWideBudget(): number {
+  return Math.max(proxyLatencyBudget(), Number(process.env.T1S_PROXY_WIDE_MS || 4000));
 }
 
 function normalizeProxy(raw: string): string {
@@ -251,6 +265,42 @@ export async function runProxyDiscovery(opts: { limit?: number; concurrency?: nu
   return run;
 }
 
+
+/**
+ * The rescue itself, kept separate from the sweep so it can be exercised with an injected prober (no network in tests).
+ * `slow` holds candidates that already answered HTTP 200 and were rejected ONLY for missing the strict budget.
+ */
+export async function rescueSlowButAlive(
+  slow: ProxyCandidate[],
+  target: ProbeTarget | undefined,
+  opts: { concurrency?: number; keep?: number; wideMs?: number; probe?: typeof probeProxy } = {},
+): Promise<{ kept: ProxyProbeResult[]; wideMs?: number; tried: number }> {
+  const wide = opts.wideMs ?? proxyWideBudget();
+  const probe = opts.probe || probeProxy;
+  const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
+  const subset = slow.slice(0, 40);
+  const rescued: ProxyProbeResult[] = [];
+  let j = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, Math.max(subset.length, 1)) }, async () => {
+      while (j < subset.length) {
+        const c = subset[j++];
+        const r = await probe(c, target ? { ...target, maxMs: wide } : { url: PROBE_TARGET, maxMs: wide });
+        if (r.ok) rescued.push(r);
+      }
+    }),
+  );
+  rescued.sort((a, b) => a.ms - b.ms);
+  const kept = rescued.slice(0, Math.max(opts.keep ?? 8, 1));
+  if (kept.length) {
+    log.info(
+      'ProxyDiscovery',
+      `strict budget found nothing; kept ${kept.length} verified exit(s) under the ${wide}ms wide budget (fastest ${kept[0].ms}ms, pool would otherwise be empty)`,
+    );
+  }
+  return { kept, wideMs: kept.length ? wide : undefined, tried: subset.length };
+}
+
 async function runProxyDiscoveryInner(opts: { limit?: number; concurrency?: number; target?: ProbeTarget; poolFile?: string } = {}): Promise<DiscoveryReport> {
   const startedAt = new Date();
   const target = opts.target;
@@ -290,16 +340,30 @@ async function runProxyDiscoveryInner(opts: { limit?: number; concurrency?: numb
   }
 
   const kept: ProxyProbeResult[] = [];
+  const slowButAlive: ProxyCandidate[] = [];
   let dropped = 0;
   let cursor = 0;
   const workers = Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, async () => {
     while (cursor < candidates.length) {
       const c = candidates[cursor++];
       const r = await probeProxy(c, target);
-      if (r.ok) kept.push(r); else dropped++;
+      if (r.ok) kept.push(r);
+      else {
+        dropped++;
+        // Answered 200 and was only judged too slow - worth one wide-budget look if the strict pass is empty.
+        if (r.status === 200 && /^slow /i.test(r.reason)) slowButAlive.push(c);
+      }
     }
   });
   await Promise.all(workers);
+
+  // Strict pass empty -> one wide-budget rescue over the exits that truly answered, fastest few kept.
+  let wideFallbackMs: number | undefined;
+  if (!kept.length && slowButAlive.length) {
+    const rescued = await rescueSlowButAlive(slowButAlive, target, { concurrency });
+    kept.push(...rescued.kept);
+    wideFallbackMs = rescued.wideMs;
+  }
 
   kept.sort((a, b) => a.ms - b.ms);
   const payload = {
@@ -331,12 +395,18 @@ async function runProxyDiscoveryInner(opts: { limit?: number; concurrency?: numb
     dropped,
     storedIn: poolFile,
     durationMs: Date.now() - startedAt.getTime(),
+    ...(wideFallbackMs ? { wideFallbackMs } : {}),
   };
   if (report.passed > 0) {
     if (zeroPassStreak) log.info('ProxyDiscovery', `pool recovered after ${zeroPassStreak} empty run(s)`);
     zeroPassStreak = 0;
     discoveryNotBefore = 0;
-    log.info('ProxyDiscovery', `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
+    log.info(
+      'ProxyDiscovery',
+      wideFallbackMs
+        ? `probed ${report.probed}, kept ${report.passed} under a ${wideFallbackMs}ms wide budget (strict ${budget}ms found none)`
+        : `probed ${report.probed}, passed ${report.passed} under ${budget}ms`,
+    );
   } else {
     zeroPassStreak += 1;
     discoveryNotBefore = Date.now() + Math.min(30 * 60_000, 2 * 60_000 * 2 ** (zeroPassStreak - 1));

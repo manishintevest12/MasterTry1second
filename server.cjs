@@ -2724,6 +2724,9 @@ function noteSourceOk(name) {
 function proxyLatencyBudget() {
   return Math.max(120, Number(process.env.T1S_PROXY_MAX_LATENCY_MS || 500));
 }
+function proxyWideBudget() {
+  return Math.max(proxyLatencyBudget(), Number(process.env.T1S_PROXY_WIDE_MS || 4e3));
+}
 function normalizeProxy(raw) {
   const t = raw.trim();
   if (!t) return "";
@@ -2803,6 +2806,32 @@ async function runProxyDiscovery(opts = {}) {
   inFlightDiscovery = run;
   return run;
 }
+async function rescueSlowButAlive(slow, target, opts = {}) {
+  const wide = opts.wideMs ?? proxyWideBudget();
+  const probe = opts.probe || probeProxy;
+  const concurrency = Math.min(Math.max(opts.concurrency ?? 6, 1), 12);
+  const subset = slow.slice(0, 40);
+  const rescued = [];
+  let j = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, Math.max(subset.length, 1)) }, async () => {
+      while (j < subset.length) {
+        const c = subset[j++];
+        const r = await probe(c, target ? { ...target, maxMs: wide } : { url: PROBE_TARGET, maxMs: wide });
+        if (r.ok) rescued.push(r);
+      }
+    })
+  );
+  rescued.sort((a, b) => a.ms - b.ms);
+  const kept = rescued.slice(0, Math.max(opts.keep ?? 8, 1));
+  if (kept.length) {
+    log.info(
+      "ProxyDiscovery",
+      `strict budget found nothing; kept ${kept.length} verified exit(s) under the ${wide}ms wide budget (fastest ${kept[0].ms}ms, pool would otherwise be empty)`
+    );
+  }
+  return { kept, wideMs: kept.length ? wide : void 0, tried: subset.length };
+}
 async function runProxyDiscoveryInner(opts = {}) {
   const startedAt = /* @__PURE__ */ new Date();
   const target = opts.target;
@@ -2837,6 +2866,7 @@ async function runProxyDiscoveryInner(opts = {}) {
     if (candidates.length >= limit) break;
   }
   const kept = [];
+  const slowButAlive = [];
   let dropped = 0;
   let cursor2 = 0;
   const workers = Array.from({ length: Math.min(concurrency, Math.max(candidates.length, 1)) }, async () => {
@@ -2844,10 +2874,19 @@ async function runProxyDiscoveryInner(opts = {}) {
       const c = candidates[cursor2++];
       const r = await probeProxy(c, target);
       if (r.ok) kept.push(r);
-      else dropped++;
+      else {
+        dropped++;
+        if (r.status === 200 && /^slow /i.test(r.reason)) slowButAlive.push(c);
+      }
     }
   });
   await Promise.all(workers);
+  let wideFallbackMs;
+  if (!kept.length && slowButAlive.length) {
+    const rescued = await rescueSlowButAlive(slowButAlive, target, { concurrency });
+    kept.push(...rescued.kept);
+    wideFallbackMs = rescued.wideMs;
+  }
   kept.sort((a, b) => a.ms - b.ms);
   const payload = {
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -2875,13 +2914,17 @@ async function runProxyDiscoveryInner(opts = {}) {
     kept: kept.slice(0, 40),
     dropped,
     storedIn: poolFile,
-    durationMs: Date.now() - startedAt.getTime()
+    durationMs: Date.now() - startedAt.getTime(),
+    ...wideFallbackMs ? { wideFallbackMs } : {}
   };
   if (report.passed > 0) {
     if (zeroPassStreak) log.info("ProxyDiscovery", `pool recovered after ${zeroPassStreak} empty run(s)`);
     zeroPassStreak = 0;
     discoveryNotBefore = 0;
-    log.info("ProxyDiscovery", `probed ${report.probed}, passed ${report.passed} under ${budget}ms`);
+    log.info(
+      "ProxyDiscovery",
+      wideFallbackMs ? `probed ${report.probed}, kept ${report.passed} under a ${wideFallbackMs}ms wide budget (strict ${budget}ms found none)` : `probed ${report.probed}, passed ${report.passed} under ${budget}ms`
+    );
   } else {
     zeroPassStreak += 1;
     discoveryNotBefore = Date.now() + Math.min(30 * 6e4, 2 * 6e4 * 2 ** (zeroPassStreak - 1));
@@ -8785,14 +8828,23 @@ var init_hotels = __esm({
               const cachedDead = cleartripArtDeadUntil > Date.now();
               let live = false;
               if (!cachedDead) {
-                try {
-                  const ctl = new AbortController();
-                  const t = setTimeout(() => ctl.abort(), 4e3);
-                  const res = await fetch(firstImg, { signal: ctl.signal, redirect: "follow" });
-                  clearTimeout(t);
-                  live = res.status === 200 && String(res.headers.get("content-type") || "").startsWith("image/");
-                } catch {
-                  live = false;
+                const probes = Array.from(
+                  new Set(
+                    rows.map((r) => r.attributes?.image_url || (Array.isArray(r.attributes?.image_urls) ? r.attributes.image_urls[0] : "")).filter((u) => typeof u === "string" && /^https?:\/\//.test(u))
+                  )
+                ).slice(0, 3);
+                for (const probeUrl of probes.length ? probes : [firstImg]) {
+                  try {
+                    const ctl = new AbortController();
+                    const t = setTimeout(() => ctl.abort(), 2500);
+                    const res = await fetch(probeUrl, { signal: ctl.signal, redirect: "follow" });
+                    clearTimeout(t);
+                    if (res.status === 200 && String(res.headers.get("content-type") || "").startsWith("image/")) {
+                      live = true;
+                      break;
+                    }
+                  } catch {
+                  }
                 }
               }
               if (!live) {

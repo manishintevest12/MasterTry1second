@@ -578,13 +578,29 @@ export const hotelsWorker: VerticalWorker = {
           const cachedDead = cleartripArtDeadUntil > Date.now();
           let live = false;
           if (!cachedDead) {
-            try {
-              const ctl = new AbortController();
-              const t = setTimeout(() => ctl.abort(), 4000);
-              const res = await fetch(firstImg, { signal: ctl.signal, redirect: 'follow' });
-              clearTimeout(t);
-              live = res.status === 200 && String(res.headers.get('content-type') || '').startsWith('image/');
-            } catch { live = false; }
+            // OWNER 17 Nov (runtime log: "Cleartrip CDN art dead — images stripped" then blank hotel cards):
+            // one dead URL used to condemn the whole batch, so a single stale photo blanked every card even when
+            // the rest of the batch served fine. Up to three DISTINCT image hosts are probed before art is called
+            // dead, and a batch keeps its photos as soon as one of them answers real image bytes.
+            const probes = Array.from(
+              new Set(
+                (rows as any[])
+                  .map((r) => r.attributes?.image_url || (Array.isArray(r.attributes?.image_urls) ? r.attributes.image_urls[0] : ''))
+                  .filter((u: any) => typeof u === 'string' && /^https?:\/\//.test(u)),
+              ),
+            ).slice(0, 3) as string[];
+            for (const probeUrl of probes.length ? probes : [firstImg]) {
+              try {
+                const ctl = new AbortController();
+                const t = setTimeout(() => ctl.abort(), 2500);
+                const res = await fetch(probeUrl, { signal: ctl.signal, redirect: 'follow' });
+                clearTimeout(t);
+                if (res.status === 200 && String(res.headers.get('content-type') || '').startsWith('image/')) {
+                  live = true;
+                  break;
+                }
+              } catch { /* try the next host */ }
+            }
           }
           if (!live) {
             if (!cachedDead) cleartripArtDeadUntil = Date.now() + 60 * 60_000;
