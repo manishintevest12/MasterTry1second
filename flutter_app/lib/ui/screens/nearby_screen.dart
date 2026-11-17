@@ -263,6 +263,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
   /// nothing opened. Now it takes the same route, and falls back to an external open when the
   /// device has no Custom Tabs provider - a dead book button is worse than a browser hop.
   Future<void> _open(String url) async {
+    // A map link must leave the app for the maps app: an in-app browser would only show a map inside our own chrome.
+    if (Uri.tryParse(url)?.host.contains('google.com') == true && (Uri.tryParse(url)?.path.contains('maps') ?? false)) {
+      try { await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication); return; } catch (_) {}
+    }
     final abs = exitUrl(url);
     final uri = Uri.tryParse(abs);
     if (uri == null || !uri.hasScheme) return;
@@ -589,9 +593,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
             children: [
               if (p.exitUrl.isNotEmpty)
                 FilledButton(
-                  onPressed: () => _open(p.exitUrl),
+                  // OWNER 17 Nov: a place that only exists on the map opens the MAP. The old code handed this row a
+                  // link to our own site, the App Link swallowed it and the person landed on the Bus tab.
+                  onPressed: () => _open(p.mapOnly ? (p.directionsUrl.isNotEmpty ? p.directionsUrl : p.exitUrl) : p.exitUrl),
                   style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F172A), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-                  child: const Text('Visit / book', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                  child: Text(p.mapOnly ? 'Open in Maps' : 'Visit / book',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
                 ),
               const SizedBox(width: 8),
               OutlinedButton(

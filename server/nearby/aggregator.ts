@@ -48,6 +48,13 @@ export interface NearbyRow {
   honesty: string;
   exitUrl: string;
   directionsUrl: string;
+  /**
+   * OWNER 17 Nov: true when the place has NO partner page - it exists only on the map. The Visit button must then
+   * open the map (its own page / directions), never one of our own verticals. The app used to receive a pointer to
+   * our own site for these rows, the App Link swallowed it, and tapping "Visit / book" on an OYO hotel landed the
+   * person on the Bus tab.
+   */
+  mapOnly?: boolean;
   website: string | null;
   /**
    * Photo evidence the map itself carries (owner 14 Nov: "all are showing same images"). Kept on the row so the
@@ -1097,7 +1104,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v15|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v16|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1281,15 +1288,30 @@ async function buildNearbyAnswer(input: {
   for (const row of needsExit) {
     // Every card redirects. Best destination first (the partner's own page or that provider's search page);
     // the map place page last, so a store or a cab stand still has a real destination instead of a dead card.
-    const dest = row.website
-      || (row.category === 'restaurants' || row.category === 'cafes'
-        ? `https://www.swiggy.com/search?query=${encodeURIComponent(row.name)}`
-        : row.category === 'movies'
-          ? `https://in.bookmyshow.com/explore/cinemas`
-          : row.category === 'cabs'
-            ? 'https://www.uber.com/in/en/'
-            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ''}`.trim())}`);
-    if (dest) row.exitUrl = pointer(dest, row.category);
+    // A partner page is the only thing worth a tracked exit. Everything else is a map place: it goes straight to
+    // the map, absolutely addressed, so a phone opens Google Maps instead of bouncing through our own domain.
+    if (row.website) {
+      row.exitUrl = pointer(row.website, row.category);
+      continue;
+    }
+    const searchPage = row.category === 'restaurants' || row.category === 'cafes'
+      ? `https://www.swiggy.com/search?query=${encodeURIComponent(row.name)}`
+      : row.category === 'movies'
+        ? 'https://in.bookmyshow.com/explore/cinemas'
+        : row.category === 'cabs'
+          ? 'https://www.uber.com/in/en/'
+          : '';
+    if (searchPage) { row.exitUrl = pointer(searchPage, row.category); continue; }
+    // Map-only: the place's own pin when we have coordinates, its name+area otherwise.
+    // The pin itself: name + area, which Google resolves to the place page; coordinates when it has no street.
+    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      row.lat !== null && row.lng !== null
+        ? `${row.name} ${row.address || location.city || ''}`.trim()
+        : `${row.name} ${row.address || location.city || ''}`.trim(),
+    )}`;
+    row.mapOnly = true;
+    row.exitUrl = mapUrl;
+    if (!row.directionsUrl) row.directionsUrl = mapsSearch(row.name, row.lat, row.lng);
   }
 
   // ---- OWNER 14 Nov: "all are showing same images ... use images available on google".

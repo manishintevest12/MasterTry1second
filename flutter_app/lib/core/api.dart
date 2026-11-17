@@ -2609,6 +2609,8 @@ class NearbyPlace {
   final String honesty;
   final String exitUrl;
   final String directionsUrl;
+  /// True when the place exists only on the map (no partner page): "Visit" must open the map, not a vertical.
+  final bool mapOnly;
 
   const NearbyPlace({
     required this.id,
@@ -2626,6 +2628,7 @@ class NearbyPlace {
     required this.honesty,
     required this.exitUrl,
     required this.directionsUrl,
+    this.mapOnly = false,
   });
 
   static double? _d(dynamic v) => v == null ? null : (v is num ? v.toDouble() : double.tryParse('$v'));
@@ -2647,6 +2650,7 @@ class NearbyPlace {
         honesty: '${j['honesty'] ?? ''}',
         exitUrl: '${j['exitUrl'] ?? ''}',
         directionsUrl: '${j['directionsUrl'] ?? ''}',
+        mapOnly: j['mapOnly'] == true,
       );
 }
 

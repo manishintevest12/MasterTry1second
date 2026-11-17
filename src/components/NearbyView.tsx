@@ -18,6 +18,8 @@ interface NearbyRow {
   rating: number | null; ratingCount: number | null; priceLabel: string | null; price: number | null;
   address: string | null; distanceKm: number | null; imageUrl: string | null;
   source: 'google' | 'osm' | 'catalogue'; honesty: string; exitUrl: string; directionsUrl: string;
+  /// OWNER 17 Nov: the place exists only on the map - the button must open the map, not one of our verticals.
+  mapOnly?: boolean;
 }
 
 const PILLS: { key: Category; label: string }[] = [
@@ -360,9 +362,15 @@ export default function NearbyView() {
               <p className="text-[10px] text-slate-400 leading-snug">{r.honesty}</p>
               <div className="flex gap-2 mt-auto pt-1">
                 {r.exitUrl ? (
-                  <a href={r.exitUrl} rel="nofollow sponsored noopener" className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold">
-                    Visit / book
-                  </a>
+                  r.mapOnly ? (
+                    <a href={r.directionsUrl || r.exitUrl} rel="nofollow noopener" className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold">
+                      Open in Maps
+                    </a>
+                  ) : (
+                    <a href={r.exitUrl} rel="nofollow sponsored noopener" className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold">
+                      Visit / book
+                    </a>
+                  )
                 ) : null}
                 <a href={r.directionsUrl} rel="nofollow noopener" className="px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700">
                   Get directions

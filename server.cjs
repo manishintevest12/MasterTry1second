@@ -49666,7 +49666,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v15|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v16|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49792,8 +49792,21 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const results = merged.slice(offset, Math.min(offset + limit, total));
   const needsExit = results.filter((r) => !r.exitUrl);
   for (const row of needsExit) {
-    const dest = row.website || (row.category === "restaurants" || row.category === "cafes" ? `https://www.swiggy.com/search?query=${encodeURIComponent(row.name)}` : row.category === "movies" ? `https://in.bookmyshow.com/explore/cinemas` : row.category === "cabs" ? "https://www.uber.com/in/en/" : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ""}`.trim())}`);
-    if (dest) row.exitUrl = pointer(dest, row.category);
+    if (row.website) {
+      row.exitUrl = pointer(row.website, row.category);
+      continue;
+    }
+    const searchPage = row.category === "restaurants" || row.category === "cafes" ? `https://www.swiggy.com/search?query=${encodeURIComponent(row.name)}` : row.category === "movies" ? "https://in.bookmyshow.com/explore/cinemas" : row.category === "cabs" ? "https://www.uber.com/in/en/" : "";
+    if (searchPage) {
+      row.exitUrl = pointer(searchPage, row.category);
+      continue;
+    }
+    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      row.lat !== null && row.lng !== null ? `${row.name} ${row.address || location.city || ""}`.trim() : `${row.name} ${row.address || location.city || ""}`.trim()
+    )}`;
+    row.mapOnly = true;
+    row.exitUrl = mapUrl;
+    if (!row.directionsUrl) row.directionsUrl = mapsSearch(row.name, row.lat, row.lng);
   }
   const noPhoto = results.filter((r) => !r.imageUrl);
   const photoDeadline = Date.now() + PHOTO_BUDGET_MS;
