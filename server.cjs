@@ -12125,7 +12125,7 @@ function airIndiaFaresBody(origin2, destination, departureDate) {
   });
 }
 function airIndiaSearchUrl(fromCode, toCode, depIso) {
-  return `https://www.airindia.com/in/en/ibe/booking.html?origin=${fromCode}&destination=${toCode}&departDate=${depIso}#/availability/departure`;
+  return `https://www.airindia.com/?origin=${fromCode}&destination=${toCode}&departDate=${depIso}&tripType=O&cabinClass=ECONOMY&adults=1`;
 }
 function parseAirIndiaFares(body) {
   let d;
@@ -32170,6 +32170,7 @@ __export(deeplink_exports, {
   looksAlreadyTracked: () => looksAlreadyTracked,
   merchantSearchFallback: () => merchantSearchFallback,
   recordPointerClick: () => recordPointerClick,
+  repairAirlineDeepLink: () => repairAirlineDeepLink,
   resolveMaskingPointer: () => resolveMaskingPointer,
   safeDomain: () => safeDomain
 });
@@ -32182,8 +32183,22 @@ function b64url(s) {
 function unb64url(s) {
   return Buffer.from(s, "base64url").toString("utf8");
 }
+function repairAirlineDeepLink(destination) {
+  if (!AIR_INDIA_IBE.test(destination)) return destination;
+  try {
+    const u = new URL(destination);
+    const origin2 = String(u.searchParams.get("origin") || "").toUpperCase();
+    const to = String(u.searchParams.get("destination") || "").toUpperCase();
+    const departDate = String(u.searchParams.get("departDate") || "");
+    if (/^[A-Z]{3}$/.test(origin2) && /^[A-Z]{3}$/.test(to) && /^\d{4}-\d{2}-\d{2}$/.test(departDate)) {
+      return `https://www.airindia.com/?origin=${origin2}&destination=${to}&departDate=${departDate}&tripType=O&cabinClass=ECONOMY&adults=1`;
+    }
+  } catch {
+  }
+  return "https://www.airindia.com/";
+}
 function createMaskingPointer(destination, opts = {}) {
-  const dest = String(destination || "").trim();
+  const dest = repairAirlineDeepLink(String(destination || "").trim());
   try {
     const u = new URL(dest);
     if (u.protocol !== "http:" && u.protocol !== "https:") return "";
@@ -32525,7 +32540,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   }
   return "";
 }
-var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_BASE_MERCHANTS, CUELINKS_APPLIED_ONLY, CUELINKS_APPROVED_ONLY, CUELINKS_MERCHANTS, CJ_EVERGREEN, ENV_NETWORKS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
+var import_crypto23, AFFILIATE_TTL_SEC, AIR_INDIA_IBE, CUELINKS_BASE_MERCHANTS, CUELINKS_APPLIED_ONLY, CUELINKS_APPROVED_ONLY, CUELINKS_MERCHANTS, CJ_EVERGREEN, ENV_NETWORKS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
@@ -32540,6 +32555,7 @@ var init_deeplink = __esm({
     init_cuelinksCid();
     init_merchantLinks();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
+    AIR_INDIA_IBE = /^https?:\/\/(www\.)?airindia\.com\/in\/en\/ibe\/booking\.html/i;
     CUELINKS_BASE_MERCHANTS = [
       // open (approved on this publisher account, measured via pub_api/v3/campaigns 10 Nov)
       "makemytrip.com",
@@ -55234,7 +55250,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
     apiRouter.get("/out", async (req, res) => {
       const resolved = resolveMaskingPointer(String(req.query.t || ""));
       if (!resolved) return res.status(410).send("This link has expired. Please search again for a fresh link.");
-      const freshDestination = await refreshSeatDestination(resolved.destination).catch(() => resolved.destination);
+      const freshDestination = await refreshSeatDestination(repairAirlineDeepLink(resolved.destination)).catch(() => repairAirlineDeepLink(resolved.destination));
       const check = validateDestination(freshDestination, { allowEmbeddedRedirect: resolved.trusted === true });
       if (!check.valid) {
         log.warn("Api", "Out pointer refused", { reason: check.reason });

@@ -49,7 +49,10 @@ export function airIndiaFaresBody(origin: string, destination: string, departure
 
 /** SRP deeplink: the IBE booking flow the widget itself opens. */
 export function airIndiaSearchUrl(fromCode: string, toCode: string, depIso: string): string {
-  return `https://www.airindia.com/in/en/ibe/booking.html?origin=${fromCode}&destination=${toCode}&departDate=${depIso}#/availability/departure`;
+  // OWNER 17 Nov: the IBE path (/in/en/ibe/booking.html) is dead - it opens Air India's shell with
+  // SEARCH_DETAILS_NOT_FOUND on every device. These same params on the site root prefill the live booking widget
+  // (verified in a browser: IDR -> BOM, Wed 18 Nov, 1 Adult, Economy), and its Search opens the availability page.
+  return `https://www.airindia.com/?origin=${fromCode}&destination=${toCode}&departDate=${depIso}&tripType=O&cabinClass=ECONOMY&adults=1`;
 }
 
 export interface AiDayFare {

@@ -48,7 +48,7 @@ import {
 import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { isDeepOfferUrl } from '../affiliate/merchantLinks';
-import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback } from '../affiliate/deeplink';
+import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback, repairAirlineDeepLink } from '../affiliate/deeplink';
 import { isCabAppScheme } from '../affiliate/cabLinks';
 import { APP_CAMPAIGNS, appInstallExitEnabled, appInstallTrackingUrl, appCampaignFor } from '../affiliate/appCampaigns';
 import { createInterstitialPointer, isInAppWebView, adBlockHtml } from '../redirect/interstitial';
@@ -4487,7 +4487,10 @@ apiRouter.get('/out', async (req, res) => {
   // for (today IST, or tomorrow once today's counters close) and drop a session bound to an
   // older day, so the platform's own live showtime list - and from there its seat screen - is
   // what opens.
-  const freshDestination = await refreshSeatDestination(resolved.destination).catch(() => resolved.destination);
+  // OWNER 17 Nov (Air India "SEARCH_DETAILS_NOT_FOUND"): a pointer minted before the repair still opens a dead
+  // airline search shell. Repair runs again at click time, so an already-cached card or an installed app that still
+  // holds the old token lands on the airline's live booking widget instead of an error page.
+  const freshDestination = await refreshSeatDestination(repairAirlineDeepLink(resolved.destination)).catch(() => repairAirlineDeepLink(resolved.destination));
   const check = validateDestination(freshDestination, { allowEmbeddedRedirect: resolved.trusted === true });
   if (!check.valid) {
     log.warn('Api', 'Out pointer refused', { reason: check.reason });

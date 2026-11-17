@@ -42,8 +42,35 @@ function secret(): string {
 function b64url(s: string): string { return Buffer.from(s, 'utf8').toString('base64url'); }
 function unb64url(s: string): string { return Buffer.from(s, 'base64url').toString('utf8'); }
 
+/**
+ * OWNER 17 Nov (phone screenshots: Air India opened "SEARCH_DETAILS_UNAVAILABLE / SEARCH_DETAILS_NOT_FOUND" after
+ * tapping Book on an Indore -> Mumbai flight).
+ *
+ * Air India retired the IBE route the old parser deep-linked into: /in/en/ibe/booking.html?origin=.. renders an empty
+ * shell that cannot find its search details, on every device. Verified live in a real browser: the same query params
+ * on the site root DO prefill the booking widget (From IDR, To BOM, Wed 18 Nov, 1 Adult), and Search then opens the
+ * availability page in a new tab. So the root URL is the working entry, and any stored or freshly minted IBE pointer is
+ * repaired here - one choke point, so the website, the app and every already-saved offer all land somewhere that works.
+ */
+const AIR_INDIA_IBE = /^https?:\/\/(www\.)?airindia\.com\/in\/en\/ibe\/booking\.html/i;
+export function repairAirlineDeepLink(destination: string): string {
+  if (!AIR_INDIA_IBE.test(destination)) return destination;
+  try {
+    const u = new URL(destination);
+    const origin = String(u.searchParams.get('origin') || '').toUpperCase();
+    const to = String(u.searchParams.get('destination') || '').toUpperCase();
+    const departDate = String(u.searchParams.get('departDate') || '');
+    if (/^[A-Z]{3}$/.test(origin) && /^[A-Z]{3}$/.test(to) && /^\d{4}-\d{2}-\d{2}$/.test(departDate)) {
+      return `https://www.airindia.com/?origin=${origin}&destination=${to}&departDate=${departDate}&tripType=O&cabinClass=ECONOMY&adults=1`;
+    }
+  } catch {
+    /* fall through to the working entry */
+  }
+  return 'https://www.airindia.com/';
+}
+
 export function createMaskingPointer(destination: string, opts: { offerId?: string; trusted?: boolean; vertical?: string } = {}): string {
-  const dest = String(destination || '').trim();
+  const dest = repairAirlineDeepLink(String(destination || '').trim());
   // Never mint a pointer the click endpoint would refuse — a non-HTTP / malformed
   // destination yields '' so cards render without a dead-end link instead of
   // shipping a "Refused:" page to the user (owner bug, 22 Oct).
