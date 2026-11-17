@@ -20,6 +20,8 @@ interface NearbyRow {
   source: 'google' | 'osm' | 'catalogue'; honesty: string; exitUrl: string; directionsUrl: string;
   /// OWNER 17 Nov: the place exists only on the map - the button must open the map, not one of our verticals.
   mapOnly?: boolean;
+  /** Vehicle-service errand: directions only, no "Visit / book" (owner 17 Nov). */
+  serviceOnly?: boolean;
 }
 
 const PILLS: { key: Category; label: string }[] = [
@@ -361,7 +363,10 @@ export default function NearbyView() {
               {r.address ? <p className="text-[11px] text-slate-500 flex items-start gap-1"><MapPin className="w-3 h-3 mt-0.5 shrink-0" /> {r.address}</p> : null}
               <p className="text-[10px] text-slate-400 leading-snug">{r.honesty}</p>
               <div className="flex gap-2 mt-auto pt-1">
-                {r.exitUrl ? (
+                {/* OWNER 17 Nov: vehicle & services cards answer "Get directions" only - a network's homepage was
+                    never something a visitor could "visit / book", and the button promised a booking that does not
+                    exist. Real shops keep their partner link. */}
+                {r.exitUrl && !r.serviceOnly ? (
                   r.mapOnly ? (
                     <a href={r.directionsUrl || r.exitUrl} rel="nofollow noopener" className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold">
                       Open in Maps
@@ -372,7 +377,7 @@ export default function NearbyView() {
                     </a>
                   )
                 ) : null}
-                <a href={r.directionsUrl} rel="nofollow noopener" className="px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700">
+                <a href={r.directionsUrl || r.exitUrl} rel="nofollow noopener" className="px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700">
                   Get directions
                 </a>
               </div>

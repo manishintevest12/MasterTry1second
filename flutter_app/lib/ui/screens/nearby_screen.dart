@@ -591,7 +591,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              if (p.exitUrl.isNotEmpty)
+              if (p.exitUrl.isNotEmpty && !p.serviceOnly)
                 FilledButton(
                   // OWNER 17 Nov: a place that only exists on the map opens the MAP. The old code handed this row a
                   // link to our own site, the App Link swallowed it and the person landed on the Bus tab.
@@ -602,7 +602,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 ),
               const SizedBox(width: 8),
               OutlinedButton(
-                onPressed: () => _open(p.directionsUrl),
+                onPressed: () => _open(p.directionsUrl.isNotEmpty ? p.directionsUrl : p.exitUrl),
                 style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                 child: const Text('Get directions', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
               ),

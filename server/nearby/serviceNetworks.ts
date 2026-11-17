@@ -19,6 +19,27 @@ export interface ServiceNetwork {
 }
 
 export const SERVICE_NETWORKS: Record<string, ServiceNetwork[]> = {
+  /**
+   * OWNER 17 Nov (screenshot: Cinemas and Stores tabs showed "No places came back for this location right now"):
+   * open map data for Indore answered nothing inside the budget, so those two tabs - the most ordinary errands on the
+   * site - were the only ones that could end empty. Same rule as the vehicle chips: a real business that covers the
+   * city, opening its own page, never an invented address.
+   */
+  movies: [
+    { name: 'PVR INOX', url: 'https://www.pvrcinemas.com/', sub: 'cinema chain' },
+    { name: 'BookMyShow', url: 'https://in.bookmyshow.com/explore/cinemas', sub: 'cinema listings' },
+    { name: 'Cinepolis India', url: 'https://www.cinepolisindia.com/', sub: 'cinema chain' },
+    { name: 'Miraj Cinemas', url: 'https://www.mirajcinemas.com/', sub: 'cinema chain' },
+    { name: 'MovieMax', url: 'https://www.moviemax.co.in/', sub: 'cinema chain' },
+  ],
+  stores: [
+    { name: 'DMart', url: 'https://www.dmart.in/', sub: 'supermarket chain' },
+    { name: 'Reliance Smart Bazaar', url: 'https://www.relianceretail.com/', sub: 'supermarket chain' },
+    { name: 'Croma', url: 'https://www.croma.com/', sub: 'electronics chain' },
+    { name: 'Vijay Sales', url: 'https://www.vijaysales.com/', sub: 'electronics chain' },
+    { name: 'Decathlon India', url: 'https://www.decathlon.in/', sub: 'sports store chain' },
+    { name: 'Reliance Digital', url: 'https://www.reliancedigital.in/', sub: 'electronics chain' },
+  ],
   petrol: [
     { name: 'Indian Oil (IOCL)', url: 'https://www.iocl.com/find-us', sub: 'fuel station network' },
     { name: 'Bharat Petroleum (BPCL)', url: 'https://www.bharatpetroleum.in/our-businesses/fuel-stations', sub: 'fuel station network' },

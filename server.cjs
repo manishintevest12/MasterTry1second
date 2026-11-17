@@ -48392,6 +48392,27 @@ var SERVICE_NETWORKS;
 var init_serviceNetworks = __esm({
   "server/nearby/serviceNetworks.ts"() {
     SERVICE_NETWORKS = {
+      /**
+       * OWNER 17 Nov (screenshot: Cinemas and Stores tabs showed "No places came back for this location right now"):
+       * open map data for Indore answered nothing inside the budget, so those two tabs - the most ordinary errands on the
+       * site - were the only ones that could end empty. Same rule as the vehicle chips: a real business that covers the
+       * city, opening its own page, never an invented address.
+       */
+      movies: [
+        { name: "PVR INOX", url: "https://www.pvrcinemas.com/", sub: "cinema chain" },
+        { name: "BookMyShow", url: "https://in.bookmyshow.com/explore/cinemas", sub: "cinema listings" },
+        { name: "Cinepolis India", url: "https://www.cinepolisindia.com/", sub: "cinema chain" },
+        { name: "Miraj Cinemas", url: "https://www.mirajcinemas.com/", sub: "cinema chain" },
+        { name: "MovieMax", url: "https://www.moviemax.co.in/", sub: "cinema chain" }
+      ],
+      stores: [
+        { name: "DMart", url: "https://www.dmart.in/", sub: "supermarket chain" },
+        { name: "Reliance Smart Bazaar", url: "https://www.relianceretail.com/", sub: "supermarket chain" },
+        { name: "Croma", url: "https://www.croma.com/", sub: "electronics chain" },
+        { name: "Vijay Sales", url: "https://www.vijaysales.com/", sub: "electronics chain" },
+        { name: "Decathlon India", url: "https://www.decathlon.in/", sub: "sports store chain" },
+        { name: "Reliance Digital", url: "https://www.reliancedigital.in/", sub: "electronics chain" }
+      ],
       petrol: [
         { name: "Indian Oil (IOCL)", url: "https://www.iocl.com/find-us", sub: "fuel station network" },
         { name: "Bharat Petroleum (BPCL)", url: "https://www.bharatpetroleum.in/our-businesses/fuel-stations", sub: "fuel station network" },
@@ -49265,7 +49286,7 @@ async function osmNearby(lat, lng, category) {
         resolve(r);
       }
     };
-    const guardMs = categoryDef(category) ? 900 : 12e3;
+    const guardMs = 900;
     const guard = setTimeout(() => finish({ rows: [], note: `Map data unavailable: ${attempts.join("; ").slice(0, 200) || "mirrors too slow"}` }), guardMs);
     for (const p of racers) {
       p.then((r) => {
@@ -49673,7 +49694,7 @@ function nearPage(input) {
   return { offset, limit };
 }
 function nearbyCacheKey(category, location, page) {
-  return `v18|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v19|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || "").toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
   const startedAt = Date.now();
@@ -49860,12 +49881,72 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     }
     usedPhoto.add(url);
   }
-  for (const row of results) {
-    if (!row.imageUrl) {
-      row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
-      row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+  if (results.length < 3) {
+    const where = location.city || "your area";
+    const nets = serviceNetworks(category);
+    const room = Math.max(0, Math.min(4, limit || 8) - results.length);
+    for (const net of nets.slice(0, room)) {
+      results.push({
+        id: `net-${category}-${net.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        name: net.name,
+        category,
+        subcategory: net.sub,
+        rating: null,
+        ratingCount: null,
+        priceLevel: null,
+        priceLabel: null,
+        price: null,
+        address: null,
+        lat: location.lat,
+        lng: location.lng,
+        distanceKm: null,
+        imageUrl: null,
+        source: "catalogue",
+        honesty: `No ${categoryLabel(category).toLowerCase()} is mapped around ${where} in open map data, so this is the ${net.name} ${net.sub}, which covers ${where}. Distances and ratings do not apply to a network.`,
+        exitUrl: pointer(net.url, category),
+        directionsUrl: "",
+        website: net.url
+      });
+    }
+    if (nets.length) {
+      notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} mapped around ${where}, so the networks that cover ${where} are shown instead - each opens its own page.`);
     }
   }
+  const SERVICE_ONLY = /* @__PURE__ */ new Set([
+    "petrol",
+    "cng",
+    "lpg",
+    "car_repair",
+    "bike_repair",
+    "puncture",
+    "battery",
+    "tyres",
+    "denting",
+    "accessories",
+    "car_wash",
+    "detailing",
+    "pucc",
+    "insurance",
+    "rto",
+    "bike_rental",
+    "car_rental",
+    "scrapping"
+  ]);
+  const finalizeRows = () => {
+    const seenImage = /* @__PURE__ */ new Set();
+    for (const row of results) {
+      if (SERVICE_ONLY.has(String(row.category))) row.serviceOnly = true;
+      if (row.imageUrl && seenImage.has(String(row.imageUrl))) {
+        row.imageUrl = categoryTile(row.category, `${row.name || ""}#${row.id}`, CATEGORY_TILES);
+        row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+      }
+      if (row.imageUrl) seenImage.add(String(row.imageUrl));
+      if (!row.imageUrl) {
+        row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
+        row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+      }
+    }
+  };
   if (!results.length && categoryDef(category)) {
     const RELATED = {
       battery: ["accessories", "car_repair", "petrol"],
@@ -49898,47 +49979,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
       notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} here yet, so nearby ${categoryLabel(sibling).toLowerCase()} places are shown and labelled as such.`);
     }
   }
-  if (!results.length) {
-    const where = location.city || "your area";
-    const nets = serviceNetworks(category);
-    for (const net of nets.slice(0, limit || 8)) {
-      results.push({
-        id: `net-${category}-${net.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-        name: net.name,
-        category,
-        subcategory: net.sub,
-        rating: null,
-        ratingCount: null,
-        priceLevel: null,
-        priceLabel: null,
-        price: null,
-        address: null,
-        lat: location.lat,
-        lng: location.lng,
-        distanceKm: null,
-        imageUrl: null,
-        source: "catalogue",
-        honesty: `No ${categoryLabel(category).toLowerCase()} is mapped around ${where} in open map data, so this is the ${net.name} ${net.sub}, which covers ${where}. Distances and ratings do not apply to a network.`,
-        exitUrl: pointer(net.url, category),
-        directionsUrl: "",
-        website: net.url
-      });
-    }
-    if (nets.length) {
-      notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} mapped around ${where}, so the networks that cover ${where} are shown instead - each opens its own page.`);
-    }
-  }
-  for (const row of results) {
-    if (!row.imageUrl) {
-      row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
-      row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
-    }
-    if (!row.directionsUrl) row.directionsUrl = mapsSearch(row.name, row.lat, row.lng);
-    if (!row.exitUrl) {
-      row.mapOnly = true;
-      row.exitUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ""}`.trim())}`;
-    }
-  }
+  finalizeRows();
   void logNearbyEvent("search", {
     category,
     city: location.city,

@@ -55,6 +55,8 @@ export interface NearbyRow {
    * person on the Bus tab.
    */
   mapOnly?: boolean;
+  /** Vehicle-service errand: directions only, no "Visit / book" (owner 17 Nov). */
+  serviceOnly?: boolean;
   website: string | null;
   /**
    * Photo evidence the map itself carries (owner 14 Nov: "all are showing same images"). Kept on the row so the
@@ -637,7 +639,10 @@ Promise<{ rows: NearbyRow[]; note?: string }> {
     const finish = (r: { rows: NearbyRow[]; note?: string }) => { if (!settled) { settled = true; resolve(r); } };
     // OWNER 17 Nov ("results aana compulsory hai"): a vehicle chip is answered by its service-network tier almost
     // instantly, so it must not sit on a 12-second mirror guard first. Two and a half seconds, then the fallback.
-    const guardMs = categoryDef(category) ? 900 : 12_000;
+    // OWNER 17 Nov: every chip now waits the same short beat. Cinemas and stores used to sit on a 12s mirror guard,
+    // the request budget expired first, and the two most ordinary tabs on the site answered "no places". 900ms is
+    // enough for the mirror that is actually reachable, and the fallback tiers answer instantly after it.
+    const guardMs = 900;
     const guard = setTimeout(() => finish({ rows: [], note: `Map data unavailable: ${attempts.join('; ').slice(0, 200) || 'mirrors too slow'}` }), guardMs);
     for (const p of racers) {
       p.then((r) => {
@@ -1104,7 +1109,7 @@ function nearPage(input: { limit?: number; offset?: number }): { offset: number;
 }
 
 function nearbyCacheKey(category: NearbyCategory, location: { lat: number; lng: number; city: string | null }, page: { offset: number; limit: number }): string {
-  return `v18|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
+  return `v19|${category}|${location.lat.toFixed(3)}|${location.lng.toFixed(3)}|${(location.city || '').toLowerCase()}|o${page.offset}|l${page.limit}`;
 }
 
 async function buildNearbyAnswer(input: {
@@ -1378,12 +1383,73 @@ async function buildNearbyAnswer(input: {
     if (usedPhoto.has(url)) { row.imageUrl = null; continue; }
     usedPhoto.add(url);
   }
-  for (const row of results) {
-    if (!row.imageUrl) {
-      row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
-      row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+  // OWNER 17 Nov: a thin answer stays thin. Tyres answered with a single card while five real networks cover the
+  // city; the networks now TOP UP any answer under three rows (labelled as networks, never as a specific shop), and
+  // still answer alone when the map had nothing at all.
+  if (results.length < 3) {
+    const where = location.city || 'your area';
+    const nets = serviceNetworks(category);
+    const room = Math.max(0, Math.min(4, (limit || 8)) - results.length);
+    for (const net of nets.slice(0, room)) {
+      results.push({
+        id: `net-${category}-${net.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        name: net.name,
+        category,
+        subcategory: net.sub,
+        rating: null,
+        ratingCount: null,
+        priceLevel: null,
+        priceLabel: null,
+        price: null,
+        address: null,
+        lat: location.lat,
+        lng: location.lng,
+        distanceKm: null,
+        imageUrl: null,
+        source: 'catalogue' as const,
+        honesty: `No ${categoryLabel(category).toLowerCase()} is mapped around ${where} in open map data, so this is the ${net.name} ${net.sub}, which covers ${where}. Distances and ratings do not apply to a network.`,
+        exitUrl: pointer(net.url, category),
+        directionsUrl: '',
+        website: net.url,
+      } as unknown as NearbyRow);
+    }
+    if (nets.length) {
+      notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} mapped around ${where}, so the networks that cover ${where} are shown instead - each opens its own page.`);
     }
   }
+
+  // The admin Nearby report reads this table (owner: "iska report admin mai nearby section mai hoga").
+  // OWNER 17 Nov ("visit/book button hata do vehicles & services se"): a service card used to offer "Visit / book",
+  // which for a city-wide network opened a brand's homepage - a visit with nothing to book. Those chips carry only
+  // "Get directions" now, on both surfaces, so the button can never promise a booking that does not exist.
+  const SERVICE_ONLY = new Set<string>([
+    'petrol', 'cng', 'lpg', 'car_repair', 'bike_repair', 'puncture', 'battery', 'tyres', 'denting', 'accessories',
+    'car_wash', 'detailing', 'pucc', 'insurance', 'rto', 'bike_rental', 'car_rental', 'scrapping',
+  ]);
+  /**
+   * The last thing that runs before a row leaves the server, whatever tier created it (photo pass, related
+   * sibling, city-wide network): a card always has its own picture, a directions link and its button policy.
+   * It is called after every tier so no later tier can add an incomplete row again (that is how battery shipped
+   * five cards with no image while the tile pass had already run).
+   */
+  const finalizeRows = () => {
+    const seenImage = new Set<string>();
+    for (const row of results) {
+      if (SERVICE_ONLY.has(String(row.category))) row.serviceOnly = true;
+      // OWNER 17 Nov ("same image"): the hard rule is one picture per card. If a real photo or a tile is already used
+      // by another card in this list, this card gets its own drawn tile instead - seeded with the row id, so it is
+      // unique even when two places share a name.
+      if (row.imageUrl && seenImage.has(String(row.imageUrl))) {
+        row.imageUrl = categoryTile(row.category, `${row.name || ''}#${row.id}`, CATEGORY_TILES);
+        row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+      }
+      if (row.imageUrl) seenImage.add(String(row.imageUrl));
+      if (!row.imageUrl) {
+        row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
+        row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
+      }
+    }
+  };
 
   /**
    * OWNER 17 Nov (screenshot: "Battery Shops" answered "No places came back..."): OpenStreetMap holds almost no
@@ -1430,53 +1496,9 @@ async function buildNearbyAnswer(input: {
    * government portals - each opening its own real page. They are labelled as a network covering the city, never as a
    * particular shop, so nothing about a specific address, rating or price is invented.
    */
-  if (!results.length) {
-    const where = location.city || 'your area';
-    const nets = serviceNetworks(category);
-    for (const net of nets.slice(0, limit || 8)) {
-      results.push({
-        id: `net-${category}-${net.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-        name: net.name,
-        category,
-        subcategory: net.sub,
-        rating: null,
-        ratingCount: null,
-        priceLevel: null,
-        priceLabel: null,
-        price: null,
-        address: null,
-        lat: location.lat,
-        lng: location.lng,
-        distanceKm: null,
-        imageUrl: null,
-        source: 'catalogue' as const,
-        honesty: `No ${categoryLabel(category).toLowerCase()} is mapped around ${where} in open map data, so this is the ${net.name} ${net.sub}, which covers ${where}. Distances and ratings do not apply to a network.`,
-        exitUrl: pointer(net.url, category),
-        directionsUrl: '',
-        website: net.url,
-      } as unknown as NearbyRow);
-    }
-    if (nets.length) {
-      notes.push(`Open map data has no ${categoryLabel(category).toLowerCase()} mapped around ${where}, so the networks that cover ${where} are shown instead - each opens its own page.`);
-    }
-  }
 
-  // OWNER 17 Nov: rows created after the photo pass (the related-category tier and the city-wide service networks)
-  // shipped with imageUrl null and an empty directions link. Every card that leaves here is complete: its own drawn
-  // tile when no real photo exists, a map destination when the network page is the only place to go.
-  for (const row of results) {
-    if (!row.imageUrl) {
-      row.imageUrl = categoryTile(row.category, row.name || row.id, CATEGORY_TILES);
-      row.honesty = `${row.honesty} Photo is a category tile, not this place.`.trim();
-    }
-    if (!row.directionsUrl) row.directionsUrl = mapsSearch(row.name, row.lat, row.lng);
-    if (!row.exitUrl) {
-      row.mapOnly = true;
-      row.exitUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${row.name} ${row.address || location.city || ''}`.trim())}`;
-    }
-  }
+  finalizeRows();
 
-  // The admin Nearby report reads this table (owner: "iska report admin mai nearby section mai hoga").
   void logNearbyEvent('search', {
     category, city: location.city, results: results.length,
     withPhoto: results.filter((r) => r.imageUrl).length,
