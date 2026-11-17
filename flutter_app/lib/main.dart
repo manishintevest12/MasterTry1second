@@ -31,6 +31,10 @@ void main() {
   // Device alerts: permission + token registration. Deliberately not awaited, so a slow
   // or unavailable Play Services never delays the first frame.
   unawaited(PushAlerts.init());
+  // REFERRAL FROM THE PLAY LISTING (owner 17 Nov): a friend who taps /r/<code> without the app installed lands on the
+  // Play listing with the member code as the install referrer. Android hands that string back here, so the invite is
+  // kept even though no link was ever opened in the app - the person then gets credited when they sign in.
+  unawaited(DeepLinks.captureInstallReferral());
   runApp(const Try1SecondApp());
 }
 

@@ -4764,7 +4764,17 @@ apiRouter.get('/rewards/referral/me', requireAuth, async (req, res) => {
     const code = await ensureReferralCode(user.id);
     const stats = await referralStats(user.id);
     const points = await validPointBalance(user.id);
-    res.json({ success: true, code, link: `https://www.try1second.com/?ref=${code}`, referredCount: stats.referredCount, referredByCode: stats.referredByCode, points });
+    // OWNER 17 Nov: "refer and earn mai id unique hona chaiye hr user ka, aur user app pr redirect kare".
+    // Three links, one code:
+    //   shareLink - /r/<code>, the one people actually send. On Android it opens the APP (verified App Links)
+    //               and, when the app is not installed, redirects to the Play listing with the code attached as
+    //               the install referrer. On desktop/iOS it lands on the site with ?ref=<code>.
+    //   appLink   - the Play listing with the referrer, for an explicit "get the app" button.
+    //   link      - the plain web link, kept so older builds keep working.
+    // The code itself is per-user and minted once (ensureReferralCode, unique index on users.referral_code).
+    const shareLink = `https://www.try1second.com/r/${encodeURIComponent(code)}`;
+    const appLink = `https://play.google.com/store/apps/details?id=com.try1second.try1second&referrer=${encodeURIComponent(`ref=${code}`)}`;
+    res.json({ success: true, code, link: `https://www.try1second.com/?ref=${code}`, shareLink, appLink, referredCount: stats.referredCount, referredByCode: stats.referredByCode, points });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'referral_unavailable' });
   }

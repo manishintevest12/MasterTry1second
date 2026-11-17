@@ -54519,7 +54519,9 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
         const code = await ensureReferralCode2(user.id);
         const stats2 = await referralStats2(user.id);
         const points = await validPointBalance2(user.id);
-        res.json({ success: true, code, link: `https://www.try1second.com/?ref=${code}`, referredCount: stats2.referredCount, referredByCode: stats2.referredByCode, points });
+        const shareLink = `https://www.try1second.com/r/${encodeURIComponent(code)}`;
+        const appLink = `https://play.google.com/store/apps/details?id=com.try1second.try1second&referrer=${encodeURIComponent(`ref=${code}`)}`;
+        res.json({ success: true, code, link: `https://www.try1second.com/?ref=${code}`, shareLink, appLink, referredCount: stats2.referredCount, referredByCode: stats2.referredByCode, points });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "referral_unavailable" });
       }
@@ -64434,6 +64436,17 @@ async function createApp() {
     }
   }
   const { redirectRouteHandler: redirectRouteHandler2 } = await Promise.resolve().then(() => (init_interstitial(), interstitial_exports));
+  app.get(["/r/:code", "/refer/:code", "/r"], (req, res) => {
+    const raw = String(req.params?.code || req.query?.code || req.query?.ref || "").trim().toUpperCase();
+    const code = /^T1S-[A-Z0-9]{4,12}$/.test(raw) ? raw : "";
+    const ua = String(req.headers["user-agent"] || "");
+    const codeQuery = code ? encodeURIComponent(`ref=${code}`) : "";
+    const play = `https://play.google.com/store/apps/details?id=com.try1second.try1second${codeQuery ? `&referrer=${codeQuery}` : ""}`;
+    const site = `https://www.try1second.com/${code ? `?ref=${encodeURIComponent(code)}` : ""}`;
+    res.setHeader("Cache-Control", "no-store");
+    if (/android/i.test(ua)) return res.redirect(302, play);
+    return res.redirect(302, site);
+  });
   app.get("/redirect", redirectRouteHandler2);
   const dist = import_path9.default.resolve(__dirname2, "dist");
   {

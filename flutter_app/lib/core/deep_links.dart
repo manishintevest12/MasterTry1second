@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
+import 'package:play_install_referrer/play_install_referrer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_state.dart';
+import 'auth.dart';
 
 /// OWNER 29 Oct ("clicking any universal link or custom scheme must open the app
 /// directly in-app instead of redirecting to the external web browser"): ONE entry
@@ -92,7 +95,65 @@ class DeepLinks {
   }
 
   /// Parse one incoming link and put the user on the matching screen.
+  /// Storage key for a referral code that arrived before the person had an account.
+  static const String _pendingRefKey = 't1s.pending_ref';
+
+  /// Read the member code out of an invite link: /r/<code>, /refer/<code>, or any page carrying ?ref=<code>.
+  static String? referralCodeOf(Uri uri) {
+    final raw = (uri.queryParameters['ref'] ?? uri.queryParameters['code'] ?? '').trim();
+    final path = uri.pathSegments;
+    final fromPath = (path.isNotEmpty && (path.first == 'r' || path.first == 'refer') && path.length > 1)
+        ? path[1].trim()
+        : '';
+    final code = (fromPath.isNotEmpty ? fromPath : raw).toUpperCase();
+    return RegExp(r'^T1S-[A-Z0-9]{4,12}$').hasMatch(code) ? code : null;
+  }
+
+  /// Credit a stored invite code to whoever is signed in now (called after sign-in and on screen open).
+  static Future<void> claimPendingReferral() async {
+    final auth = AuthService.instance;
+    if (!auth.signedIn || auth.token == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final code = prefs.getString(_pendingRefKey);
+    if (code == null || code.isEmpty) return;
+    try {
+      await AppState.instance.api.referralApply(auth.token!, code);
+      await prefs.remove(_pendingRefKey);
+    } catch (_) {
+      // Already claimed on this account, or the offer is closed: either way the code is spent, not pending.
+      await prefs.remove(_pendingRefKey);
+    }
+  }
+
+  /// Read the Play install referrer once per install and keep the member code in it ("ref=T1S-XXXXXX").
+  /// A refusal (older device, no Play Services, already consumed) is not an error worth surfacing: the invite is
+  /// simply unknown, which is the same state as a direct install.
+  static Future<void> captureInstallReferral() async {
+    try {
+      final info = await PlayInstallReferrer.installReferrer;
+      final raw = info.installReferrer;
+      if (raw == null || raw.isEmpty) return;
+      final code = referralCodeOf(Uri.parse(uriDecodeQuery(raw)));
+      if (code != null) await _rememberReferral(code);
+    } catch (_) { /* no referrer: nothing to claim */ }
+  }
+
+  /// "ref=T1S-ABC123&utm_source=x" is not a URI on its own, so dress it as one before reading ?ref.
+  static String uriDecodeQuery(String rawReferrer) => '/?$rawReferrer';
+
+  static Future<void> _rememberReferral(String code) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingRefKey, code);
+    await claimPendingReferral();
+  }
+
   static Future<void> handle(Uri uri) async {
+    // An invite link credits the sharer even if the app opens on the home tab, so the code is taken first.
+    final ref = referralCodeOf(uri);
+    if (ref != null) { await _rememberReferral(ref); }
+    // /r/<code> is an invite, not a screen: the code is kept and the app stays where it is (home on a cold start).
+    final firstSeg = uri.pathSegments.isNotEmpty ? uri.pathSegments.first.toLowerCase() : '';
+    if (firstSeg == 'r' || firstSeg == 'refer') return;
     if (!_isAppUri(uri)) return;
     final now = DateTime.now();
     final key = uri.toString();

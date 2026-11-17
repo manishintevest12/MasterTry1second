@@ -260,6 +260,27 @@ export async function createApp(): Promise<express.Express> {
   // countdown + AdSense above the fold). Mounted BEFORE the static SPA so the
   // SPA fallback never swallows it.
   const { redirectRouteHandler } = await import('./redirect/interstitial');
+  /**
+   * REFERRAL LANDING (owner 17 Nov: "user app pr redirect kare, abhi sirf website pr redirect karta hai").
+   *
+   * /r/<code> is the link a member shares. On Android the verified App Link intercepts it before the browser ever
+   * sees it, so the app opens with the code and the invite is applied to the account that signs in there. This
+   * handler is what a phone WITHOUT the app (or a desktop, or an iPhone) gets - and for Android that is the Play
+   * Store listing with the member's code as the install referrer, instead of the website.
+   */
+  app.get(['/r/:code', '/refer/:code', '/r'], (req: any, res: any) => {
+    const raw = String(req.params?.code || req.query?.code || req.query?.ref || '').trim().toUpperCase();
+    const code = /^T1S-[A-Z0-9]{4,12}$/.test(raw) ? raw : '';
+    const ua = String(req.headers['user-agent'] || '');
+    const codeQuery = code ? encodeURIComponent(`ref=${code}`) : '';
+    const play = `https://play.google.com/store/apps/details?id=com.try1second.try1second${codeQuery ? `&referrer=${codeQuery}` : ''}`;
+    const site = `https://www.try1second.com/${code ? `?ref=${encodeURIComponent(code)}` : ''}`;
+    res.setHeader('Cache-Control', 'no-store');
+    if (/android/i.test(ua)) return res.redirect(302, play);
+    // iOS has no build yet, and a desktop invite is best served by the site itself (it keeps ?ref for attribution).
+    return res.redirect(302, site);
+  });
+
   app.get('/redirect', redirectRouteHandler);
 
   // Production static frontend (vite build output) — KVM4 serves `dist/`

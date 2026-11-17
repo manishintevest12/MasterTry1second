@@ -5,7 +5,7 @@ description: >-
   in India. Every price comes from the real Try1Second engine; the app
   never invents data.
 publish_to: "none"
-version: 1.8.90+97
+version: 1.8.91+98
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -36,6 +36,7 @@ dependencies:
   # webview hand that intent to the OS so the partner's installed app opens, and the
   # browser_fallback_url keeps the paid link as the fallback when it is not installed.
   android_intent_plus: ^5.3.0
+  play_install_referrer: ^0.6.0
 
 dev_dependencies:
   flutter_test:

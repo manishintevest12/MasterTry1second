@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../core/api.dart';
 import '../../core/app_state.dart';
 import '../../core/auth.dart';
+import '../../core/deep_links.dart';
 import '../../core/theme.dart';
 import '../../core/rewards_wallet.dart';
 import '../widgets/kit.dart';
@@ -646,6 +647,10 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
   final _nameCtl = TextEditingController();
   final _emailCtl = TextEditingController();
   String? _refCode;
+  /// The link the server minted for THIS member (/r/<code>). Null until the code is known, and never faked:
+  /// the old fallback was a hardcoded "T1S-WELCOME", so every member shared the same code and every friend
+  /// credited the same account (owner 17 Nov: "id unique hona chaiye hr user ka").
+  String? _shareLink;
 
   @override
   void initState() {
@@ -676,14 +681,25 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
     if (!auth.signedIn || auth.token == null) return;
     try {
       final me = await AppState.instance.api.referralMe(auth.token!);
-      if (mounted) setState(() => _refCode = me?['code'] as String?);
+      if (mounted) setState(() {
+        _refCode = me?['code'] as String?;
+        _shareLink = (me?['shareLink'] as String?) ?? (me?['link'] as String?);
+      });
+      // A code that arrived through a deep link before sign-in is claimed as soon as there is an account to
+      // credit it to, so an invite is never silently lost.
+      await DeepLinks.claimPendingReferral();
     } catch (_) {/* honest: link falls back to the plain site URL */}
   }
 
-  String get _referralLink =>
-      'https://www.try1second.com/?ref=${_refCode ?? "T1S-WELCOME"}';
+  /// The member's OWN link, or an honest empty string when there is no code yet (sign-in pending): the invite
+  /// button then asks them to sign in instead of handing out somebody else's code.
+  String get _referralLink => _shareLink ?? (_refCode == null ? '' : 'https://www.try1second.com/r/$_refCode');
 
   void _sendInvite() {
+    if (_referralLink.isEmpty) {
+      toast(context, 'Sign in to get your own referral link', error: true);
+      return;
+    }
     final name = _nameCtl.text.trim();
     if (name.isEmpty) {
       toast(context, 'Enter a friend name first', error: true);
@@ -696,6 +712,10 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
   }
 
   Future<void> _copyLink() async {
+    if (_referralLink.isEmpty) {
+      toast(context, 'Sign in to get your own referral link', error: true);
+      return;
+    }
     await Clipboard.setData(ClipboardData(text: _referralLink));
     if (mounted) setState(() => _copied = true);
     Future.delayed(const Duration(seconds: 2), () {
@@ -706,7 +726,7 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
   Future<void> _shareWhatsApp() async {
     final text =
         'Compare prices in 1 second across Amazon, Blinkit, Zomato, Cleartrip & more! '
-        'Sign up with my link to get verified lowest deals: $_referralLink';
+        'Get the app and sign up with my code ${_refCode ?? ''} to get verified lowest deals: $_referralLink';
     await Share.share(text);
   }
 
@@ -808,7 +828,9 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                   decoration: BoxDecoration(color: Colors.grey.shade50, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(12)),
-                  child: Text(_referralLink, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 10.5, w: FontWeight.w600, color: T1SColors.slate800)),
+                  child: Text(_referralLink.isEmpty ? 'Sign in to get your own referral link' : _referralLink,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: tx(context, 10.5, w: FontWeight.w600, color: _referralLink.isEmpty ? T1SColors.slate400 : T1SColors.slate800)),
                 ),
               ),
               const SizedBox(width: 8),
