@@ -13,9 +13,9 @@
  * This is a very short replay window (T1S_LIVE_REPLAY_MS, default 600ms) keyed by the caller's own poll
  * chain (ip + vertical + query + city + pin + dates), and it only ever stores a COMPLETE answer:
  *  - a gated-empty answer is never stored, so a replay can never show an empty page,
- *  - a still-scanning (pendingRefresh) answer IS stored: the burst poll then gets the same rows it
- *    just got, still flagged pendingRefresh, so it keeps polling exactly as before and can lose at
- *    most the same 600ms window the client's own 2s poll interval already tolerates,
+ *  - a still-scanning (pendingRefresh) answer is NOT stored (owner 18 Nov): the burst poll then joins
+ *    the same in-flight pipeline and gets its newest snapshot instead of a frozen partial. Replaying a
+ *    partial is the same rule the 15s repeat cache now follows, one layer down,
  *  - a replay keeps the stored rows/notice flags and only refreshes latencyMs, so what the client sees
  *    is exactly the answer the previous poll got, not a different one.
  * Set T1S_LIVE_REPLAY_MS=0 to disable it entirely.
@@ -53,6 +53,11 @@ export function readLiveReplay(key: string): { payload: any } | null {
 export function writeLiveReplay(key: string, payload: any): boolean {
   if (replayTtlMs() <= 0 || !key) return false;
   if (!payload || !Array.isArray(payload.results) || payload.results.length === 0) return false;
+  // The documented rule, enforced (owner 18 Nov): a still-scanning answer is NEVER replayed. The code
+  // was storing one despite the note above, so a burst poll inside the 600ms window got the frozen
+  // partial back instead of the newest snapshot the pipeline had already produced. Small window, same
+  // class of bug as the repeat cache - a pending answer is work in progress, not an answer.
+  if (payload.pendingRefresh === true) return false;
   if (store.size >= MAX_ENTRIES) {
     // oldest-first prune keeps this map tiny and never grows without bound
     const oldest = [...store.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, Math.ceil(MAX_ENTRIES / 4));

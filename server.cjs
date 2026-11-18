@@ -39691,6 +39691,7 @@ function liveInputKey(input) {
 function cacheable(res) {
   if (!res) return false;
   if (!(res.results || []).length) return false;
+  if (res.state?.pendingRefresh === true) return false;
   const served = String(res.state?.servedFrom || "");
   return served !== "unavailable" && served !== "validation";
 }
@@ -43551,6 +43552,7 @@ function readLiveReplay(key) {
 function writeLiveReplay(key, payload) {
   if (replayTtlMs() <= 0 || !key) return false;
   if (!payload || !Array.isArray(payload.results) || payload.results.length === 0) return false;
+  if (payload.pendingRefresh === true) return false;
   if (store5.size >= MAX_ENTRIES3) {
     const oldest = [...store5.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, Math.ceil(MAX_ENTRIES3 / 4));
     for (const [k] of oldest) store5.delete(k);

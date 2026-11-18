@@ -12,8 +12,20 @@ export function pollDecision(
   pollCount: number,
   maxPolls: number,
   rows: number,
-): { keepPolling: boolean; exhaustedWithoutRows: boolean; keepPendingFlag: boolean } {
-  const keepPolling = pendingRefresh && pollCount < maxPolls;
+  /** Rows the previous poll of this chain carried. -1 = unknown, so no growth is assumed. */
+  prevRows = -1,
+): { keepPolling: boolean; exhaustedWithoutRows: boolean; keepPendingFlag: boolean; nextPollCount: number } {
+  // OWNER 18 Nov (flights: "2-3 baar search krne pr results sahi aata hai"): a chain that is still
+  // ADDING rows must never be cut by the poll budget. The budget exists only to stop a chain that
+  // stopped producing; while the answer keeps growing it resets, and the server's own 45s
+  // "still working" window is what ends a chain that really has nothing more to give.
+  const grew = prevRows >= 0 && rows > prevRows;
+  const keepPolling = pendingRefresh && (grew || pollCount < maxPolls);
   const exhaustedWithoutRows = pendingRefresh && !keepPolling && rows === 0;
-  return { keepPolling, exhaustedWithoutRows, keepPendingFlag: pendingRefresh && !exhaustedWithoutRows };
+  return {
+    keepPolling,
+    exhaustedWithoutRows,
+    keepPendingFlag: pendingRefresh && !exhaustedWithoutRows,
+    nextPollCount: grew ? 1 : pollCount + 1,
+  };
 }

@@ -23,13 +23,13 @@ test('an empty answer is never stored (no replayed empty page)', () => {
   assert.equal(readLiveReplay('k1'), null);
 });
 
-test('a still-scanning answer is replayable but keeps its pending flag, so polling continues', () => {
+// OWNER 18 Nov ("flight mai 2-3 baar search krne pr results sahi aata hai"): a still-scanning answer
+// is work in progress, never an answer. Replaying one (even inside this 600ms burst window) hands the
+// poll frozen rows instead of the newest snapshot the pipeline already had.
+test('a still-scanning answer is never stored, so the burst poll sees the newest snapshot', () => {
   _resetLiveReplay();
-  assert.equal(writeLiveReplay('k2', { results: [{ id: 'a' }], pendingRefresh: true }), true);
-  const hit = readLiveReplay('k2');
-  assert.ok(hit);
-  assert.equal(hit!.payload.pendingRefresh, true, 'the client must still be told rows are landing');
-  assert.equal(hit!.payload.results.length, 1);
+  assert.equal(writeLiveReplay('k2', { results: [{ id: 'a' }], pendingRefresh: true }), false);
+  assert.equal(readLiveReplay('k2'), null);
 });
 
 test('a different poll chain is never answered from another one', () => {

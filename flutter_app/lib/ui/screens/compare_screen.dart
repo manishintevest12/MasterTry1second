@@ -63,6 +63,9 @@ class _CompareScreenState extends State<CompareScreen> {
   // is fully retired: the SearchProgress panel now owns the whole acquisition.
   Timer? _bgPoll;
   int _bgPollCount = 0;
+  /// Rows the previous poll of this chain carried: a chain that is still adding
+  /// sellers resets its poll budget instead of stopping mid-sweep (owner 18 Nov).
+  int _lastPollRows = 0;
   /// Panel gate (owner 28 Oct): mirrors the website's per-vertical
   /// `pendingRefresh` handling so a finished/exhausted chain can never leave
   /// "Checking Yatra… 8 of 9" on screen with no rows below it.
@@ -356,6 +359,7 @@ class _CompareScreenState extends State<CompareScreen> {
     if (!settledSameIntent) _settledSig = sig;
     if (!auto) {
       _bgPollCount = 0; // fresh user search: full poll budget again
+      _lastPollRows = 0; // ...and a fresh growth baseline
       _settleDone = false; // ...and a fresh settle read if the chain ends empty
       // Owner 23 Oct (image-1 request): a NEW search is a new intent — drop
       // the previous search's rows so the engaging full-screen WarpLoader
@@ -424,13 +428,15 @@ class _CompareScreenState extends State<CompareScreen> {
         pollCount: _bgPollCount,
         maxPolls: kSearchMaxPolls,
         rows: _res?.items.length ?? 0,
+        prevRows: _lastPollRows,
         settled: _settleDone,
       );
+      _lastPollRows = _res?.items.length ?? 0;
       _pendingFlag = decision.keepPendingFlag;
       if (mounted && decision.keepPolling) {
         _bgPoll = Timer(const Duration(milliseconds: 2000), () {
           if (!mounted) return;
-          _bgPollCount += 1;
+          _bgPollCount = decision.nextPollCount;
           // force: the partial progressive rows are STILL in the fresh-TTL
           // client cache — without force, live() would hand back the same
           // quote-less rows forever and every Book button would stay dead.

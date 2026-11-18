@@ -23,6 +23,7 @@ class PollDecision {
     required this.exhaustedWithoutRows,
     required this.keepPendingFlag,
     required this.settle,
+    required this.nextPollCount,
   });
 
   /// Another forced poll should be scheduled.
@@ -41,6 +42,11 @@ class PollDecision {
   /// back (which is what used to "fix" it).
   final bool settle;
 
+  /// The value the caller should store as its poll count for the next round.
+  /// A poll that ADDED rows resets it, so a chain that is still filling in is
+  /// never cut by the budget (owner 18 Nov: flights needed 2-3 presses).
+  final int nextPollCount;
+
   @override
   String toString() =>
       'PollDecision(keepPolling: $keepPolling, exhaustedWithoutRows: $exhaustedWithoutRows, '
@@ -55,9 +61,16 @@ PollDecision pollDecision({
   required int pollCount,
   required int maxPolls,
   required int rows,
+  /// Rows the previous poll of this chain carried. -1 = unknown, so no growth is assumed.
+  int prevRows = -1,
   bool settled = false,
 }) {
-  final keepPolling = pendingRefresh && pollCount < maxPolls;
+  // OWNER 18 Nov ("flight mai 2-3 baar search krne pr results sahi aata hai"): a chain that keeps
+  // ADDING rows must not be cut by the poll budget - the budget only stops a chain that stopped
+  // producing, and the server's own 45s "still working" window ends the rest (web parity:
+  // src/lib/searchPolling.ts).
+  final grew = prevRows >= 0 && rows > prevRows;
+  final keepPolling = pendingRefresh && (grew || pollCount < maxPolls);
   final exhaustedWithoutRows = pendingRefresh && !keepPolling && rows == 0;
   // The flag survives ONLY while another poll is actually coming. That is the
   // one rule that makes a frozen panel impossible: no scheduled poll means no
@@ -68,5 +81,6 @@ PollDecision pollDecision({
     exhaustedWithoutRows: exhaustedWithoutRows,
     keepPendingFlag: keepPendingFlag,
     settle: exhaustedWithoutRows && !settled,
+    nextPollCount: grew ? 1 : pollCount + 1,
   );
 }

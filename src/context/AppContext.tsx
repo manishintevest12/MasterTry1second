@@ -894,6 +894,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // MAX_PENDING_POLLS the honest "no matches" state is allowed to show.
   const pollCountRef = useRef(0);
   const repollingRef = useRef(false);
+  // Rows the previous poll of THIS chain carried, so a chain that is still adding sellers is
+  // never cut by the poll budget (owner 18 Nov, flights "2-3 baar").
+  const lastPollRowsRef = useRef(0);
   // Owner 28 Oct (every vertical like hotels): slow verticals (bus/food/movies) finish their
   // pipeline at 3-4s, so a 2s gap burned a whole cycle on an empty first answer. A 1.2s
   // cadence reaches the warmed cache sooner without extra load (the pipeline is shared).
@@ -901,7 +904,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // (~12s) released the chain before the slow verticals finished - movies measured BookMyShow at
   // 0s but District/TicketNew/Cinepolis only at 28s+, so they were often missing until the owner
   // pressed Search again. 20 polls keeps one chain spanning ~24s like the app's kSearchMaxPolls.
-  const MAX_PENDING_POLLS = 20; // ~24s of background acquisition before we stop promising results
+  // OWNER 18 Nov ("flight mai 2-3 baar search krne pr results sahi aata hai, kabhi ek baar mai hi aa
+  // jata hai"): flights land priced rows 15-28s in from a cold start, and production measured 40s+ for
+  // a fully cold sweep. 20 polls (~24s) ended the chain in the middle of that, so the finished answer
+  // was only picked up by the next press - the app has always allowed 40. Same number here, and a poll
+  // that ADDS rows resets the count (see searchPolling.ts), so the budget only ever stops a chain that
+  // stopped producing, never one that is still filling in.
+  const MAX_PENDING_POLLS = 40; // up to ~48s of background acquisition, matching the app
   // Owner 28 Oct ("loader ke baad 'No matching options found' nahi aana chahiye, result 100%"):
   // a search that settles on zero rows is not the end of the story - the pipeline often lands
   // in cache a few seconds later. Instead of leaving the user on a dead page, quietly re-ask
@@ -983,7 +992,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setIsScrapingLive(true);
     // Fresh search = fresh poll budget. Only the chained poll (no explicit query)
     // keeps counting; a new user search starts from zero again.
-    if (overrideQuery !== undefined) { pollCountRef.current = 0; repollingRef.current = false; }
+    if (overrideQuery !== undefined) { pollCountRef.current = 0; repollingRef.current = false; lastPollRowsRef.current = 0; }
     // Mobile UX: a user-initiated search (header buttons, voice, quick picks, AI assistant)
     // auto-scrolls to the results section so the user never has to hunt for results on a
     // small screen. Tab-switch/background triggers (no explicit query) never scroll.
@@ -1092,6 +1101,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           locality: targetLoc.locality,
           coordinates: targetLoc.coordinates,
           ...(dateSensitive ? { travelDates: travel } : {}),
+          // OWNER 18 Nov: the app has always sent `settle` on a user press (the server then waits on
+          // the SAME in-flight pipeline instead of handing back whatever landed in 2s). The website
+          // never did, which is why the web needed more presses than the app for the same route.
+          ...(userInitiated ? { settle: true } : {}),
         }),
       });
 
@@ -1105,7 +1118,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // chain that is actually still polling; an exhausted chain releases the panel to the
         // honest empty state (which offers a retry) instead of hanging.
         const rowsNow = (data.results && data.results.length) || 0;
-        const poll = pollDecision(!!data.pendingRefresh, pollCountRef.current, MAX_PENDING_POLLS, rowsNow);
+        const poll = pollDecision(!!data.pendingRefresh, pollCountRef.current, MAX_PENDING_POLLS, rowsNow, lastPollRowsRef.current);
+        lastPollRowsRef.current = rowsNow;
         const morePolls = poll.keepPolling;
         // Always record which websites were asked and what each one said (even when nothing came back).
         setSourcesReport((prev) => ({
@@ -1131,7 +1145,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // Keep acquiring continuous for the whole chain (bounded below) and let the
         // feed show one steady "getting the best deal" panel instead.
         if (morePolls) {
-          pollCountRef.current += 1;
+          pollCountRef.current = poll.nextPollCount;
           repollingRef.current = true;
           setTimeout(() => {
             repollingRef.current = false;
@@ -1188,6 +1202,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           });
           return;
         }
+      } else if (repollingRef.current && pollCountRef.current < MAX_PENDING_POLLS) {
+        // OWNER 18 Nov: a poll the server refused (429 queue_full) or the edge dropped (5xx / reset)
+        // used to end the chain silently, leaving the partial rows on screen with no top-up - the user
+        // then pressed Search again and the press "worked". The chain now survives one bad poll, with
+        // the same bounded budget as a normal poll.
+        pollCountRef.current += 1;
+        repollingRef.current = true;
+        setTimeout(() => {
+          repollingRef.current = false;
+          void triggerLiveLocationScrape();
+        }, 1500);
       }
     } catch {
       // offline or fast fallback

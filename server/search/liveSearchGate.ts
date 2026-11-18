@@ -53,10 +53,26 @@ export function liveInputKey(input: SearchInput): string {
   ].join('|');
 }
 
-/** Only rows make a response worth replaying; an empty scan is never frozen. */
+/**
+ * Only a FINISHED answer with rows is worth replaying; an empty scan is never frozen.
+ *
+ * OWNER 18 Nov ("flight mai 2-3 baar search krne pr results sahi aata hai, kabhi ek baar mai hi aa
+ * jata hai"): a still-scanning answer used to be replayable too, so the FIRST poll after a partial
+ * answer was served from this cache for the full 15s window - the exact same rows, byte for byte,
+ * while the pipeline behind it kept finding more sellers. Every poll in that window therefore grew
+ * nothing, the client's chain ended on the frozen partial, and the only way to see the finished set
+ * was to press Search again (the press happened to land after the 15s and read the settled cache).
+ * That is the whole flake: same search, sometimes one press, sometimes three.
+ *
+ * A pending answer is work in progress, not an answer, so it is never cached here. The next poll
+ * joins the SAME in-flight pipeline (the governor dedupes by key) and gets its newest snapshot -
+ * rows grow poll by poll - and once the pipeline settles, its finished answer is cached by the
+ * search layer and served to the very next poll without any extra acquisition.
+ */
 function cacheable(res: SearchResponse | null): boolean {
   if (!res) return false;
   if (!(res.results || []).length) return false;
+  if ((res.state as any)?.pendingRefresh === true) return false;
   const served = String((res.state as any)?.servedFrom || '');
   return served !== 'unavailable' && served !== 'validation';
 }
