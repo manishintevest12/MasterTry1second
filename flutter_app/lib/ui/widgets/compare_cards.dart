@@ -1475,6 +1475,11 @@ class GroupCard extends StatelessWidget {
                           linksRaw: it.spec('theatre links', 'theatre_links'),
                           cheapestRaw: it.spec('cheapest show', 'cheapest_show'),
                           bookPlatform: it.spec('book platform', 'book_platform'),
+                          // OWNER 18 Nov: the CHEAPEST line must never contradict BEST PRICE ("₹100 best
+                          // price" vs "cheapest ₹180"). The group's own best price + seller come along so
+                          // the line can agree with it and name who owns that price.
+                          groupBestPrice: g.best.price,
+                          groupBestSeller: sellerName,
                           // Owner 28 Oct: tapping the cheapest show opens THAT show's seat
                           // map through the tracked redirect (never straight to the raw
                           // platform URL, so /api/out still records the click).
@@ -1700,6 +1705,10 @@ class _MovieShowtimes extends StatelessWidget {
   final String linksRaw;
   /// specs['cheapest show'] = {"theatre","time","seatClass","price","url","platform"}
   final String cheapestRaw;
+  /// Group-level best price and the seller that owns it, so the cheapest line can never print a
+  /// HIGHER number than the price the card advertises (owner 18 Nov).
+  final double groupBestPrice;
+  final String groupBestSeller;
   /// specs['book platform'] - who owns the seat link ('TicketNew' / 'District').
   final String bookPlatform;
   final void Function(String url)? onOpenSeats;
@@ -1707,17 +1716,70 @@ class _MovieShowtimes extends StatelessWidget {
     required this.raw,
     this.linksRaw = '',
     this.cheapestRaw = '',
+    this.groupBestPrice = 0,
+    this.groupBestSeller = '',
     this.bookPlatform = '',
     this.onOpenSeats,
   });
 
+  /// Showtimes parsed from specs (all rows we printed), used to name the theatre that owns a price.
+  List _shows() {
+    try {
+      final v = jsonDecode(raw.isEmpty ? '[]' : raw);
+      return v is List ? v : const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// The cheapest price the user can actually get, with the theatre named wherever we know it.
+  ///
+  /// OWNER 18 Nov ("best price 100 bolta hai, cheapest 180 bata raha hai … uske saamne theatre ka naam v ho"):
+  /// the card advertised the provider's best price while this line showed the gateway's own seat minimum, so
+  /// the two disagreed and the number the user clicked had no cinema next to it. The line now always agrees
+  /// with the price the card shows, names the theatre when a printed show carries exactly that price, and
+  /// otherwise says plainly who is selling it (never a theatre we cannot prove).
   Map<String, dynamic>? get _cheapest {
+    Map<String, dynamic>? seat;
     try {
       final v = jsonDecode(cheapestRaw.isEmpty ? 'null' : cheapestRaw);
-      return v is Map ? Map<String, dynamic>.from(v) : null;
+      seat = v is Map ? Map<String, dynamic>.from(v) : null;
     } catch (_) {
-      return null;
+      seat = null;
     }
+    final best = groupBestPrice;
+    if (best <= 0) return seat;
+    final seatPrice = double.tryParse('${seat?['price'] ?? ''}') ?? 0;
+    if (seat != null && seatPrice > 0 && seatPrice <= best) return seat; // seat level is already the cheapest
+    // A printed show at exactly the advertised price owns the theatre name for it.
+    for (final sh in _shows()) {
+      if (sh is! Map) continue;
+      final areas = sh['areas'];
+      if (areas is! List) continue;
+      for (final a in areas) {
+        if (a is! Map) continue;
+        final p = double.tryParse('${a['price'] ?? ''}') ?? 0;
+        if (p > 0 && p <= best) {
+          return {
+            'price': p,
+            'theatre': '${sh['theatre'] ?? ''}',
+            'time': sh['time'],
+            'seatClass': '${a['label'] ?? ''}',
+            'platform': bookPlatform,
+            'url': '${seat?['url'] ?? ''}',
+          };
+        }
+      }
+    }
+    // No printed show at that price: name the seller honestly instead of a theatre we cannot prove.
+    return {
+      'price': best,
+      'theatre': groupBestSeller,
+      'time': '',
+      'seatClass': 'listing price',
+      'platform': groupBestSeller,
+      'url': '${seat?['url'] ?? ''}',
+    };
   }
 
   List _links() {

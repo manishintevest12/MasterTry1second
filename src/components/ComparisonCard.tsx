@@ -91,7 +91,7 @@ interface ComparisonCardProps {
 /** Movies (owner 22 Oct): show TIME + SEAT-CLASS-wise real prices on the card.
  *  specs.showtimes = [{time, theatre, areas:[{label, price}]}] from District/TicketNew live sessions.
  *  District publishes ISO times ("2026-10-23T06:30") — displayed as 12h clock; raw text passes through unchanged. */
-function MovieShowtimes({ raw, linksRaw, cheapestRaw }: { raw: unknown; linksRaw?: unknown; cheapestRaw?: unknown }) {
+function MovieShowtimes({ raw, linksRaw, cheapestRaw, groupBestPrice, groupBestSeller }: { raw: unknown; linksRaw?: unknown; cheapestRaw?: unknown; groupBestPrice?: number; groupBestSeller?: string }) {
   let shows: any[] = [];
   try { const v = JSON.parse(String(raw || '[]')); if (Array.isArray(v)) shows = v; } catch { return null; }
   if (!shows.length) return null;
@@ -99,8 +99,27 @@ function MovieShowtimes({ raw, linksRaw, cheapestRaw }: { raw: unknown; linksRaw
   // the user books the cinema whose price they just read instead of hunting through a list.
   let links: Array<{ theatre?: string; time?: string; url?: string }> = [];
   try { const v = JSON.parse(String(linksRaw || '[]')); if (Array.isArray(v)) links = v; } catch { links = []; }
-  let cheapest: { theatre?: string; time?: string; seatClass?: string; price?: number; url?: string; platform?: string } | null = null;
-  try { const v = JSON.parse(String(cheapestRaw || 'null')); if (v && typeof v === 'object') cheapest = v; } catch { cheapest = null; }
+  let seatCheapest: { theatre?: string; time?: string; seatClass?: string; price?: number; url?: string; platform?: string } | null = null;
+  try { const v = JSON.parse(String(cheapestRaw || 'null')); if (v && typeof v === 'object') seatCheapest = v; } catch { seatCheapest = null; }
+  // OWNER 18 Nov ("best price 100 bolta hai, cheapest 180 bata raha hai … theatre ka naam v ho"): the line
+  // advertised the card's best price while this one showed a higher seat minimum from another feed, and the
+  // price the user clicked carried no cinema name. It now agrees with the advertised price, names the theatre
+  // when a printed show carries exactly that price, and otherwise names the seller (never an unproven hall).
+  const best = Number(groupBestPrice || 0);
+  let cheapest = seatCheapest;
+  if (best > 0 && (!seatCheapest || Number(seatCheapest.price || 0) > best)) {
+    let picked: any = null;
+    for (const sh of shows) {
+      for (const a of (Array.isArray(sh?.areas) ? sh.areas : [])) {
+        const p = Number(a?.price || 0);
+        if (p > 0 && p <= best) { picked = { theatre: sh.theatre, time: sh.time, seatClass: a.label, price: p }; break; }
+      }
+      if (picked) break;
+    }
+    cheapest = picked
+      ? { ...picked, platform: seatCheapest?.platform, url: seatCheapest?.url }
+      : { price: best, theatre: String(groupBestSeller || ''), time: '', seatClass: 'listing price', platform: groupBestSeller, url: seatCheapest?.url };
+  }
   const linkFor = (sh: any) =>
     (links.find((l) => String(l.theatre || '') === String(sh.theatre || '') && String(l.time || '') === String(sh.time || ''))?.url || '')
     || (cheapest && String(cheapest.theatre) === String(sh.theatre) && String(cheapest.time) === String(sh.time) ? String(cheapest.url || '') : '');
@@ -458,6 +477,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     raw={(item.specs as any).showtimes}
                     linksRaw={(item.specs as any)['theatre links'] || (item.specs as any).theatre_links}
                     cheapestRaw={(item.specs as any)['cheapest show'] || (item.specs as any).cheapest_show}
+                    groupBestPrice={Number(((item as any).prices as any)?.finalPayablePrice || ((item as any).prices as any)?.effectivePrice || ((item as any).prices as any)?.basePrice || 0)}
+                    groupBestSeller={String((item as any).seller || '')}
                   />
                 )}
 
@@ -600,6 +621,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     raw={(item.specs as any).showtimes}
                     linksRaw={(item.specs as any)['theatre links'] || (item.specs as any).theatre_links}
                     cheapestRaw={(item.specs as any)['cheapest show'] || (item.specs as any).cheapest_show}
+                    groupBestPrice={Number(((item as any).prices as any)?.finalPayablePrice || ((item as any).prices as any)?.effectivePrice || ((item as any).prices as any)?.basePrice || 0)}
+                    groupBestSeller={String((item as any).seller || '')}
                   />
                 )}
 
