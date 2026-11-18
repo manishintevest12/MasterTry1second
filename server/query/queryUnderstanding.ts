@@ -8,6 +8,7 @@
 import type { ParsedQuery, VerticalId } from '../types';
 import { ALL_VERTICALS } from '../types';
 import { settings } from '../common/settings';
+import { MASTER_JSON_CONTRACT, MASTER_MODEL, MASTER_SYSTEM_PROMPT, MASTER_TEMPERATURE } from '../ai/masterPrompt';
 
 const VERTICAL_KEYWORDS: Record<VerticalId, string[]> = {
   food: ['pizza', 'biryani', 'order food', 'swiggy', 'zomato', 'restaurant', 'dosa', 'burger', 'meal', 'thali', 'combo', 'sandwich', 'pasta'],
@@ -185,11 +186,19 @@ export async function aiAssistedUnderstanding(query: ParsedQuery): Promise<Parse
   try {
     const { GoogleGenAI } = await import('@google/genai');
     const ai = new GoogleGenAI({ apiKey: settings.geminiApiKey });
-    const prompt = `Classify this Indian shopping/travel search query. Return strict JSON only:
-{"vertical":"one of food|grocery|ecommerce|flights|hotels|cab|loans|insurance|movies|bus|creditcards|coupons|giftcards|banking","entity":"product/service name","city":"city if mentioned","pincode":"6-digit pincode if mentioned","dates":{"depart":"YYYY-MM-DD if mentioned"},"attributes":{"key":"value only for explicit configuration mentions"}}
-Rules: Do NOT include prices, stock, or availability. Do NOT guess unstated fields.
-Query: ${query.rawQuery}`;
-    const res = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+    // OWNER 18 Nov: this call runs on the master system prompt (server/ai/masterPrompt.ts) at
+    // temperature 0.1 with a strict JSON contract, so a typo or a Hinglish phrasing is understood the same
+    // way every time. The prompt is the system instruction; the question itself is the user turn.
+    const res = await ai.models.generateContent({
+      model: MASTER_MODEL,
+      contents: [{ role: 'user', parts: [{ text: `Query: ${String(query.rawQuery).slice(0, 300)}\n\n${MASTER_JSON_CONTRACT}` }] }],
+      config: {
+        systemInstruction: MASTER_SYSTEM_PROMPT,
+        temperature: MASTER_TEMPERATURE,
+        responseMimeType: 'application/json',
+        maxOutputTokens: 400,
+      },
+    });
     const text = res.text || '';
     const json = JSON.parse(text.replace(/```json|```/g, '').trim());
     const refined: ParsedQuery = { ...query };

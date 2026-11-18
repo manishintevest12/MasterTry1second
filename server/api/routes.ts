@@ -68,6 +68,8 @@ import { loadSourcesFromDb } from '../sources/registry';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, normalizeTypedProductQuery } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows } from '../lens/assistantAnswer';
+import { parseRequestedQuantity } from '../lens/quantityIntent';
+import { aiRouteQuestion, mergeAiIntent } from '../lens/assistantAi';
 
 import {
   classifyFollowUp, readSubject, shapeFollowUpAnswer, subjectFromAnswer, writeSubject,
@@ -1048,6 +1050,15 @@ apiRouter.post('/search', async (req, res) => {
   };
   if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   if (!input.query?.trim()) return res.status(400).json({ success: false, error: 'A search query is required.' });
+  // OWNER 18 Nov (master prompt section 1): a typo must never break the search. The lens path already
+  // repairs misspelled tokens before asking the sources; the FEED did not, so "amul buter" or "aata"
+  // reached Blinkit/Zepto verbatim and came back empty. Only the product verticals are repaired, because
+  // there the vocabulary is brands/products; a travel query keeps every word ("indor" must stay "indor"
+  // for the flight resolver, never become "indigo"). The original text is echoed back, never hidden.
+  const feedSpelling = ['grocery', 'food', 'ecommerce'].includes(String(input.vertical))
+    ? fixSpelling(String(input.query))
+    : null;
+  if (feedSpelling?.corrected) input.query = feedSpelling.query;
   // OWNER RULE (27 Oct, "hr vertical ka results within 3 sec"): the pipeline budget
   // bounds acquisition, but a cold vertical can still spend extra time afterwards
   // (context build, ranking, image/lender enrichment). Measured: movies answered at
@@ -1272,7 +1283,16 @@ apiRouter.post('/search', async (req, res) => {
     returnDate: input.travelDates?.return,
   });
   const orderedResults = orderFlightRowsLast(gatedResponse.results as any[], String(input.vertical));
-  res.json({ success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== 'unavailable', ...gatedResponse, results: orderedResults });
+  res.json({
+    success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== 'unavailable',
+    ...gatedResponse,
+    results: orderedResults,
+    // Honest echo: what was typed, and what was searched when a typo was repaired. The UI can say
+    // "showing results for …" and never implies the user typed the corrected words.
+    ...(feedSpelling?.corrected
+      ? { originalQuery: feedSpelling.original, searchedAs: feedSpelling.query, spellingFixes: feedSpelling.fixes }
+      : {}),
+  });
 });
 
 
@@ -3409,9 +3429,17 @@ apiRouter.post('/notifications/read', authMiddleware, requireAuth, async (req, r
 });
 
 // ============ Home AI assistant: question (typed or spoken) -> vertical + query ============
-apiRouter.post('/assist/intent', (req, res) => {
+// OWNER 18 Nov: the master system prompt is wired in here. The rule-based interpreter answers first and
+// stays authoritative; only a question it could NOT place is handed to the AI assist, whose parameters are
+// validated before use (server/lens/assistantAi.ts). No key or no network simply means the rule-based
+// answer stands, so this endpoint can never fail because of the model.
+apiRouter.post('/assist/intent', async (req, res) => {
   const text = String(req.body?.text || '').slice(0, 300);
-  res.json({ success: true, ...interpretAssistantQuestion(text) });
+  const base = interpretAssistantQuestion(text);
+  if (base.understood && base.vertical) return res.json({ success: true, ...base, aiAssisted: false });
+  const ai = await aiRouteQuestion(text).catch(() => null);
+  if (!ai) return res.json({ success: true, ...base, aiAssisted: false });
+  res.json({ success: true, ...mergeAiIntent(base, ai), aiAssisted: true });
 });
 
 // ============ Home AI assistant: question -> REAL results in every vertical ============
@@ -3804,6 +3832,10 @@ apiRouter.post('/assist/answer', async (req, res) => {
         okRows: rows.length,
       }).catch(() => undefined);
     }
+    // OWNER 18 Nov (master prompt section 2): a stated size travels with the question, so the answer
+    // either shows that exact pack or apologises for it in the owner's words. Parsed here, from the raw
+    // question, so it cannot be lost while the query is cleaned for the search box.
+    const requestedQuantity = parseRequestedQuantity(text);
     const answer = shapeAssistantAnswer(
       fallbackVertical ? fallbackVertical : meta.vertical,
       meta.query,
@@ -3813,6 +3845,7 @@ apiRouter.post('/assist/answer', async (req, res) => {
         sourcesSucceeded,
         honestNotice,
         ...(meta.budget ? { budget: meta.budget } : {}),
+        ...(requestedQuantity ? { requestedQuantity } : {}),
         ...(fallbackVertical
           ? { honestNotice: `The ${meta.vertical === 'grocery' ? '10-minute grocery apps' : 'restaurant apps'} did not answer this time, so these are live prices from the shopping sites.` }
           : {}),

@@ -138,12 +138,23 @@ export interface SpellFix {
  * Repairs misspelled word tokens in a product query. Pure and synchronous so it can run
  * on the request's critical path: a typo must never cost the user a search round-trip.
  */
+/**
+ * Hinglish spellings the generic pass cannot fix because two vocabulary words sit one edit away
+ * ("aata" is distance 1 from both "atta" and "tata", so the ambiguity rule correctly refuses). These are
+ * explicit owner-side synonyms, not guesses: grocery apps list the English product name.
+ */
+const HINGLISH_ALIAS: Record<string, string> = {
+  aata: 'atta', aattha: 'atta', biriyani: 'biryani', tamatar: 'tomato',
+};
+
 export function fixSpelling(query: string): SpellFix {
   const original = String(query || '').trim();
   if (!original) return { query: original, original, corrected: false, fixes: [] };
   const fixes: Array<{ from: string; to: string }> = [];
   const out = original.split(/(\s+)/).map((chunk) => {
     if (!chunk.trim()) return chunk;
+    const alias = HINGLISH_ALIAS[chunk.toLowerCase()];
+    if (alias) { fixes.push({ from: chunk, to: alias }); return alias; }
     // Keep punctuation and joined things ("wh-1000xm5", "500g", "2l") untouched.
     if (!/^[A-Za-z]{4,}$/.test(chunk)) return chunk;
     const fixed = closestWord(chunk);

@@ -25,6 +25,8 @@
 import { interpretAssistantQuestion, type AssistantIntent, type AssistantVertical } from './assistantIntent';
 import { cleanCategoryQuery, detectCategoryVertical } from './verticalLexicon';
 import { normalizeAssistantQuestion } from './questionNormalizer';
+import { planByQuantity, quantityVerdict, rowQuantity, type Quantity } from './quantityIntent';
+import { exactPackUnavailable, ZERO_RESULT_GUIDANCE } from '../ai/masterPrompt';
 
 export interface AssistantAskContext {
   city?: string;
@@ -322,20 +324,32 @@ export function toAssistantRows(results: any[], limit = 6, opts: { diversify?: b
  * seller it actually saw; when there is nothing priced it says so instead of
  * inventing a number.
  */
-export function shapeAssistantAnswer(vertical: string | null, query: string, rows: AssistantRow[], opts: { pending?: boolean; sourcesSucceeded?: string[]; honestNotice?: string; budget?: number } = {}): { reply: string; results: AssistantRow[]; count: number } {
+export function shapeAssistantAnswer(vertical: string | null, query: string, rows: AssistantRow[], opts: { pending?: boolean; sourcesSucceeded?: string[]; honestNotice?: string; budget?: number; requestedQuantity?: Quantity | null } = {}): { reply: string; results: AssistantRow[]; count: number } {
   const label = verticalLabel(vertical);
-  const priced = rows.filter((r) => r.priceAvailable).sort((a, b) => a.price - b.price);
-  const best = priced[0];
   const sellers = new Set(rows.map((r) => r.provider).filter(Boolean));
   const sourceCount = Math.max(sellers.size, opts.sourcesSucceeded?.length || 0);
 
   if (!rows.length) {
+    // OWNER 18 Nov (master prompt section 4): never a bare "no results". Say what was searched, what can
+    // change, and where the user can run the search themselves.
     const base = `No live ${label} result for "${query}" came back in this pass.`;
     const tail = opts.pending
       ? ' The engine is still scanning and the prices drop in here automatically within a few seconds.'
-      : (opts.honestNotice || ' Try a shorter wording, or open the category to see the last verified prices.');
+      : ` ${opts.honestNotice || ZERO_RESULT_GUIDANCE}`;
     return { reply: base + tail, results: [], count: 0 };
   }
+
+  // OWNER 18 Nov (master prompt section 2, the critical rule): a stated size is binding. "10 kg atta" is
+  // answered by a 10 kg pack, or by an explicit apology plus labelled alternatives - never by a 1 kg pouch
+  // presented as the answer. planByQuantity splits them; the ORDER below keeps the requested size first.
+  const requested = opts.requestedQuantity || null;
+  const plan = requested ? planByQuantity(requested, rows.filter((r) => r.priceAvailable), exactPackUnavailable) : null;
+  const priced = plan
+    ? [...plan.exact, ...plan.alternates]
+    : rows.filter((r) => r.priceAvailable).sort((a, b) => a.price - b.price);
+  const best = priced[0];
+  const quantityNotice = plan?.notice || null;
+  const exactHit = Boolean(plan && plan.exact.length);
 
   if (!best) {
     return {
@@ -346,8 +360,16 @@ export function shapeAssistantAnswer(vertical: string | null, query: string, row
 
   // Honest spread: only between DIFFERENT sellers, and never between pack sizes of
   // one product (1kg atta vs 5kg atta is not a gap "across sites").
-  const distinctSellers = new Set(priced.map((r) => (r.provider || '').toLowerCase()).filter(Boolean));
-  const spread = priced.length > 1 && distinctSellers.size > 1 ? priced[priced.length - 1].price - best.price : 0;
+  // The comment above was the intent; this is the enforcement. A "spread" between a 1 kg pouch and a 10 kg
+  // bag is not a saving, it is a different product, so the spread is measured only across the SAME pack
+  // size (and only when no size was requested; a requested size confines it to that size anyway).
+  const bestSize = rowQuantity(best.title)?.base ?? null;
+  const comparable = requested
+    ? priced.filter((r) => plan?.exact.includes(r) || quantityVerdict(requested, r.title) === 'exact')
+    : priced.filter((r) => (bestSize === null ? true : rowQuantity(r.title)?.base === bestSize));
+  const spreadRows = comparable.length ? comparable : priced;
+  const distinctSellers = new Set(spreadRows.map((r) => (r.provider || '').toLowerCase()).filter(Boolean));
+  const spread = spreadRows.length > 1 && distinctSellers.size > 1 ? spreadRows[spreadRows.length - 1].price - best.price : 0;
   const spreadTxt = spread > 0 ? ` Spread across sites: ${money(spread, best.currency)}.` : '';
   // OWNER 10 Nov ("exact results, kisi v tarike se pooche"): when the question carried a budget
   // ("under 3000", "3000 se kam") the answer must say plainly whether the cheapest option fits. The
@@ -360,9 +382,17 @@ export function shapeAssistantAnswer(vertical: string | null, query: string, row
       ? ` ${fits.length} of ${priced.length} priced option${priced.length === 1 ? '' : 's'} fit your ${money(opts.budget, best.currency)} budget.`
       : ` Nothing is inside your ${money(opts.budget, best.currency)} budget right now - the cheapest verified price is ${money(best.price, best.currency)}.`;
   }
+  // A missing exact pack changes the sentence: the cheapest row is an ALTERNATIVE, and saying "cheapest
+  // result" would claim it answers the question it does not answer.
+  const quantityTxt = quantityNotice
+    ? `${quantityNotice} Closest: `
+    : exactHit && requested
+      ? `Exact ${requested.label} pack: `
+      : '';
+  const results = plan ? [...priced, ...rows.filter((r) => !r.priceAvailable)] : rows;
   return {
-    reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ''} at ${money(best.price, best.currency)}.${spreadTxt}${budgetTxt} ${rows.length} live option${rows.length === 1 ? '' : 's'} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? '' : 's'} below.`,
-    results: rows,
+    reply: `${quantityTxt}${quantityNotice ? '' : `Cheapest ${label} result for "${query}": `}${best.title}${best.provider ? ` on ${best.provider}` : ''} at ${money(best.price, best.currency)}.${spreadTxt}${budgetTxt} ${rows.length} live option${rows.length === 1 ? '' : 's'} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? '' : 's'} below.`,
+    results,
     count: rows.length,
   };
 }

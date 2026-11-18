@@ -686,6 +686,67 @@ var init_types = __esm({
   }
 });
 
+// server/ai/masterPrompt.ts
+function exactPackUnavailable(label) {
+  return `Exact ${label} pack is currently unavailable across our partner platforms. Here are the closest available alternatives:`;
+}
+var MASTER_MODEL, MASTER_TEMPERATURE, SITE_URL, VERTICAL_GUIDE, VERTICAL_IDS, MASTER_SYSTEM_PROMPT, MASTER_JSON_CONTRACT, ZERO_RESULT_GUIDANCE;
+var init_masterPrompt = __esm({
+  "server/ai/masterPrompt.ts"() {
+    init_types();
+    MASTER_MODEL = "gemini-2.5-flash";
+    MASTER_TEMPERATURE = 0.1;
+    SITE_URL = "https://www.try1second.com";
+    VERTICAL_GUIDE = [
+      { id: "grocery", name: "10-Min Grocery", extract: "exact item name, brand, and exact quantity/weight (Blinkit, Zepto, Instamart)" },
+      { id: "ecommerce", name: "E-Commerce", extract: "product name, model, storage/RAM variant or use case (Amazon, Flipkart, Myntra, Ajio)" },
+      { id: "flights", name: "Flights", extract: "origin, destination, travel dates, trip type (one-way/round-trip), passenger count" },
+      { id: "hotels", name: "Hotels", extract: "city/locality, check-in and check-out dates, guest count, star or budget preference" },
+      { id: "bus", name: "Bus", extract: "source city, destination city, travel date" },
+      { id: "food", name: "Food Delivery", extract: "dish name, restaurant preference or cuisine" },
+      { id: "cab", name: "Cabs & Ride-Hailing", extract: "pickup, drop-off, cab category" },
+      { id: "movies", name: "Movies", extract: "movie title, theatre/city preference, show date" },
+      { id: "loans", name: "Loans", extract: "loan type (personal, home, car), amount, tenure" },
+      { id: "insurance", name: "Insurance", extract: "policy type (health, term, car), cover amount" },
+      { id: "creditcards", name: "Credit Cards", extract: "reward preference, spending category, or bank" },
+      { id: "account", name: "Accounts", extract: "account type (savings, current, demat)" },
+      { id: "nearby", name: "Nearby", extract: "category (restaurants, cinemas, fuel, EV charging) relative to the user" }
+    ].filter((v) => ALL_VERTICALS.includes(v.id) || v.id === "nearby" || v.id === "account");
+    VERTICAL_IDS = Array.from(/* @__PURE__ */ new Set([...VERTICAL_GUIDE.map((v) => v.id), ...ALL_VERTICALS]));
+    MASTER_SYSTEM_PROMPT = `You are the core AI intelligence and routing engine for Try1Second (${SITE_URL}), India's multi-vertical metasearch engine. Your job is to understand the user's intent from natural language (English, Hindi or Hinglish), correct typos, preserve every quantity and filter exactly, and map the request to the right vertical(s) and parameters.
+
+You are a PARSER, not a shop. You never state a price, a discount, a stock level or an availability, and you never invent a product, seller, showtime or route. Real prices come from Try1Second's own search engine after you return your parameters. If you do not know something, leave the field empty rather than guessing.
+
+1. SPELLING CORRECTION & QUERY NORMALIZATION
+- Correct spelling mistakes, phonetic typing, slang and Hinglish terms: "aata" -> atta, "tamatar" -> tomato, "biriyani"/"biryani" -> biryani, "colgate" -> Colgate, "manali hotel" -> Manali hotels, "indor" -> Indore.
+- A typo must never break the search or return an unrelated category. Repair the word, keep the rest of the sentence as typed.
+
+2. STRICT QUANTITY & ATTRIBUTE PRESERVATION (CRITICAL)
+- Never change, downgrade or drop a quantity, weight, volume, pack size, storage variant, seat count, passenger count or room count the user gave.
+- "10 kg atta" means 10 kg (10,000 g). A 1 kg or 5 kg pack is NOT the answer; it is only ever an alternative, and it must be labelled as one.
+- "512 GB", "1.5 ton", "2 BHK", "500 ml", "pack of 6", "3 passengers" are equally binding.
+- If the exact variant is unavailable, say exactly that ("Exact 10 kg pack is currently unavailable across our partner platforms. Here are the closest available alternatives:") and let the alternatives follow. Never present an alternative as if it were the requested size.
+
+3. VERTICAL MAPPING
+Pick the vertical that can actually price the request; use one vertical per answer unless the user clearly asked for several. Three further ids exist for offers rather than products: coupons (promo codes), giftcards, banking (card/bank offers) - use them when the question is about an offer, a voucher or a card discount. Extract the parameters each one needs:
+${VERTICAL_GUIDE.map((v, i) => `${i + 1}. ${v.name} (${v.id}): ${v.extract}`).join("\n")}
+
+4. ZERO-RESULT & FALLBACK
+- Never answer with a bare "No results found" and never dismiss the user.
+- Say what was searched, then what the user can change: a nearby city or locality, different dates, a different brand/size, or a wider price range.
+- Point them to the category on ${SITE_URL} so they can run the search themselves. Only ever link ${SITE_URL}; no other URL.
+
+5. RESPONSE FORMAT & TONE
+- Answer in the language of the question (English, Hindi or Hinglish). Crisp, direct, helpful. No filler, no salesmanship.
+- Prices, when the search engine supplies them, are in Indian rupees with Indian digit grouping: \u20B91,44,990.
+- Keep context across turns: if the user refines ("Aashirvaad brand only"), keep the previous item, size, city and dates unless they change them.`;
+    MASTER_JSON_CONTRACT = `Return STRICT JSON only, no prose, no code fences:
+{"vertical":"<one of ${VERTICAL_IDS.join("|")} or null>","query":"<the search text after typo repair and filler removal>","entity":"<product, dish, movie, place or lender name>","brand":"<brand if stated>","quantity":{"value":<number|null>,"unit":"<g|kg|ml|l|pack|pcs|null>"},"city":"<city if stated>","pincode":"<6-digit pincode if stated>","dates":{"depart":"YYYY-MM-DD if stated","return":"YYYY-MM-DD if stated"},"budget":<number|null>,"passengers":<number|null>,"attributes":{"<explicit configuration only>":"value"}}
+Rules: omit or null any field the user did not state. Never include price, stock, availability, seller or URL fields. Never change a stated quantity or variant.`;
+    ZERO_RESULT_GUIDANCE = `Nothing live came back for this in this pass. Try a nearby city or locality, a different date, or a wider brand/size, or run the search yourself at ${SITE_URL} and I will keep the prices side by side here.`;
+  }
+});
+
 // server/query/queryUnderstanding.ts
 function detectVertical(q3) {
   const lower = ` ${q3.toLowerCase()} `;
@@ -805,11 +866,18 @@ async function aiAssistedUnderstanding(query) {
   try {
     const { GoogleGenAI } = await import("@google/genai");
     const ai = new GoogleGenAI({ apiKey: settings.geminiApiKey });
-    const prompt = `Classify this Indian shopping/travel search query. Return strict JSON only:
-{"vertical":"one of food|grocery|ecommerce|flights|hotels|cab|loans|insurance|movies|bus|creditcards|coupons|giftcards|banking","entity":"product/service name","city":"city if mentioned","pincode":"6-digit pincode if mentioned","dates":{"depart":"YYYY-MM-DD if mentioned"},"attributes":{"key":"value only for explicit configuration mentions"}}
-Rules: Do NOT include prices, stock, or availability. Do NOT guess unstated fields.
-Query: ${query.rawQuery}`;
-    const res = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+    const res = await ai.models.generateContent({
+      model: MASTER_MODEL,
+      contents: [{ role: "user", parts: [{ text: `Query: ${String(query.rawQuery).slice(0, 300)}
+
+${MASTER_JSON_CONTRACT}` }] }],
+      config: {
+        systemInstruction: MASTER_SYSTEM_PROMPT,
+        temperature: MASTER_TEMPERATURE,
+        responseMimeType: "application/json",
+        maxOutputTokens: 400
+      }
+    });
     const text = res.text || "";
     const json = JSON.parse(text.replace(/```json|```/g, "").trim());
     const refined = { ...query };
@@ -834,6 +902,7 @@ var init_queryUnderstanding = __esm({
   "server/query/queryUnderstanding.ts"() {
     init_types();
     init_settings();
+    init_masterPrompt();
     VERTICAL_KEYWORDS = {
       food: ["pizza", "biryani", "order food", "swiggy", "zomato", "restaurant", "dosa", "burger", "meal", "thali", "combo", "sandwich", "pasta"],
       grocery: ["grocery", "milk", "atta", "vegetable", "fruit", "zepto", "blinkit", "instamart", "insta mart", "quick commerce", "paneer", "curd", "bread", "egg", "rice", "dal", "oil", "ghee", "maggi", "chips", "cold drink", "snacks", "detergent", "shampoo", "soap"],
@@ -40662,7 +40731,7 @@ async function handleAlexaRequest(envelope, deps) {
   if (type === "LaunchRequest") {
     return speak(
       "Try1Second here. Ask me for any price and I will compare it live. For example: iPhone sixteen price, or bus from Indore to Bhopal.",
-      { reprompt: "What should I compare?", card: { title: "Try1Second", content: `Voice compare is live. Full comparison on ${SITE_URL}` } }
+      { reprompt: "What should I compare?", card: { title: "Try1Second", content: `Voice compare is live. Full comparison on ${SITE_URL2}` } }
     );
   }
   if (type === "SessionEndedRequest") {
@@ -40738,7 +40807,7 @@ async function handleAlexaRequest(envelope, deps) {
     log3("info", `alexa: no priced row for "${query}" (rows=${rows}, ${Date.now() - startedAt}ms, vertical=${vertical})`);
     return speak(answer, {
       reprompt: "Do you want me to try again?",
-      card: { title: `Try1Second: ${query}`, content: `We could not verify a live price for "${query}" just now. Open ${SITE_URL} for the full comparison.` }
+      card: { title: `Try1Second: ${query}`, content: `We could not verify a live price for "${query}" just now. Open ${SITE_URL2} for the full comparison.` }
     });
   }
   return speak(answer, {
@@ -40747,17 +40816,17 @@ async function handleAlexaRequest(envelope, deps) {
       content: [
         `Lowest verified price: ${speakPrice(hits[0].price)}${hits[0].seller ? ` at ${hits[0].seller}` : ""}`,
         ...hits.slice(1).map((h) => `${h.seller || "Seller"}: ${speakPrice(h.price)}`),
-        `Full comparison: ${SITE_URL}`
+        `Full comparison: ${SITE_URL2}`
       ].join("\n")
     }
   });
 }
-var VOICE_BUDGET_MS, MAX_REQUEST_AGE_MS, SITE_URL, VERTICAL_HINTS, VERTICAL_FROM_SLOT;
+var VOICE_BUDGET_MS, MAX_REQUEST_AGE_MS, SITE_URL2, VERTICAL_HINTS, VERTICAL_FROM_SLOT;
 var init_handler = __esm({
   "server/alexa/handler.ts"() {
     VOICE_BUDGET_MS = 7e3;
     MAX_REQUEST_AGE_MS = 15e4;
-    SITE_URL = "https://www.try1second.com";
+    SITE_URL2 = "https://www.try1second.com";
     VERTICAL_HINTS = [
       { vertical: "bus", re: /\b(bus|buses|buss? ticket)\b/i },
       { vertical: "flights", re: /\b(flight|flights|air ticket|airfare|plane)\b/i },
@@ -45873,6 +45942,145 @@ var init_assistantIntent = __esm({
   }
 });
 
+// server/lens/quantityIntent.ts
+function canonicalUnit(token) {
+  const t = String(token || "").trim();
+  for (const [re, unit] of UNIT_WORDS) if (re.test(t)) return unit;
+  return null;
+}
+function displayOf(base, unit) {
+  const fam = UNIT_TO_BASE[unit].family;
+  if (fam === "mass" && base >= 1e3) return { unit: "kg", value: base / 1e3 };
+  if (fam === "volume" && base >= 1e3) return { unit: "l", value: base / 1e3 };
+  return { unit, value: base };
+}
+function labelOf(value, unit) {
+  const n = Number.isInteger(value) ? String(value) : String(value);
+  return `${n} ${unit === "g" ? "g" : unit === "kg" ? "kg" : unit === "ml" ? "ml" : unit === "l" ? "L" : unit === "pack" ? "pack" : "pcs"}`;
+}
+function parseRequestedQuantity(text) {
+  const t = ` ${String(text || "").toLowerCase()} `;
+  const packOf = /\bpack\s*of\s*(\d{1,3})\b|\b(\d{1,3})\s*(?:ka\s*)?pack\b/.exec(t);
+  if (packOf) {
+    const n = Number(packOf[1] || packOf[2]);
+    if (n > 0 && n <= 500) return { base: n, unit: "pack", label: labelOf(n, "pack") };
+  }
+  if (/\bdozen\b/.test(t)) return { base: 12, unit: "pcs", label: "12 pcs" };
+  const m = /(\d{1,4}(?:\.\d{1,2})?)\s*(kilograms?|kilos?|kgs?|grams?|grammes?|gms?|gm|millilitres?|milliliters?|mls?|litres?|liters?|ltrs?|litre|liter|packs?|packets?|pcs?|pieces?|kg|g|ml|ltr|l|gm)\b/.exec(t);
+  if (m) {
+    const value = Number(m[1]);
+    const unit = canonicalUnit(m[2]);
+    if (unit && value > 0) {
+      const base = value * UNIT_TO_BASE[unit].factor;
+      const d = displayOf(base, unit);
+      return { base, unit: d.unit, label: labelOf(d.value, d.unit) };
+    }
+  }
+  const w = /\b(a|an|one|two|three|four|five|six|seven|eight|nine|ten|ek|do|teen|char|panch|paanch|das|dus|aadha|adha|half|quarter)\s+(kilograms?|kilos?|kgs?|grams?|gms?|litres?|liters?|ltrs?|litre|liter|packs?|packets?|pcs?|pieces?)\b/.exec(t);
+  if (w) {
+    const value = NUMBER_WORDS[w[1]];
+    const unit = canonicalUnit(w[2]);
+    if (value && unit) {
+      const base = value * UNIT_TO_BASE[unit].factor;
+      const d = displayOf(base, unit);
+      return { base, unit: d.unit, label: labelOf(d.value, d.unit) };
+    }
+  }
+  return null;
+}
+function rowQuantity(title) {
+  const t = String(title || "").toLowerCase();
+  const sizes = [];
+  for (const m of t.matchAll(/(\d{1,5}(?:\.\d{1,2})?)\s*(kilograms?|kilos?|kgs?|grams?|grammes?|gms?|gm|millilitres?|milliliters?|mls?|litres?|liters?|ltrs?|litre|liter|pcs?|pieces?|kg|g|ml|ltr|gm|l)\b/g)) {
+    const value = Number(m[1]);
+    const unit = canonicalUnit(m[2]);
+    if (!unit || !(value > 0)) continue;
+    if (unit === "l" && /\b\d\s*l\b/.test(`${m[1]} ${m[2]}`) === false && /^(l)$/i.test(m[2]) && value > 50) continue;
+    const base = value * UNIT_TO_BASE[unit].factor;
+    sizes.push({ base, unit, label: labelOf(value, unit) });
+  }
+  if (!sizes.length) return null;
+  const mult = /\b(?:pack\s*of|combo\s*of)\s*(\d{1,2})\b/.exec(t);
+  const perUnit = sizes.find((s) => UNIT_TO_BASE[s.unit].family !== "count");
+  if (mult && perUnit) {
+    const n = Number(mult[1]);
+    if (n > 1) {
+      const base = perUnit.base * n;
+      const d2 = displayOf(base, perUnit.unit);
+      return { base, unit: d2.unit, label: labelOf(d2.value, d2.unit) };
+    }
+  }
+  sizes.sort((a, b) => b.base - a.base);
+  const top = sizes[0];
+  const d = displayOf(top.base, top.unit);
+  return { base: top.base, unit: d.unit, label: labelOf(d.value, d.unit) };
+}
+function quantityVerdict(requested, title) {
+  const row = rowQuantity(title);
+  if (!row) return "unknown";
+  if (UNIT_TO_BASE[row.unit].family !== UNIT_TO_BASE[requested.unit].family) return "unknown";
+  const diff = Math.abs(row.base - requested.base) / requested.base;
+  return diff <= 1e-3 ? "exact" : "different";
+}
+function planByQuantity(requested, rows, noticeFor) {
+  if (!requested) return { exact: [], alternates: rows, notice: null };
+  const exact = [];
+  const alternates = [];
+  for (const r of rows) (quantityVerdict(requested, r.title) === "exact" ? exact : alternates).push(r);
+  const byPrice = (a, b) => a.price - b.price;
+  exact.sort(byPrice);
+  alternates.sort(byPrice);
+  return { exact, alternates, notice: exact.length ? null : noticeFor(requested.label) };
+}
+var UNIT_TO_BASE, UNIT_WORDS, NUMBER_WORDS;
+var init_quantityIntent = __esm({
+  "server/lens/quantityIntent.ts"() {
+    UNIT_TO_BASE = {
+      g: { family: "mass", factor: 1 },
+      kg: { family: "mass", factor: 1e3 },
+      ml: { family: "volume", factor: 1 },
+      l: { family: "volume", factor: 1e3 },
+      pack: { family: "count", factor: 1 },
+      pcs: { family: "count", factor: 1 }
+    };
+    UNIT_WORDS = [
+      [/^(kilograms?|kilo|kilos|kgs?|k\b|केजी|किलो)$/i, "kg"],
+      [/^(grams?|grammes?|gms?|gm|g\b|ग्राम)$/i, "g"],
+      [/^(millilitres?|milliliters?|mls?|ml\b|मिली)$/i, "ml"],
+      [/^(litres?|liters?|ltrs?|ltr|litre|liter|ls?|l\b|लीटर|लिटर)$/i, "l"],
+      [/^(packs?|packets?|pkts?|pk\b|pouch|पैकेट)$/i, "pack"],
+      [/^(pcs?|pieces?|piece|units?|नग)$/i, "pcs"]
+    ];
+    NUMBER_WORDS = {
+      a: 1,
+      an: 1,
+      one: 1,
+      two: 2,
+      three: 3,
+      four: 4,
+      five: 5,
+      six: 6,
+      seven: 7,
+      eight: 8,
+      nine: 9,
+      ten: 10,
+      ek: 1,
+      do: 2,
+      teen: 3,
+      char: 4,
+      panch: 5,
+      paanch: 5,
+      das: 10,
+      dus: 10,
+      aadha: 0.5,
+      adha: 0.5,
+      half: 0.5,
+      quarter: 0.25,
+      "\u0938\u0935\u093E": 1.25
+    };
+  }
+});
+
 // server/lens/assistantAnswer.ts
 var assistantAnswer_exports = {};
 __export(assistantAnswer_exports, {
@@ -46053,15 +46261,19 @@ function toAssistantRows(results, limit = 6, opts = {}) {
 }
 function shapeAssistantAnswer(vertical, query, rows, opts = {}) {
   const label = verticalLabel(vertical);
-  const priced = rows.filter((r) => r.priceAvailable).sort((a, b) => a.price - b.price);
-  const best = priced[0];
   const sellers = new Set(rows.map((r) => r.provider).filter(Boolean));
   const sourceCount = Math.max(sellers.size, opts.sourcesSucceeded?.length || 0);
   if (!rows.length) {
     const base = `No live ${label} result for "${query}" came back in this pass.`;
-    const tail = opts.pending ? " The engine is still scanning and the prices drop in here automatically within a few seconds." : opts.honestNotice || " Try a shorter wording, or open the category to see the last verified prices.";
+    const tail = opts.pending ? " The engine is still scanning and the prices drop in here automatically within a few seconds." : ` ${opts.honestNotice || ZERO_RESULT_GUIDANCE}`;
     return { reply: base + tail, results: [], count: 0 };
   }
+  const requested = opts.requestedQuantity || null;
+  const plan = requested ? planByQuantity(requested, rows.filter((r) => r.priceAvailable), exactPackUnavailable) : null;
+  const priced = plan ? [...plan.exact, ...plan.alternates] : rows.filter((r) => r.priceAvailable).sort((a, b) => a.price - b.price);
+  const best = priced[0];
+  const quantityNotice = plan?.notice || null;
+  const exactHit = Boolean(plan && plan.exact.length);
   if (!best) {
     return {
       reply: `${rows.length} ${label} listings for "${query}" from ${sourceCount || rows.length} sites \u2014 the seller page holds the price (app-only fares), so open the card to see it.`,
@@ -46069,17 +46281,22 @@ function shapeAssistantAnswer(vertical, query, rows, opts = {}) {
       count: rows.length
     };
   }
-  const distinctSellers2 = new Set(priced.map((r) => (r.provider || "").toLowerCase()).filter(Boolean));
-  const spread = priced.length > 1 && distinctSellers2.size > 1 ? priced[priced.length - 1].price - best.price : 0;
+  const bestSize = rowQuantity(best.title)?.base ?? null;
+  const comparable = requested ? priced.filter((r) => plan?.exact.includes(r) || quantityVerdict(requested, r.title) === "exact") : priced.filter((r) => bestSize === null ? true : rowQuantity(r.title)?.base === bestSize);
+  const spreadRows = comparable.length ? comparable : priced;
+  const distinctSellers2 = new Set(spreadRows.map((r) => (r.provider || "").toLowerCase()).filter(Boolean));
+  const spread = spreadRows.length > 1 && distinctSellers2.size > 1 ? spreadRows[spreadRows.length - 1].price - best.price : 0;
   const spreadTxt = spread > 0 ? ` Spread across sites: ${money2(spread, best.currency)}.` : "";
   let budgetTxt = "";
   if (opts.budget && opts.budget > 0) {
     const fits = priced.filter((r) => r.price <= opts.budget);
     budgetTxt = fits.length ? ` ${fits.length} of ${priced.length} priced option${priced.length === 1 ? "" : "s"} fit your ${money2(opts.budget, best.currency)} budget.` : ` Nothing is inside your ${money2(opts.budget, best.currency)} budget right now - the cheapest verified price is ${money2(best.price, best.currency)}.`;
   }
+  const quantityTxt = quantityNotice ? `${quantityNotice} Closest: ` : exactHit && requested ? `Exact ${requested.label} pack: ` : "";
+  const results = plan ? [...priced, ...rows.filter((r) => !r.priceAvailable)] : rows;
   return {
-    reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ""} at ${money2(best.price, best.currency)}.${spreadTxt}${budgetTxt} ${rows.length} live option${rows.length === 1 ? "" : "s"} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? "" : "s"} below.`,
-    results: rows,
+    reply: `${quantityTxt}${quantityNotice ? "" : `Cheapest ${label} result for "${query}": `}${best.title}${best.provider ? ` on ${best.provider}` : ""} at ${money2(best.price, best.currency)}.${spreadTxt}${budgetTxt} ${rows.length} live option${rows.length === 1 ? "" : "s"} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? "" : "s"} below.`,
+    results,
     count: rows.length
   };
 }
@@ -46089,6 +46306,8 @@ var init_assistantAnswer = __esm({
     init_assistantIntent();
     init_verticalLexicon();
     init_questionNormalizer();
+    init_quantityIntent();
+    init_masterPrompt();
     NOISE3 = /\b(kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|rate|rates|price|prices|batao|bata|do|dikhao|dikha|chahiye|chahie|please|pls|show|tell|me|find|search|compare|check|what|is|are|the|of|for|a|an|i|want|need|looking|best|sabse|sasta|cheapest|cheap|deal|deals|offer|offers|buy|kharidna|kitne\s*ka)\b/gi;
     ACCOUNT_HINT = /\b(bank account|savings account|saving account|current account|salary account|zero balance|fixed deposit|recurring deposit|\bfd\b|\brd\b|nre account|nro account)\b/i;
     LABEL2 = {
@@ -46106,6 +46325,102 @@ var init_assistantAnswer = __esm({
       account: "bank accounts",
       banking: "bank accounts"
     };
+  }
+});
+
+// server/lens/assistantAi.ts
+function validateAiIntent(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const vertical = ROUTABLE.includes(raw.vertical) ? raw.vertical : null;
+  const query = typeof raw.query === "string" ? raw.query.replace(/\s+/g, " ").trim().slice(0, 120) : "";
+  const entity = typeof raw.entity === "string" ? raw.entity.replace(/\s+/g, " ").trim().slice(0, 120) : "";
+  const cleanQuery = query || entity;
+  if (!cleanQuery || !/[a-z0-9\u0900-\u097F]/i.test(cleanQuery)) return null;
+  const out = { vertical, query: cleanQuery };
+  if (typeof raw.city === "string" && /^[a-zA-Z .'-]{2,40}$/.test(raw.city.trim())) out.city = raw.city.trim();
+  if (typeof raw.dates?.depart === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.dates.depart)) out.date = raw.dates.depart;
+  if (raw.dates?.depart instanceof Date) out.date = raw.dates.depart.toISOString().slice(0, 10);
+  const budget = Number(raw.budget);
+  if (Number.isFinite(budget) && budget > 0 && budget <= 1e7) out.budget = Math.round(budget);
+  const qValue = Number(raw.quantity?.value);
+  const qUnit = String(raw.quantity?.unit || "").toLowerCase();
+  if (Number.isFinite(qValue) && qValue > 0 && ["g", "kg", "ml", "l", "pack", "pcs"].includes(qUnit)) {
+    out.quantity = { value: qValue, unit: qUnit };
+  }
+  return out;
+}
+async function aiRouteQuestion(text) {
+  const question = String(text || "").trim().slice(0, 300);
+  if (!question || !settings.aiAssistEnabled || !settings.geminiApiKey) return null;
+  try {
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey: settings.geminiApiKey });
+    const res = await ai.models.generateContent({
+      model: MASTER_MODEL,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `Question (typos and Hinglish included, keep every stated quantity, size, city, date and count):
+"""${question}"""
+
+${MASTER_JSON_CONTRACT}`
+            }
+          ]
+        }
+      ],
+      config: {
+        systemInstruction: MASTER_SYSTEM_PROMPT,
+        temperature: MASTER_TEMPERATURE,
+        responseMimeType: "application/json",
+        maxOutputTokens: 400
+      }
+    });
+    const out = String(res.text || "");
+    const json = JSON.parse(out.replace(/```json|```/g, "").trim());
+    const valid = validateAiIntent(json);
+    if (!valid) return null;
+    const normalized = normalizeAssistantQuestion(question);
+    if (normalized.repaired?.length) valid.repaired = normalized.repaired.slice(0, 6);
+    return valid;
+  } catch {
+    return null;
+  }
+}
+function mergeAiIntent(base, ai) {
+  if (!ai) return base;
+  const merged = { ...base };
+  if (!merged.vertical && ai.vertical) merged.vertical = ai.vertical;
+  if (!merged.understood) merged.understood = true;
+  const baseQuery = String(merged.query || "").trim();
+  if (!baseQuery || baseQuery.length < 3) merged.query = ai.query;
+  if (!merged.date && ai.date) merged.date = ai.date;
+  if (!merged.budget && ai.budget) merged.budget = ai.budget;
+  if (ai.repaired?.length && !merged.normalized) merged.normalized = { transliterated: false, repaired: ai.repaired };
+  if (!merged.assumed) merged.assumed = Boolean(ai.vertical && !base.vertical);
+  return merged;
+}
+var ROUTABLE;
+var init_assistantAi = __esm({
+  "server/lens/assistantAi.ts"() {
+    init_settings();
+    init_questionNormalizer();
+    init_masterPrompt();
+    ROUTABLE = [
+      "flights",
+      "hotels",
+      "bus",
+      "ecommerce",
+      "grocery",
+      "food",
+      "movies",
+      "loans",
+      "insurance",
+      "cab",
+      "creditcards",
+      "account"
+    ];
   }
 });
 
@@ -46732,6 +47047,11 @@ function fixSpelling(query) {
   const fixes = [];
   const out = original.split(/(\s+)/).map((chunk2) => {
     if (!chunk2.trim()) return chunk2;
+    const alias = HINGLISH_ALIAS[chunk2.toLowerCase()];
+    if (alias) {
+      fixes.push({ from: chunk2, to: alias });
+      return alias;
+    }
     if (!/^[A-Za-z]{4,}$/.test(chunk2)) return chunk2;
     const fixed = closestWord(chunk2);
     if (!fixed || fixed === chunk2.toLowerCase()) return chunk2;
@@ -46741,7 +47061,7 @@ function fixSpelling(query) {
   if (!fixes.length) return { query: original, original, corrected: false, fixes: [] };
   return { query: out.replace(/\s+/g, " ").trim(), original, corrected: true, fixes };
 }
-var VOCAB, VOCAB_SET, BY_LEN;
+var VOCAB, VOCAB_SET, BY_LEN, HINGLISH_ALIAS;
 var init_spellFix = __esm({
   "server/lens/spellFix.ts"() {
     VOCAB = [
@@ -46962,6 +47282,12 @@ var init_spellFix = __esm({
       arr.push(w);
       BY_LEN.set(w.length, arr);
     }
+    HINGLISH_ALIAS = {
+      aata: "atta",
+      aattha: "atta",
+      biriyani: "biryani",
+      tamatar: "tomato"
+    };
   }
 });
 
@@ -53256,6 +53582,8 @@ var init_routes = __esm({
     init_productLink();
     init_assistantIntent();
     init_assistantAnswer();
+    init_quantityIntent();
+    init_assistantAi();
     init_assistantThread();
     init_searchMemory();
     init_sameProduct();
@@ -53729,6 +54057,8 @@ var init_routes = __esm({
       };
       if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (!input.query?.trim()) return res.status(400).json({ success: false, error: "A search query is required." });
+      const feedSpelling = ["grocery", "food", "ecommerce"].includes(String(input.vertical)) ? fixSpelling(String(input.query)) : null;
+      if (feedSpelling?.corrected) input.query = feedSpelling.query;
       const searchStart = Date.now();
       const chainKey = pollKey([
         req.ip,
@@ -53876,7 +54206,14 @@ var init_routes = __esm({
         returnDate: input.travelDates?.return
       });
       const orderedResults = orderFlightRowsLast(gatedResponse.results, String(input.vertical));
-      res.json({ success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== "unavailable", ...gatedResponse, results: orderedResults });
+      res.json({
+        success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== "unavailable",
+        ...gatedResponse,
+        results: orderedResults,
+        // Honest echo: what was typed, and what was searched when a typo was repaired. The UI can say
+        // "showing results for …" and never implies the user typed the corrected words.
+        ...feedSpelling?.corrected ? { originalQuery: feedSpelling.original, searchedAs: feedSpelling.query, spellingFixes: feedSpelling.fixes } : {}
+      });
     });
     HOTEL_SOURCE_LABEL = {
       w_hotels_ixigo: "Ixigo",
@@ -55198,9 +55535,13 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Could not mark read" });
       }
     });
-    apiRouter.post("/assist/intent", (req, res) => {
+    apiRouter.post("/assist/intent", async (req, res) => {
       const text = String(req.body?.text || "").slice(0, 300);
-      res.json({ success: true, ...interpretAssistantQuestion(text) });
+      const base = interpretAssistantQuestion(text);
+      if (base.understood && base.vertical) return res.json({ success: true, ...base, aiAssisted: false });
+      const ai = await aiRouteQuestion(text).catch(() => null);
+      if (!ai) return res.json({ success: true, ...base, aiAssisted: false });
+      res.json({ success: true, ...mergeAiIntent(base, ai), aiAssisted: true });
     });
     apiRouter.post("/assist/answer", async (req, res) => {
       const started3 = Date.now();
@@ -55396,6 +55737,7 @@ var init_routes = __esm({
             okRows: rows.length
           }).catch(() => void 0);
         }
+        const requestedQuantity = parseRequestedQuantity(text);
         const answer = shapeAssistantAnswer(
           fallbackVertical ? fallbackVertical : meta.vertical,
           meta.query,
@@ -55405,6 +55747,7 @@ var init_routes = __esm({
             sourcesSucceeded,
             honestNotice,
             ...meta.budget ? { budget: meta.budget } : {},
+            ...requestedQuantity ? { requestedQuantity } : {},
             ...fallbackVertical ? { honestNotice: `The ${meta.vertical === "grocery" ? "10-minute grocery apps" : "restaurant apps"} did not answer this time, so these are live prices from the shopping sites.` } : {}
           }
         );
