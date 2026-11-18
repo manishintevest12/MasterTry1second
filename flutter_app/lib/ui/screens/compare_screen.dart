@@ -12,6 +12,7 @@ import '../../core/compare.dart' as cmp;
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
 import '../../core/search_poll.dart';
+import '../../core/feed_page.dart';
 import '../widgets/compare_cards.dart';
 import '../widgets/hint_field.dart';
 import '../widgets/journey_date_picker_modal.dart';
@@ -74,11 +75,13 @@ class _CompareScreenState extends State<CompareScreen> {
   /// non-forced fetch picks up the answer the server has since warmed.
   bool _settleDone = false;
   LiveResponse? _res;
-  // OWNER 7 Nov ("jitne website ke results website pr aate hai utne app pr ni aate"): the
-  // app opened with only 4 result groups (4 cards) while the web lists the whole feed, so the
-  // app looked like it had half the results. It now opens with the full first screen of
-  // groups (12) and Load More adds 8 at a time; nothing else about grouping changed.
-  int _visibleCount = 12;
+  // OWNER 7 Nov ("jitne website ke results website pr aate hai utne app pr ni aate"): the app opened
+  // with only 4 groups while the web lists the whole feed, so compact product/travel feeds now open
+  // with a full screen (12) and Load More adds 8. OWNER 18 Nov ("movie vertical mai load more option
+  // kyun ni aa raha, phle aata tha"): a movie feed is ONE CARD PER FILM and most cities show 5-12
+  // films, so a 12-card first paint could never leave anything behind the pill — movies therefore page
+  // like the web (4 +4). Both live in core/feed_page.dart, one tested place, per vertical.
+  int _visibleCount = FeedPage.initialFor('grocery');
 
   /// House-sponsored card for this vertical (owner 9 Nov). Loaded once per vertical from
   /// /api/ads?slot=vertical_<id>; empty means the deals registry has nothing relevant, in which case
@@ -373,7 +376,8 @@ class _CompareScreenState extends State<CompareScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _visibleCount = 12; // Load More: a new search opens on 12 groups (web parity)
+      // A new search opens on that vertical's first screen (movies 4, everything else 12).
+      _visibleCount = FeedPage.initialFor(_meta.id);
     });
     _bgPoll?.cancel();
     try {
@@ -792,7 +796,7 @@ class _CompareScreenState extends State<CompareScreen> {
                       sort: _sort,
                       filterOpts: _filterOpts,
                       visibleCount: _visibleCount,
-                      onLoadMore: () => setState(() => _visibleCount += 8),
+                      onLoadMore: () => setState(() => _visibleCount += FeedPage.stepFor(_meta.id)),
                     ).cards(bc)
                   : const <Widget>[];
 
@@ -2341,7 +2345,7 @@ class _FeedBody {
         // sections, the pill reveals +4 groups and the sections re-form.
         var shown = groups;
         var extraGroups = 0;
-        if (groups.length > visibleCount) {
+        if (FeedPage.showLoadMore(vertical: meta.id, visible: visibleCount, total: groups.length)) {
           shown = groups.take(visibleCount).toList();
           extraGroups = groups.length - visibleCount;
         }
@@ -2385,12 +2389,14 @@ class _FeedBody {
     // Load More pagination (owner 22 Oct, web parity): paint the first 4
     // result groups instantly, then a 'Load More' button reveals +4 per tap —
     // the feed feels instant on mobile and long result sets stay cheap to build.
+    // One rule decides the pill for every feed (see core/feed_page.dart): it appears only when the feed
+    // really holds more groups than are on screen, so it can never be a button that reveals nothing.
     final totalPairs = all.length ~/ 2;
-    if (totalPairs <= visibleCount) return all;
+    if (!FeedPage.showLoadMore(vertical: meta.id, visible: visibleCount, total: totalPairs)) return all;
     return [
       ...all.take(visibleCount * 2),
       _LoadMoreButton(
-        remaining: totalPairs - visibleCount,
+        remaining: FeedPage.remaining(visible: visibleCount, total: totalPairs),
         noun: meta.id == 'hotels' ? 'hotels' : 'deals',
         onTap: onLoadMore,
       ),
