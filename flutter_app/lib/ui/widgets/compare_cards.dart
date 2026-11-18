@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_state.dart';
 import '../../core/compare.dart';
+import '../../core/movie_venue.dart';
 import '../../core/theme.dart';
 import 'lead_sheet.dart';
 import 'redirect_sheet.dart';
@@ -1462,6 +1463,31 @@ class GroupCard extends StatelessWidget {
                                   ],
                                 ),
                                 if (it.unit.isNotEmpty) Text(it.unit, style: tx(context, 8.5, color: muted(context))),
+                                // OWNER 18 Nov ("best price yaa cheapest price movie mai jb bata rahe ho
+                                // app mai tho movie theatre ka naam v batao"): the headline price comes from a
+                                // SELLER row, so the cinema was nowhere on the card. `movieVenueLine` (shared
+                                // with the web card, byte-for-byte) names the theatre that carries exactly that
+                                // price; when no printed show carries it, it lists the real theatres the source
+                                // reports instead of inventing a hall.
+                                if (it.isMovie)
+                                  Builder(builder: (context) {
+                                    final line = movieVenueLine(
+                                      showtimes: it.spec('showtimes'),
+                                      cheapestShow: it.spec('cheapest show', 'cheapest_show'),
+                                      theatres: it.spec('theatres'),
+                                      best: g.best.priceAvailable ? g.best.price.toDouble() : 0,
+                                    );
+                                    if (line.isEmpty) return const SizedBox.shrink();
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 1),
+                                      child: Text(
+                                        line,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: tx(context, 9, w: FontWeight.w700, color: muted(context)),
+                                      ),
+                                    );
+                                  }),
                               ],
                             ],
                           ),

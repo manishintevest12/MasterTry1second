@@ -1,4 +1,5 @@
 import { brandLogoUrl, initials } from '../utils/brandLogo';
+import { movieVenueLine } from '../lib/movieVenue';
 import React, { useState } from 'react';
 import {
   Heart,
@@ -251,6 +252,15 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
   const [logoImgOk, setLogoImgOk] = useState<boolean>(true);
 
   const isTracked = trackedItemIds.includes(item.id);
+  // The cinema line for a movie card, resolved by the shared rule (src/lib/movieVenue.ts).
+  const venueLine = isMovieCard
+    ? movieVenueLine({
+        showtimes: (item as any).specs?.showtimes,
+        cheapestShow: (item as any).specs?.['cheapest show'] ?? (item as any).specs?.cheapest_show,
+        theatres: (item as any).specs?.theatres,
+        best: Number(item.primaryPrice || 0),
+      })
+    : '';
   const bestQuote = item.sellerQuotes.find((q) => q.isLowest) || item.sellerQuotes[0];
   // Loans, insurance & bank accounts carry no product photo: show the provider's
   // real logo tile (same idea as the flight rows' carrier logos) instead of a
@@ -678,6 +688,18 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
               <span className="text-[11px] text-slate-500 font-medium block md:text-right">
                 {isRateVertical ? (item.vertical === 'loans' ? 'interest p.a. (starting)' : (item.unit || 'indicative rate')) : (item.unit || 'inclusive of taxes')}
               </span>
+              {/* OWNER 18 Nov ("best price yaa cheapest price movie mai ... theatre ka naam v batao"): the headline
+                  number belongs to a SELLER row, so the cinema was nowhere on the card. This line names the theatre
+                  that actually carries that price; when no printed show carries it, it lists the real theatres the
+                  source reports instead of inventing a hall (same rule as the CHEAPEST line and the app card). */}
+              {isMovieCard && venueLine && (
+                <span
+                  className="text-[10.5px] text-slate-600 font-semibold block md:text-right truncate max-w-[15rem]"
+                  title={venueLine}
+                >
+                  {venueLine}
+                </span>
+              )}
             </div>
 
             {/* Savings indicator */}
