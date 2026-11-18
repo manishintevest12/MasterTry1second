@@ -56219,6 +56219,119 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
   }
 });
 
+// server/admin/referralReport.ts
+async function timeColumn(store7, table) {
+  const hit = cache11.get(table);
+  if (hit) return hit;
+  let col = "created_at";
+  try {
+    const rows = await store7.query(
+      `SELECT COLUMN_NAME c FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+          AND COLUMN_NAME IN ('created_at','created_date')`,
+      [table]
+    );
+    const names = new Set(rows.map((r) => String(r?.c ?? "")));
+    if (names.has("created_at")) col = "created_at";
+    else if (names.has("created_date")) col = "created_date";
+  } catch {
+  }
+  cache11.set(table, col);
+  return col;
+}
+async function referralsReport(store7, daysInput) {
+  const days = Math.max(1, Math.min(365, Number(daysInput) || 30));
+  const usersTs = await timeColumn(store7, "users");
+  const refTs = await timeColumn(store7, "referrals");
+  const [codes, total, refs, users] = await Promise.all([
+    store7.query(
+      `SELECT id, email, display_name, referral_code, ${usersTs} AS at
+         FROM users
+        WHERE referral_code IS NOT NULL AND referral_code != ?
+        ORDER BY id DESC LIMIT 200`,
+      [""]
+    ),
+    store7.query("SELECT COUNT(*) c FROM users WHERE referral_code IS NOT NULL AND referral_code != ?", [""]),
+    store7.query(
+      `SELECT referrer_id, referee_id, status, ${refTs} AS at, validated_at
+         FROM referrals ORDER BY id DESC LIMIT 500`
+    ),
+    store7.query("SELECT id, email, referral_code FROM users LIMIT 2000")
+  ]);
+  const byId = new Map(users.map((u) => [Number(u.id), u]));
+  const totals = /* @__PURE__ */ new Map();
+  const valid = refs.filter((r) => String(r.status) === "valid");
+  for (const r of valid) {
+    const id = Number(r.referrer_id);
+    const u = byId.get(id);
+    const row = totals.get(id) || { code: u?.referral_code ? String(u.referral_code) : null, email: u?.email ? String(u.email) : null, valid: 0 };
+    row.valid += 1;
+    totals.set(id, row);
+  }
+  const since = Date.now() - days * 24 * 60 * 6e4;
+  const recent = valid.filter((r) => {
+    const at = Date.parse(String(r.at || r.validated_at || ""));
+    return !Number.isFinite(at) || at >= since;
+  }).slice(0, 25).map((r) => ({
+    referrer: byId.get(Number(r.referrer_id))?.referral_code || `#${r.referrer_id}`,
+    referee: byId.get(Number(r.referee_id))?.email || `#${r.referee_id}`,
+    at: r.at || r.validated_at || null
+  }));
+  const codeCountRow = total[0] || {};
+  const totalCodes = typeof codeCountRow.c === "number" ? codeCountRow.c : codes.length;
+  const detail = await store7.query(
+    `SELECT r.id, r.referrer_id, r.referee_id, r.status, r.${refTs} AS at,
+            pe.points AS points_awarded
+       FROM referrals r
+       LEFT JOIN referral_point_events pe ON pe.referral_id = r.id
+      ORDER BY r.id DESC LIMIT 300`
+  );
+  const ids = /* @__PURE__ */ new Set();
+  for (const r of detail) {
+    ids.add(Number(r.referrer_id));
+    ids.add(Number(r.referee_id));
+  }
+  const people = ids.size ? await store7.query(
+    `SELECT id, email, display_name, referral_code FROM users WHERE id IN (${[...ids].join(",")})`
+  ) : [];
+  const pById = new Map(people.map((u) => [Number(u.id), u]));
+  const who = (id) => {
+    const u = pById.get(id);
+    return {
+      id,
+      name: u?.display_name ? String(u.display_name) : u?.email ? String(u.email).split("@")[0] : `#${id}`,
+      email: u?.email ? String(u.email) : null,
+      code: u?.referral_code ? String(u.referral_code) : null
+    };
+  };
+  const referralList = detail.map((r) => ({
+    id: Number(r.id),
+    referrer: who(Number(r.referrer_id)),
+    referee: who(Number(r.referee_id)),
+    status: String(r.status || ""),
+    at: r.at || null,
+    pointsAwarded: Number(r.points_awarded || 0)
+  }));
+  return {
+    ok: true,
+    days,
+    members: totalCodes,
+    usersWithCode: codes.length,
+    referrals: valid.length,
+    pending: refs.length - valid.length,
+    awardablePoints: valid.length,
+    topReferrers: [...totals.entries()].map(([id, v]) => ({ userId: id, code: v.code, email: v.email, referred: v.valid })).sort((a, b) => b.referred - a.referred).slice(0, 25),
+    referralList,
+    recent
+  };
+}
+var cache11;
+var init_referralReport = __esm({
+  "server/admin/referralReport.ts"() {
+    cache11 = /* @__PURE__ */ new Map();
+  }
+});
+
 // server/affiliate/profiles.ts
 var profiles_exports = {};
 __export(profiles_exports, {
@@ -57236,7 +57349,7 @@ function splitCsv(line) {
   return out.map((s) => s.trim());
 }
 async function loadOpenFlights(fetchFn) {
-  if (cache11 && Date.now() - cache11.at < 24 * 36e5) return cache11;
+  if (cache12 && Date.now() - cache12.at < 24 * 36e5) return cache12;
   const [apRaw, alRaw, rtRaw] = await Promise.all([
     fetchFn(`${BASE}/airports.dat`),
     fetchFn(`${BASE}/airlines.dat`),
@@ -57254,7 +57367,7 @@ async function loadOpenFlights(fetchFn) {
     const f = l.split(",");
     return { airlineIata: f[0], srcIata: f[2], dstIata: f[4], stops: Number(f[7]) };
   }).filter((r) => r.srcIata && r.dstIata && r.srcIata !== "\\N" && r.dstIata !== "\\N");
-  cache11 = { at: Date.now(), airports, airlines, routes };
+  cache12 = { at: Date.now(), airports, airlines, routes };
   return { airports, airlines, routes };
 }
 function matchAirports(airports, input) {
@@ -57327,12 +57440,12 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
   }
   return out.slice(0, 20);
 }
-var BASE, cache11, CITY_ALIASES2, AIRLINE_SITES, CANONICAL_AIRLINES;
+var BASE, cache12, CITY_ALIASES2, AIRLINE_SITES, CANONICAL_AIRLINES;
 var init_openflights = __esm({
   "server/workers/parsers/openflights.ts"() {
     init_contract();
     BASE = "https://raw.githubusercontent.com/jpatokal/openflights/master/data";
-    cache11 = null;
+    cache12 = null;
     CITY_ALIASES2 = {
       "new delhi": "delhi",
       "bengaluru": "bangalore",
@@ -58414,6 +58527,7 @@ var init_adminRoutes = __esm({
     init_authService();
     init_rewardsEngine();
     init_db();
+    init_referralReport();
     init_cache();
     init_logger();
     init_affiliateNetwork();
@@ -58729,85 +58843,7 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/referrals", async (req, res) => {
       try {
-        const store7 = getStore();
-        const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
-        const [codes, total] = await Promise.all([
-          store7.query("SELECT id, email, display_name, referral_code, created_date FROM users WHERE referral_code IS NOT NULL AND referral_code != ? ORDER BY id DESC LIMIT 200", [""]),
-          store7.query("SELECT COUNT(*) c FROM users WHERE referral_code IS NOT NULL AND referral_code != ?", [""])
-        ]);
-        const refs = await store7.query(
-          `SELECT referrer_id, referee_id, status, created_date FROM referrals ORDER BY id DESC LIMIT 500`
-        );
-        const users = await store7.query("SELECT id, email, referral_code FROM users LIMIT 2000");
-        const byId = new Map(users.map((u) => [Number(u.id), u]));
-        const totals = /* @__PURE__ */ new Map();
-        const valid = refs.filter((r) => String(r.status) === "valid");
-        for (const r of valid) {
-          const id = Number(r.referrer_id);
-          const u = byId.get(id);
-          const row = totals.get(id) || { code: u?.referral_code ? String(u.referral_code) : null, email: u?.email ? String(u.email) : null, valid: 0 };
-          row.valid += 1;
-          totals.set(id, row);
-        }
-        const since = Date.now() - days * 24 * 60 * 6e4;
-        const recent = valid.filter((r) => {
-          const at = Date.parse(String(r.created_date || r.validated_at || ""));
-          return !Number.isFinite(at) || at >= since;
-        }).slice(0, 25).map((r) => ({
-          referrer: byId.get(Number(r.referrer_id))?.referral_code || `#${r.referrer_id}`,
-          referee: byId.get(Number(r.referee_id))?.email || `#${r.referee_id}`,
-          at: r.created_date || r.validated_at || null
-        }));
-        const withCode = typeof totals.size === "number" ? codes.length : codes.length;
-        const codeCountRow = total[0] || {};
-        const totalCodes = typeof codeCountRow.c === "number" ? codeCountRow.c : codes.length;
-        res.json({
-          ok: true,
-          days,
-          members: totalCodes,
-          usersWithCode: withCode,
-          referrals: valid.length,
-          pending: refs.length - valid.length,
-          awardablePoints: valid.length,
-          topReferrers: [...totals.entries()].map(([id, v]) => ({ userId: id, code: v.code, email: v.email, referred: v.valid })).sort((a, b) => b.referred - a.referred).slice(0, 25),
-          // OWNER 18 Nov ("admin mein data ho ki kaunsa user kisko refer kar raha hai"): the panel could see
-          // totals but not the actual pair. This is the ledger itself - referrer (name, email, code) ->
-          // referee (name, email), when it happened, whether the point was awarded, and the ledger row id.
-          referralList: await (async () => {
-            const detail = await store7.query(
-              `SELECT r.id, r.referrer_id, r.referee_id, r.status, r.created_date,
-                  pe.points AS points_awarded
-             FROM referrals r
-             LEFT JOIN referral_point_events pe ON pe.referral_id = r.id
-            ORDER BY r.id DESC LIMIT 300`
-            );
-            const ids = /* @__PURE__ */ new Set();
-            for (const r of detail) {
-              ids.add(Number(r.referrer_id));
-              ids.add(Number(r.referee_id));
-            }
-            const people = ids.size ? await store7.query(`SELECT id, email, display_name, referral_code FROM users WHERE id IN (${[...ids].join(",")})`) : [];
-            const pById = new Map(people.map((u) => [Number(u.id), u]));
-            const who = (id) => {
-              const u = pById.get(id);
-              return {
-                id,
-                name: u?.display_name ? String(u.display_name) : u?.email ? String(u.email).split("@")[0] : `#${id}`,
-                email: u?.email ? String(u.email) : null,
-                code: u?.referral_code ? String(u.referral_code) : null
-              };
-            };
-            return detail.map((r) => ({
-              id: Number(r.id),
-              referrer: who(Number(r.referrer_id)),
-              referee: who(Number(r.referee_id)),
-              status: String(r.status || ""),
-              at: r.created_date || null,
-              pointsAwarded: Number(r.points_awarded || 0)
-            }));
-          })(),
-          recent
-        });
+        res.json(await referralsReport(getStore(), req.query.days));
       } catch (e2) {
         res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 160) });
       }
@@ -61845,14 +61881,14 @@ async function fetchOffers() {
 }
 async function loadPriceIndex() {
   const now = Date.now();
-  if (cache12.entries.length && now - cache12.at < CACHE_TTL_MS6) return cache12.entries;
-  if (cache12.building) return cache12.entries;
-  cache12.building = true;
+  if (cache13.entries.length && now - cache13.at < CACHE_TTL_MS6) return cache13.entries;
+  if (cache13.building) return cache13.entries;
+  cache13.building = true;
   try {
     const offers = await fetchOffers();
     const entries2 = groupOffers(offers, now).slice(0, MAX_PAGES);
-    const grew = entries2.length !== cache12.entries.length;
-    cache12 = { at: now, entries: entries2, building: false };
+    const grew = entries2.length !== cache13.entries.length;
+    cache13 = { at: now, entries: entries2, building: false };
     log.info("Seo", `price pages built: ${entries2.length} product x city comparisons from ${offers.length} offers`);
     if (grew) {
       void (async () => {
@@ -61866,14 +61902,14 @@ async function loadPriceIndex() {
     }
     return entries2;
   } catch (e2) {
-    cache12.building = false;
+    cache13.building = false;
     log.warn("Seo", "price page index failed (kept the previous one)", { error: String(e2?.message || e2).slice(0, 120) });
-    return cache12.entries;
+    return cache13.entries;
   }
 }
 function pricePathsNow() {
   const now = Date.now();
-  return cache12.entries.filter((e2) => isPriceFresh(e2, now));
+  return cache13.entries.filter((e2) => isPriceFresh(e2, now));
 }
 function findPriceEntry(path19) {
   const p = path19.replace(/\/+$/, "").toLowerCase();
@@ -62030,7 +62066,7 @@ ${sections || '<p class="lede">Our catalogue is still filling. Comparisons appea
 <p class="muted">Prices are checked through the day and stamped per page. No markup, no invented discounts.</p>
 </main></body></html>`;
 }
-var PRICE_FRESH_MS, MIN_VENDORS, MAX_PAGES, CACHE_TTL_MS6, cache12;
+var PRICE_FRESH_MS, MIN_VENDORS, MAX_PAGES, CACHE_TTL_MS6, cache13;
 var init_pricePages = __esm({
   "server/seo/pricePages.ts"() {
     init_logger();
@@ -62040,7 +62076,7 @@ var init_pricePages = __esm({
     MIN_VENDORS = 2;
     MAX_PAGES = 4e3;
     CACHE_TTL_MS6 = 6 * 60 * 60 * 1e3;
-    cache12 = { at: 0, entries: [], building: false };
+    cache13 = { at: 0, entries: [], building: false };
   }
 });
 
@@ -65293,7 +65329,7 @@ async function snapshotForPath(path19) {
   const page = stateAnswer ? null : resolveSeoPage(path19);
   if (!page && !stateAnswer) return null;
   const key = (path19 || "/").replace(/\/+$/, "") || "/";
-  const hit = cache13.get(key);
+  const hit = cache14.get(key);
   if (hit && Date.now() - hit.at < (hit.ttl ?? SNAPSHOT_TTL_MS)) return hit.snap;
   let snap = null;
   const stateMatch = /^\/best\/([a-z0-9-]+)\/([a-z0-9-]+)$/.exec(key);
@@ -65326,7 +65362,7 @@ async function snapshotForPath(path19) {
     } catch {
       snap = null;
     }
-    cache13.set(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
+    cache14.set(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
     return snap;
   }
   try {
@@ -65366,19 +65402,19 @@ async function snapshotForPath(path19) {
   } catch {
     snap = null;
   }
-  cache13.set(key, { at: Date.now(), snap });
+  cache14.set(key, { at: Date.now(), snap });
   return snap;
 }
 function clearSnapshotCache() {
-  cache13.clear();
+  cache14.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache13, esc7, inr3, slugOf3;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache14, esc7, inr3, slugOf3;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
     SNAPSHOT_TTL_MS = 10 * 6e4;
     MAX_ROWS = 6;
-    cache13 = /* @__PURE__ */ new Map();
+    cache14 = /* @__PURE__ */ new Map();
     esc7 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf3 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
