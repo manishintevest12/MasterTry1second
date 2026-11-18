@@ -10,9 +10,12 @@ import { Loader2, Users, Gift, Copy, Check } from 'lucide-react';
  */
 interface Row { userId: number; code: string | null; email: string | null; referred: number }
 interface Recent { referrer: string; referee: string; at: string | null }
+/** OWNER 18 Nov: the panel must show WHICH user referred WHOM, not just totals. */
+interface Person { id: number; name: string; email: string | null; code: string | null }
+interface LedgerRow { id: number; referrer: Person; referee: Person; status: string; at: string | null; pointsAwarded: number }
 interface Report {
   ok: boolean; days: number; members: number; usersWithCode: number; referrals: number;
-  pending: number; awardablePoints: number; topReferrers: Row[]; recent: Recent[];
+  pending: number; awardablePoints: number; topReferrers: Row[]; recent: Recent[]; referralList?: LedgerRow[];
 }
 
 const Stat = ({ label, value, hint, Icon }: { label: string; value: string; hint: string; Icon: any }) => (
@@ -109,6 +112,49 @@ export default function ReferralsTab() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* OWNER 18 Nov: the actual ledger — who referred whom, when, and whether the point landed. */}
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <p className="px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-500 border-b border-slate-100">
+                Who referred whom ({data.referralList?.length ?? 0} referrals on record)
+              </p>
+              {(data.referralList?.length ?? 0) === 0 && (
+                <p className="px-3 py-6 text-xs text-slate-400">No referral has been recorded yet.</p>
+              )}
+              {(data.referralList?.length ?? 0) > 0 && (
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="text-left text-slate-400 border-b border-slate-100">
+                      <th className="px-3 py-2 font-bold">Referrer</th>
+                      <th className="px-3 py-2 font-bold">Referred user</th>
+                      <th className="px-3 py-2 font-bold">Date</th>
+                      <th className="px-3 py-2 font-bold">Status</th>
+                      <th className="px-3 py-2 font-bold text-right">Points</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.referralList || []).map((r) => (
+                      <tr key={r.id} className="border-b border-slate-50 last:border-0 align-top">
+                        <td className="px-3 py-2">
+                          <div className="font-bold text-slate-800">{r.referrer.name}</div>
+                          <div className="text-slate-500 max-w-[180px] truncate">{r.referrer.email || '-'}</div>
+                          {r.referrer.code && <div className="font-mono text-[10px] text-slate-400">{r.referrer.code}</div>}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="font-bold text-slate-800">{r.referee.name}</div>
+                          <div className="text-slate-500 max-w-[180px] truncate">{r.referee.email || '-'}</div>
+                        </td>
+                        <td className="px-3 py-2 text-slate-400">{r.at ? String(r.at).slice(0, 10) : '-'}</td>
+                        <td className="px-3 py-2">
+                          <span className={r.status === 'valid' ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>{r.status || 'pending'}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right font-black text-slate-900">+{r.pointsAwarded}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">

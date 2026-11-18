@@ -2272,6 +2272,36 @@ class Try1SecondApi {
     }
   }
 
+  /// Real wallet from the server ledger: points (referral_point_events), spins (spin_eligibilities).
+  /// Retires the local demo counters that let a spin unlock without a single real referral.
+  Future<Map<String, dynamic>?> rewardsWallet(String token) async {
+    try {
+      return await _get('/api/rewards/wallet', token: token);
+    } on Exception {
+      return null;
+    }
+  }
+
+  /// Claim one 100-point spin eligibility. Returns null on success, the server's reason otherwise.
+  Future<String?> rewardsClaimSpin(String token) async {
+    try {
+      await _post('/api/rewards/eligibility/claim', {}, token: token);
+      return null;
+    } on Exception catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
+  /// The spin itself: the SERVER draws the prize from admin-configured inventory.
+  Future<Map<String, dynamic>> rewardsSpin(String token) async {
+    try {
+      return await _post('/api/rewards/spin',
+          {'idempotencyKey': 'app-${DateTime.now().millisecondsSinceEpoch}'}, token: token);
+    } on Exception catch (e) {
+      return {'success': false, 'error': e.toString().replaceFirst('Exception: ', '')};
+    }
+  }
+
   /// Apply a friend's referral code (once per account; +1 point to the friend).
   /// Returns null on success, an error message otherwise.
   Future<String?> referralApply(String token, String code) async {

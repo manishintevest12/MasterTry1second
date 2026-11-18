@@ -4821,7 +4821,30 @@ apiRouter.get('/rewards/me', requireAuth, async (req, res) => {
 apiRouter.post('/rewards/referral', requireAuth, async (req, res) => {
   const user = (req as any).user;
   const refereeId = Number(req.body.refereeId || 0);
-  if (!refereeId) return res.status(400).json({ success: false, error: 'refereeId is required' });
+  // OWNER 18 Nov (installed app: "Preparing your link..." then "Could not reach the referral engine"):
+  // the app's referralLink() helper POSTs this path with an EMPTY body, which used to answer 400
+  // 'refereeId is required' - so every installed build got no link at all. With no refereeId this now
+  // answers the caller's OWN code and share link (the same payload as GET /me), and the referee path
+  // still needs a real id.
+  if (!refereeId) {
+    try {
+      const { ensureReferralCode, referralStats, validPointBalance } = await import('../rewards/rewardsEngine');
+      const code = await ensureReferralCode(user.id);
+      const stats = await referralStats(user.id);
+      const points = await validPointBalance(user.id);
+      return res.json({
+        success: true,
+        code,
+        link: `https://www.try1second.com/?ref=${encodeURIComponent(code)}`,
+        shareLink: `https://www.try1second.com/r/${encodeURIComponent(code)}`,
+        appLink: `https://play.google.com/store/apps/details?id=com.try1second.try1second&referrer=${encodeURIComponent(`ref=${code}`)}`,
+        referredCount: stats.referredCount,
+        points,
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: e?.message || 'referral_unavailable' });
+    }
+  }
   const r = await registerReferral(user.id, refereeId);
   if (!r.ok) return res.status(400).json({ success: false, error: r.error });
   res.json({ success: true, awarded: r.awarded });
@@ -4863,6 +4886,44 @@ apiRouter.post('/rewards/referral/apply', requireAuth, async (req, res) => {
     res.json({ success: true, awarded: !!r.awarded, referrerCode: r.referrerCode });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'referral_unavailable' });
+  }
+});
+
+/**
+ * GET /api/rewards/wallet — one call for every client (web + app) to draw the real wallet.
+ *
+ * OWNER 18 Nov ("100 refer ni hua hai phir v unlock 100-pt spin ho jata hai"): the clients kept their own
+ * local point counters, so the wheel unlocked from simulated taps. This is the server truth: points come
+ * from referral_point_events, a spin needs 100 of them (spin_eligibilities), and nothing here can be raised
+ * by a client.
+ */
+apiRouter.get('/rewards/wallet', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { validPointBalance, eligibleSpinCount, referralStats, ensureReferralCode } = await import('../rewards/rewardsEngine');
+    const [points, spinsAvailable, stats, code] = await Promise.all([
+      validPointBalance(user.id),
+      eligibleSpinCount(user.id),
+      referralStats(user.id),
+      ensureReferralCode(user.id),
+    ]);
+    const cost = 100;
+    const consumed = spinsAvailable * cost;
+    const available = Math.max(0, points - consumed);
+    res.json({
+      success: true,
+      points,
+      pointsAvailable: available,
+      pointsPerSpin: cost,
+      pointsToNextSpin: Math.max(0, cost - (available % cost)),
+      spinsAvailable,
+      referredCount: stats.referredCount,
+      referredByCode: stats.referredByCode,
+      code,
+      shareLink: `https://www.try1second.com/r/${encodeURIComponent(code)}`,
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'wallet_unavailable' });
   }
 });
 

@@ -831,44 +831,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Referral System: 1 Point awarded for each new referral
   const [referralCode] = useState<string>('TRY1S-WIN88');
-  const [referredFriends, setReferredFriends] = useState<ReferredFriend[]>([
-    {
-      id: 'ref-1',
-      name: 'Aakash Verma',
-      email: 'aakash.v@gmail.com',
-      date: 'Yesterday',
-      status: 'active',
-      pointsAwarded: 1,
-    },
-    {
-      id: 'ref-2',
-      name: 'Pooja Iyer',
-      email: 'pooja.iyer@outlook.com',
-      date: '3 days ago',
-      status: 'active',
-      pointsAwarded: 1,
-    },
-  ]);
+  // OWNER 18 Nov: this list used to be seeded with two invented friends ('Pooja Iyer', 'ref-2'), which
+  // read as real referrals. Referrals now live only in the server ledger; the client keeps an empty list.
+  const [referredFriends, setReferredFriends] = useState<ReferredFriend[]>([]);
 
-  const referFriend = (friendName: string, friendEmail?: string) => {
-    const cleanName = friendName.trim() || 'Invited Friend';
-    const cleanEmail =
-      friendEmail?.trim() || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
-    const newFriend: ReferredFriend = {
-      id: `ref-${Date.now()}`,
-      name: cleanName,
-      email: cleanEmail,
-      date: 'Just now',
-      status: 'active',
-      pointsAwarded: 1,
-    };
-    setReferredFriends((prev) => [newFriend, ...prev]);
-    setUserPoints((prev) => prev + 1);
-    addToast(
-      'success',
-      '🎉 Referral Successful: +1 Point Earned!',
-      `${cleanName} signed up via your link. 1 Point has been added to your wallet towards your next prize spin!`
-    );
+  /**
+   * OWNER 18 Nov: this used to invent a friend and add a LOCAL point ("+1 Point Earned"), which is exactly how a
+   * spin could unlock without a real referral. Credits are the server's business now (POST /api/rewards/referral/apply
+   * when a friend signs up with the code), so this only opens WhatsApp to share the real link.
+   */
+  const referFriend = (_friendName: string, _friendEmail?: string) => {
+    const code = referralCode || '';
+    const url = code ? `${window.location.origin}/r/${encodeURIComponent(code)}` : window.location.origin;
+    const text = encodeURIComponent(`Join me on Try1Second — compare prices across Amazon, Blinkit, Zomato & more: ${url}`);
+    try { window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank'); } catch { /* popup blocked */ }
   };
 
   const [pendingAssistantSearch, setPendingAssistantSearch] = useState<{ vertical: string; query: string; date?: string } | null>(null);

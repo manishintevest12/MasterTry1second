@@ -425,6 +425,41 @@ adminRouter.get('/referrals', async (req, res) => {
         .map(([id, v]) => ({ userId: id, code: v.code, email: v.email, referred: v.valid }))
         .sort((a, b) => b.referred - a.referred)
         .slice(0, 25),
+      // OWNER 18 Nov ("admin mein data ho ki kaunsa user kisko refer kar raha hai"): the panel could see
+      // totals but not the actual pair. This is the ledger itself - referrer (name, email, code) ->
+      // referee (name, email), when it happened, whether the point was awarded, and the ledger row id.
+      referralList: (await (async () => {
+        const detail = await store.query<any>(
+          `SELECT r.id, r.referrer_id, r.referee_id, r.status, r.created_date,
+                  pe.points AS points_awarded
+             FROM referrals r
+             LEFT JOIN referral_point_events pe ON pe.referral_id = r.id
+            ORDER BY r.id DESC LIMIT 300`,
+        );
+        const ids = new Set<number>();
+        for (const r of detail) { ids.add(Number(r.referrer_id)); ids.add(Number(r.referee_id)); }
+        const people = ids.size
+          ? await store.query<any>(`SELECT id, email, display_name, referral_code FROM users WHERE id IN (${[...ids].join(',')})`)
+          : [];
+        const pById = new Map<number, any>(people.map((u: any) => [Number(u.id), u]));
+        const who = (id: number) => {
+          const u = pById.get(id);
+          return {
+            id,
+            name: u?.display_name ? String(u.display_name) : (u?.email ? String(u.email).split('@')[0] : `#${id}`),
+            email: u?.email ? String(u.email) : null,
+            code: u?.referral_code ? String(u.referral_code) : null,
+          };
+        };
+        return detail.map((r: any) => ({
+          id: Number(r.id),
+          referrer: who(Number(r.referrer_id)),
+          referee: who(Number(r.referee_id)),
+          status: String(r.status || ''),
+          at: r.created_date || null,
+          pointsAwarded: Number(r.points_awarded || 0),
+        }));
+      })()),
       recent,
     });
   } catch (e: any) {

@@ -826,20 +826,6 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
               style: tx(context, 11.5, w: FontWeight.w500, color: const Color(0xFFFFEDD5), h: 1.4),
             ),
             const Divider(height: 26, color: Colors.white24),
-            // Simulate Referrals toolbar (web parity test buttons)
-            Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 8, children: [
-              Text('Simulate Referrals:', style: tx(context, 11, w: FontWeight.w700, color: Color(0xFFFED7AA))),
-              _simPill('+1 Referral (Sneha)', Colors.white24, Colors.white, () => _wallet.referFriend('Sneha Kapoor', 'sneha.k@gmail.com')),
-              _simPill('+3 Referrals', Colors.white30, Colors.white, () {
-                _wallet.referFriend('Karan Johar', 'karan@gmail.com');
-                _wallet.referFriend('Priya Sharma', 'priya@gmail.com');
-                _wallet.referFriend('Arjun Nair', 'arjun@gmail.com');
-              }),
-              _simPill('Unlock 100-Pt Spin', Colors.white, const Color(0xFFEA580C), () {
-                _wallet.addPoints(kSpinCostPoints);
-                toast(context, '🎉 100 points added — spin unlocked!');
-              }, icon: Icons.bolt_rounded),
-            ]),
           ]),
         ),
         const SizedBox(height: 16),
@@ -910,68 +896,32 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
               ),
             ),
             const SizedBox(height: 14),
-            // Simulate Friend Sign-up box
+            // Real referral status from the server ledger (owner 18 Nov) - no simulation controls.
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Expanded(child: Row(children: [
-                    const Icon(Icons.group_rounded, size: 15, color: Color(0xFFEA580C)),
-                    const SizedBox(width: 5),
-                    Expanded(child: Text('Simulate Friend Sign-up (+1 Point)', style: tx(context, 11.5, w: FontWeight.w900, color: T1SColors.slate900))),
-                  ])),
+                  const Icon(Icons.group_rounded, size: 15, color: Color(0xFFEA580C)),
+                  const SizedBox(width: 5),
+                  Expanded(child: Text('Your Referrals', style: tx(context, 11.5, w: FontWeight.w900, color: T1SColors.slate900))),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(color: const Color(0xFFD4F8E5), borderRadius: BorderRadius.circular(999)),
-                    child: Text('${w.friends.length} Friends Joined', style: tx(context, 9.5, w: FontWeight.w800, color: const Color(0xFF006644))),
+                    child: Text('${w.referredCount} Friends Joined', style: tx(context, 9.5, w: FontWeight.w800, color: const Color(0xFF006644))),
                   ),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(child: _inviteField(_nameCtl, "Friend's Name...")),
-                  const SizedBox(width: 8),
-                  Expanded(child: _inviteField(_emailCtl, 'Email (optional)...')),
                 ]),
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _sendInvite,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF171C26),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
-                    ),
-                    icon: const Icon(Icons.send_rounded, size: 14, color: Color(0xFFFBBF24)),
-                    label: Text('Send Invite (+1 Pt)', style: tx(context, 11, w: FontWeight.w800)),
-                  ),
+                Text(
+                  'Every friend who joins with your link adds 1 point. At $kSpinCostPoints points one spin unlocks. '
+                  'Points are credited by the server when your friend signs up - they cannot be added by tapping here.',
+                  style: tx(context, 10.5, color: T1SColors.slate600, h: 1.35),
                 ),
-                if (w.friends.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 24,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: math.min(4, w.friends.length),
-                      separatorBuilder: (_, __) => const SizedBox(width: 6),
-                      itemBuilder: (context, i) {
-                        final f = w.friends[i];
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(6)),
-                          child: Row(children: [
-                            Text(f.name, style: tx(context, 9.5, w: FontWeight.w600, color: T1SColors.slate700)),
-                            const SizedBox(width: 4),
-                            Text('+${f.pointsAwarded} pt', style: tx(context, 9.5, w: FontWeight.w800, color: const Color(0xFFEA580C))),
-                          ]),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                const SizedBox(height: 6),
+                Text(
+                  'Wallet: ${w.points} pts - ${w.spinsAvailable} spin(s) ready - ${w.pointsToNextSpin} to next spin',
+                  style: tx(context, 10.5, w: FontWeight.w800, color: const Color(0xFFEA580C)),
+                ),
               ]),
             ),
           ]),
@@ -1397,23 +1347,9 @@ class _ReferralTabState extends State<_ReferralTab> {
               const SizedBox(height: 12),
               Container(height: 1, color: Colors.white38),
               const SizedBox(height: 12),
-              Text('Simulate Referrals:', style: tx(context, 11, w: FontWeight.w700, color: Color(0xFFFED7AA))),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _heroPill('+1 Referral (Sneha)', Colors.white24, Colors.white, () => _wallet.referFriend('Sneha Kapoor', 'sneha.k@gmail.com')),
-                  _heroPill('+3 Referrals', Colors.white24, Colors.white, () {
-                    _wallet.referFriend('Karan Johar', 'karan@gmail.com');
-                    _wallet.referFriend('Priya Sharma', 'priya@gmail.com');
-                    _wallet.referFriend('Arjun Nair', 'arjun@gmail.com');
-                  }),
-                  _heroPill('Unlock 100-Pt Spin', Colors.white, const Color(0xFFEA580C), () {
-                    _wallet.addPoints(kSpinCostPoints);
-                    toast(context, '100 points added — go spin the wheel!');
-                  }),
-                ],
+              Text(
+                'Your wallet: ${w.points} pts · ${w.spinsAvailable} spin(s) ready · ${w.referredCount} friends joined',
+                style: tx(context, 11, w: FontWeight.w800, color: Colors.white),
               ),
             ],
           ),
@@ -1505,7 +1441,7 @@ class _ReferralTabState extends State<_ReferralTab> {
         ),
         const SizedBox(height: 14),
 
-        // ── Simulate Friend Sign-up module (image 3) ──
+        // Real referral ledger (owner 18 Nov) - points only come from the server when an invited friend signs up.
         Box(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -1514,41 +1450,24 @@ class _ReferralTabState extends State<_ReferralTab> {
               Row(children: [
                 const Icon(Icons.group_rounded, size: 16, color: T1SColors.red),
                 const SizedBox(width: 8),
-                Expanded(child: Text('Simulate Friend Sign-up (+1 Point)', style: tx(context, 12.5, w: FontWeight.w900))),
+                Expanded(child: Text('Your Referrals', style: tx(context, 12.5, w: FontWeight.w900))),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(color: const Color(0xFFD1FAE5), borderRadius: BorderRadius.circular(999)),
-                  child: Text('${w.friends.length} Friends Joined', style: tx(context, 9.5, w: FontWeight.w900, color: Color(0xFF065F46))),
+                  child: Text('${w.referredCount} Friends Joined', style: tx(context, 9.5, w: FontWeight.w900, color: Color(0xFF065F46))),
                 ),
               ]),
-              const SizedBox(height: 10),
-              Row(children: [
-                Expanded(
-                  child: _miniField(_nameCtl, "Friend's Name..."),
-                ),
-                const SizedBox(width: 8),
-                Expanded(child: _miniField(_emailCtl, 'Email (optional)...')),
-              ]),
-              const SizedBox(height: 10),
-              GestureDetector(
-                onTap: _sendInvite,
-                child: Container(
-                  width: double.infinity,
-                  height: 42,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12)),
-                  child: Text('Send Invite (+1 Pt)', style: tx(context, 12.5, w: FontWeight.w900, color: Colors.white)),
-                ),
+              const SizedBox(height: 8),
+              Text(
+                'Share your link: each friend who signs up adds 1 point, and 100 points unlock a spin. '
+                'The server credits points - nothing can be added by tapping.',
+                style: tx(context, 11, color: muted(context), h: 1.4),
               ),
-              if (w.friends.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text(
-                  'Recent: ' + w.friends.take(3).map((f) => '${f.name} +${f.pointsAwarded} pt').join(' | '),
-                  style: tx(context, 10.5, color: muted(context), h: 1.4),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+              const SizedBox(height: 8),
+              Text(
+                'Wallet: ${w.points} pts · ${w.spinsAvailable} spin(s) ready · ${w.pointsToNextSpin} to next spin',
+                style: tx(context, 11, w: FontWeight.w800, color: T1SColors.red),
+              ),
             ],
           ),
         ),

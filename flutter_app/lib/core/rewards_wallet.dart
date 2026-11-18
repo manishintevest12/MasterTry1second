@@ -91,16 +91,52 @@ class RewardsWallet {
   static const _kWon = 'spin.won';
 
   int _points = 0;
+  /// Server ledger values. Once synced, the wheel refuses anything the server has not granted.
+  bool _synced = false;
+  int _serverPoints = 0;
+  int _serverSpins = 0;
+  int _serverReferred = 0;
+  int _serverToNext = kSpinCostPoints;
   List<ReferredFriend> _friends = const [];
   List<WonReward> _won = const [];
   bool _loaded = false;
   final List<void Function()> _listeners = [];
 
-  int get points => _points;
+  int get points => _synced ? _serverPoints : _points;
+  /// True once the wallet reflects the server ledger (never the retired local demo counters).
+  bool get synced => _synced;
+  int get referredCount => _serverReferred;
   List<ReferredFriend> get friends => List.unmodifiable(_friends);
   List<WonReward> get wonRewards => List.unmodifiable(_won);
-  int get spinsAvailable => _points >= kSpinCostPoints ? _points ~/ kSpinCostPoints : 0;
-  int get pointsToNextSpin => _points >= kSpinCostPoints ? 0 : kSpinCostPoints - _points;
+  int get spinsAvailable => _synced ? _serverSpins : (_points >= kSpinCostPoints ? _points ~/ kSpinCostPoints : 0);
+  int get pointsToNextSpin => _synced ? _serverToNext : (_points >= kSpinCostPoints ? 0 : kSpinCostPoints - _points);
+
+  /// Adopt the server's ledger (GET /api/rewards/wallet). Owner 18 Nov: the wheel must never unlock on
+  /// locally added points - 1 real referral = 1 point, 100 points = 1 spin, both decided by the server.
+  void applyServer({required int points, required int spinsAvailable, required int referredCount, required int pointsToNextSpin}) {
+    _synced = true;
+    _serverPoints = points;
+    _serverSpins = spinsAvailable;
+    _serverReferred = referredCount;
+    _serverToNext = pointsToNextSpin;
+    _notify();
+  }
+
+  /// Signed out: fall back to the (empty) local view instead of stale server numbers.
+  void clearServer() {
+    _synced = false;
+    _serverPoints = 0;
+    _serverSpins = 0;
+    _serverReferred = 0;
+    _serverToNext = kSpinCostPoints;
+    _notify();
+  }
+
+  /// After a successful server spin, drop one eligibility from the local mirror until the next sync.
+  void noteSpinConsumed() {
+    if (_synced && _serverSpins > 0) _serverSpins -= 1;
+    _notify();
+  }
 
   /// Returns the unsubscribe function.
   VoidCallback listen(void Function() fn) {
@@ -143,31 +179,32 @@ class RewardsWallet {
     await p.setString(_kWon, jsonEncode([for (final w in _won) w.toJson()]));
   }
 
-  /// Web parity: referFriend(name, email) — +1 point, prepends a friend.
+  /// OWNER 18 Nov: a referral point is credited by the SERVER when the invited friend signs up with the code
+  /// (POST /api/rewards/referral/apply). This local helper used to invent a friend and add a point on tap, which
+  /// is exactly how the wheel unlocked without a real referral - it no longer touches the balance.
   void referFriend(String name, [String? email]) {
     final cleanName = name.trim().isEmpty ? 'Invited Friend' : name.trim();
-    final cleanEmail = (email ?? '').trim().isNotEmpty
-        ? email!.trim()
-        : '${cleanName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '')}@gmail.com';
-    _friends = [ReferredFriend('ref-${DateTime.now().millisecondsSinceEpoch}', cleanName, cleanEmail, 'Just now', 1), ..._friends];
-    _points += 1;
+    _friends = [ReferredFriend('ref-${DateTime.now().millisecondsSinceEpoch}', cleanName, (email ?? '').trim(), 'Invite shared', 0), ..._friends];
     _persist();
     _notify();
   }
 
-  /// Web parity: addPoints(100, 'Tester Instant 100-Pt Spin Unlock').
+  /// Kept so older call sites compile, but it can no longer raise the wallet: only the server ledger can.
   void addPoints(int amount) {
-    _points += amount;
-    _persist();
-    _notify();
+    // no-op by design (owner 18 Nov) - locally added points were unlocking spins without referrals.
   }
 
   /// Web parity: executeSpin — weighted random pick, 100-pt deduction,
   /// +50-point prize bonus, voucher code in the same CODE-NNNN format.
   /// Returns the won slice, or null when not enough points.
   SpinSlice? executeSpin() {
-    if (_points < kSpinCostPoints) return null;
-    _points -= kSpinCostPoints;
+    // Local draw is kept only for the prize UI; it requires a REAL server grant.
+    if (_synced ? _serverSpins <= 0 : _points < kSpinCostPoints) return null;
+    if (_synced) {
+      _serverSpins -= 1;
+    } else {
+      _points -= kSpinCostPoints;
+    }
     final total = kSpinSlices.fold<int>(0, (s, r) => s + r.weight);
     var rand = Random().nextDouble() * total;
     var wonPrize = kSpinSlices.first;
