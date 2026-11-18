@@ -27,7 +27,9 @@ import { resolvePlacePhoto, categoryTile, isTileUrl, photoPool, poolHash, type P
 export type NearbyCategory = 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies' | 'all'
   // OWNER 17 Nov: the vehicle & paperwork errands, answered from the same OSM data (see nearby/categories.ts).
   | 'petrol' | 'cng' | 'lpg' | 'car_repair' | 'bike_repair' | 'puncture' | 'battery' | 'tyres' | 'denting'
-  | 'accessories' | 'car_wash' | 'detailing' | 'pucc' | 'insurance' | 'rto' | 'bike_rental' | 'car_rental' | 'scrapping';
+  | 'accessories' | 'car_wash' | 'detailing' | 'pucc' | 'insurance' | 'rto' | 'bike_rental' | 'car_rental' | 'scrapping'
+  // OWNER 18 Nov: EV charging joined the vehicle row after CNG (see nearby/categories.ts).
+  | 'ev_charging';
 
 export interface NearbyRow {
   id: string;
@@ -193,6 +195,10 @@ const CATEGORY_ALIASES: Record<string, NearbyCategory> = {
   'bike rental': 'bike_rental', 'bike rentals': 'bike_rental', 'bike and scooty rental': 'bike_rental', 'scooter rental': 'bike_rental', 'scooty rental': 'bike_rental', 'two wheeler rental': 'bike_rental',
   'car rental': 'car_rental', 'car rentals': 'car_rental', 'car hire': 'car_rental', 'self drive': 'car_rental',
   scrapping: 'scrapping', scrap: 'scrapping', 'vehicle scrapping': 'scrapping', 'scrap yard': 'scrapping', kabadi: 'scrapping',
+  ev_charging: 'ev_charging', 'ev charging': 'ev_charging', 'ev charger': 'ev_charging', 'ev chargers': 'ev_charging',
+  'ev charging station': 'ev_charging', 'ev station': 'ev_charging', 'ev point': 'ev_charging',
+  'charging station': 'ev_charging', 'charging stations': 'ev_charging', 'charging point': 'ev_charging',
+  'charging hub': 'ev_charging', 'electric vehicle charging': 'ev_charging', 'electric vehicle': 'ev_charging',
 };
 
 export function normalizeNearbyCategory(raw: unknown): NearbyCategory {
@@ -931,8 +937,11 @@ function osmCategory(tags: any): NearbyCategory {
       if (/cng|compressed natural gas/.test(n)) return 'cng';
       if (/puc|pucc|pollution/.test(n)) return 'pucc';
       if (/lpg/.test(n)) return 'lpg';
+      if (hit('ev_charging')) return 'ev_charging';
       return 'petrol';
     }
+    // OWNER 18 Nov: OSM's own tag for a public charging point.
+    if (a === 'charging_station' || a === 'charging') return 'ev_charging';
     if (a === 'car_wash') return hit('detailing') ? 'detailing' : 'car_wash';
     if (a === 'car_rental' || a === 'car_sharing') return hit('bike_rental') ? 'bike_rental' : 'car_rental';
     if (a === 'motorcycle_rental') return 'bike_rental';
@@ -1424,7 +1433,7 @@ async function buildNearbyAnswer(input: {
   // "Get directions" now, on both surfaces, so the button can never promise a booking that does not exist.
   const SERVICE_ONLY = new Set<string>([
     'petrol', 'cng', 'lpg', 'car_repair', 'bike_repair', 'puncture', 'battery', 'tyres', 'denting', 'accessories',
-    'car_wash', 'detailing', 'pucc', 'insurance', 'rto', 'bike_rental', 'car_rental', 'scrapping',
+    'car_wash', 'detailing', 'pucc', 'insurance', 'rto', 'bike_rental', 'car_rental', 'scrapping', 'ev_charging',
   ]);
   /**
    * The last thing that runs before a row leaves the server, whatever tier created it (photo pass, related
@@ -1502,7 +1511,7 @@ async function buildNearbyAnswer(input: {
       detailing: ['car_wash', 'car_repair'],
       denting: ['car_repair', 'accessories'],
       pucc: ['petrol', 'car_repair'],
-      lpg: ['petrol'], cng: ['petrol'], bike_repair: ['accessories', 'car_repair'],
+      lpg: ['petrol'], cng: ['petrol'], ev_charging: ['petrol'], bike_repair: ['accessories', 'car_repair'],
       // OWNER 17 Nov: a cold start answered Pune's Cafes tab with a single card because the map mirror that holds
       // the cafes had not spoken yet. Thin answers, not just empty ones, now borrow the nearest real siblings.
       cafes: ['restaurants', 'stores'], restaurants: ['cafes'], cinemas: ['cafes', 'stores'],

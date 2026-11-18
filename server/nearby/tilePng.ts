@@ -20,7 +20,7 @@ const FAMILY: Record<string, number> = {
   restaurants: 12, cafes: 28, hotels: 232, stays: 258, cabs: 45, stores: 320, movies: 280,
   petrol: 38, cng: 150, lpg: 20, car_repair: 205, bike_repair: 190, puncture: 8, battery: 48,
   tyres: 215, denting: 265, accessories: 300, car_wash: 185, detailing: 200, pucc: 165,
-  insurance: 210, rto: 222, bike_rental: 140, car_rental: 170, scrapping: 95, all: 250,
+  insurance: 210, rto: 222, bike_rental: 140, car_rental: 170, scrapping: 95, ev_charging: 130, all: 250,
 };
 
 function hash(text: string): number {

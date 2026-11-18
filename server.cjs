@@ -950,12 +950,18 @@ function getStore() {
       const pool2 = import_promise.default.createPool({
         uri: settings.mysqlUrl,
         waitForConnections: true,
-        connectionLimit: 10,
+        // Slightly wider pool: Hostinger's MySQL allows well beyond this, and the previous 10 connections was
+        // the bottleneck that kept 250 writes waiting behind one wide search.
+        connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 14),
         // OWNER 30 Oct ('close all database connections properly'): a bounded wait queue
         // and idle reaping. Without maxIdle/idleTimeout mysql2 keeps every connection it
         // ever opened until the process dies, which on shared hosting counts against the
         // account's connection limit.
-        queueLimit: 25,
+        // OWNER 17 Nov (log: 100 x "Queue limit reached." from entity resolution plus three prune tasks
+        // skipped): a 25-deep queue overflowed whenever one wide search had several hundred writes in flight,
+        // and the overflow also cancelled the background prunes. A deeper queue absorbs the burst instead of
+        // rejecting it; it is bounded and tunable so shared hosting can still be dialled down with DB_QUEUE_LIMIT.
+        queueLimit: Number(process.env.DB_QUEUE_LIMIT || 250),
         maxIdle: 4,
         idleTimeout: 6e4,
         enableKeepAlive: true,
@@ -4713,6 +4719,134 @@ var init_shopsy = __esm({
   }
 });
 
+// server/workers/parsers/digihaat.ts
+function digihaatSearchUrl(term) {
+  return `${SITE}/en/search?q=${encodeURIComponent(term)}`;
+}
+async function getGuestToken(force = false) {
+  if (!force && guestToken && Date.now() - guestTokenAt < GUEST_TTL_MS) return guestToken;
+  const r = await cffiFetch(`${SITE}/en`, {
+    impersonate: "chrome",
+    timeoutMs: 25e3,
+    returnCookies: true,
+    headers: { "Accept-Language": "en-IN,en;q=0.9" }
+  });
+  const tok = r.cookies?.guestToken || "";
+  if (r.status !== 200 || tok.length < 40) {
+    throw new Error(`DigiHaat guest session unavailable (HTTP ${r.status}, token ${tok ? "short" : "missing"})`);
+  }
+  guestToken = tok;
+  guestTokenAt = Date.now();
+  return tok;
+}
+function digihaatPlace(loc) {
+  const lat = Number(loc?.lat);
+  const lng = Number(loc?.lng);
+  const pin = String(loc?.pincode || "");
+  return {
+    lat: Number.isFinite(lat) && Math.abs(lat) <= 90 ? lat : DEFAULT_PLACE.lat,
+    lng: Number.isFinite(lng) && Math.abs(lng) <= 180 ? lng : DEFAULT_PLACE.lng,
+    pincode: /^\d{6}$/.test(pin) ? pin : DEFAULT_PLACE.pincode
+  };
+}
+async function fetchDigihaat(term, place, limit = 20) {
+  const q3 = String(term || "").trim();
+  if (!q3) return '{"data":[]}';
+  const call = async (token) => {
+    const url = `${API}?latitude=${place.lat}&longitude=${place.lng}&pincode=${encodeURIComponent(place.pincode)}&name=${encodeURIComponent(q3)}&isManualSearch=true&pageNumber=1&limit=${Math.max(1, Math.min(40, limit))}`;
+    return cffiFetch(url, {
+      impersonate: "chrome",
+      timeoutMs: 2e4,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+        Origin: SITE,
+        Referer: `${SITE}/en/search?q=${encodeURIComponent(q3)}`,
+        "Accept-Language": "en-IN,en;q=0.9"
+      }
+    });
+  };
+  let r = await call(await getGuestToken());
+  if (r.status === 401) r = await call(await getGuestToken(true));
+  if (r.status !== 200) throw new Error(`DigiHaat search HTTP ${r.status}`);
+  return r.body;
+}
+function unitLabel(measure) {
+  const unit = String(measure?.unit || "").trim();
+  const value = String(measure?.value || "").trim();
+  if (!unit && !value) return "";
+  if (!value) return unit;
+  return `${value} ${unit}`.replace(/\s+/g, " ").trim();
+}
+function parseDigihaat(body, source, requestUrl) {
+  let root;
+  try {
+    root = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const rows = Array.isArray(root?.data) ? root.data : [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const row of rows) {
+    const item = row?.item_details || {};
+    const desc = item?.descriptor || {};
+    const name = String(desc.name || "").replace(/\s+/g, " ").trim();
+    const priceRaw = Number(item?.price?.value);
+    const currency = String(item?.price?.currency || "INR").toUpperCase();
+    if (!name || !Number.isFinite(priceRaw) || priceRaw <= 0) continue;
+    const seller = String(row?.provider_details?.descriptor?.name || "DigiHaat seller").replace(/\s+/g, " ").trim();
+    const sku = String(row?.id || item?.id || `${seller}-${name}`).slice(0, 120);
+    const key = `${sku}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const images = Array.isArray(desc.images) ? desc.images.filter((u) => typeof u === "string" && /^https?:\/\//.test(u)) : [];
+    const unit = unitLabel(item?.quantity?.unitized?.measure);
+    const maxValue = Number(item?.price?.maximum_value);
+    const city = String(row?.location_details?.address?.city || "").trim();
+    const available = Number(item?.quantity?.available?.count);
+    out.push(
+      newRawItem(source, {
+        title: (unit && name.toLowerCase().indexOf(unit.toLowerCase()) === -1 ? `${name} (${unit})` : name).slice(0, 200),
+        price: Math.round(priceRaw * 100) / 100,
+        listPrice: Number.isFinite(maxValue) && maxValue > priceRaw ? Math.round(maxValue * 100) / 100 : void 0,
+        currency: currency === "INR" ? "INR" : currency,
+        seller,
+        sellerUrl: digihaatSearchUrl(name),
+        identifiers: { vendorProductId: sku },
+        availability: Number.isFinite(available) ? available > 0 ? "in_stock" : "out_of_stock" : "unknown",
+        attributes: {
+          image: images[0] || "",
+          ...images.length > 1 ? { image_urls: images.slice(0, 6).join("|") } : {},
+          platform: "DigiHaat",
+          ...unit ? { pack_size: unit } : {},
+          ...city ? { seller_city: city } : {},
+          data_note: "Live DigiHaat (ONDC) listing \u2014 price and seller as published by the seller app."
+        },
+        evidence: {
+          sourceUrl: requestUrl,
+          extractedFields: ["title", "price", "seller", "image"],
+          sourceReference: "DigiHaat clientApis v3 global item search (guest session, public web app call)"
+        }
+      })
+    );
+  }
+  return out;
+}
+var SITE, API, guestToken, guestTokenAt, GUEST_TTL_MS, DEFAULT_PLACE;
+var init_digihaat = __esm({
+  "server/workers/parsers/digihaat.ts"() {
+    init_contract();
+    init_curlCffiFetch();
+    SITE = "https://digihaat.in";
+    API = "https://prod.digihaat.in/clientApis/v3/search/global/items";
+    guestToken = null;
+    guestTokenAt = 0;
+    GUEST_TTL_MS = 20 * 6e4;
+    DEFAULT_PLACE = { lat: 22.7203616, lng: 75.8681996, pincode: "452001" };
+  }
+});
+
 // server/workers/verticals/ecommerce.ts
 function jmCityForPin(pincode) {
   if (!/^\d{6}$/.test(pincode)) return void 0;
@@ -4757,6 +4891,7 @@ var init_ecommerce = __esm({
     init_jiomart();
     init_relianceDigital();
     init_shopsy();
+    init_digihaat();
     import_node_crypto = require("node:crypto");
     init_httpClient();
     init_curlCffiFetch();
@@ -5285,6 +5420,31 @@ var init_ecommerce = __esm({
           priority: 18,
           run: async (_ctx) => {
             throw new AcquisitionError("EMPTY_RESPONSE", 'Tata Neu commerce is app-only (tataneu.com is a marketing shell with no web search/pricing); its web storefront arm Tata CLiQ is a live source. Tata Neu offers, when surfaced, will state "available only on app".');
+          }
+        },
+        {
+          // DigiHaat (digihaat.in) — the owner's Cuelinks partner (17 Nov: "digihaat.in bhi add karo ecommerce,
+          // food aur others me"). An ONDC buyer app, so one query compares many seller apps' live prices.
+          // The storefront is client-rendered (no product data in the HTML), so this reads the same JSON API the
+          // public web app calls, using its own anonymous guest token (see parsers/digihaat.ts for the measurement).
+          sourceId: "w_ecom_digihaat",
+          name: "Ecom worker: DigiHaat (ONDC multi-seller live prices)",
+          priority: 9,
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const place = digihaatPlace(ctx.query.location);
+            let body;
+            try {
+              body = await fetchDigihaat(term, place);
+            } catch (e2) {
+              const msg = String(e2?.message || e2);
+              const code = /HTTP 40[13]/.test(msg) ? "ACCESS_CHALLENGE" : /HTTP 429/.test(msg) ? "RATE_LIMITED" : "SERVER_ERROR";
+              throw new AcquisitionError(code, `DigiHaat: ${msg}`.slice(0, 300));
+            }
+            const items = parseDigihaat(body, ctx.source, digihaatSearchUrl(term));
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `DigiHaat had no priced listing for "${term}"`);
+            return items;
           }
         }
       ]
@@ -7048,6 +7208,592 @@ var init_rescueFetch = __esm({
   }
 });
 
+// server/nearby/webImages.ts
+function hostOf2(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+function hostAllowed(url) {
+  const host = hostOf2(url);
+  if (!host || !/^https?:\/\//i.test(url)) return false;
+  if (BAD_HOSTS.some((b) => host.includes(b))) return false;
+  const path19 = (() => {
+    try {
+      return new URL(url).pathname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  if (BAD_WORDS.test(path19)) return false;
+  return IMAGE_EXT.test(path19) || IMAGE_CDN_HINT.test(host);
+}
+function decodeEntities(s) {
+  return s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\\u002f/gi, "/").replace(/\\\//g, "/");
+}
+async function bingImages(query, opts = {}) {
+  const q3 = String(query || "").trim();
+  if (!q3) return [];
+  const key = q3.toLowerCase();
+  const hit = cache4.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.rows;
+  const url = `https://www.bing.com/images/search?q=${encodeURIComponent(q3)}&form=HDRSC2&mkt=en-IN&first=1&count=${Math.min(30, Math.max(5, opts.count || 20))}`;
+  let rows = [];
+  try {
+    const res = await cffiFetch(url, {
+      impersonate: "chrome",
+      timeoutMs: Math.max(3e3, opts.timeoutMs || 7e3),
+      headers: { "accept-language": "en-IN,en;q=0.9", accept: "text/html,application/xhtml+xml" }
+    });
+    if (res.status === 200 && res.body) {
+      const chunks = String(res.body).split("murl&quot;:&quot;").slice(1);
+      for (const chunk2 of chunks) {
+        const image = decodeEntities((chunk2.match(/^([^&"]+)/) || [])[1] || "").trim();
+        if (!/^https?:\/\//i.test(image)) continue;
+        if (!hostAllowed(image)) continue;
+        const title = decodeEntities((chunk2.match(/t&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
+        const page = decodeEntities((chunk2.match(/purl&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
+        rows.push({ image, page, title, host: hostOf2(image) });
+      }
+    }
+  } catch (e2) {
+    log.warn("nearby", "bing images failed", { query: q3, error: String(e2?.message || e2).slice(0, 90) });
+    rows = [];
+  }
+  const ttl = rows.length ? CACHE_TTL_MS : 15 * 6e4;
+  cache4.set(key, { at: Date.now() - (rows.length ? 0 : CACHE_TTL_MS - ttl), rows });
+  if (cache4.size > 600) {
+    for (const [k] of [...cache4.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 200)) cache4.delete(k);
+  }
+  return rows;
+}
+async function imageFetchOk(url, timeoutMs = 4e3) {
+  if (!/^https?:\/\//i.test(String(url || ""))) return false;
+  try {
+    const res = await cffiFetch(url, {
+      impersonate: "chrome",
+      timeoutMs,
+      binary: true,
+      headers: { accept: "image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8" }
+    });
+    if (res.status !== 200 || !res.body) return false;
+    const buf = Buffer.from(res.body, res.encoding === "base64" ? "base64" : "binary");
+    if (buf.length < 256) return false;
+    return buf[0] === 255 && buf[1] === 216 || buf[0] === 137 && buf[1] === 80 || buf.subarray(0, 4).toString("ascii") === "RIFF" || buf.subarray(4, 8).toString("ascii") === "ftyp";
+  } catch {
+    return false;
+  }
+}
+function proxySecret() {
+  return process.env.AFFILIATE_SECRET || import_node_crypto2.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#nearby-image`).digest("hex");
+}
+function sign(payload) {
+  return import_node_crypto2.default.createHmac("sha256", proxySecret()).update(payload).digest("base64url").slice(0, 32);
+}
+function proxiedImage(url) {
+  const src2 = String(url || "").trim();
+  if (!/^https?:\/\//i.test(src2)) return "";
+  const payload = Buffer.from(JSON.stringify({ u: src2.slice(0, 1500), e: Date.now() + PROXY_TTL_MS }), "utf8").toString("base64url");
+  return `/api/nearby/img?t=${payload}.${sign(payload)}`;
+}
+function resolveProxiedImage(token) {
+  const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
+  if (!m) return null;
+  const [, payload, sig] = m;
+  const expect = sign(payload);
+  if (sig.length !== expect.length) return null;
+  try {
+    if (!import_node_crypto2.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+    const j = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    const url = String(j?.u || "");
+    if (!/^https?:\/\//i.test(url)) return null;
+    if (Number(j?.e) < Date.now()) return null;
+    if (!hostAllowed(url)) return null;
+    const host = hostOf2(url);
+    if (!host.includes(".") || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return null;
+    if (/(^|\.)(localhost|internal|local|arpa)$/.test(host)) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+var import_node_crypto2, BAD_HOSTS, BAD_WORDS, IMAGE_EXT, IMAGE_CDN_HINT, cache4, CACHE_TTL_MS, PROXY_TTL_MS;
+var init_webImages = __esm({
+  "server/nearby/webImages.ts"() {
+    import_node_crypto2 = __toESM(require("node:crypto"), 1);
+    init_curlCffiFetch();
+    init_logger();
+    BAD_HOSTS = [
+      "bing.com",
+      "bing.net",
+      "microsoft.com",
+      "msn.com",
+      "google.",
+      "gstatic.com",
+      "googleusercontent.com",
+      "justdial.com",
+      "zomato.com",
+      "swiggy.com",
+      "tripadvisor.",
+      "yelp.com",
+      "foursquare.com",
+      "facebook.com",
+      "fbcdn.net",
+      "instagram.com",
+      "pinterest.",
+      "linkedin.com",
+      "twitter.com",
+      "x.com",
+      "youtube.com",
+      "ytimg.com",
+      "wikimedia.org",
+      "wikipedia.org",
+      "bookmyshow.com",
+      "paytm.com",
+      "shutterstock.com",
+      "alamy.com",
+      "dreamstime.com",
+      "istockphoto.com",
+      "gettyimages.com",
+      "123rf.com",
+      "vectorstock.com",
+      "freepik.com",
+      "pngtree.com",
+      "seeklogo.com",
+      "cleanpng.com",
+      "kindpng.com",
+      "placeholder.com",
+      "placehold.it",
+      "loremflickr.com",
+      "unsplash.com",
+      "pexels.com",
+      "pixabay.com"
+    ];
+    BAD_WORDS = /logo|icon|favicon|sprite|placeholder|avatar|map\b|maps|screenshot|banner-ad|watermark|noimage|no-image|default[-_]?image|coming[-_]?soon|storefront-icon/i;
+    IMAGE_EXT = /\.(jpe?g|png|webp)(\?|$)/i;
+    IMAGE_CDN_HINT = /(^|\.)(images?|img|cdn|static|media|assets|photo|photos|pic|pics)\./i;
+    cache4 = /* @__PURE__ */ new Map();
+    CACHE_TTL_MS = 12 * 60 * 6e4;
+    PROXY_TTL_MS = 30 * 24 * 60 * 60 * 1e3;
+  }
+});
+
+// server/nearby/photos.ts
+function commonsFilePath(file) {
+  const name = String(file || "").replace(/^File:/i, "").trim();
+  if (!name || NOT_A_PHOTO.test(name) || !IS_PHOTO.test(name.replace(/\?.*$/, ""))) return null;
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(name)}?width=${COMMONS_WIDTH}`;
+}
+async function getJson(url, timeoutMs) {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), Math.max(600, timeoutMs));
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { "user-agent": UA2, accept: "application/json" }
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+function plain(html) {
+  return String(html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+function commonsCredit(meta) {
+  const licence = plain(meta?.LicenseShortName?.value).slice(0, 24);
+  return licence ? `Photo from Wikimedia Commons (${licence}).` : "Photo from Wikimedia Commons.";
+}
+function nameTokens(name) {
+  return String(name || "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !GENERIC_TOKENS.has(t) && !/^\d+$/.test(t));
+}
+function titleMatches(title, tokens3, category) {
+  if (!tokens3.length) return false;
+  const lower = String(title || "").toLowerCase();
+  if (NOT_A_PLACE.test(lower)) return false;
+  const hits = tokens3.filter((t) => lower.includes(t));
+  const catWords = CATEGORY_WORDS[String(category || "all")] || CATEGORY_WORDS.all;
+  const isCat = (t) => catWords.some((w) => w === t || t.length >= 4 && w.startsWith(t));
+  const strong = hits.filter((t) => t.length >= 4 && !isCat(t));
+  const catHit = catWords.some((w) => lower.includes(w));
+  if (tokens3.length >= 2 && hits.length === tokens3.length) return true;
+  if (strong.length >= 2) return true;
+  if (strong.length >= 1 && catHit) return true;
+  return false;
+}
+function distanceKm(a, b) {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+function farAway(origin2, cand) {
+  if (!origin2 || !cand) return false;
+  return distanceKm(origin2, cand) > MAX_KM;
+}
+function cacheKey(ev, name, city, category) {
+  return [
+    ev.wikidata || "",
+    ev.wikipedia || "",
+    ev.imageTag || "",
+    ev.commonsTag || "",
+    name.toLowerCase(),
+    (city || "").toLowerCase(),
+    String(category || "")
+  ].join("|");
+}
+async function wikidataImage(qid, timeoutMs) {
+  const id = String(qid || "").trim().toUpperCase();
+  if (!/^Q\d+$/.test(id)) return null;
+  const data = await getJson(`https://www.wikidata.org/wiki/Special:EntityData/${id}.json`, timeoutMs);
+  const claims = data?.entities?.[id]?.claims;
+  const files = [];
+  for (const c of Array.isArray(claims?.P18) ? claims.P18 : []) {
+    const v = c?.mainsnak?.datavalue?.value;
+    if (typeof v === "string") files.push(v);
+  }
+  for (const file of files) {
+    const url = commonsFilePath(file);
+    if (url) return { url, credit: "Photo from Wikimedia Commons for this place." };
+  }
+  return null;
+}
+async function wikipediaImage(tag, timeoutMs) {
+  const raw = String(tag || "").trim();
+  if (!raw) return null;
+  const m = raw.match(/^([a-z-]{2,3}):(.+)$/i);
+  const lang = m ? m[1].toLowerCase() : "en";
+  const title = (m ? m[2] : raw).replace(/_/g, " ").trim();
+  if (!title) return null;
+  const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&piprop=thumbnail&pithumbsize=${COMMONS_WIDTH}&titles=${encodeURIComponent(title)}`;
+  const data = await getJson(url, timeoutMs);
+  for (const p of Object.values(data?.query?.pages || {})) {
+    const src2 = String(p?.thumbnail?.source || "");
+    if (/^https:\/\//i.test(src2) && !NOT_A_PHOTO.test(src2)) {
+      return { url: src2, credit: "Photo from the place's Wikipedia article." };
+    }
+  }
+  return null;
+}
+function searchQueries(name, city, tokens3) {
+  const q3 = [
+    city ? `${name} ${city}` : name,
+    name,
+    city ? `${tokens3.slice(0, 3).join(" ")} ${city}` : tokens3.slice(0, 3).join(" ")
+  ];
+  return [...new Set(q3.map((x) => x.trim()).filter(Boolean))];
+}
+async function commonsNameImage(name, city, tokens3, category, origin2, timeoutMs) {
+  if (!tokens3.length) return null;
+  const seen = /* @__PURE__ */ new Set();
+  for (const query of searchQueries(name, city, tokens3)) {
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=6&gsrlimit=10&prop=imageinfo|coordinates&iiprop=url|extmetadata&iiurlwidth=${COMMONS_WIDTH}`;
+    const data = await getJson(url, timeoutMs);
+    for (const p of Object.values(data?.query?.pages || {})) {
+      const title = String(p?.title || "");
+      if (!title || seen.has(title) || NOT_A_PHOTO.test(title) || !IS_PHOTO.test(title)) continue;
+      seen.add(title);
+      if (!titleMatches(title, tokens3, category)) continue;
+      const co = Array.isArray(p?.coordinates) ? p.coordinates[0] : null;
+      if (farAway(origin2, co ? { lat: Number(co.lat), lng: Number(co.lon) } : null)) continue;
+      const info = Array.isArray(p?.imageinfo) ? p.imageinfo[0] : null;
+      const thumb = String(info?.thumburl || info?.url || "").replace(/[?&]utm_[^&]*/g, "").replace(/\?$/, "");
+      if (!/^https:\/\/(upload|thumb)\.wikimedia\.org\//i.test(thumb)) continue;
+      return {
+        url: thumb,
+        credit: `${commonsCredit(info?.extmetadata)} Matched on this place's name.`,
+        tier: "commons-name",
+        sourceTitle: title
+      };
+    }
+  }
+  return null;
+}
+async function wikipediaSearchImage(name, city, tokens3, category, origin2, timeoutMs) {
+  if (!tokens3.length) return null;
+  for (const query of searchQueries(name, city, tokens3)) {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=6&prop=pageimages|coordinates&piprop=thumbnail&pithumbsize=${COMMONS_WIDTH}`;
+    const data = await getJson(url, timeoutMs);
+    for (const p of Object.values(data?.query?.pages || {})) {
+      const title = String(p?.title || "");
+      if (!title || !titleMatches(title, tokens3, category)) continue;
+      const co = Array.isArray(p?.coordinates) ? p.coordinates[0] : null;
+      if (!co || farAway(origin2, { lat: Number(co.lat), lng: Number(co.lon) })) continue;
+      const src2 = String(p?.thumbnail?.source || "");
+      if (!/^https:\/\//i.test(src2) || NOT_A_PHOTO.test(src2)) continue;
+      return { url: src2, credit: "Photo from this place's Wikipedia article.", tier: "wikipedia-name", sourceTitle: title };
+    }
+  }
+  return null;
+}
+async function webImageForPlace(name, city, tokens3, category, timeoutMs) {
+  if (!tokens3.length) return null;
+  const deadline = Date.now() + Math.max(1500, timeoutMs);
+  const query = city ? `${name} ${city}` : name;
+  const candidates = await bingImages(query, { count: 20, timeoutMs });
+  const strong = tokens3.filter((t) => t.length >= 4);
+  const required = strong.length ? strong : tokens3;
+  const ranked = [];
+  for (const cand of candidates) {
+    const haystack = `${cand.title} ${cand.page} ${cand.image}`.toLowerCase();
+    if (NOT_A_PLACE.test(haystack)) continue;
+    if (!required.every((t) => haystack.includes(t))) continue;
+    if (!required.some((t) => t.length >= 5)) continue;
+    const score = (haystack.includes(String(city || "").toLowerCase()) ? 2 : 0) + tokens3.filter((t) => haystack.includes(t)).length;
+    ranked.push({ cand, score });
+  }
+  ranked.sort((a, b) => b.score - a.score);
+  for (const { cand } of ranked.slice(0, 3)) {
+    if (Date.now() > deadline) break;
+    const url = proxiedImage(cand.image);
+    if (!url) continue;
+    if (!await imageFetchOk(cand.image, Math.max(1200, Math.min(4e3, deadline - Date.now())))) continue;
+    return {
+      url,
+      credit: `Photo matched on the web for this place (${cand.host}).`,
+      tier: "web",
+      sourceTitle: cand.title || cand.image
+    };
+  }
+  return null;
+}
+async function resolvePlacePhoto(input) {
+  const ev = input.evidence || {};
+  const city = input.city || null;
+  const category = input.category || null;
+  const key = cacheKey(ev, input.name, city, category);
+  const hit = cache5.get(key);
+  if (hit && Date.now() - hit.at < (hit.hit ? CACHE_TTL_MS2 : MISS_TTL_MS)) return hit.hit;
+  const deadline = Date.now() + Math.max(800, Number(input.timeoutMs) || 4e3);
+  const left = () => Math.max(700, deadline - Date.now());
+  const tokens3 = nameTokens(input.name);
+  const origin2 = Number.isFinite(Number(input.lat)) && Number.isFinite(Number(input.lng)) ? { lat: Number(input.lat), lng: Number(input.lng) } : null;
+  let found = null;
+  const direct = String(ev.imageTag || "").trim();
+  if (!found && /^https:\/\/.+\.(jpe?g|png|webp)(\?.*)?$/i.test(direct)) {
+    found = { url: direct, credit: "Photo from this place's own OpenStreetMap listing.", tier: "evidence" };
+  }
+  if (!found && ev.commonsTag) {
+    const url = commonsFilePath(ev.commonsTag);
+    if (url) found = { url, credit: "Photo from Wikimedia Commons for this place.", tier: "evidence" };
+  }
+  if (!found && ev.wikidata) {
+    const wd = await wikidataImage(ev.wikidata, left());
+    if (wd) found = { ...wd, tier: "evidence" };
+  }
+  if (!found && ev.wikipedia) {
+    const wp = await wikipediaImage(ev.wikipedia, left());
+    if (wp) found = { ...wp, tier: "evidence" };
+  }
+  const addressLike = category === "cabs" || category === "stores" || category === "all";
+  if (!found && (!addressLike || tokens3.length >= 2)) {
+    found = await commonsNameImage(input.name, city, tokens3, category, origin2, left());
+  }
+  if (!found && (!addressLike || tokens3.length >= 2)) {
+    found = await wikipediaSearchImage(input.name, city, tokens3, category, origin2, left());
+  }
+  if (!found && (!addressLike || tokens3.length >= 2)) {
+    found = await webImageForPlace(input.name, city, tokens3, category, left());
+  }
+  cache5.set(key, { hit: found, at: Date.now() });
+  if (cache5.size > 1200) {
+    const drop = [...cache5.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 400);
+    for (const [k] of drop) cache5.delete(k);
+  }
+  if (found) log.info("nearby", `photo resolved (${found.tier}) for "${input.name}"`, { city });
+  return found;
+}
+function photoPool(category) {
+  const cat = String(category || "all");
+  return PHOTO_POOL[cat] || PHOTO_POOL.all || [];
+}
+function poolHash(seed) {
+  let h = 2166136261;
+  const s = String(seed || "place");
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
+}
+function categoryTile(category, seed, tiles) {
+  const cat = String(category || "all");
+  const name = String(seed || "place").slice(0, 80);
+  if (!name) {
+    const list = tiles[cat] || tiles.all || [`${ASSET_ORIGIN}/nearby-assets/all.jpg`];
+    return list[0];
+  }
+  return `${ASSET_ORIGIN}/api/nearby/tile?c=${encodeURIComponent(cat)}&n=${encodeURIComponent(name)}`;
+}
+function isTileUrl(url) {
+  const u = String(url || "");
+  return /\/nearby-assets\//.test(u) || u.includes("/api/nearby/tile");
+}
+var import_node_fs4, import_node_path4, GENERIC_TOKENS, CATEGORY_WORDS, NOT_A_PLACE, NOT_A_PHOTO, IS_PHOTO, UA2, COMMONS_WIDTH, MAX_KM, cache5, CACHE_TTL_MS2, MISS_TTL_MS, ASSET_ORIGIN, PHOTO_POOL;
+var init_photos = __esm({
+  "server/nearby/photos.ts"() {
+    import_node_fs4 = __toESM(require("node:fs"), 1);
+    import_node_path4 = __toESM(require("node:path"), 1);
+    init_logger();
+    init_webImages();
+    GENERIC_TOKENS = /* @__PURE__ */ new Set([
+      "cafe",
+      "cafes",
+      "coffee",
+      "restaurant",
+      "restaurants",
+      "restro",
+      "bar",
+      "pub",
+      "bakery",
+      "dessert",
+      "food",
+      "cinema",
+      "cinemas",
+      "talkies",
+      "multiplex",
+      "theatre",
+      "theater",
+      "movie",
+      "movies",
+      "cineplex",
+      "picture",
+      "pictures",
+      "hotel",
+      "hotels",
+      "lodge",
+      "inn",
+      "residency",
+      "suites",
+      "stay",
+      "stays",
+      "guest",
+      "guesthouse",
+      "taxi",
+      "cab",
+      "cabs",
+      "auto",
+      "rickshaw",
+      "rikshaw",
+      "stand",
+      "stop",
+      "pick",
+      "pickup",
+      "drop",
+      "parking",
+      "store",
+      "stores",
+      "shop",
+      "shops",
+      "mart",
+      "supermarket",
+      "mall",
+      "market",
+      "complex",
+      "centre",
+      "center",
+      "the",
+      "and",
+      "for",
+      "near",
+      "road",
+      "marg",
+      "street",
+      "lane",
+      "path",
+      "chowk",
+      "chawk",
+      "square",
+      "nagar",
+      "indian",
+      "india",
+      "pune",
+      "mumbai",
+      "delhi",
+      "bangalore",
+      "bengaluru",
+      "hyderabad",
+      "chennai",
+      "kolkata",
+      "limited",
+      "ltd",
+      "pvt",
+      "private",
+      "service",
+      "services",
+      "point",
+      "main",
+      "new",
+      "old",
+      "best",
+      "top",
+      // street/plot words: "Central Avenue" or "Lane Number 7" is an address, not a business, so a photo whose
+      // title merely repeats the address is not evidence of this card's place.
+      "avenue",
+      "cross",
+      "bypass",
+      "extension",
+      "sector",
+      "block",
+      "phase",
+      "colony",
+      "society",
+      "layout",
+      "enclave",
+      "circle",
+      "junction",
+      "corner",
+      "gate",
+      "bridge",
+      "hills",
+      "valley",
+      "number",
+      "no"
+    ]);
+    CATEGORY_WORDS = {
+      movies: ["cinema", "talkie", "theatre", "theater", "multiplex", "cineplex", "picture", "hall"],
+      cabs: ["taxi", "cab", "auto", "rickshaw", "rikshaw", "stand"],
+      stores: ["shop", "store", "market", "mart", "bazaar", "bazar", "mall", "showroom"],
+      cafes: ["cafe", "coffee", "bakery", "restaurant"],
+      restaurants: ["restaurant", "dhaba", "eatery", "cafe", "hotel"],
+      hotels: ["hotel", "lodge", "residency", "inn", "suites", "guest"],
+      stays: ["hotel", "lodge", "guest", "homestay", "residency", "hostel", "apartment", "inn"],
+      all: ["cinema", "hotel", "restaurant", "cafe", "market", "shop", "theatre"]
+    };
+    NOT_A_PLACE = /museum|sculpture|excavat|archaeolog|manuscript|coin|inscription|temple|fort\b|monument|map of|logo|emblem|coat of arms|diagram|postage|stamp\b|panorama of/i;
+    NOT_A_PHOTO = /\.(svg|pdf|tif|tiff|djvu|xcf|webm|ogv|gif)$/i;
+    IS_PHOTO = /\.(jpe?g|png|webp)$/i;
+    UA2 = "Try1Second/1.0 (nearby photos; https://try1second.com)";
+    COMMONS_WIDTH = 640;
+    MAX_KM = 40;
+    cache5 = /* @__PURE__ */ new Map();
+    CACHE_TTL_MS2 = 12 * 60 * 6e4;
+    MISS_TTL_MS = 20 * 6e4;
+    ASSET_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
+    PHOTO_POOL = (() => {
+      const out = {};
+      const roots = [import_node_path4.default.resolve("public/nearby-photos"), import_node_path4.default.resolve("../public/nearby-photos")];
+      for (const root of roots) {
+        try {
+          if (!import_node_fs4.default.existsSync(root)) continue;
+          for (const entry of import_node_fs4.default.readdirSync(root, { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue;
+            const files = import_node_fs4.default.readdirSync(import_node_path4.default.join(root, entry.name)).filter((f) => /\.jpe?g$/i.test(f)).sort();
+            if (files.length) out[entry.name] = files.map((f) => `${ASSET_ORIGIN}/nearby-photos/${entry.name}/${f}`);
+          }
+          break;
+        } catch {
+        }
+      }
+      return out;
+    })();
+  }
+});
+
 // server/workers/parsers/bookingDemand.ts
 function bookingDemandConfig() {
   const affiliateId = (process.env.BOOKING_DEMAND_AFFILIATE_ID || "").trim();
@@ -8458,6 +9204,7 @@ var init_hotels = __esm({
     init_mmtListing();
     init_rescueFetch();
     init_curlCffiFetch();
+    init_photos();
     init_contract();
     init_httpClient();
     init_bookingDemand();
@@ -8849,12 +9596,24 @@ var init_hotels = __esm({
               }
               if (!live) {
                 if (!cachedDead) cleartripArtDeadUntil = Date.now() + 60 * 6e4;
+                const pool2 = photoPool("hotels");
+                const used = /* @__PURE__ */ new Set();
                 for (const r of rows) {
-                  if (r.attributes?.image_url) delete r.attributes.image_url;
-                  if (r.attributes?.image_urls) delete r.attributes.image_urls;
+                  if (!pool2.length) {
+                    if (r.attributes?.image_url) delete r.attributes.image_url;
+                    if (r.attributes?.image_urls) delete r.attributes.image_urls;
+                    continue;
+                  }
+                  const seed = String(r.title || r.attributes?.name || r.identifiers?.vendorProductId || "hotel");
+                  let pick3 = pool2[poolHash(seed) % pool2.length];
+                  for (let step = 1; used.has(pick3) && step <= pool2.length; step += 1) {
+                    pick3 = pool2[(poolHash(seed) + step) % pool2.length];
+                  }
+                  used.add(pick3);
+                  r.attributes = { ...r.attributes || {}, image_url: pick3, image_urls: pick3, image_source: "kind_pool" };
                 }
                 if (!cachedDead) {
-                  log.warn("Hotels worker", "Cleartrip CDN art dead \u2014 images stripped; hourly re-probe will re-arm art (self-healing)", { probe: String(firstImg).slice(0, 80) });
+                  log.warn("Hotels worker", "Cleartrip CDN art dead \u2014 keeping credited kind-pool photos so no card is blank; hourly re-probe re-arms real art", { probe: String(firstImg).slice(0, 80), pool: pool2.length });
                 }
               }
             }
@@ -13420,7 +14179,7 @@ var init_cathayTsp = __esm({
 // server/workers/parsers/britishAirwaysPaa.ts
 function baIntegrityToken(dep, from, to) {
   const raw = `${dep.toUpperCase()}${from.toUpperCase()}${to}`;
-  const hex = (0, import_node_crypto2.createHash)("sha256").update(raw).digest("hex");
+  const hex = (0, import_node_crypto3.createHash)("sha256").update(raw).digest("hex");
   return Buffer.from(hex, "hex").toString("base64");
 }
 function baDeeplink(from, to, dep) {
@@ -13521,10 +14280,10 @@ function baFlightItems(flights, source, fromCity, toCity, fromCode, toCode, dep)
     }
   }));
 }
-var import_node_crypto2, BA_AVAILABILITY_API, BA_GRANT_API, BA_CABIN_HELPER, BA_FLIGHTLIST, isoTime2;
+var import_node_crypto3, BA_AVAILABILITY_API, BA_GRANT_API, BA_CABIN_HELPER, BA_FLIGHTLIST, isoTime2;
 var init_britishAirwaysPaa = __esm({
   "server/workers/parsers/britishAirwaysPaa.ts"() {
-    import_node_crypto2 = require("node:crypto");
+    import_node_crypto3 = require("node:crypto");
     init_contract();
     BA_AVAILABILITY_API = "https://www.britishairways.com/api/sc4/badotcomadapter-paa/rs/v1/flightavailability/search";
     BA_GRANT_API = "https://www.britishairways.com/api/grant";
@@ -20154,6 +20913,7 @@ var init_food = __esm({
     init_pizzaHut();
     init_toing();
     init_curlCffiFetch();
+    init_digihaat();
     ZOMATO_SLUGS = {
       "new delhi": "ncr",
       delhi: "ncr",
@@ -20459,6 +21219,30 @@ var init_food = __esm({
               throw new AcquisitionError("EMPTY_RESPONSE", `Toing feed listed ${groups.size} restaurants (pages=${pages}) but none matched "${term}"`);
             }
             return items.slice(0, 40);
+          }
+        },
+        {
+          // DigiHaat (digihaat.in) — the owner's Cuelinks partner (17 Nov: "ecommerce, food aur others me add karo").
+          // DigiHaat's food domain (ONDC:RET11) lists cooked dishes — biryani, pizza, burger, samosa — with the
+          // seller kitchen's own live price, so a dish query gets a real compare-able row from a partner store.
+          sourceId: "w_food_digihaat",
+          name: "Food worker: DigiHaat (ONDC food sellers, live prices)",
+          priority: 12,
+          run: async (ctx) => {
+            const term = String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
+            if (!term) return [];
+            const place = digihaatPlace(ctx.query.location);
+            let body;
+            try {
+              body = await fetchDigihaat(term, place);
+            } catch (e2) {
+              const msg = String(e2?.message || e2);
+              const code = /HTTP 40[13]/.test(msg) ? "ACCESS_CHALLENGE" : /HTTP 429/.test(msg) ? "RATE_LIMITED" : "SERVER_ERROR";
+              throw new AcquisitionError(code, `DigiHaat: ${msg}`.slice(0, 300));
+            }
+            const all = parseDigihaat(body, ctx.source, digihaatSearchUrl(term));
+            if (!all.length) throw new AcquisitionError("EMPTY_RESPONSE", `DigiHaat food sellers had no priced dish for "${term}"`);
+            return all.slice(0, 30);
           }
         }
       ]
@@ -20848,14 +21632,14 @@ var init_indriveIntercity = __esm({
 
 // server/common/geoProxy.ts
 async function throttledNominatim(path19) {
-  const hit = cache4.get(path19);
+  const hit = cache6.get(path19);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCallAt = Date.now();
   try {
     const r = await fetch(`${NOMINATIM}${path19}`, {
-      headers: { "User-Agent": UA2, Accept: "application/json" },
+      headers: { "User-Agent": UA3, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
@@ -20863,8 +21647,8 @@ async function throttledNominatim(path19) {
       return null;
     }
     const value = await r.json();
-    if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(path19, { at: Date.now(), value });
+    if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
+    cache6.set(path19, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -20899,14 +21683,14 @@ async function geoReverse(lat, lng) {
   };
 }
 async function throttledPhoton(path19) {
-  const hit = cache4.get(path19);
+  const hit = cache6.get(path19);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastPhotonAt + PHOTON_MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastPhotonAt = Date.now();
   try {
     const r = await fetch(`${PHOTON}${path19}`, {
-      headers: { "User-Agent": UA2, Accept: "application/json" },
+      headers: { "User-Agent": UA3, Accept: "application/json" },
       signal: AbortSignal.timeout(6e3)
     });
     if (!r.ok) {
@@ -20914,8 +21698,8 @@ async function throttledPhoton(path19) {
       return null;
     }
     const value = await r.json();
-    if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(`photon:${path19}`, { at: Date.now(), value });
+    if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
+    cache6.set(`photon:${path19}`, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Photon unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -20977,13 +21761,13 @@ async function geoSuggest(q3, opts = {}) {
   const near = Number.isFinite(opts.lat) && Number.isFinite(opts.lng) ? { lat: opts.lat, lng: opts.lng } : void 0;
   return feats.map((f) => photonFeatureToPlace(f, near)).filter((p) => p !== null).slice(0, limit);
 }
-var UA2, NOMINATIM, cache4, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS, PHOTON, lastPhotonAt, PHOTON_MIN_INTERVAL_MS;
+var UA3, NOMINATIM, cache6, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS, PHOTON, lastPhotonAt, PHOTON_MIN_INTERVAL_MS;
 var init_geoProxy = __esm({
   "server/common/geoProxy.ts"() {
     init_logger();
-    UA2 = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
+    UA3 = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
     NOMINATIM = "https://nominatim.openstreetmap.org";
-    cache4 = /* @__PURE__ */ new Map();
+    cache6 = /* @__PURE__ */ new Map();
     CACHE_MS = 24 * 60 * 6e4;
     CACHE_MAX = 800;
     lastCallAt = 0;
@@ -25332,9 +26116,9 @@ ${v}\r
   async function mintAwsWafToken(url, opts = {}) {
     const host = new URL(url).hostname;
     const cached3 = tokenCache.get(host);
-    if (cached3 && Date.now() - cached3.mintedAt < CACHE_TTL_MS) return cached3.token;
+    if (cached3 && Date.now() - cached3.mintedAt < CACHE_TTL_MS3) return cached3.token;
     const t0 = Date.now();
-    const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA3, "Accept-Language": "en-IN,en;q=0.9" } });
+    const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA4, "Accept-Language": "en-IN,en;q=0.9" } });
     const html = r.body || "";
     if (r.status === 200 && !html.includes("gokuProps")) {
       tokenCache.set(host, { token: "", mintedAt: Date.now() });
@@ -25343,14 +26127,14 @@ ${v}\r
     if (!html.includes("gokuProps")) throw new Error(`AWS WAF shell missing (HTTP ${r.status}, len ${html.length})`);
     const m = html.match(/<script src="(https:\/\/[^"]*awswaf\.com[^"]*challenge\.js)"><\/script>/);
     if (!m) throw new Error("challenge.js URL not found in shell");
-    const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA3 } });
+    const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA4 } });
     if (!cj.body) throw new Error(`challenge.js fetch failed (HTTP ${cj.status})`);
     const { JSDOM } = await import("jsdom");
     const vc = await makeQuietVirtualConsole();
     const dom = new JSDOM(html.replace(m[0], ""), { url, runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc });
     const w = dom.window;
     Object.defineProperty(w, "crypto", {
-      value: { ...w.crypto || {}, subtle: import_node_crypto3.webcrypto.subtle, getRandomValues: (b) => import_node_crypto3.webcrypto.getRandomValues(b) },
+      value: { ...w.crypto || {}, subtle: import_node_crypto4.webcrypto.subtle, getRandomValues: (b) => import_node_crypto4.webcrypto.getRandomValues(b) },
       configurable: true,
       writable: true
     });
@@ -25358,7 +26142,7 @@ ${v}\r
     w.TextDecoder = w.TextDecoder || TextDecoder;
     Object.defineProperty(w.Location.prototype, "reload", { value: () => {
     }, configurable: true });
-    Object.defineProperty(w.navigator, "userAgent", { get: () => UA3, configurable: true });
+    Object.defineProperty(w.navigator, "userAgent", { get: () => UA4, configurable: true });
     w.fetch = async (u, init = {}) => {
       let bodyStr;
       let ct = "";
@@ -25371,7 +26155,7 @@ ${v}\r
         else if (init.body instanceof Uint8Array) bodyStr = Buffer.from(init.body).toString();
         else bodyStr = String(init.body);
       }
-      const hdrs = { "User-Agent": UA3, ...init.headers || {} };
+      const hdrs = { "User-Agent": UA4, ...init.headers || {} };
       if (ct && !hdrs["Content-Type"] && !hdrs["content-type"]) hdrs["Content-Type"] = ct;
       const res = await cffiFetch2(String(u), { impersonate: "chrome", method: init.method || "GET", body: bodyStr, timeoutMs: 25e3, headers: hdrs });
       const body = res.body || "";
@@ -25396,7 +26180,7 @@ ${v}\r
   }
   async function wafGet(url, extraHeaders = {}, opts = {}) {
     const token = await mintAwsWafToken(url, opts);
-    const headers = { "User-Agent": UA3, "Accept-Language": "en-IN,en;q=0.9", ...token ? { Cookie: "aws-waf-token=" + token } : {}, ...extraHeaders };
+    const headers = { "User-Agent": UA4, "Accept-Language": "en-IN,en;q=0.9", ...token ? { Cookie: "aws-waf-token=" + token } : {}, ...extraHeaders };
     let r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 25e3, headers });
     if (r.status === 202) {
       tokenCache.delete(new URL(url).hostname);
@@ -25407,13 +26191,13 @@ ${v}\r
   }
   return { mintAwsWafToken, wafGet, isChallenged: (status, body) => status === 202 || status === 200 && body.includes("gokuProps") };
 }
-var import_node_crypto3, UA3, CACHE_TTL_MS, tokenCache;
+var import_node_crypto4, UA4, CACHE_TTL_MS3, tokenCache;
 var init_awsWafChallenge = __esm({
   "server/common/awsWafChallenge.ts"() {
-    import_node_crypto3 = require("node:crypto");
+    import_node_crypto4 = require("node:crypto");
     init_logger();
-    UA3 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-    CACHE_TTL_MS = 15e4;
+    UA4 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+    CACHE_TTL_MS3 = 15e4;
     tokenCache = /* @__PURE__ */ new Map();
   }
 });
@@ -25606,6 +26390,7 @@ var init_grocery = __esm({
   "server/workers/verticals/grocery.ts"() {
     init_verticalWorker();
     init_amazonIn();
+    init_digihaat();
     init_flipkart();
     init_blinkit();
     init_zeptoSsr();
@@ -26006,6 +26791,31 @@ var init_grocery = __esm({
               throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in presented a challenge page");
             }
             throw new AcquisitionError("EMPTY_RESPONSE", `Amazon.in returned no grocery products for "${term}"`);
+          }
+        },
+        {
+          // DigiHaat (digihaat.in) — the owner's Cuelinks partner (17 Nov: "digihaat.in bhi add karo ecommerce,
+          // food aur others me"). An ONDC buyer app, so one query compares many seller apps' live prices.
+          // The storefront is client-rendered (no product data in the HTML), so this reads the same JSON API the
+          // public web app calls, using its own anonymous guest token (see parsers/digihaat.ts for the measurement).
+          sourceId: "w_grocery_digihaat",
+          name: "Grocery worker: DigiHaat (ONDC multi-seller live prices)",
+          priority: 9,
+          run: async (ctx) => {
+            const term = q2(ctx);
+            if (!term) return [];
+            const place = digihaatPlace(ctx.query.location);
+            let body;
+            try {
+              body = await fetchDigihaat(term, place);
+            } catch (e2) {
+              const msg = String(e2?.message || e2);
+              const code = /HTTP 40[13]/.test(msg) ? "ACCESS_CHALLENGE" : /HTTP 429/.test(msg) ? "RATE_LIMITED" : "SERVER_ERROR";
+              throw new AcquisitionError(code, `DigiHaat: ${msg}`.slice(0, 300));
+            }
+            const items = parseDigihaat(body, ctx.source, digihaatSearchUrl(term));
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `DigiHaat had no priced listing for "${term}"`);
+            return items;
           }
         },
         {
@@ -27172,15 +27982,15 @@ async function fetchWithTimeout(url, ms, init = {}) {
 }
 async function ensureDataset() {
   try {
-    const stale = !(0, import_node_fs4.existsSync)(RATINGS_FILE) || Date.now() - (0, import_node_fs4.statSync)(RATINGS_FILE).mtimeMs > RATINGS_TTL_MS;
+    const stale = !(0, import_node_fs5.existsSync)(RATINGS_FILE) || Date.now() - (0, import_node_fs5.statSync)(RATINGS_FILE).mtimeMs > RATINGS_TTL_MS;
     if (!stale) return true;
     const res = await fetchWithTimeout(RATINGS_URL, 6e4);
-    if (!res.ok || !res.body) return (0, import_node_fs4.existsSync)(RATINGS_FILE);
-    await (0, import_promises.pipeline)(res.body, (0, import_node_fs4.createWriteStream)(RATINGS_FILE));
+    if (!res.ok || !res.body) return (0, import_node_fs5.existsSync)(RATINGS_FILE);
+    await (0, import_promises.pipeline)(res.body, (0, import_node_fs5.createWriteStream)(RATINGS_FILE));
     tconstIndex = null;
     return true;
   } catch {
-    return (0, import_node_fs4.existsSync)(RATINGS_FILE);
+    return (0, import_node_fs5.existsSync)(RATINGS_FILE);
   }
 }
 function datasetPromise() {
@@ -27201,7 +28011,7 @@ async function lookupTconst(tt) {
   for (const k of ratingCache.keys()) if (k) wanted.add(k);
   return new Promise((resolve) => {
     let found = null;
-    const rl = import_node_readline.default.createInterface({ input: (0, import_node_fs4.createReadStream)(RATINGS_FILE).pipe((0, import_node_zlib.createGunzip)()) });
+    const rl = import_node_readline.default.createInterface({ input: (0, import_node_fs5.createReadStream)(RATINGS_FILE).pipe((0, import_node_zlib.createGunzip)()) });
     rl.on("line", (line) => {
       const tab = line.indexOf("	");
       if (tab <= 0) return;
@@ -27231,7 +28041,7 @@ async function imdbTconst(title) {
   const hit = titleCache.get(key);
   if (hit !== void 0) {
     if (hit === null) return null;
-    return Date.now() - hit.at < CACHE_TTL_MS2 ? hit.tt : null;
+    return Date.now() - hit.at < CACHE_TTL_MS4 ? hit.tt : null;
   }
   try {
     const s = await fetchWithTimeout(
@@ -27274,7 +28084,7 @@ async function imdbRatingFor(title) {
     const tt = await imdbTconst(title);
     if (!tt) return null;
     const row = await lookupTconst(tt);
-    if (!row || Date.now() - row.at > CACHE_TTL_MS2) {
+    if (!row || Date.now() - row.at > CACHE_TTL_MS4) {
       if (row) return { tt, rating: row.rating, votes: row.votes };
     }
     if (!row) return null;
@@ -27283,19 +28093,19 @@ async function imdbRatingFor(title) {
     return null;
   }
 }
-var import_node_zlib, import_node_fs4, import_node_os, import_node_path4, import_promises, import_node_readline, RATINGS_URL, RATINGS_FILE, RATINGS_TTL_MS, CACHE_TTL_MS2, ratingCache, titleCache, tconstIndex, datasetReady, normTitle;
+var import_node_zlib, import_node_fs5, import_node_os, import_node_path5, import_promises, import_node_readline, RATINGS_URL, RATINGS_FILE, RATINGS_TTL_MS, CACHE_TTL_MS4, ratingCache, titleCache, tconstIndex, datasetReady, normTitle;
 var init_imdbRatings = __esm({
   "server/workers/parsers/imdbRatings.ts"() {
     import_node_zlib = require("node:zlib");
-    import_node_fs4 = require("node:fs");
+    import_node_fs5 = require("node:fs");
     import_node_os = require("node:os");
-    import_node_path4 = require("node:path");
+    import_node_path5 = require("node:path");
     import_promises = require("node:stream/promises");
     import_node_readline = __toESM(require("node:readline"), 1);
     RATINGS_URL = "https://datasets.imdbws.com/title.ratings.tsv.gz";
-    RATINGS_FILE = (0, import_node_path4.join)((0, import_node_os.tmpdir)(), "imdb-title-ratings.tsv.gz");
+    RATINGS_FILE = (0, import_node_path5.join)((0, import_node_os.tmpdir)(), "imdb-title-ratings.tsv.gz");
     RATINGS_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
-    CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
+    CACHE_TTL_MS4 = 24 * 60 * 60 * 1e3;
     ratingCache = /* @__PURE__ */ new Map();
     titleCache = /* @__PURE__ */ new Map();
     tconstIndex = null;
@@ -27453,7 +28263,7 @@ async function enrichWithGw(o, aggs, gwHost, forSite) {
     o.evidence.extractedFields = [...o.evidence.extractedFields || [], "imdb_rating"];
   }
 }
-var import_node_crypto4, GW_TTL_MS, GW_COLD_WAIT_MS, gwAggCache, gwAggInflight, bmsLastPrice, moviesWorker, MOVIE_WARM_CITIES;
+var import_node_crypto5, GW_TTL_MS, GW_COLD_WAIT_MS, gwAggCache, gwAggInflight, bmsLastPrice, moviesWorker, MOVIE_WARM_CITIES;
 var init_movies = __esm({
   "server/workers/verticals/movies.ts"() {
     init_verticalWorker();
@@ -27467,7 +28277,7 @@ var init_movies = __esm({
     init_movieSeatLink();
     init_districtGw();
     init_imdbRatings();
-    import_node_crypto4 = require("node:crypto");
+    import_node_crypto5 = require("node:crypto");
     GW_TTL_MS = 10 * 6e4;
     GW_COLD_WAIT_MS = 1500;
     gwAggCache = /* @__PURE__ */ new Map();
@@ -27507,7 +28317,7 @@ var init_movies = __esm({
             const payload = JSON.parse(res.body);
             const stripTokens = (normCity(region.regionName) + " " + normCity(String(ctx.query.location?.city || ""))).split(" ").filter(Boolean);
             const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, stripTokens)) : "";
-            const fingerprint = (0, import_node_crypto4.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
+            const fingerprint = (0, import_node_crypto5.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
             let cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
             if (cards.length === 0 && queryTerm) {
               const playing = parseMovieCards(payload, ctx.source, region, "", fingerprint);
@@ -31127,21 +31937,21 @@ var init_freshness = __esm({
 
 // server/pipeline/lenderLogo.ts
 function load7() {
-  if (cache5) return cache5;
+  if (cache7) return cache7;
   try {
-    cache5 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE, "utf8"));
+    cache7 = JSON.parse(import_node_fs6.default.readFileSync(CACHE_FILE, "utf8"));
   } catch {
-    cache5 = {};
+    cache7 = {};
   }
-  return cache5;
+  return cache7;
 }
 function persist2() {
   if (saveTimer2) return;
   saveTimer2 = setTimeout(() => {
     saveTimer2 = null;
     try {
-      import_node_fs5.default.mkdirSync(import_node_path5.default.dirname(CACHE_FILE), { recursive: true });
-      import_node_fs5.default.writeFileSync(CACHE_FILE, JSON.stringify(cache5 || {}));
+      import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(CACHE_FILE), { recursive: true });
+      import_node_fs6.default.writeFileSync(CACHE_FILE, JSON.stringify(cache7 || {}));
     } catch {
     }
   }, 1500);
@@ -31149,11 +31959,11 @@ function persist2() {
 function lenderNameFrom(raw) {
   return String(raw || "").replace(/\b(personal|home|car|auto|business|gold|education|two[- ]wheeler|bike|used car|property|credit card|loan|loans|insurance|health|term|life|motor|travel|plan|policy|emi|interest rates?|rates?)\b/gi, " ").replace(/[|:–—-].*$/, " ").replace(/\s+/g, " ").trim().slice(0, 60);
 }
-async function getJson(url) {
+async function getJson2(url) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA4, Accept: "application/json" }, signal: ctl.signal });
+    const r = await fetch(url, { headers: { "User-Agent": UA5, Accept: "application/json" }, signal: ctl.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
@@ -31184,7 +31994,7 @@ function pickCommonsLogoHit(titles, institution) {
 }
 async function commonsLogoFallback(name) {
   try {
-    const s = await getJson(`https://commons.wikimedia.org/w/api.php?action=query&format=json&list=search&srnamespace=6&srlimit=8&srsearch=${encodeURIComponent(name + " logo")}`);
+    const s = await getJson2(`https://commons.wikimedia.org/w/api.php?action=query&format=json&list=search&srnamespace=6&srlimit=8&srsearch=${encodeURIComponent(name + " logo")}`);
     const titles = (s?.query?.search || []).map((x) => String(x.title || "")).filter(Boolean);
     const hit = pickCommonsLogoHit(titles, name);
     if (!hit) return null;
@@ -31195,10 +32005,10 @@ async function commonsLogoFallback(name) {
 }
 async function lookup(nameRaw) {
   const name = LENDER_ALIAS[nameRaw.toLowerCase()] || nameRaw;
-  const s = await getJson(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=5&search=${encodeURIComponent(name)}`);
+  const s = await getJson2(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=5&search=${encodeURIComponent(name)}`);
   const ids = (s?.search || []).map((x) => x.id).filter(Boolean);
   if (!ids.length) return null;
-  const e2 = await getJson(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${ids.join("|")}`);
+  const e2 = await getJson2(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${ids.join("|")}`);
   for (const id of ids) {
     const ent = e2?.entities?.[id];
     const desc = String(ent?.descriptions?.en?.value || "").toLowerCase();
@@ -31214,7 +32024,7 @@ function resolveLenderLogo(rawName) {
   const key = name.toLowerCase();
   const c = load7();
   const hit = c[key];
-  if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS)) return Promise.resolve(hit.url);
+  if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS2)) return Promise.resolve(hit.url);
   const running2 = inflight2.get(key);
   if (running2) return running2;
   const p = lookup(name).catch(() => null).then((url) => {
@@ -31225,16 +32035,16 @@ function resolveLenderLogo(rawName) {
   inflight2.set(key, p);
   return p;
 }
-var import_node_fs5, import_node_path5, UA4, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
+var import_node_fs6, import_node_path6, UA5, CACHE_FILE, MISS_TTL_MS2, FETCH_TIMEOUT_MS, cache7, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
 var init_lenderLogo = __esm({
   "server/pipeline/lenderLogo.ts"() {
-    import_node_fs5 = __toESM(require("node:fs"), 1);
-    import_node_path5 = __toESM(require("node:path"), 1);
-    UA4 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
-    CACHE_FILE = import_node_path5.default.join(process.cwd(), "data", "lender-logos-v2.json");
-    MISS_TTL_MS = 7 * 864e5;
+    import_node_fs6 = __toESM(require("node:fs"), 1);
+    import_node_path6 = __toESM(require("node:path"), 1);
+    UA5 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+    CACHE_FILE = import_node_path6.default.join(process.cwd(), "data", "lender-logos-v2.json");
+    MISS_TTL_MS2 = 7 * 864e5;
     FETCH_TIMEOUT_MS = 4e3;
-    cache5 = null;
+    cache7 = null;
     inflight2 = /* @__PURE__ */ new Map();
     saveTimer2 = null;
     LENDER_ALIAS = {
@@ -31556,7 +32366,7 @@ async function convert(dest) {
   if (!ekaroEnabled()) return null;
   const url = new URL(dest);
   const host = url.hostname.replace(/^www\./, "");
-  const hit = cache6.get(host);
+  const hit = cache8.get(host);
   if (hit && Date.now() - hit.at < (hit.link ? POS_TTL_MS : NEG_TTL_MS)) return hit.link;
   const pending = inFlight.get(host);
   if (pending) return pending;
@@ -31576,19 +32386,19 @@ async function convert(dest) {
           console.warn("[Ekaro] API key rejected (401/403) \u2014 exits stay direct until a valid EKARO_API_KEY is set");
           authWarned = true;
         }
-        cache6.set(host, { link: null, at: Date.now() });
+        cache8.set(host, { link: null, at: Date.now() });
         return null;
       }
       if (!res.ok) {
-        cache6.set(host, { link: null, at: Date.now() });
+        cache8.set(host, { link: null, at: Date.now() });
         return null;
       }
       const json = await res.json().catch(() => null);
       const link = extractLink(json, dest);
-      cache6.set(host, { link, at: Date.now() });
+      cache8.set(host, { link, at: Date.now() });
       return link;
     } catch {
-      cache6.set(host, { link: null, at: Date.now() });
+      cache8.set(host, { link: null, at: Date.now() });
       return null;
     } finally {
       inFlight.delete(host);
@@ -31606,16 +32416,16 @@ async function ekaroTrackingUrl(dest) {
   }
 }
 function ekaroStats() {
-  return { enabled: ekaroEnabled(), domainsCached: cache6.size };
+  return { enabled: ekaroEnabled(), domainsCached: cache8.size };
 }
-var EKARO_ENDPOINT, POS_TTL_MS, NEG_TTL_MS, FETCH_TIMEOUT_MS2, cache6, inFlight, authWarned, trimUrl;
+var EKARO_ENDPOINT, POS_TTL_MS, NEG_TTL_MS, FETCH_TIMEOUT_MS2, cache8, inFlight, authWarned, trimUrl;
 var init_ekaro = __esm({
   "server/affiliate/ekaro/index.ts"() {
     EKARO_ENDPOINT = "https://ekaro-api.affiliaters.in/api/converter";
     POS_TTL_MS = 6 * 60 * 60 * 1e3;
     NEG_TTL_MS = 60 * 60 * 1e3;
     FETCH_TIMEOUT_MS2 = 2500;
-    cache6 = /* @__PURE__ */ new Map();
+    cache8 = /* @__PURE__ */ new Map();
     inFlight = /* @__PURE__ */ new Map();
     authWarned = false;
     trimUrl = (u) => u.replace(/[.,;!)'"\]]+$/, "");
@@ -31952,6 +32762,7 @@ function buildMerchantDeepLink(merchant, title, vertical, ctx = {}) {
   if (has("flipkart") && has("minute")) return `https://www.flipkart.com/search?q=${q3}&marketplace=GROCERY`;
   if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
   if (has("shopsy")) return `https://www.shopsy.in/search?q=${q3}`;
+  if (has("digihaat")) return `https://digihaat.in/en/search?q=${q3}`;
   if (has("myntra")) return `https://www.myntra.com/${slug2(t)}`;
   if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
   if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
@@ -32565,6 +33376,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
   if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
   if (has("shopsy")) return `https://www.shopsy.in/search?q=${q3}`;
+  if (has("digihaat")) return `https://digihaat.in/en/search?q=${q3}`;
   if (has("myntra")) return `https://www.myntra.com/${encodeURIComponent(String(title || "").trim().toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "-").slice(0, 60))}`;
   if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
   if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
@@ -32617,6 +33429,9 @@ var init_deeplink = __esm({
       "nykaa.com",
       "croma.com",
       "easemytrip.com",
+      // OWNER 17 Nov: DigiHaat (digihaat.in) is our partner through Cuelinks - added here so every DigiHaat exit is
+      // wrapped by the linkkit hop and pays on click/conversion, on the website and in the app alike.
+      "digihaat.in",
       // applied / pending approval (access_status=pending) - wrapped so the day approval lands the click already pays,
       // and measured safe today: linksredirect passes the exact deep path straight through while unapproved
       "myntra.com",
@@ -33446,6 +34261,7 @@ var init_merchantLogos = __esm({
       tatacliq: "tatacliq.com",
       tata: "tatacliq.com",
       shopsy: "shopsy.in",
+      digihaat: "digihaat.in",
       nykaa: "nykaa.com",
       snapdeal: "snapdeal.com",
       jiomart: "jiomart.com",
@@ -33575,7 +34391,7 @@ var init_merchantLogos = __esm({
 });
 
 // server/pipeline/brandImage.ts
-function hostOf2(u) {
+function hostOf3(u) {
   try {
     return u ? new URL(u).hostname.replace(/^www\./, "") : void 0;
   } catch {
@@ -33600,7 +34416,7 @@ function brandImageFor(o) {
   if (hd) return hd;
   let dom = BRAND_DOMAIN.find(([re]) => re.test(label))?.[1];
   if (!dom) {
-    const h = hostOf2(o.sellerUrl);
+    const h = hostOf3(o.sellerUrl);
     if (h && !DATA_HOST.test(h)) dom = h;
   }
   return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128` : void 0;
@@ -34099,7 +34915,7 @@ async function guardBackground(name, fn) {
 }
 function readBoots() {
   try {
-    const raw = JSON.parse(import_node_fs6.default.readFileSync(BOOT_FILE(), "utf8"));
+    const raw = JSON.parse(import_node_fs7.default.readFileSync(BOOT_FILE(), "utf8"));
     return { boots: Array.isArray(raw?.boots) ? raw.boots.filter((n) => Number.isFinite(n)) : [], quietUntil: Number(raw?.quietUntil) || void 0 };
   } catch {
     return { boots: [] };
@@ -34107,8 +34923,8 @@ function readBoots() {
 }
 function writeBoots(logged) {
   try {
-    import_node_fs6.default.mkdirSync(dataDir, { recursive: true });
-    import_node_fs6.default.writeFileSync(BOOT_FILE(), JSON.stringify(logged));
+    import_node_fs7.default.mkdirSync(dataDir, { recursive: true });
+    import_node_fs7.default.writeFileSync(BOOT_FILE(), JSON.stringify(logged));
   } catch {
   }
 }
@@ -34130,15 +34946,15 @@ function noteBoot(now = Date.now()) {
 }
 function startDeleteHold(ms, why = "owner stop") {
   try {
-    import_node_fs6.default.mkdirSync(dataDir, { recursive: true });
-    import_node_fs6.default.writeFileSync(HOLD_FILE(), JSON.stringify({ until: Date.now() + ms, why }));
+    import_node_fs7.default.mkdirSync(dataDir, { recursive: true });
+    import_node_fs7.default.writeFileSync(HOLD_FILE(), JSON.stringify({ until: Date.now() + ms, why }));
     log.warn("Governor", `Background duties paused for ${Math.round(ms / 6e4)} min (${why})`);
   } catch {
   }
 }
 function deleteHoldActive(now = Date.now()) {
   try {
-    const raw = JSON.parse(import_node_fs6.default.readFileSync(HOLD_FILE(), "utf8"));
+    const raw = JSON.parse(import_node_fs7.default.readFileSync(HOLD_FILE(), "utf8"));
     return Number(raw?.until) > now;
   } catch {
     return false;
@@ -34146,16 +34962,16 @@ function deleteHoldActive(now = Date.now()) {
 }
 function clearDeleteHold() {
   try {
-    import_node_fs6.default.unlinkSync(HOLD_FILE());
+    import_node_fs7.default.unlinkSync(HOLD_FILE());
   } catch {
   }
 }
-var import_node_fs6, import_node_os2, import_node_path6, import_node_v8, SAMPLE_MS, CPU_HIGH, CPU_CRITICAL, LOAD_HIGH, LOAD_CRITICAL, HEAP_HIGH, cpuPct, pressure, sampling, lastCpu, lastCpuAt, lastReason, envOff, heapPct, resourceSnapshot, BOOT_FILE, STORM_WINDOW_MS, STORM_BOOTS, QUIET_HOLD_MS, HOLD_FILE, hasSharedDb;
+var import_node_fs7, import_node_os2, import_node_path7, import_node_v8, SAMPLE_MS, CPU_HIGH, CPU_CRITICAL, LOAD_HIGH, LOAD_CRITICAL, HEAP_HIGH, cpuPct, pressure, sampling, lastCpu, lastCpuAt, lastReason, envOff, heapPct, resourceSnapshot, BOOT_FILE, STORM_WINDOW_MS, STORM_BOOTS, QUIET_HOLD_MS, HOLD_FILE, hasSharedDb;
 var init_resourceGuard = __esm({
   "server/common/resourceGuard.ts"() {
-    import_node_fs6 = __toESM(require("node:fs"), 1);
+    import_node_fs7 = __toESM(require("node:fs"), 1);
     import_node_os2 = __toESM(require("node:os"), 1);
-    import_node_path6 = __toESM(require("node:path"), 1);
+    import_node_path7 = __toESM(require("node:path"), 1);
     import_node_v8 = __toESM(require("node:v8"), 1);
     init_settings();
     init_logger();
@@ -34197,11 +35013,11 @@ var init_resourceGuard = __esm({
         reason: lastReason
       };
     };
-    BOOT_FILE = () => import_node_path6.default.join(dataDir, "boots.json");
+    BOOT_FILE = () => import_node_path7.default.join(dataDir, "boots.json");
     STORM_WINDOW_MS = 30 * 6e4;
     STORM_BOOTS = 4;
     QUIET_HOLD_MS = 30 * 6e4;
-    HOLD_FILE = () => import_node_path6.default.join(dataDir, "background-hold.json");
+    HOLD_FILE = () => import_node_path7.default.join(dataDir, "background-hold.json");
     hasSharedDb = () => Boolean(settings.mysqlUrl);
   }
 });
@@ -34263,6 +35079,18 @@ async function pruneCatalogue(scale = 1) {
       removed += n;
       if (n > 0) log.info("Prune", `Deleted ${n} stale rows from ${name}`);
     } catch (e2) {
+      if (/Queue limit reached|ER_CON_COUNT_ERROR|Too many connections/i.test(String(e2?.message || e2))) {
+        try {
+          await new Promise((r) => setTimeout(r, 1500));
+          const n = await batchedDelete(sql, params);
+          removed += n;
+          if (n > 0) log.info("Prune", `Deleted ${n} stale rows from ${name}`);
+          continue;
+        } catch (retryErr) {
+          log.warn("Prune", `${name} prune skipped`, { error: String(retryErr?.message || retryErr).slice(0, 140) });
+          continue;
+        }
+      }
       log.warn("Prune", `${name} prune skipped`, { error: String(e2?.message || e2).slice(0, 140) });
     }
   }
@@ -34447,13 +35275,43 @@ function tokenOverlap(a, b) {
   const inter = [...ta].filter((t) => tb.has(t)).length;
   return ta.size === 0 ? 0 : inter / ta.size;
 }
+async function loadEntityRows(store7, vertical) {
+  const hit = entityCache.get(vertical);
+  if (hit && Date.now() - hit.at < ENTITY_CACHE_MS) return hit.rows;
+  const rows = await store7.query(
+    "SELECT id, name, brand FROM canonical_entities WHERE vertical = ? ORDER BY id DESC LIMIT 500",
+    [vertical]
+  );
+  entityCache.set(vertical, { at: Date.now(), rows });
+  if (entityCache.size > ENTITY_CACHE_MAX) {
+    const oldest = entityCache.keys().next().value;
+    if (oldest !== void 0) entityCache.delete(oldest);
+  }
+  return rows;
+}
+async function withQueueRetry(fn, attempts = 3) {
+  let last;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fn();
+    } catch (e2) {
+      last = e2;
+      const msg = String(e2?.message || e2);
+      if (!/Queue limit reached|ER_CON_COUNT_ERROR|Too many connections|ECONNRESET|ETIMEDOUT|PROTOCOL_CONNECTION_LOST/i.test(msg)) throw e2;
+      await new Promise((r) => setTimeout(r, 40 * (i + 1) + Math.floor(Math.random() * 40)));
+    }
+  }
+  throw last;
+}
+function warnStoreOnce(err) {
+  if (Date.now() - lastStoreWarnAt < 6e4) return;
+  lastStoreWarnAt = Date.now();
+  log.warn("Matching", "Entity resolution store failure", { error: err.slice(0, 120) });
+}
 async function resolveCanonicalEntity(offer) {
   const store7 = getStore();
   try {
-    const rows = await store7.query(
-      "SELECT id, name, brand FROM canonical_entities WHERE vertical = ? ORDER BY id DESC LIMIT 500",
-      [offer.vertical]
-    );
+    const rows = await withQueueRetry(() => loadEntityRows(store7, offer.vertical));
     let best = null;
     for (const row of rows) {
       const score = matchScore(offer, { name: row.name, brand: row.brand });
@@ -34467,10 +35325,15 @@ async function resolveCanonicalEntity(offer) {
         matchEvidence: `deterministic score ${best.score.toFixed(2)}`
       };
     }
-    const res = await store7.execute(
+    const res = await withQueueRetry(() => store7.execute(
       "INSERT INTO canonical_entities (vertical, name, brand) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
       [offer.vertical, offer.title.slice(0, 500), offer.brand || null]
-    );
+    ));
+    const cached3 = entityCache.get(offer.vertical);
+    if (cached3 && res?.insertId) {
+      cached3.rows.unshift({ id: Number(res.insertId), name: offer.title.slice(0, 500), brand: offer.brand || null });
+      if (cached3.rows.length > 500) cached3.rows.length = 500;
+    }
     return {
       canonicalEntityId: res.insertId,
       canonicalVariantId: null,
@@ -34479,15 +35342,20 @@ async function resolveCanonicalEntity(offer) {
     };
   } catch (e2) {
     notifyWriteDenied(String(e2));
-    log.warn("Matching", "Entity resolution store failure", { error: String(e2).slice(0, 120) });
+    warnStoreOnce(String(e2));
     return { canonicalEntityId: null, canonicalVariantId: null, matchState: "REVIEW_REQUIRED", matchEvidence: "store unavailable" };
   }
 }
+var ENTITY_CACHE_MS, ENTITY_CACHE_MAX, entityCache, lastStoreWarnAt;
 var init_entityMatching = __esm({
   "server/pipeline/entityMatching.ts"() {
     init_db();
     init_prune();
     init_logger();
+    ENTITY_CACHE_MS = Number(process.env.T1S_ENTITY_CACHE_MS || 10 * 6e4);
+    ENTITY_CACHE_MAX = 40;
+    entityCache = /* @__PURE__ */ new Map();
+    lastStoreWarnAt = 0;
   }
 });
 
@@ -41529,7 +42397,7 @@ var init_interstitial = __esm({
 });
 
 // server/affiliate/appTargets.ts
-function hostOf3(url) {
+function hostOf4(url) {
   try {
     return new URL(url).hostname.toLowerCase();
   } catch {
@@ -41537,13 +42405,13 @@ function hostOf3(url) {
   }
 }
 function directAppTarget(destinationUrl) {
-  const host = hostOf3(destinationUrl);
+  const host = hostOf4(destinationUrl);
   if (!host) return null;
   for (const [re, target] of BY_HOST) if (re.test(host)) return target;
   return null;
 }
 function keepsWebviewExit(destinationUrl) {
-  const host = hostOf3(destinationUrl);
+  const host = hostOf4(destinationUrl);
   if (!host) return false;
   return WEBVIEW_ONLY_HOSTS.some(([re]) => re.test(host));
 }
@@ -41631,7 +42499,7 @@ var init_appTargets = __esm({
 
 // server/common/cabDeeplink.ts
 async function getCabDeeplinkConfig() {
-  if (cache7 && Date.now() - cache7.at < CACHE_MS2) return cache7.v;
+  if (cache9 && Date.now() - cache9.at < CACHE_MS2) return cache9.v;
   let merged = { ...DEFAULTS2 };
   try {
     const rows = await getStore().query("SELECT v FROM app_settings WHERE k = ?", [KEY]);
@@ -41642,7 +42510,7 @@ async function getCabDeeplinkConfig() {
   } catch (e2) {
     log.debug("CabDeeplink", `app_settings read skipped: ${String(e2?.message || e2).slice(0, 60)}`);
   }
-  cache7 = { at: Date.now(), v: merged };
+  cache9 = { at: Date.now(), v: merged };
   return merged;
 }
 async function saveCabDeeplinkConfig(patch) {
@@ -41661,7 +42529,7 @@ async function saveCabDeeplinkConfig(patch) {
     "INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)",
     [KEY, JSON.stringify(next)]
   );
-  cache7 = { at: Date.now(), v: next };
+  cache9 = { at: Date.now(), v: next };
   return next;
 }
 function sanitizeParams(raw) {
@@ -41756,7 +42624,7 @@ function numParam(v) {
   const n = Number(v);
   return Number.isFinite(n) && (n !== 0 || String(v).trim() === "0") ? n : null;
 }
-var DEFAULTS2, KEY, cache7, CACHE_MS2, encJson;
+var DEFAULTS2, KEY, cache9, CACHE_MS2, encJson;
 var init_cabDeeplink = __esm({
   "server/common/cabDeeplink.ts"() {
     init_db();
@@ -41773,7 +42641,7 @@ var init_cabDeeplink = __esm({
       rapidoEnabled: true
     };
     KEY = "cab_deeplinks";
-    cache7 = null;
+    cache9 = null;
     CACHE_MS2 = 6e4;
     encJson = (v) => encodeURIComponent(JSON.stringify(v));
   }
@@ -41781,21 +42649,21 @@ var init_cabDeeplink = __esm({
 
 // server/pipeline/merchantCrispLogo.ts
 function load8() {
-  if (cache8) return cache8;
+  if (cache10) return cache10;
   try {
-    cache8 = JSON.parse(import_node_fs7.default.readFileSync(CACHE_FILE2, "utf8"));
+    cache10 = JSON.parse(import_node_fs8.default.readFileSync(CACHE_FILE2, "utf8"));
   } catch {
-    cache8 = {};
+    cache10 = {};
   }
-  return cache8;
+  return cache10;
 }
 function persist4() {
   if (saveTimer3) return;
   saveTimer3 = setTimeout(() => {
     saveTimer3 = null;
     try {
-      import_node_fs7.default.mkdirSync(import_node_path7.default.dirname(CACHE_FILE2), { recursive: true });
-      import_node_fs7.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache8 || {}));
+      import_node_fs8.default.mkdirSync(import_node_path8.default.dirname(CACHE_FILE2), { recursive: true });
+      import_node_fs8.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache10 || {}));
     } catch {
     }
   }, 1500);
@@ -41804,11 +42672,11 @@ function merchantNameFrom(raw) {
   const cleaned = String(raw || "").replace(/\b(the|official|store|shop|online|india|in)\b/gi, " ").replace(/[|:–—-].*$/, " ").replace(/\s+/g, " ").trim();
   return cleaned.slice(0, 60);
 }
-async function getJson2(url) {
+async function getJson3(url) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS3);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA5, Accept: "application/json" }, signal: ctl.signal });
+    const r = await fetch(url, { headers: { "User-Agent": UA6, Accept: "application/json" }, signal: ctl.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
@@ -41817,10 +42685,10 @@ async function getJson2(url) {
 }
 async function lookup3(nameRaw) {
   const name = MERCHANT_ALIAS[nameRaw.toLowerCase()] || nameRaw;
-  const s = await getJson2(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=20&search=${encodeURIComponent(name)}`);
+  const s = await getJson3(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=20&search=${encodeURIComponent(name)}`);
   const results = (s?.search || []).filter((x) => x.id);
   if (!results.length) return null;
-  const e2 = await getJson2(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${results.map((x) => x.id).join("|")}`);
+  const e2 = await getJson3(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${results.map((x) => x.id).join("|")}`);
   const wantedTokens = name.toLowerCase().split(/\W+/).filter((t) => t.length >= 3);
   for (const r of results) {
     const ent = e2?.entities?.[r.id];
@@ -41844,7 +42712,7 @@ function resolveMerchantCrispLogo(rawName) {
   const key = name.toLowerCase();
   const c = load8();
   const hit = c[key];
-  if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS2)) return Promise.resolve(hit.url);
+  if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS3)) return Promise.resolve(hit.url);
   const running2 = inflight4.get(key);
   if (running2) return running2;
   const p = lookup3(name).catch(() => null).then((url) => {
@@ -41855,16 +42723,16 @@ function resolveMerchantCrispLogo(rawName) {
   inflight4.set(key, p);
   return p;
 }
-var import_node_fs7, import_node_path7, UA5, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight4, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
+var import_node_fs8, import_node_path8, UA6, CACHE_FILE2, MISS_TTL_MS3, FETCH_TIMEOUT_MS3, cache10, inflight4, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
 var init_merchantCrispLogo = __esm({
   "server/pipeline/merchantCrispLogo.ts"() {
-    import_node_fs7 = __toESM(require("node:fs"), 1);
-    import_node_path7 = __toESM(require("node:path"), 1);
-    UA5 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
-    CACHE_FILE2 = import_node_path7.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
-    MISS_TTL_MS2 = 7 * 864e5;
+    import_node_fs8 = __toESM(require("node:fs"), 1);
+    import_node_path8 = __toESM(require("node:path"), 1);
+    UA6 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+    CACHE_FILE2 = import_node_path8.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
+    MISS_TTL_MS3 = 7 * 864e5;
     FETCH_TIMEOUT_MS3 = 4e3;
-    cache8 = null;
+    cache10 = null;
     inflight4 = /* @__PURE__ */ new Map();
     saveTimer3 = null;
     MERCHANT_ALIAS = {
@@ -42584,23 +43452,6 @@ function send429(res, slot2, vertical) {
     activeSessions: active.size
   });
 }
-function send504(res, vertical, startedAt) {
-  res.status(504).json({
-    success: false,
-    results: [],
-    resultsCount: 0,
-    vertical,
-    error: "request_timeout",
-    pendingRefresh: false,
-    honestNotice: "This search took too long and was stopped so the server stays responsive. Please retry.",
-    servedFrom: "unavailable",
-    sourcesAttempted: [],
-    sourcesSucceeded: [],
-    sourcesFailed: [],
-    latencyMs: Date.now() - startedAt
-  });
-  log.info("Search", "Stopped a scrape at the strict request deadline (owner 31 Oct)", { vertical, ms: Date.now() - startedAt });
-}
 var SESSION_TTL_MS, RETRY_AFTER_SEC, active, sweep2;
 var init_requestGuard = __esm({
   "server/api/requestGuard.ts"() {
@@ -42962,6 +43813,7 @@ var init_productLink = __esm({
       [/(^|\.)ajio\.com$/, "Ajio"],
       [/(^|\.)tatacliq\.com$/, "Tata CLiQ"],
       [/(^|\.)shopsy\.in$/, "Shopsy"],
+      [/(^|\.)digihaat\.in$/, "DigiHaat"],
       [/(^|\.)nykaa\.com$/, "Nykaa"],
       [/(^|\.)croma\.com$/, "Croma"],
       [/(^|\.)reliancedigital\.in$/, "Reliance Digital"],
@@ -43304,7 +44156,7 @@ var init_verticalLexicon = __esm({
       "third wave coffee"
     ];
     QUESTION_NOISE = /\b(kaha|kahan|kahaan|kidhar|kaunse|kaunsi|konsa|konsi|kaunsa|which|where|milega|milegi|milta|milte|mile|milege|milegaa|available|aas\s*paas|near\s*me|nearby|sbse|sabse|sabsay|sasta|sasti|sastta|saste|cheapest|cheap|best|accha|behtar|bhav|bhaav|daam|dam|price|prices|rate|rates|kitne|kitna|kitni|kya|kaun|please|pls|plz|karna|karu|kare|karo|kar\s*do|kar|batao|bata\s*do|bata|bataye|dikhao|dikha\s*do|chahiye|chahie|hai|hain|hoga|hogi|ka|ki|ke|ko|me|mein|mai|se|tak|par|pe|is|are|the|of|for|a|an|i|want|need|looking|find|search|compare|check|what|how|much|does|cost|kaunse|par\s+mil|online|order|buy|kharidna|kharido|khareed|dukan|dukaan|store|stores|shop|shops|muje|mujhe|mujhko|mujko|mera|meri|mere|mai|main|hum|humko|hamko|apna|apni|apne|yaar|bhai|bro)\b/gi;
-    PLATFORM = /\b(zomato|swiggy|blinkit|zepto|instamart|bigbasket|bb\s*now|flipkart\s*minutes|dunzo|jiomart|amazon|flipkart|shopsy|myntra|ajio|tatacliq|tata\s*cliq)\b/gi;
+    PLATFORM = /\b(zomato|swiggy|blinkit|zepto|instamart|bigbasket|bb\s*now|flipkart\s*minutes|dunzo|jiomart|amazon|flipkart|shopsy|digihaat|digi\s*haat|myntra|ajio|tatacliq|tata\s*cliq)\b/gi;
     SPELLING = {
       aata: "atta",
       aattha: "atta",
@@ -44047,7 +44899,7 @@ function repairPlace(token) {
   const raw = token.replace(/[^A-Za-z]/g, "");
   if (raw.length < 4) return token;
   const lowerRaw = raw.toLowerCase();
-  if (NOT_A_PLACE.has(lowerRaw)) return token;
+  if (NOT_A_PLACE2.has(lowerRaw)) return token;
   const known = places().get(lowerRaw);
   if (known) return token.replace(raw, known);
   const tol = raw.length >= 7 ? 2 : raw.length >= 5 ? 1 : 0;
@@ -44128,7 +44980,7 @@ function normalizeAssistantQuestion(raw) {
   const unsupported = UNSUPPORTED.find((u) => u.re.test(text))?.label;
   return { text: text.replace(/\s+/g, " ").trim(), original, transliterated: hindi.changed || indic.changed, ...language ? { language } : {}, budget, keywordVertical, repaired, ...routeHint ? { routeHint } : {}, ...unsupported ? { unsupported } : {} };
 }
-var DEVA_TO_LATIN, DEVA_RE, VERTICAL_WORDS, JUNK_PHRASES, BUDGET_RE, TYPO_MAP, UNSUPPORTED, EXTRA_PLACES, placeMap, NOT_A_PLACE;
+var DEVA_TO_LATIN, DEVA_RE, VERTICAL_WORDS, JUNK_PHRASES, BUDGET_RE, TYPO_MAP, UNSUPPORTED, EXTRA_PLACES, placeMap, NOT_A_PLACE2;
 var init_questionNormalizer = __esm({
   "server/lens/questionNormalizer.ts"() {
     init_cityCorpus();
@@ -44442,7 +45294,7 @@ var init_questionNormalizer = __esm({
     ];
     EXTRA_PLACES = ["Dubai", "Bangkok", "Singapore", "London", "New York", "Abu Dhabi", "Doha", "Kathmandu", "Colombo", "Male", "Sharjah", "Muscat", "Riyadh", "Jeddah", "Toronto", "Sydney", "Melbourne", "Tokyo", "Bali", "Phuket"];
     placeMap = null;
-    NOT_A_PLACE = /* @__PURE__ */ new Set([
+    NOT_A_PLACE2 = /* @__PURE__ */ new Set([
       "kahan",
       "kaha",
       "kitna",
@@ -45978,7 +46830,7 @@ function fcmServiceAccount() {
   let text = raw;
   if (!text && file) {
     try {
-      text = import_node_fs8.default.readFileSync(file, "utf8");
+      text = import_node_fs9.default.readFileSync(file, "utf8");
     } catch (e2) {
       log.warn("Push", `FCM service account file unreadable: ${clip3(e2?.message || e2, 80)}`);
       return null;
@@ -46302,11 +47154,11 @@ async function pushStats() {
   }
   return { web, android, inactive, sent24h, vapidReady, fcmReady: fcmServiceAccount() !== null };
 }
-var import_crypto30, import_node_fs8, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip3, httpsImage, fcmTokenCache;
+var import_crypto30, import_node_fs9, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip3, httpsImage, fcmTokenCache;
 var init_push = __esm({
   "server/push/push.ts"() {
     import_crypto30 = __toESM(require("crypto"), 1);
-    import_node_fs8 = __toESM(require("node:fs"), 1);
+    import_node_fs9 = __toESM(require("node:fs"), 1);
     init_db();
     init_logger();
     webpushLib = null;
@@ -46659,178 +47511,6 @@ var init_catalogueStore = __esm({
       },
       lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-  }
-});
-
-// server/nearby/webImages.ts
-function hostOf4(url) {
-  try {
-    return new URL(url).hostname.toLowerCase();
-  } catch {
-    return "";
-  }
-}
-function hostAllowed(url) {
-  const host = hostOf4(url);
-  if (!host || !/^https?:\/\//i.test(url)) return false;
-  if (BAD_HOSTS.some((b) => host.includes(b))) return false;
-  const path19 = (() => {
-    try {
-      return new URL(url).pathname.toLowerCase();
-    } catch {
-      return "";
-    }
-  })();
-  if (BAD_WORDS.test(path19)) return false;
-  return IMAGE_EXT.test(path19) || IMAGE_CDN_HINT.test(host);
-}
-function decodeEntities(s) {
-  return s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\\u002f/gi, "/").replace(/\\\//g, "/");
-}
-async function bingImages(query, opts = {}) {
-  const q3 = String(query || "").trim();
-  if (!q3) return [];
-  const key = q3.toLowerCase();
-  const hit = cache9.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS3) return hit.rows;
-  const url = `https://www.bing.com/images/search?q=${encodeURIComponent(q3)}&form=HDRSC2&mkt=en-IN&first=1&count=${Math.min(30, Math.max(5, opts.count || 20))}`;
-  let rows = [];
-  try {
-    const res = await cffiFetch(url, {
-      impersonate: "chrome",
-      timeoutMs: Math.max(3e3, opts.timeoutMs || 7e3),
-      headers: { "accept-language": "en-IN,en;q=0.9", accept: "text/html,application/xhtml+xml" }
-    });
-    if (res.status === 200 && res.body) {
-      const chunks = String(res.body).split("murl&quot;:&quot;").slice(1);
-      for (const chunk2 of chunks) {
-        const image = decodeEntities((chunk2.match(/^([^&"]+)/) || [])[1] || "").trim();
-        if (!/^https?:\/\//i.test(image)) continue;
-        if (!hostAllowed(image)) continue;
-        const title = decodeEntities((chunk2.match(/t&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
-        const page = decodeEntities((chunk2.match(/purl&quot;:&quot;(.*?)&quot;/) || [])[1] || "");
-        rows.push({ image, page, title, host: hostOf4(image) });
-      }
-    }
-  } catch (e2) {
-    log.warn("nearby", "bing images failed", { query: q3, error: String(e2?.message || e2).slice(0, 90) });
-    rows = [];
-  }
-  const ttl = rows.length ? CACHE_TTL_MS3 : 15 * 6e4;
-  cache9.set(key, { at: Date.now() - (rows.length ? 0 : CACHE_TTL_MS3 - ttl), rows });
-  if (cache9.size > 600) {
-    for (const [k] of [...cache9.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 200)) cache9.delete(k);
-  }
-  return rows;
-}
-async function imageFetchOk(url, timeoutMs = 4e3) {
-  if (!/^https?:\/\//i.test(String(url || ""))) return false;
-  try {
-    const res = await cffiFetch(url, {
-      impersonate: "chrome",
-      timeoutMs,
-      binary: true,
-      headers: { accept: "image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8" }
-    });
-    if (res.status !== 200 || !res.body) return false;
-    const buf = Buffer.from(res.body, res.encoding === "base64" ? "base64" : "binary");
-    if (buf.length < 256) return false;
-    return buf[0] === 255 && buf[1] === 216 || buf[0] === 137 && buf[1] === 80 || buf.subarray(0, 4).toString("ascii") === "RIFF" || buf.subarray(4, 8).toString("ascii") === "ftyp";
-  } catch {
-    return false;
-  }
-}
-function proxySecret() {
-  return process.env.AFFILIATE_SECRET || import_node_crypto5.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#nearby-image`).digest("hex");
-}
-function sign(payload) {
-  return import_node_crypto5.default.createHmac("sha256", proxySecret()).update(payload).digest("base64url").slice(0, 32);
-}
-function proxiedImage(url) {
-  const src2 = String(url || "").trim();
-  if (!/^https?:\/\//i.test(src2)) return "";
-  const payload = Buffer.from(JSON.stringify({ u: src2.slice(0, 1500), e: Date.now() + PROXY_TTL_MS }), "utf8").toString("base64url");
-  return `/api/nearby/img?t=${payload}.${sign(payload)}`;
-}
-function resolveProxiedImage(token) {
-  const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
-  if (!m) return null;
-  const [, payload, sig] = m;
-  const expect = sign(payload);
-  if (sig.length !== expect.length) return null;
-  try {
-    if (!import_node_crypto5.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
-    const j = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    const url = String(j?.u || "");
-    if (!/^https?:\/\//i.test(url)) return null;
-    if (Number(j?.e) < Date.now()) return null;
-    if (!hostAllowed(url)) return null;
-    const host = hostOf4(url);
-    if (!host.includes(".") || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return null;
-    if (/(^|\.)(localhost|internal|local|arpa)$/.test(host)) return null;
-    return url;
-  } catch {
-    return null;
-  }
-}
-var import_node_crypto5, BAD_HOSTS, BAD_WORDS, IMAGE_EXT, IMAGE_CDN_HINT, cache9, CACHE_TTL_MS3, PROXY_TTL_MS;
-var init_webImages = __esm({
-  "server/nearby/webImages.ts"() {
-    import_node_crypto5 = __toESM(require("node:crypto"), 1);
-    init_curlCffiFetch();
-    init_logger();
-    BAD_HOSTS = [
-      "bing.com",
-      "bing.net",
-      "microsoft.com",
-      "msn.com",
-      "google.",
-      "gstatic.com",
-      "googleusercontent.com",
-      "justdial.com",
-      "zomato.com",
-      "swiggy.com",
-      "tripadvisor.",
-      "yelp.com",
-      "foursquare.com",
-      "facebook.com",
-      "fbcdn.net",
-      "instagram.com",
-      "pinterest.",
-      "linkedin.com",
-      "twitter.com",
-      "x.com",
-      "youtube.com",
-      "ytimg.com",
-      "wikimedia.org",
-      "wikipedia.org",
-      "bookmyshow.com",
-      "paytm.com",
-      "shutterstock.com",
-      "alamy.com",
-      "dreamstime.com",
-      "istockphoto.com",
-      "gettyimages.com",
-      "123rf.com",
-      "vectorstock.com",
-      "freepik.com",
-      "pngtree.com",
-      "seeklogo.com",
-      "cleanpng.com",
-      "kindpng.com",
-      "placeholder.com",
-      "placehold.it",
-      "loremflickr.com",
-      "unsplash.com",
-      "pexels.com",
-      "pixabay.com"
-    ];
-    BAD_WORDS = /logo|icon|favicon|sprite|placeholder|avatar|map\b|maps|screenshot|banner-ad|watermark|noimage|no-image|default[-_]?image|coming[-_]?soon|storefront-icon/i;
-    IMAGE_EXT = /\.(jpe?g|png|webp)(\?|$)/i;
-    IMAGE_CDN_HINT = /(^|\.)(images?|img|cdn|static|media|assets|photo|photos|pic|pics)\./i;
-    cache9 = /* @__PURE__ */ new Map();
-    CACHE_TTL_MS3 = 12 * 60 * 6e4;
-    PROXY_TTL_MS = 30 * 24 * 60 * 60 * 1e3;
   }
 });
 
@@ -48320,6 +49000,17 @@ var init_categories = __esm({
         radiusM: 12e3
       },
       {
+        // OWNER 18 Nov: "ev charging ka option ni hai usko v add kro". The only fuel-family errand the vehicle row was
+        // missing. OSM maps public charging points as amenity=charging_station (a few pumps carry fuel:electricity=yes
+        // instead), so both are asked for, and the name words catch operator brand strings when only a name comes back.
+        id: "ev_charging",
+        label: "EV Charging",
+        filters: ['node["amenity"="charging_station"]', 'way["amenity"="charging_station"]', 'node["amenity"="fuel"]["fuel:electricity"="yes"]'],
+        terms: ["ev charging", "ev charger", "ev chargers", "charging station", "charging point", "charging hub", "electric vehicle", "ev point", "ev station", "fast charger", "statiq", "chargezone", "charge zone", "tata power", "jio-bp", "jio bp", "ather grid", "glida", "fortum", "zeon"],
+        search: "EV charging station",
+        radiusM: 15e3
+      },
+      {
         id: "lpg",
         label: "LPG & Gas",
         filters: ['node["shop"="gas"]', 'node["amenity"="fuel"]["fuel:lpg"="yes"]', 'way["shop"="gas"]'],
@@ -48630,6 +49321,19 @@ var init_serviceNetworks = __esm({
         { name: "MyChoize", url: "https://www.mychoize.com/", sub: "self-drive car rental" },
         { name: "Europcar India", url: "https://www.europcar.co.in/", sub: "car rental network" }
       ],
+      /**
+       * OWNER 18 Nov ("ev charging ka option ni hai"): the charging map is patchy in every Indian city, and a chip that
+       * answers "nothing here" is worse than naming the real networks that do cover it. Brand sites only, no invented
+       * address or rating, and every card says it is a network - exactly like the scrapping row above.
+       */
+      ev_charging: [
+        { name: "Tata Power EZ Charge", url: "https://www.tatapower.com/", sub: "EV charging network" },
+        { name: "Statiq", url: "https://statiq.in/", sub: "EV charging network" },
+        { name: "ChargeZone", url: "https://chargezone.in/", sub: "EV charging network" },
+        { name: "Jio-bp pulse", url: "https://www.jiobp.com/", sub: "EV charging network" },
+        { name: "Ather Grid", url: "https://www.atherenergy.com/", sub: "EV charging network" },
+        { name: "Glida", url: "https://glida.in/", sub: "EV charging network" }
+      ],
       scrapping: [
         { name: "Parivahan RVSF list", url: "https://parivahan.gov.in/", sub: "registered scrapping facilities" },
         { name: "Mahindra CERO", url: "https://www.mahindracero.com/", sub: "vehicle scrapping network" },
@@ -48637,419 +49341,6 @@ var init_serviceNetworks = __esm({
         { name: "Tata Motors scrappage", url: "https://www.tatamotors.com/", sub: "vehicle scrapping network" }
       ]
     };
-  }
-});
-
-// server/nearby/photos.ts
-function commonsFilePath(file) {
-  const name = String(file || "").replace(/^File:/i, "").trim();
-  if (!name || NOT_A_PHOTO.test(name) || !IS_PHOTO.test(name.replace(/\?.*$/, ""))) return null;
-  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(name)}?width=${COMMONS_WIDTH}`;
-}
-async function getJson3(url, timeoutMs) {
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), Math.max(600, timeoutMs));
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      headers: { "user-agent": UA6, accept: "application/json" }
-    }).finally(() => clearTimeout(timer));
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-function plain(html) {
-  return String(html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-function commonsCredit(meta) {
-  const licence = plain(meta?.LicenseShortName?.value).slice(0, 24);
-  return licence ? `Photo from Wikimedia Commons (${licence}).` : "Photo from Wikimedia Commons.";
-}
-function nameTokens(name) {
-  return String(name || "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !GENERIC_TOKENS.has(t) && !/^\d+$/.test(t));
-}
-function titleMatches(title, tokens3, category) {
-  if (!tokens3.length) return false;
-  const lower = String(title || "").toLowerCase();
-  if (NOT_A_PLACE2.test(lower)) return false;
-  const hits = tokens3.filter((t) => lower.includes(t));
-  const catWords = CATEGORY_WORDS[String(category || "all")] || CATEGORY_WORDS.all;
-  const isCat = (t) => catWords.some((w) => w === t || t.length >= 4 && w.startsWith(t));
-  const strong = hits.filter((t) => t.length >= 4 && !isCat(t));
-  const catHit = catWords.some((w) => lower.includes(w));
-  if (tokens3.length >= 2 && hits.length === tokens3.length) return true;
-  if (strong.length >= 2) return true;
-  if (strong.length >= 1 && catHit) return true;
-  return false;
-}
-function distanceKm(a, b) {
-  const R = 6371;
-  const dLat = (b.lat - a.lat) * Math.PI / 180;
-  const dLng = (b.lng - a.lng) * Math.PI / 180;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-function farAway(origin2, cand) {
-  if (!origin2 || !cand) return false;
-  return distanceKm(origin2, cand) > MAX_KM;
-}
-function cacheKey(ev, name, city, category) {
-  return [
-    ev.wikidata || "",
-    ev.wikipedia || "",
-    ev.imageTag || "",
-    ev.commonsTag || "",
-    name.toLowerCase(),
-    (city || "").toLowerCase(),
-    String(category || "")
-  ].join("|");
-}
-async function wikidataImage(qid, timeoutMs) {
-  const id = String(qid || "").trim().toUpperCase();
-  if (!/^Q\d+$/.test(id)) return null;
-  const data = await getJson3(`https://www.wikidata.org/wiki/Special:EntityData/${id}.json`, timeoutMs);
-  const claims = data?.entities?.[id]?.claims;
-  const files = [];
-  for (const c of Array.isArray(claims?.P18) ? claims.P18 : []) {
-    const v = c?.mainsnak?.datavalue?.value;
-    if (typeof v === "string") files.push(v);
-  }
-  for (const file of files) {
-    const url = commonsFilePath(file);
-    if (url) return { url, credit: "Photo from Wikimedia Commons for this place." };
-  }
-  return null;
-}
-async function wikipediaImage(tag, timeoutMs) {
-  const raw = String(tag || "").trim();
-  if (!raw) return null;
-  const m = raw.match(/^([a-z-]{2,3}):(.+)$/i);
-  const lang = m ? m[1].toLowerCase() : "en";
-  const title = (m ? m[2] : raw).replace(/_/g, " ").trim();
-  if (!title) return null;
-  const url = `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&piprop=thumbnail&pithumbsize=${COMMONS_WIDTH}&titles=${encodeURIComponent(title)}`;
-  const data = await getJson3(url, timeoutMs);
-  for (const p of Object.values(data?.query?.pages || {})) {
-    const src2 = String(p?.thumbnail?.source || "");
-    if (/^https:\/\//i.test(src2) && !NOT_A_PHOTO.test(src2)) {
-      return { url: src2, credit: "Photo from the place's Wikipedia article." };
-    }
-  }
-  return null;
-}
-function searchQueries(name, city, tokens3) {
-  const q3 = [
-    city ? `${name} ${city}` : name,
-    name,
-    city ? `${tokens3.slice(0, 3).join(" ")} ${city}` : tokens3.slice(0, 3).join(" ")
-  ];
-  return [...new Set(q3.map((x) => x.trim()).filter(Boolean))];
-}
-async function commonsNameImage(name, city, tokens3, category, origin2, timeoutMs) {
-  if (!tokens3.length) return null;
-  const seen = /* @__PURE__ */ new Set();
-  for (const query of searchQueries(name, city, tokens3)) {
-    const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrnamespace=6&gsrlimit=10&prop=imageinfo|coordinates&iiprop=url|extmetadata&iiurlwidth=${COMMONS_WIDTH}`;
-    const data = await getJson3(url, timeoutMs);
-    for (const p of Object.values(data?.query?.pages || {})) {
-      const title = String(p?.title || "");
-      if (!title || seen.has(title) || NOT_A_PHOTO.test(title) || !IS_PHOTO.test(title)) continue;
-      seen.add(title);
-      if (!titleMatches(title, tokens3, category)) continue;
-      const co = Array.isArray(p?.coordinates) ? p.coordinates[0] : null;
-      if (farAway(origin2, co ? { lat: Number(co.lat), lng: Number(co.lon) } : null)) continue;
-      const info = Array.isArray(p?.imageinfo) ? p.imageinfo[0] : null;
-      const thumb = String(info?.thumburl || info?.url || "").replace(/[?&]utm_[^&]*/g, "").replace(/\?$/, "");
-      if (!/^https:\/\/(upload|thumb)\.wikimedia\.org\//i.test(thumb)) continue;
-      return {
-        url: thumb,
-        credit: `${commonsCredit(info?.extmetadata)} Matched on this place's name.`,
-        tier: "commons-name",
-        sourceTitle: title
-      };
-    }
-  }
-  return null;
-}
-async function wikipediaSearchImage(name, city, tokens3, category, origin2, timeoutMs) {
-  if (!tokens3.length) return null;
-  for (const query of searchQueries(name, city, tokens3)) {
-    const url = `https://en.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=6&prop=pageimages|coordinates&piprop=thumbnail&pithumbsize=${COMMONS_WIDTH}`;
-    const data = await getJson3(url, timeoutMs);
-    for (const p of Object.values(data?.query?.pages || {})) {
-      const title = String(p?.title || "");
-      if (!title || !titleMatches(title, tokens3, category)) continue;
-      const co = Array.isArray(p?.coordinates) ? p.coordinates[0] : null;
-      if (!co || farAway(origin2, { lat: Number(co.lat), lng: Number(co.lon) })) continue;
-      const src2 = String(p?.thumbnail?.source || "");
-      if (!/^https:\/\//i.test(src2) || NOT_A_PHOTO.test(src2)) continue;
-      return { url: src2, credit: "Photo from this place's Wikipedia article.", tier: "wikipedia-name", sourceTitle: title };
-    }
-  }
-  return null;
-}
-async function webImageForPlace(name, city, tokens3, category, timeoutMs) {
-  if (!tokens3.length) return null;
-  const deadline = Date.now() + Math.max(1500, timeoutMs);
-  const query = city ? `${name} ${city}` : name;
-  const candidates = await bingImages(query, { count: 20, timeoutMs });
-  const strong = tokens3.filter((t) => t.length >= 4);
-  const required = strong.length ? strong : tokens3;
-  const ranked = [];
-  for (const cand of candidates) {
-    const haystack = `${cand.title} ${cand.page} ${cand.image}`.toLowerCase();
-    if (NOT_A_PLACE2.test(haystack)) continue;
-    if (!required.every((t) => haystack.includes(t))) continue;
-    if (!required.some((t) => t.length >= 5)) continue;
-    const score = (haystack.includes(String(city || "").toLowerCase()) ? 2 : 0) + tokens3.filter((t) => haystack.includes(t)).length;
-    ranked.push({ cand, score });
-  }
-  ranked.sort((a, b) => b.score - a.score);
-  for (const { cand } of ranked.slice(0, 3)) {
-    if (Date.now() > deadline) break;
-    const url = proxiedImage(cand.image);
-    if (!url) continue;
-    if (!await imageFetchOk(cand.image, Math.max(1200, Math.min(4e3, deadline - Date.now())))) continue;
-    return {
-      url,
-      credit: `Photo matched on the web for this place (${cand.host}).`,
-      tier: "web",
-      sourceTitle: cand.title || cand.image
-    };
-  }
-  return null;
-}
-async function resolvePlacePhoto(input) {
-  const ev = input.evidence || {};
-  const city = input.city || null;
-  const category = input.category || null;
-  const key = cacheKey(ev, input.name, city, category);
-  const hit = cache10.get(key);
-  if (hit && Date.now() - hit.at < (hit.hit ? CACHE_TTL_MS4 : MISS_TTL_MS3)) return hit.hit;
-  const deadline = Date.now() + Math.max(800, Number(input.timeoutMs) || 4e3);
-  const left = () => Math.max(700, deadline - Date.now());
-  const tokens3 = nameTokens(input.name);
-  const origin2 = Number.isFinite(Number(input.lat)) && Number.isFinite(Number(input.lng)) ? { lat: Number(input.lat), lng: Number(input.lng) } : null;
-  let found = null;
-  const direct = String(ev.imageTag || "").trim();
-  if (!found && /^https:\/\/.+\.(jpe?g|png|webp)(\?.*)?$/i.test(direct)) {
-    found = { url: direct, credit: "Photo from this place's own OpenStreetMap listing.", tier: "evidence" };
-  }
-  if (!found && ev.commonsTag) {
-    const url = commonsFilePath(ev.commonsTag);
-    if (url) found = { url, credit: "Photo from Wikimedia Commons for this place.", tier: "evidence" };
-  }
-  if (!found && ev.wikidata) {
-    const wd = await wikidataImage(ev.wikidata, left());
-    if (wd) found = { ...wd, tier: "evidence" };
-  }
-  if (!found && ev.wikipedia) {
-    const wp = await wikipediaImage(ev.wikipedia, left());
-    if (wp) found = { ...wp, tier: "evidence" };
-  }
-  const addressLike = category === "cabs" || category === "stores" || category === "all";
-  if (!found && (!addressLike || tokens3.length >= 2)) {
-    found = await commonsNameImage(input.name, city, tokens3, category, origin2, left());
-  }
-  if (!found && (!addressLike || tokens3.length >= 2)) {
-    found = await wikipediaSearchImage(input.name, city, tokens3, category, origin2, left());
-  }
-  if (!found && (!addressLike || tokens3.length >= 2)) {
-    found = await webImageForPlace(input.name, city, tokens3, category, left());
-  }
-  cache10.set(key, { hit: found, at: Date.now() });
-  if (cache10.size > 1200) {
-    const drop = [...cache10.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 400);
-    for (const [k] of drop) cache10.delete(k);
-  }
-  if (found) log.info("nearby", `photo resolved (${found.tier}) for "${input.name}"`, { city });
-  return found;
-}
-function photoPool(category) {
-  const cat = String(category || "all");
-  return PHOTO_POOL[cat] || PHOTO_POOL.all || [];
-}
-function poolHash(seed) {
-  let h = 2166136261;
-  const s = String(seed || "place");
-  for (let i = 0; i < s.length; i += 1) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return Math.abs(h);
-}
-function categoryTile(category, seed, tiles) {
-  const cat = String(category || "all");
-  const name = String(seed || "place").slice(0, 80);
-  if (!name) {
-    const list = tiles[cat] || tiles.all || ["/nearby-assets/all.jpg"];
-    return list[0];
-  }
-  return `/api/nearby/tile?c=${encodeURIComponent(cat)}&n=${encodeURIComponent(name)}`;
-}
-function isTileUrl(url) {
-  const u = String(url || "");
-  return /\/nearby-assets\//.test(u) || u.includes("/api/nearby/tile");
-}
-var import_node_fs9, import_node_path8, GENERIC_TOKENS, CATEGORY_WORDS, NOT_A_PLACE2, NOT_A_PHOTO, IS_PHOTO, UA6, COMMONS_WIDTH, MAX_KM, cache10, CACHE_TTL_MS4, MISS_TTL_MS3, PHOTO_POOL;
-var init_photos = __esm({
-  "server/nearby/photos.ts"() {
-    import_node_fs9 = __toESM(require("node:fs"), 1);
-    import_node_path8 = __toESM(require("node:path"), 1);
-    init_logger();
-    init_webImages();
-    GENERIC_TOKENS = /* @__PURE__ */ new Set([
-      "cafe",
-      "cafes",
-      "coffee",
-      "restaurant",
-      "restaurants",
-      "restro",
-      "bar",
-      "pub",
-      "bakery",
-      "dessert",
-      "food",
-      "cinema",
-      "cinemas",
-      "talkies",
-      "multiplex",
-      "theatre",
-      "theater",
-      "movie",
-      "movies",
-      "cineplex",
-      "picture",
-      "pictures",
-      "hotel",
-      "hotels",
-      "lodge",
-      "inn",
-      "residency",
-      "suites",
-      "stay",
-      "stays",
-      "guest",
-      "guesthouse",
-      "taxi",
-      "cab",
-      "cabs",
-      "auto",
-      "rickshaw",
-      "rikshaw",
-      "stand",
-      "stop",
-      "pick",
-      "pickup",
-      "drop",
-      "parking",
-      "store",
-      "stores",
-      "shop",
-      "shops",
-      "mart",
-      "supermarket",
-      "mall",
-      "market",
-      "complex",
-      "centre",
-      "center",
-      "the",
-      "and",
-      "for",
-      "near",
-      "road",
-      "marg",
-      "street",
-      "lane",
-      "path",
-      "chowk",
-      "chawk",
-      "square",
-      "nagar",
-      "indian",
-      "india",
-      "pune",
-      "mumbai",
-      "delhi",
-      "bangalore",
-      "bengaluru",
-      "hyderabad",
-      "chennai",
-      "kolkata",
-      "limited",
-      "ltd",
-      "pvt",
-      "private",
-      "service",
-      "services",
-      "point",
-      "main",
-      "new",
-      "old",
-      "best",
-      "top",
-      // street/plot words: "Central Avenue" or "Lane Number 7" is an address, not a business, so a photo whose
-      // title merely repeats the address is not evidence of this card's place.
-      "avenue",
-      "cross",
-      "bypass",
-      "extension",
-      "sector",
-      "block",
-      "phase",
-      "colony",
-      "society",
-      "layout",
-      "enclave",
-      "circle",
-      "junction",
-      "corner",
-      "gate",
-      "bridge",
-      "hills",
-      "valley",
-      "number",
-      "no"
-    ]);
-    CATEGORY_WORDS = {
-      movies: ["cinema", "talkie", "theatre", "theater", "multiplex", "cineplex", "picture", "hall"],
-      cabs: ["taxi", "cab", "auto", "rickshaw", "rikshaw", "stand"],
-      stores: ["shop", "store", "market", "mart", "bazaar", "bazar", "mall", "showroom"],
-      cafes: ["cafe", "coffee", "bakery", "restaurant"],
-      restaurants: ["restaurant", "dhaba", "eatery", "cafe", "hotel"],
-      hotels: ["hotel", "lodge", "residency", "inn", "suites", "guest"],
-      stays: ["hotel", "lodge", "guest", "homestay", "residency", "hostel", "apartment", "inn"],
-      all: ["cinema", "hotel", "restaurant", "cafe", "market", "shop", "theatre"]
-    };
-    NOT_A_PLACE2 = /museum|sculpture|excavat|archaeolog|manuscript|coin|inscription|temple|fort\b|monument|map of|logo|emblem|coat of arms|diagram|postage|stamp\b|panorama of/i;
-    NOT_A_PHOTO = /\.(svg|pdf|tif|tiff|djvu|xcf|webm|ogv|gif)$/i;
-    IS_PHOTO = /\.(jpe?g|png|webp)$/i;
-    UA6 = "Try1Second/1.0 (nearby photos; https://try1second.com)";
-    COMMONS_WIDTH = 640;
-    MAX_KM = 40;
-    cache10 = /* @__PURE__ */ new Map();
-    CACHE_TTL_MS4 = 12 * 60 * 6e4;
-    MISS_TTL_MS3 = 20 * 6e4;
-    PHOTO_POOL = (() => {
-      const out = {};
-      const roots = [import_node_path8.default.resolve("public/nearby-photos"), import_node_path8.default.resolve("../public/nearby-photos")];
-      for (const root of roots) {
-        try {
-          if (!import_node_fs9.default.existsSync(root)) continue;
-          for (const entry of import_node_fs9.default.readdirSync(root, { withFileTypes: true })) {
-            if (!entry.isDirectory()) continue;
-            const files = import_node_fs9.default.readdirSync(import_node_path8.default.join(root, entry.name)).filter((f) => /\.jpe?g$/i.test(f)).sort();
-            if (files.length) out[entry.name] = files.map((f) => `/nearby-photos/${entry.name}/${f}`);
-          }
-          break;
-        } catch {
-        }
-      }
-      return out;
-    })();
   }
 });
 
@@ -49680,8 +49971,10 @@ function osmCategory(tags) {
       if (/cng|compressed natural gas/.test(n)) return "cng";
       if (/puc|pucc|pollution/.test(n)) return "pucc";
       if (/lpg/.test(n)) return "lpg";
+      if (hit("ev_charging")) return "ev_charging";
       return "petrol";
     }
+    if (a === "charging_station" || a === "charging") return "ev_charging";
     if (a === "car_wash") return hit("detailing") ? "detailing" : "car_wash";
     if (a === "car_rental" || a === "car_sharing") return hit("bike_rental") ? "bike_rental" : "car_rental";
     if (a === "motorcycle_rental") return "bike_rental";
@@ -50073,7 +50366,8 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
     "rto",
     "bike_rental",
     "car_rental",
-    "scrapping"
+    "scrapping",
+    "ev_charging"
   ]);
   const finalizeRows = () => {
     const used = /* @__PURE__ */ new Set();
@@ -50132,6 +50426,7 @@ async function buildNearbyAnswer(input, budgetMs = FULL_BUDGET_MS) {
       pucc: ["petrol", "car_repair"],
       lpg: ["petrol"],
       cng: ["petrol"],
+      ev_charging: ["petrol"],
       bike_repair: ["accessories", "car_repair"],
       // OWNER 17 Nov: a cold start answered Pune's Cafes tab with a single card because the map mirror that holds
       // the cafes had not spoken yet. Thin answers, not just empty ones, now borrow the nearest real siblings.
@@ -50602,7 +50897,20 @@ var init_aggregator = __esm({
       scrap: "scrapping",
       "vehicle scrapping": "scrapping",
       "scrap yard": "scrapping",
-      kabadi: "scrapping"
+      kabadi: "scrapping",
+      ev_charging: "ev_charging",
+      "ev charging": "ev_charging",
+      "ev charger": "ev_charging",
+      "ev chargers": "ev_charging",
+      "ev charging station": "ev_charging",
+      "ev station": "ev_charging",
+      "ev point": "ev_charging",
+      "charging station": "ev_charging",
+      "charging stations": "ev_charging",
+      "charging point": "ev_charging",
+      "charging hub": "ev_charging",
+      "electric vehicle charging": "ev_charging",
+      "electric vehicle": "ev_charging"
     };
     PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || process.env.SITE_ORIGIN || "https://www.try1second.com").replace(/\/+$/, "");
     geocodeCache = /* @__PURE__ */ new Map();
@@ -50781,6 +51089,7 @@ var init_tilePng = __esm({
       bike_rental: 140,
       car_rental: 170,
       scrapping: 95,
+      ev_charging: 130,
       all: 250
     };
   }
@@ -53660,18 +53969,33 @@ var init_routes = __esm({
       res.on("close", () => {
         if (!res.writableEnded) liveAbort.abort();
       });
-      const hardDeadlineMs = Math.max(5e3, Number(process.env.T1S_HARD_REQUEST_MS || 26e3));
+      const hardDeadlineMs = Math.max(4e3, Number(process.env.T1S_HARD_REQUEST_MS || 1e4));
       const hardTimer = setTimeout(() => {
         if (res.writableEnded || res.headersSent) return;
         liveAbort.abort();
-        send504(res, String(input.vertical), searchStart);
+        try {
+          res.status(200).json({
+            ok: true,
+            results: [],
+            pendingRefresh: true,
+            degraded: true,
+            honestNotice: "Live sources are still scanning. Results appear here automatically in a few seconds.",
+            sourcesAttempted: [],
+            sourcesSucceeded: [],
+            sourcesFailed: [],
+            servedFrom: "deadline",
+            resultsCount: 0,
+            latencyMs: Date.now() - searchStart
+          });
+        } catch {
+        }
       }, hardDeadlineMs);
       if (typeof hardTimer.unref === "function") hardTimer.unref();
       res.on("close", () => clearTimeout(hardTimer));
       res.on("finish", () => clearTimeout(hardTimer));
       const searchedLive = runLiveSearch(input, { signal: liveAbort.signal });
       searchedLive.catch(() => void 0);
-      const firstAnswerBudget = (v) => ["flights"].includes(v) ? 14e3 : ["hotels", "movies", "movie"].includes(v) ? 16e3 : v === "bus" ? 12e3 : 9e3;
+      const firstAnswerBudget = (v) => ["flights", "hotels", "movies", "movie"].includes(v) ? 7e3 : v === "bus" ? 7e3 : 6e3;
       let response = await Promise.race([
         searchedLive,
         new Promise((resolve) => setTimeout(() => resolve(null), Math.min(resultDeadlineMs(), 2e3)))
@@ -53688,7 +54012,7 @@ var init_routes = __esm({
             latencyMs: Date.now() - searchStart
           });
         }
-        const coldCeilingMs = Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 0) || (["movies", "movie", "hotels"].includes(String(input.vertical)) ? 2e4 : String(input.vertical) === "flights" ? 16e3 : String(input.vertical) === "cab" ? 14e3 : 9e3);
+        const coldCeilingMs = Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 0) || (["movies", "movie", "hotels", "flights"].includes(String(input.vertical)) ? 8500 : String(input.vertical) === "cab" ? 8e3 : 7e3);
         const coldCeiling = Math.max(2e3, coldCeilingMs);
         const late = await Promise.race([
           searchedLive,
@@ -55540,7 +55864,25 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
     apiRouter.post("/rewards/referral", requireAuth, async (req, res) => {
       const user = req.user;
       const refereeId = Number(req.body.refereeId || 0);
-      if (!refereeId) return res.status(400).json({ success: false, error: "refereeId is required" });
+      if (!refereeId) {
+        try {
+          const { ensureReferralCode: ensureReferralCode2, referralStats: referralStats2, validPointBalance: validPointBalance2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
+          const code = await ensureReferralCode2(user.id);
+          const stats2 = await referralStats2(user.id);
+          const points = await validPointBalance2(user.id);
+          return res.json({
+            success: true,
+            code,
+            link: `https://www.try1second.com/?ref=${encodeURIComponent(code)}`,
+            shareLink: `https://www.try1second.com/r/${encodeURIComponent(code)}`,
+            appLink: `https://play.google.com/store/apps/details?id=com.try1second.try1second&referrer=${encodeURIComponent(`ref=${code}`)}`,
+            referredCount: stats2.referredCount,
+            points
+          });
+        } catch (e2) {
+          return res.status(500).json({ success: false, error: e2?.message || "referral_unavailable" });
+        }
+      }
       const r = await registerReferral(user.id, refereeId);
       if (!r.ok) return res.status(400).json({ success: false, error: r.error });
       res.json({ success: true, awarded: r.awarded });
@@ -55568,6 +55910,35 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
         res.json({ success: true, awarded: !!r.awarded, referrerCode: r.referrerCode });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "referral_unavailable" });
+      }
+    });
+    apiRouter.get("/rewards/wallet", requireAuth, async (req, res) => {
+      try {
+        const user = req.user;
+        const { validPointBalance: validPointBalance2, eligibleSpinCount: eligibleSpinCount2, referralStats: referralStats2, ensureReferralCode: ensureReferralCode2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
+        const [points, spinsAvailable, stats2, code] = await Promise.all([
+          validPointBalance2(user.id),
+          eligibleSpinCount2(user.id),
+          referralStats2(user.id),
+          ensureReferralCode2(user.id)
+        ]);
+        const cost = 100;
+        const consumed = spinsAvailable * cost;
+        const available = Math.max(0, points - consumed);
+        res.json({
+          success: true,
+          points,
+          pointsAvailable: available,
+          pointsPerSpin: cost,
+          pointsToNextSpin: Math.max(0, cost - available % cost),
+          spinsAvailable,
+          referredCount: stats2.referredCount,
+          referredByCode: stats2.referredByCode,
+          code,
+          shareLink: `https://www.try1second.com/r/${encodeURIComponent(code)}`
+        });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "wallet_unavailable" });
       }
     });
     apiRouter.get("/home-banners", async (req, res) => {
@@ -56499,6 +56870,11 @@ var init_acceptanceRegistry = __esm({
       { id: "shopsy", name: "Shopsy", vertical: "ecommerce", tier: "mandated", probes: [
         { capability: "product search", url: "https://www.shopsy.in/search?q=jeans" }
       ] },
+      // DigiHaat (digihaat.in) - owner's Cuelinks partner added 17 Nov. Search is client-rendered; the probe URL is
+      // the public search page (the worker reads the JSON API behind it with the site's own guest token).
+      { id: "digihaat", name: "DigiHaat", vertical: "ecommerce", tier: "mandated", probes: [
+        { capability: "product search", url: "https://digihaat.in/en/search?q=milk" }
+      ] },
       { id: "ajio", name: "AJIO", vertical: "ecommerce", tier: "mandated", probes: [
         { capability: "product search", url: "https://www.ajio.com/s/jeans" }
       ] },
@@ -56517,6 +56893,9 @@ var init_acceptanceRegistry = __esm({
       ] },
       { id: "flipkart_minutes", name: "Flipkart Minutes", vertical: "grocery", tier: "mandated", probes: [
         { capability: "grocery search", url: "https://www.flipkart.com/minutes-store" }
+      ] },
+      { id: "digihaat_grocery", name: "DigiHaat Grocery", vertical: "grocery", tier: "mandated", probes: [
+        { capability: "grocery search", url: "https://digihaat.in/en/search?q=milk" }
       ] },
       // ---- 16.10 Movies & events ----
       { id: "bookmyshow", name: "BookMyShow", vertical: "movies", tier: "mandated", probes: [
@@ -56560,6 +56939,9 @@ var init_acceptanceRegistry = __esm({
       ] },
       { id: "eatsure", name: "EatSure", vertical: "food", tier: "mandated", probes: [
         { capability: "restaurant discovery", url: "https://www.eatsure.com/" }
+      ] },
+      { id: "digihaat_food", name: "DigiHaat Food", vertical: "food", tier: "mandated", probes: [
+        { capability: "food search", url: "https://digihaat.in/en/search?q=biryani" }
       ] },
       { id: "uber_eats", name: "Uber Eats", vertical: "food", tier: "mandated", probes: [
         { capability: "restaurant discovery", url: "https://www.ubereats.com/in", retiredNote: "Uber Eats exited India in 2020 (business sold to Zomato); no Indian operations to test. Retired per policy 16.15." }
@@ -58169,6 +58551,42 @@ var init_adminRoutes = __esm({
           pending: refs.length - valid.length,
           awardablePoints: valid.length,
           topReferrers: [...totals.entries()].map(([id, v]) => ({ userId: id, code: v.code, email: v.email, referred: v.valid })).sort((a, b) => b.referred - a.referred).slice(0, 25),
+          // OWNER 18 Nov ("admin mein data ho ki kaunsa user kisko refer kar raha hai"): the panel could see
+          // totals but not the actual pair. This is the ledger itself - referrer (name, email, code) ->
+          // referee (name, email), when it happened, whether the point was awarded, and the ledger row id.
+          referralList: await (async () => {
+            const detail = await store7.query(
+              `SELECT r.id, r.referrer_id, r.referee_id, r.status, r.created_date,
+                  pe.points AS points_awarded
+             FROM referrals r
+             LEFT JOIN referral_point_events pe ON pe.referral_id = r.id
+            ORDER BY r.id DESC LIMIT 300`
+            );
+            const ids = /* @__PURE__ */ new Set();
+            for (const r of detail) {
+              ids.add(Number(r.referrer_id));
+              ids.add(Number(r.referee_id));
+            }
+            const people = ids.size ? await store7.query(`SELECT id, email, display_name, referral_code FROM users WHERE id IN (${[...ids].join(",")})`) : [];
+            const pById = new Map(people.map((u) => [Number(u.id), u]));
+            const who = (id) => {
+              const u = pById.get(id);
+              return {
+                id,
+                name: u?.display_name ? String(u.display_name) : u?.email ? String(u.email).split("@")[0] : `#${id}`,
+                email: u?.email ? String(u.email) : null,
+                code: u?.referral_code ? String(u.referral_code) : null
+              };
+            };
+            return detail.map((r) => ({
+              id: Number(r.id),
+              referrer: who(Number(r.referrer_id)),
+              referee: who(Number(r.referee_id)),
+              status: String(r.status || ""),
+              at: r.created_date || null,
+              pointsAwarded: Number(r.points_awarded || 0)
+            }));
+          })(),
           recent
         });
       } catch (e2) {

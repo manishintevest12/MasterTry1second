@@ -189,6 +189,19 @@ export const SERVICE_NETWORKS: Record<string, ServiceNetwork[]> = {
     { name: 'MyChoize', url: 'https://www.mychoize.com/', sub: 'self-drive car rental' },
     { name: 'Europcar India', url: 'https://www.europcar.co.in/', sub: 'car rental network' },
   ],
+  /**
+   * OWNER 18 Nov ("ev charging ka option ni hai"): the charging map is patchy in every Indian city, and a chip that
+   * answers "nothing here" is worse than naming the real networks that do cover it. Brand sites only, no invented
+   * address or rating, and every card says it is a network - exactly like the scrapping row above.
+   */
+  ev_charging: [
+    { name: 'Tata Power EZ Charge', url: 'https://www.tatapower.com/', sub: 'EV charging network' },
+    { name: 'Statiq', url: 'https://statiq.in/', sub: 'EV charging network' },
+    { name: 'ChargeZone', url: 'https://chargezone.in/', sub: 'EV charging network' },
+    { name: 'Jio-bp pulse', url: 'https://www.jiobp.com/', sub: 'EV charging network' },
+    { name: 'Ather Grid', url: 'https://www.atherenergy.com/', sub: 'EV charging network' },
+    { name: 'Glida', url: 'https://glida.in/', sub: 'EV charging network' },
+  ],
   scrapping: [
     { name: 'Parivahan RVSF list', url: 'https://parivahan.gov.in/', sub: 'registered scrapping facilities' },
     { name: 'Mahindra CERO', url: 'https://www.mahindracero.com/', sub: 'vehicle scrapping network' },

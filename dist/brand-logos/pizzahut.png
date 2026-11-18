@@ -1,0 +1,102 @@
+<!doctype html><html><head><base href="/"/><meta charset="UTF-8"/><title>Pizza Delivery &amp; Takeaway Near You | Pizza Hut UK</title><meta name="viewport" content="width=device-width,height=device-height,user-scalable=no"/><meta name="description" content="Treat yourself to the best pizza, sides and desserts from your nearest Pizza Hut. Get delivery or takeaway today." data-rh="true"/><meta name="theme-color" content="#ffffff"/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,600;1,700;1,800&display=swap"/><link rel="icon" href="static/favicon.ico"><link href="static/main.fa701147e6de97a8.css" rel="stylesheet"><link href="static/styles.d3de2e0afaf6af2a.css" rel="stylesheet"></head><body><div id="root"><style>body {
+        margin: 0;
+        background: #ffffff;
+        color: #111111;
+        font-family: "Open Sans", "Helvetica", "Arial", sans-serif;
+      }
+      .app-loading {
+        min-height: 100vh;
+        height: 100vh;
+        width: 100%;
+        background: #ffffff;
+        color: #111111;
+        display: flex;
+        flex-direction: column;
+        --app-loading-subtitle-width: 457px;
+        --app-loading-card-full-width: 457px;
+        --app-loading-content-max-width: var(--app-loading-subtitle-width);
+      }
+
+      .app-loading,
+      .app-loading * {
+        box-sizing: inherit;
+      }
+      *, *::before, *::after {
+        box-sizing: inherit;
+      }
+      .app-loading__header {
+        height: 56px;
+        display: flex;
+        align-items: center;
+        padding: 0;
+        border-bottom: 1px solid #ededed;
+        margin-bottom: 32px;
+        width: 100%;
+        align-self: stretch;
+      }
+
+      .app-loading__content {
+        width: 100%;
+        max-width: var(--app-loading-content-max-width);
+        margin: 0 auto;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        row-gap: 16px;
+        flex: 1;
+      }
+
+      .app-loading__grid {
+        margin-top: auto;
+        margin-left: 0;
+        margin-right: 0;
+        width: 100%;
+        max-width: none;
+        padding: 0;
+        align-self: stretch;
+      }
+
+      .app-loading__skeleton {
+        display: block;
+        background-color: rgba(0, 0, 0, 0.11);
+        animation: app-loading-pulse 2s ease-in-out 0.5s infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .app-loading__skeleton {
+          animation: none;
+        }
+      }
+
+      @keyframes app-loading-pulse {
+        0% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+
+      @media (min-width: 490px) {
+        .app-loading {
+          --app-loading-subtitle-width: 514px;
+          --app-loading-card-full-width: 514px;
+        }
+      }
+
+      @media (min-width: 816px) {
+        .app-loading {
+          --app-loading-subtitle-width: 768px;
+          --app-loading-card-full-width: 768px;
+        }
+      }
+
+      @media (min-width: 1532px) {
+        .app-loading {
+          --app-loading-subtitle-width: 1164px;
+          --app-loading-card-full-width: 1164px;
+        }
+      }</style><div class="app-loading" role="status" aria-live="polite" aria-busy="true" data-testid="app-loading-skeleton"><div class="app-loading__header"><span class="app-loading__skeleton app-loading__skeleton--header" style="width: 100%; height: 56px; background-color: #E91C24"></span></div></div></div><script type="module" src="static/runtime.2289897f5da42ea8.js"></script><script type="module" src="static/vendor.ce40421f1df99142.js"></script><script type="module" src="static/main.427f53f0f1f39e07.js"></script><script type="module" src="static/styles.8098dbd980f390e7.js"></script></body></html>

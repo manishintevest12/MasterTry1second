@@ -23,7 +23,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   /// OWNER 17 Nov: petrol, CNG, LPG, repairs, tyres, battery, denting, car wash, detailing, PUCC, insurance, RTO,
   /// rentals and scrapping — the everyday errands around a vehicle, answered by the same OSM data as the rest.
   static const _vehicleCategories = <String>[
-    'petrol', 'cng', 'lpg', 'car_repair', 'bike_repair', 'puncture', 'battery', 'tyres', 'denting',
+    'petrol', 'cng', 'ev_charging', 'lpg', 'car_repair', 'bike_repair', 'puncture', 'battery', 'tyres', 'denting',
     'accessories', 'car_wash', 'detailing', 'pucc', 'insurance', 'rto', 'bike_rental', 'car_rental', 'scrapping',
   ];
 
@@ -39,6 +39,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
     'movies': 'Cinemas',
     'petrol': 'Petrol Pumps',
     'cng': 'CNG Stations',
+    'ev_charging': 'EV Charging',
     'lpg': 'LPG & Gas',
     'car_repair': 'Car Repair',
     'bike_repair': 'Bike Repair',

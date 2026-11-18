@@ -44,6 +44,17 @@ export const NEARBY_CATEGORIES: NearbyCategoryDef[] = [
     radiusM: 12000,
   },
   {
+    // OWNER 18 Nov: "ev charging ka option ni hai usko v add kro". The only fuel-family errand the vehicle row was
+    // missing. OSM maps public charging points as amenity=charging_station (a few pumps carry fuel:electricity=yes
+    // instead), so both are asked for, and the name words catch operator brand strings when only a name comes back.
+    id: 'ev_charging',
+    label: 'EV Charging',
+    filters: ['node["amenity"="charging_station"]', 'way["amenity"="charging_station"]', 'node["amenity"="fuel"]["fuel:electricity"="yes"]'],
+    terms: ['ev charging', 'ev charger', 'ev chargers', 'charging station', 'charging point', 'charging hub', 'electric vehicle', 'ev point', 'ev station', 'fast charger', 'statiq', 'chargezone', 'charge zone', 'tata power', 'jio-bp', 'jio bp', 'ather grid', 'glida', 'fortum', 'zeon'],
+    search: 'EV charging station',
+    radiusM: 15000,
+  },
+  {
     id: 'lpg',
     label: 'LPG & Gas',
     filters: ['node["shop"="gas"]', 'node["amenity"="fuel"]["fuel:lpg"="yes"]', 'way["shop"="gas"]'],

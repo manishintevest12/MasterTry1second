@@ -49,6 +49,7 @@ const QUERIES = {
   bike_rental: ['scooter rental shop', 'motorcycle rental india', 'scooters parked rental'],
   car_rental: ['car rental office', 'rental cars parked', 'self drive car rental india'],
   scrapping: ['vehicle scrap yard', 'scrap metal yard cars', 'car dismantling yard'],
+  ev_charging: ['electric vehicle charging station india', 'ev charging station car', 'electric car charging point'],
 };
 
 const BAD = /\b(painting|engraving|drawing|manet|map|diagram|poster|logo|banknote|stamp|manuscript)\b/i;

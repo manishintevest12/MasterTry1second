@@ -11,7 +11,9 @@ import { MapPin, Navigation, Star, Loader2, Compass, ChevronDown } from 'lucide-
 type Category = 'all' | 'restaurants' | 'cafes' | 'hotels' | 'stays' | 'cabs' | 'stores' | 'movies'
   // OWNER 17 Nov: the vehicle & paperwork errands, served by the same OSM data.
   | 'petrol' | 'cng' | 'lpg' | 'car_repair' | 'bike_repair' | 'puncture' | 'battery' | 'tyres' | 'denting'
-  | 'accessories' | 'car_wash' | 'detailing' | 'pucc' | 'insurance' | 'rto' | 'bike_rental' | 'car_rental' | 'scrapping';
+  | 'accessories' | 'car_wash' | 'detailing' | 'pucc' | 'insurance' | 'rto' | 'bike_rental' | 'car_rental' | 'scrapping'
+  // OWNER 18 Nov: EV charging (the one fuel-family errand the vehicle row did not have).
+  | 'ev_charging';
 
 interface NearbyRow {
   id: string; name: string; category: string; subcategory?: string | null;
@@ -43,6 +45,7 @@ const PILLS: { key: Category; label: string }[] = [
 const VEHICLE_PILLS: { key: Category; label: string }[] = [
   { key: 'petrol', label: 'Petrol Pumps' },
   { key: 'cng', label: 'CNG Stations' },
+  { key: 'ev_charging', label: 'EV Charging' },
   { key: 'lpg', label: 'LPG & Gas' },
   { key: 'car_repair', label: 'Car Repair' },
   { key: 'bike_repair', label: 'Bike Repair' },
