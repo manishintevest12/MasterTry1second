@@ -1257,11 +1257,13 @@ class CreditCardTile extends StatelessWidget {
                       ],
                     ),
                   ),
-                if (it.spec('reward rate text').isNotEmpty)
+                // OWNER 18 Nov: the admin's credit-card fields publish `reward_rate`; the tile used to read
+                // only the scraper's `reward rate text`, so a hand-entered card showed no reward line.
+                if (it.spec('reward rate text', 'reward rate').isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      it.spec('reward rate text'),
+                      it.spec('reward rate text', 'reward rate'),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: tx(context, 10.5, color: muted(context), h: 1.35),
@@ -1977,12 +1979,46 @@ class _ChipSpecs extends StatelessWidget {
     if (it.spec('cover').isNotEmpty) list.add(it.spec('cover'));
     if (it.spec('language').isNotEmpty) list.add(it.spec('language'));
 
+    // OWNER 18 Nov: the finance verticals each have their own field set now (server/marketing/
+    // financeFields.ts). These are the facts those fields publish, so the app card shows the same
+    // things the website card shows instead of silently dropping them.
+    String tag(String label, String value) => value.isEmpty ? '' : '$label $value';
+    switch (vertical) {
+      case 'loans':
+        list.addAll([
+          tag('Fee', it.spec('processing fee')),
+          it.spec('tenure or amount'),
+          tag('Disbursal', it.spec('disbursal time')),
+        ].where((e) => e.isNotEmpty));
+        break;
+      case 'insurance':
+        list.addAll([
+          tag('Cover', it.spec('sum insured')),
+          it.spec('network'),
+          tag('Waiting', it.spec('waiting period')),
+        ].where((e) => e.isNotEmpty));
+        break;
+      case 'account':
+        list.addAll([
+          tag('MAB', it.spec('monthly average balance')),
+          it.spec('debit card'),
+          it.spec('charges'),
+        ].where((e) => e.isNotEmpty));
+        break;
+      case 'creditcards':
+        list.addAll([
+          tag('Reward', it.spec('reward rate', 'reward rate text')),
+          it.spec('best for'),
+        ].where((e) => e.isNotEmpty));
+        break;
+    }
+
     if (list.isEmpty) return const SizedBox.shrink();
 
     return Wrap(
       spacing: 4,
       children: [
-        for (final s in list.take(2))
+        for (final s in list.take(const ['loans', 'insurance', 'account', 'creditcards'].contains(vertical) ? 3 : 2))
           Pill(
             s,
             bg: s == 'Veg' ? T1SColors.greenBg : (isDark(context) ? T1SColors.slate800 : T1SColors.slate100),
