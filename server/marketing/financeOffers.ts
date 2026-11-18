@@ -12,6 +12,7 @@
  */
 import { getStore } from '../common/db';
 import { createMaskingPointer } from '../affiliate/deeplink';
+import { applyFinanceFields, fieldsForVertical } from './financeFields';
 
 export const FINANCE_VERTICALS = ['loans', 'creditcards', 'insurance', 'account'] as const;
 export type FinanceVertical = (typeof FINANCE_VERTICALS)[number];
@@ -30,6 +31,8 @@ export interface FinanceOfferInput {
   image_url?: string | null;   // admin-uploaded card photo (/api/logos/<key>) or https URL
   affiliate_url?: string | null; // tracking template, {url} = merchant page
   city?: string | null;
+  /** OWNER 18 Nov: the selected vertical's OWN fields (server/marketing/financeFields.ts). */
+  fields?: Record<string, unknown> | null;
   active?: boolean;
   actor?: string | null;
 }
@@ -53,8 +56,18 @@ export function validateFinanceOffer(i: FinanceOfferInput): { ok: boolean; error
   let probe: URL;
   try { probe = new URL(rawUrl); } catch { return { ok: false, error: 'URL must be a full https:// link' }; }
   if (probe.protocol !== 'https:') return { ok: false, error: 'URL must start with https://' };
-  const price = i.price === null || i.price === undefined || i.price === '' ? null : Number(i.price);
-  if (price !== null && !Number.isFinite(price)) return { ok: false, error: 'Price/rate value must be a number' };
+  const explicitPrice = i.price === null || i.price === undefined || i.price === '' ? null : Number(i.price);
+  if (explicitPrice !== null && !Number.isFinite(explicitPrice)) return { ok: false, error: 'Price/rate value must be a number' };
+
+  // OWNER 18 Nov: each vertical has its own card on the site, so each vertical has its own fields. The
+  // field set's REQUIRED entries are what the card cannot render without (loan rate, card annual fee,
+  // insurer claim ratio, account rate); the field flagged `price` supplies the number the feed sorts on
+  // and the field flagged `unit` supplies the label printed under the big number.
+  const sellerName = String(i.seller || '').trim().slice(0, 160) || title;
+  const fx = applyFinanceFields(vertical, i.fields, { seller: sellerName });
+  if (!fx.ok) return { ok: false, error: fx.error };
+  // An explicit price (older callers / a hand-set number) wins; otherwise the vertical's price field does.
+  const price = explicitPrice !== null ? explicitPrice : (fx.price !== undefined ? fx.price : null);
 
   // Owner 27 Oct: the four finance verticals need a PHOTO and a real AFFILIATE link.
   // Photo is either an admin upload (/api/logos/<key>) or an https image.
@@ -77,8 +90,10 @@ export function validateFinanceOffer(i: FinanceOfferInput): { ok: boolean; error
       id: i.id ? Number(i.id) : undefined,
       vertical,
       title,
-      seller: String(i.seller || '').trim().slice(0, 160) || title,
-      rate_label: String(i.rate_label || '').trim().slice(0, 80) || null,
+      seller: sellerName,
+      // The vertical's own rate field doubles as the label the admin list shows.
+      rate_label: String(i.rate_label || '').trim().slice(0, 80) || fx.unit || null,
+      fields: fx.extras,
       price: price === null ? null : Math.max(0, price),
       highlights: String(i.highlights || '').trim().slice(0, 300) || null,
       url: rawUrl.slice(0, 1500),
@@ -111,6 +126,12 @@ export async function listManualFinanceOffers(vertical?: string): Promise<any[]>
       price: r.effective_price === null ? null : Number(r.effective_price),
       url: r.seller_url || '', city: r.location_city || null,
       image_url: a.image || '', affiliate_url: a.affiliate_template || '',
+      // OWNER 18 Nov: the vertical's own fields come back so Edit reopens the same form filled in.
+      fields: Object.fromEntries(
+        fieldsForVertical(String(r.vertical || ''))
+          .map((f) => [f.key, a[f.key] === undefined || a[f.key] === null ? '' : String(a[f.key])])
+          .filter(([, v]) => String(v).length > 0),
+      ),
       active: r.freshness_status !== 'INVALID',
       created_at: r.created_at, updated_at: r.updated_at,
     };
@@ -129,17 +150,23 @@ export async function saveManualFinanceOffer(input: FinanceOfferInput): Promise<
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
   const store = getStore();
+  // Every vertical field goes into attributes under its own scraper-vocabulary key, so the card that
+  // renders this vertical reads exactly what the owner typed (routes.ts maps joining_fee -> 'joining fee').
+  const fieldAttrs: Record<string, string> = { ...(c.fields || {}) };
+  // Credit cards keep the issuer under `bank` (the card colours its tile from it).
+  if (c.vertical === 'creditcards' && !fieldAttrs.bank && c.seller) fieldAttrs.bank = String(c.seller);
   const attributes = JSON.stringify({
     manual: 1, rate_label: c.rate_label, highlights: c.highlights,
+    ...fieldAttrs,
     // Card photo + our own tracking template (rendered at click, see deeplink guard).
     ...(c.image_url ? { image: c.image_url } : {}),
     ...(c.affiliate_url ? { affiliate_template: c.affiliate_url } : {}),
     // Finance summary rows carry their category in attributes on the scraped side too,
     // so the vertical engine treats a manual row exactly like a published-rate page.
-    ...(c.vertical === 'loans' ? { loan_type: 'personal loan' } : {}),
+    ...(c.vertical === 'loans' && !fieldAttrs.loan_type ? { loan_type: 'personal loan' } : {}),
     ...(c.vertical === 'creditcards' ? { card_type: 'credit card' } : {}),
-    ...(c.vertical === 'insurance' ? { insurance_type: 'insurance plan' } : {}),
-    ...(c.vertical === 'account' ? { account_type: 'savings account' } : {}),
+    ...(c.vertical === 'insurance' && !fieldAttrs.insurance_type ? { insurance_type: 'insurance plan' } : {}),
+    ...(c.vertical === 'account' && !fieldAttrs.account_type ? { account_type: 'savings account' } : {}),
     ...(c.rate_label ? { unit: c.rate_label } : {}),
   });
 

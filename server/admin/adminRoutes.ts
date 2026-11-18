@@ -467,6 +467,16 @@ adminRouter.get('/referrals', async (req, res) => {
   }
 });
 
+// OWNER 18 Nov: the admin form must ask for the RIGHT fields per vertical (loans / credit cards /
+// insurance / accounts each render a different card on the site). The schema lives once, on the server
+// (server/marketing/financeFields.ts), so the form can never drift from what the cards actually read.
+adminRouter.get('/finance-fields', async (_req, res) => {
+  try {
+    const { FINANCE_FIELDS } = await import('../marketing/financeFields');
+    res.json({ success: true, fields: FINANCE_FIELDS });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load finance fields' }); }
+});
+
 adminRouter.get('/finance-offers', async (req, res) => {
   try {
     const { listManualFinanceOffers, FINANCE_VERTICALS } = await import('../marketing/financeOffers');

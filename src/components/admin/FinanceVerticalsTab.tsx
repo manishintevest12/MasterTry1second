@@ -16,6 +16,16 @@ interface Row {
   id: number; vertical: string; title: string; seller: string; rate_label: string;
   highlights: string; price: number | null; url: string; city: string | null; active: boolean;
   image_url: string; affiliate_url: string;
+  /** the vertical's own fields, as stored (server/marketing/financeFields.ts keys). */
+  fields?: Record<string, string>;
+}
+
+/** One field of the selected vertical's own set — served by /api/admin/finance-fields so the form can
+ *  never ask for something the site's card does not read (owner 18 Nov). */
+interface FieldDef {
+  key: string; label: string; placeholder?: string; hint?: string;
+  type: 'text' | 'number' | 'select'; options?: string[]; required?: boolean;
+  price?: boolean; unit?: boolean;
 }
 
 const VERTICALS = [
@@ -28,12 +38,14 @@ const VERTICALS = [
 const inputCls = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10';
 const labelCls = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1';
 
-const blank = { id: undefined as number | undefined, vertical: 'loans', title: '', seller: '', rate_label: '', price: '', highlights: '', url: '', city: '', active: true, image_url: '', affiliate_url: '' };
+const blank = { id: undefined as number | undefined, vertical: 'loans', title: '', seller: '', rate_label: '', price: '', highlights: '', url: '', city: '', active: true, image_url: '', affiliate_url: '', fields: {} as Record<string, string> };
 
 export const FinanceVerticalsTab: React.FC = () => {
   const [token] = useState(() => localStorage.getItem('t1s_admin_token') || '');
   const [rows, setRows] = useState<Row[]>([]);
   const [form, setForm] = useState<any>(blank);
+  // Vertical field sets (loans / creditcards / insurance / account each render their own card).
+  const [schema, setSchema] = useState<Record<string, FieldDef[]>>({});
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -49,7 +61,22 @@ export const FinanceVerticalsTab: React.FC = () => {
   };
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
+  // Owner 18 Nov: "kya field chaiye uss hisab se backend bnao" — the per-vertical field list comes from
+  // the server, which is also what validates and stores it, so form and card can never disagree.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/finance-fields', { headers });
+        const d = await res.json();
+        if (d?.success && d.fields) setSchema(d.fields);
+      } catch { /* the form still works with the shared core fields */ }
+    })();
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, []);
+
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
+  // Switching vertical switches the whole field set (a loan rate is not a card fee).
+  const setField = (k: string, v: string) => setForm((f: any) => ({ ...f, fields: { ...(f.fields || {}), [k]: v } }));
 
   // Photo upload (owner 27 Oct): the file goes to the existing admin merchant-logo
   // store, and the entry keeps /api/logos/<key> — a stable absolute URL the web card,
@@ -107,11 +134,11 @@ export const FinanceVerticalsTab: React.FC = () => {
     if (!/^https:\/\//i.test(form.url.trim())) return setMsg({ ok: false, text: 'Apply/partner URL https:// se shuru hona chahiye' });
     setBusy(true);
     try {
-      const res = await fetch('/api/admin/finance-offers', { method: 'POST', headers, body: JSON.stringify({ ...form, id: form.id || undefined }) });
+      const res = await fetch('/api/admin/finance-offers', { method: 'POST', headers, body: JSON.stringify({ ...form, id: form.id || undefined, fields: form.fields || {} }) });
       const d = await res.json();
       if (d.success) {
         setMsg({ ok: true, text: form.id ? 'Entry updated — live feed me turant update ho jayegi.' : 'Entry added — ye live feed me dikhegi (scraped rows ke saath).' });
-        setForm({ ...blank, vertical: form.vertical });
+        setForm({ ...blank, vertical: form.vertical, fields: {} });
         await load();
       } else setMsg({ ok: false, text: d.error || 'Save failed' });
     } catch { setMsg({ ok: false, text: 'Save failed' }); }
@@ -131,7 +158,7 @@ export const FinanceVerticalsTab: React.FC = () => {
   };
 
   const edit = (r: Row) => {
-    setForm({ id: r.id, vertical: r.vertical, title: r.title, seller: r.seller, rate_label: r.rate_label, price: r.price ?? '', highlights: r.highlights, url: r.url, city: r.city || '', active: r.active, image_url: r.image_url || '', affiliate_url: r.affiliate_url || '' });
+    setForm({ id: r.id, vertical: r.vertical, title: r.title, seller: r.seller, rate_label: r.rate_label, price: r.price ?? '', highlights: r.highlights, url: r.url, city: r.city || '', active: r.active, image_url: r.image_url || '', affiliate_url: r.affiliate_url || '', fields: { ...(r.fields || {}) } });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -150,7 +177,7 @@ export const FinanceVerticalsTab: React.FC = () => {
             const Icon = v.icon;
             const on = form.vertical === v.key;
             return (
-              <button key={v.key} type="button" onClick={() => set('vertical', v.key)}
+              <button key={v.key} type="button" onClick={() => setForm((f: any) => ({ ...f, vertical: v.key, fields: {} }))}
                 className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold cursor-pointer transition-colors ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
                 <Icon className="w-3.5 h-3.5" /> {v.label}
               </button>
@@ -162,10 +189,48 @@ export const FinanceVerticalsTab: React.FC = () => {
         <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
           <div className="md:col-span-2"><label className={labelCls}>Product name *</label><input className={inputCls} value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="HDFC Personal Loan" /></div>
           <div><label className={labelCls}>Bank / insurer / broker</label><input className={inputCls} value={form.seller} onChange={(e) => set('seller', e.target.value)} placeholder="HDFC Bank" /></div>
-          <div><label className={labelCls}>Rate / fee shown</label><input className={inputCls} value={form.rate_label} onChange={(e) => set('rate_label', e.target.value)} placeholder="10.25% p.a. · ₹0 joining" /></div>
-          <div><label className={labelCls}>Numeric value (sorting)</label><input className={inputCls} value={form.price} onChange={(e) => set('price', e.target.value)} placeholder="10.25" /></div>
           <div><label className={labelCls}>City (optional)</label><input className={inputCls} value={form.city} onChange={(e) => set('city', e.target.value)} placeholder="Indore" /></div>
           <div className="md:col-span-2"><label className={labelCls}>Apply / partner URL *</label><input className={inputCls} value={form.url} onChange={(e) => set('url', e.target.value)} placeholder="https://www.hdfcbank.com/personal/loan" /></div>
+          {/* OWNER 18 Nov: each vertical's OWN fields — loans ask for loan type + rate range, cards ask for
+              joining/annual fee + network + lounges, insurance asks for claim ratio + premium + cover, accounts
+              ask for account type + rate slabs + MAB. The list comes from the server schema, which also
+              validates it and writes it into the attributes the site's card reads. */}
+          {(schema[form.vertical] || []).length > 0 && (
+            <div className="md:col-span-4 mt-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                {active.label} fields — {schema[form.vertical].length} (site card inhi ko padhta hai)
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                {(schema[form.vertical] || []).map((f) => (
+                  <div key={f.key} className={f.key === 'welcome_benefit' || f.key === 'benefits' || f.key === 'eligibility' || f.key === 'tenure_or_amount' ? 'md:col-span-2' : ''}>
+                    <label className={labelCls}>{f.label}{f.required ? ' *' : ''}</label>
+                    {f.type === 'select' ? (
+                      <select
+                        className={inputCls}
+                        value={(form.fields || {})[f.key] || ''}
+                        onChange={(e) => setField(f.key, e.target.value)}
+                      >
+                        <option value="">— chuno —</option>
+                        {(f.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        className={inputCls}
+                        type={f.type === 'number' ? 'number' : 'text'}
+                        step={f.type === 'number' ? 'any' : undefined}
+                        value={(form.fields || {})[f.key] ?? ''}
+                        onChange={(e) => setField(f.key, e.target.value)}
+                        placeholder={f.placeholder}
+                      />
+                    )}
+                    {f.hint ? <p className="text-[10px] text-slate-400 mt-0.5">{f.hint}</p> : null}
+                    {f.price ? <p className="text-[10px] text-emerald-600 mt-0.5 font-semibold">feed sorting + bada number</p> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="md:col-span-2">
             <label className={labelCls}>Photo (card image)</label>
             <div className="flex items-center gap-2">
@@ -215,6 +280,11 @@ export const FinanceVerticalsTab: React.FC = () => {
                     {r.active ? null : <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-50 text-amber-700">inactive</span>}
                   </div>
                   <p className="text-[11px] text-slate-500 truncate">{r.seller}{r.rate_label ? ` · ${r.rate_label}` : ''}{r.city ? ` · ${r.city}` : ''}</p>
+                  {r.fields && Object.keys(r.fields).length > 0 ? (
+                    <p className="text-[10px] text-slate-400 truncate">
+                      {Object.entries(r.fields).slice(0, 4).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · ')}
+                    </p>
+                  ) : null}
                   {r.highlights ? <p className="text-[10px] text-slate-400 truncate">{r.highlights}</p> : null}
                   <p className="text-[10px] flex items-center gap-2 mt-0.5">
                     <span className={r.image_url ? 'text-emerald-600 font-semibold' : 'text-slate-400'}>{r.image_url ? 'Photo ✓' : 'no photo'}</span>

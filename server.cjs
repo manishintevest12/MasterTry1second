@@ -5871,15 +5871,15 @@ function parseExpediaGroup(body, source, site, checkin, checkout, fx) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  for (const L of listings.slice(0, 60)) {
-    if (L?.__typename !== "LodgingCard") continue;
-    const name = String(L?.headingSection?.heading || "").trim();
+  for (const L2 of listings.slice(0, 60)) {
+    if (L2?.__typename !== "LodgingCard") continue;
+    const name = String(L2?.headingSection?.heading || "").trim();
     if (!name || seen.has(name)) continue;
-    const { value: price2, currency } = parsePriceFormatted(String(L?.priceSection?.priceSummary?.options?.[0]?.displayPrice?.formatted || ""));
+    const { value: price2, currency } = parsePriceFormatted(String(L2?.priceSection?.priceSummary?.options?.[0]?.displayPrice?.formatted || ""));
     if (!price2) continue;
     seen.add(name);
-    const img = String(L?.mediaSection?.gallery?.media?.[0]?.media?.url || "").replace(/^http:/, "https:");
-    const rel = String(L?.cardLink?.resource?.relativePath || "");
+    const img = String(L2?.mediaSection?.gallery?.media?.[0]?.media?.url || "").replace(/^http:/, "https:");
+    const rel = String(L2?.cardLink?.resource?.relativePath || "");
     const url = rel ? `${origin2}${rel.startsWith("/") ? rel : `/${rel}`}` : origin2;
     const sellerUrl = `${url}${url.includes("?") ? "&" : "?"}chkin=${checkin}&chkout=${checkout}`;
     let finalPrice = price2, finalCurrency = currency;
@@ -5900,7 +5900,7 @@ function parseExpediaGroup(body, source, site, checkin, checkout, fx) {
         ...img ? { image_url: img } : {},
         data_note: note
       },
-      identifiers: L?.id ? { vendorProductId: String(L.id) } : void 0,
+      identifiers: L2?.id ? { vendorProductId: String(L2.id) } : void 0,
       evidence: { sourceUrl: sellerUrl, extractedFields: ["title", "price", "image", "url"] }
     }));
   }
@@ -18119,8 +18119,8 @@ fragment EGDSBasicSectionHeadingFragment on EGDSBasicSectionHeading {
 });
 
 // server/workers/parsers/expediaFlights.ts
-function listingPrice(L) {
-  for (const row of L?.priceDisplay?.rows || []) {
+function listingPrice(L2) {
+  for (const row of L2?.priceDisplay?.rows || []) {
     for (const el of row?.elements || []) {
       if (el?.__typename === "FlightsPriceMessageItem") {
         const m = String(el?.price?.text || "").replace(/\s/g, "").match(/(₹|\$|€|£)?([\d,]+(?:\.\d+)?)/);
@@ -18133,14 +18133,14 @@ function listingPrice(L) {
   }
   return 0;
 }
-function listingTimeline(L) {
-  for (const s of L?.flightsShoppingOfferContent?.secondarySection || []) {
+function listingTimeline(L2) {
+  for (const s of L2?.flightsShoppingOfferContent?.secondarySection || []) {
     if (s?.__typename === "FlightShoppingCardDurationTimeline" || s?.start && s?.end) return s;
   }
   return null;
 }
-function listingAirlineName(L) {
-  for (const s of L?.flightsShoppingOfferContent?.secondarySection || []) {
+function listingAirlineName(L2) {
+  for (const s of L2?.flightsShoppingOfferContent?.secondarySection || []) {
     if (s?.__typename !== "EGDSTextSection") continue;
     for (const c of s?.contents || []) {
       const t = String(c?.text || "").trim();
@@ -18149,14 +18149,14 @@ function listingAirlineName(L) {
   }
   return "";
 }
-function listingLogo(L) {
-  const g = L?.flightsShoppingOfferContent?.graphic;
+function listingLogo(L2) {
+  const g = L2?.flightsShoppingOfferContent?.graphic;
   const url = g?.url?.value || g?.url?.relativePath || "";
   return String(url || "").replace(/^http:/, "https:");
 }
-function listingLegs(L) {
+function listingLegs(L2) {
   const legs2 = [];
-  const sections = (L?.journeys || [])[0]?.detailsAndFares?.content?.sections || [];
+  const sections = (L2?.journeys || [])[0]?.detailsAndFares?.content?.sections || [];
   for (const sec of sections) {
     if (sec?.__typename !== "FlightsJourneyDetailsInformation" && !sec?.content) continue;
     for (const jd of sec?.content || []) {
@@ -18194,11 +18194,11 @@ function listingLegs(L) {
   }
   return legs2;
 }
-function listingDuration(L) {
-  const tl = listingTimeline(L);
+function listingDuration(L2) {
+  const tl = listingTimeline(L2);
   const pm = String(tl?.primaryMessage?.text || "").trim();
   if (pm) return pm;
-  const sections = (L?.journeys || [])[0]?.detailsAndFares?.content?.sections || [];
+  const sections = (L2?.journeys || [])[0]?.detailsAndFares?.content?.sections || [];
   for (const sec of sections) {
     for (const jd of sec?.content || []) {
       for (const js of jd?.journeySections || []) {
@@ -18229,21 +18229,21 @@ function parseExpediaFlights(body, source, route2, dateIso, srpUrl, fx, cap2 = 4
   const routeLabel = `${route2.from} \u2192 ${route2.to}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const L of listings) {
-    if (!L || !L.priceDisplay || !L.flightsShoppingOfferContent) continue;
-    const usd2 = listingPrice(L);
+  for (const L2 of listings) {
+    if (!L2 || !L2.priceDisplay || !L2.flightsShoppingOfferContent) continue;
+    const usd2 = listingPrice(L2);
     if (!usd2) continue;
-    const tl = listingTimeline(L);
-    const legs2 = listingLegs(L);
+    const tl = listingTimeline(L2);
+    const legs2 = listingLegs(L2);
     const dep = legs2[0]?.dep || String(tl?.start?.primary || "").trim();
     const arr = (legs2[legs2.length - 1] || {}).arr || String(tl?.end?.primary || "").trim();
     if (!dep || !arr) continue;
-    const airline = listingAirlineName(L) || (legs2[0]?.flightNo || "").slice(0, 2);
+    const airline = listingAirlineName(L2) || (legs2[0]?.flightNo || "").slice(0, 2);
     if (!airline) continue;
     const flightNos = legs2.map((l) => l.flightNo).filter(Boolean);
     const flightNo2 = flightNos.join("/");
     const stops = parseStops(tl?.stops);
-    const duration = listingDuration(L);
+    const duration = listingDuration(L2);
     const depAirport = legs2[0]?.depAirport || "";
     const arrAirport = legs2[legs2.length - 1]?.arrAirport || "";
     const aircraft = legs2.map((l) => l.aircraft).filter(Boolean)[0] || "";
@@ -18260,7 +18260,7 @@ function parseExpediaFlights(body, source, route2, dateIso, srpUrl, fx, cap2 = 4
       currency: "USD",
       dataNote: `Live fare observed on Expedia flight search on ${today2}; listed in USD on expedia.com (FX rate unavailable, price unconverted). Fare may change at checkout.`
     };
-    const logo = listingLogo(L);
+    const logo = listingLogo(L2);
     out.push(newRawItem(source, {
       title: `${airline}${flightNo2 ? ` ${flightNo2}` : ""} \xB7 ${routeLabel}`,
       brand: airline,
@@ -27134,8 +27134,8 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
   const listings = Array.isArray(payload?.listings) ? payload.listings : [];
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  for (const L of listings) {
-    for (const card2 of L?.cards || []) {
+  for (const L2 of listings) {
+    for (const card2 of L2?.cards || []) {
       const ctaUrl = String(card2?.ctaUrl || "");
       if (!ctaUrl.startsWith("https://in.bookmyshow.com/movies/")) continue;
       const text = Array.isArray(card2?.text) ? card2.text : [];
@@ -27216,8 +27216,8 @@ function bmsPageGenres(html) {
 function parseNowShowingCards(payload, _region) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const L of payload?.listings || []) {
-    for (const card2 of L?.cards || []) {
+  for (const L2 of payload?.listings || []) {
+    for (const card2 of L2?.cards || []) {
       const ctaUrl = String(card2?.ctaUrl || "");
       if (!ctaUrl.startsWith("https://in.bookmyshow.com/movies/")) continue;
       const text = Array.isArray(card2?.text) ? card2.text : [];
@@ -27243,8 +27243,8 @@ function parseNowShowingCards(payload, _region) {
 function parseUpcomingCards(payload, region) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const L of payload?.listings || []) {
-    for (const card2 of L?.cards || []) {
+  for (const L2 of payload?.listings || []) {
+    for (const card2 of L2?.cards || []) {
       const ctaUrl = String(card2?.ctaUrl || "");
       if (!ctaUrl.startsWith("https://in.bookmyshow.com/movies/")) continue;
       const text = Array.isArray(card2?.text) ? card2.text : [];
@@ -29738,11 +29738,11 @@ function parsePaisabazaarCard(html, url) {
   const name = h1 ? clean2(h1[1].replace(/<[^>]+>/g, " ")) : "";
   if (!name || !/credit card/i.test(name)) return null;
   const body = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>/gi, " ");
-  const L = body.replace(/<[^>]+>/g, "\n").split("\n").map(clean2).filter(Boolean);
-  const feesAt = L.findIndex((l) => /^fees\s*&\s*charges$/i.test(l));
+  const L2 = body.replace(/<[^>]+>/g, "\n").split("\n").map(clean2).filter(Boolean);
+  const feesAt = L2.findIndex((l) => /^fees\s*&\s*charges$/i.test(l));
   const val = (label) => {
-    const i = L.findIndex((l, k) => k >= Math.max(0, feesAt - 6) && l.toLowerCase() === label.toLowerCase());
-    return i >= 0 ? L[i + 1] : void 0;
+    const i = L2.findIndex((l, k) => k >= Math.max(0, feesAt - 6) && l.toLowerCase() === label.toLowerCase());
+    return i >= 0 ? L2[i + 1] : void 0;
   };
   const joining = val("Joining Fee");
   const annual = val("Annual Fee");
@@ -37986,6 +37986,209 @@ var init_pollBudget = __esm({
   }
 });
 
+// server/marketing/financeFields.ts
+var financeFields_exports = {};
+__export(financeFields_exports, {
+  FINANCE_FIELDS: () => FINANCE_FIELDS,
+  applyFinanceFields: () => applyFinanceFields,
+  fieldsForVertical: () => fieldsForVertical,
+  financeNumber: () => financeNumber
+});
+function fieldsForVertical(vertical) {
+  return FINANCE_FIELDS[String(vertical || "").trim().toLowerCase()] || [];
+}
+function financeNumber(v) {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  const cleaned = String(v ?? "").replace(/[^0-9.-]/g, "").replace(/[.-]+$/, "");
+  if (!cleaned || cleaned === "-" || cleaned === ".") return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+function applyFinanceFields(vertical, raw, opts) {
+  const fields = fieldsForVertical(vertical);
+  const input = raw && typeof raw === "object" ? raw : {};
+  const extras = {};
+  let price2;
+  let unit;
+  for (const f of fields) {
+    const rawVal = input[f.key];
+    let val = rawVal === null || rawVal === void 0 ? "" : String(rawVal).trim();
+    if (!val) {
+      if (f.key === "bank" && f.required && opts?.seller) val = String(opts.seller).trim();
+      if (!val) {
+        if (f.required) return { ok: false, error: `${f.label} required hai`, extras, price: price2, unit };
+        continue;
+      }
+    }
+    if (f.type === "number") {
+      const n = financeNumber(val);
+      if (n === null) return { ok: false, error: `${f.label}: sirf number daalo`, extras, price: price2, unit };
+      if (f.key === "rating" && (n < 0 || n > 5)) return { ok: false, error: "Rating 0 se 5 ke beech honi chahiye", extras, price: price2, unit };
+      val = String(n);
+      if (f.price) price2 = n;
+    }
+    if (f.type === "select" && f.options) {
+      const match = f.options.find((o) => o.toLowerCase() === val.toLowerCase());
+      if (!match) return { ok: false, error: `${f.label}: ${f.options.join(" / ")} me se chuno`, extras, price: price2, unit };
+      val = match;
+    }
+    const cut = val.slice(0, f.maxLen || 160);
+    extras[f.key] = cut;
+    if (f.unit) unit = cut;
+  }
+  return { ok: true, extras, price: price2, unit };
+}
+var L, FINANCE_FIELDS;
+var init_financeFields = __esm({
+  "server/marketing/financeFields.ts"() {
+    L = (f) => ({ maxLen: 160, ...f });
+    FINANCE_FIELDS = {
+      loans: [
+        L({
+          key: "loan_type",
+          label: "Loan type",
+          type: "select",
+          required: true,
+          maxLen: 60,
+          options: ["personal loan", "home loan", "car loan", "business loan", "gold loan", "education loan"],
+          hint: "Card isi type ki list me jaayegi (personal / home / car \u2026)"
+        }),
+        L({
+          key: "interest_rate",
+          label: "Interest rate shown",
+          type: "text",
+          required: true,
+          unit: true,
+          placeholder: "10.25% p.a.",
+          hint: "Card pe bada number ke neeche yahi label chhapta hai"
+        }),
+        L({
+          key: "interest_rate_min",
+          label: "Lowest rate (number)",
+          type: "number",
+          required: true,
+          price: true,
+          placeholder: "10.25",
+          hint: "Feed isi number par sort hoti hai \u2014 sirf number, % nahi"
+        }),
+        L({ key: "interest_rate_max", label: "Highest rate (number)", type: "number", placeholder: "14.5" }),
+        L({ key: "processing_fee", label: "Processing fee", type: "text", placeholder: "\u20B91,999 + GST / 0.5%" }),
+        L({ key: "tenure_or_amount", label: "Tenure / amount", type: "text", placeholder: "1\u20135 yrs \xB7 \u20B950,000\u2013\u20B97.5L" }),
+        L({ key: "foreclosure_charges", label: "Foreclosure / prepayment", type: "text", placeholder: "Nil after 12 EMIs" }),
+        L({ key: "disbursal_time", label: "Disbursal time", type: "text", placeholder: "24 hours" }),
+        L({ key: "eligibility", label: "Eligibility", type: "text", placeholder: "Salaried \xB7 \u20B925,000/mo \xB7 21\u201360 yrs" })
+      ],
+      creditcards: [
+        L({
+          key: "bank",
+          label: "Card issuer (bank)",
+          type: "text",
+          required: true,
+          placeholder: "HDFC Bank",
+          hint: 'Khali chhodo to "Bank / insurer / broker" wala naam le liya jaayega'
+        }),
+        L({
+          key: "network",
+          label: "Card network",
+          type: "select",
+          maxLen: 40,
+          options: ["Visa", "Mastercard", "RuPay", "American Express", "Diners Club"]
+        }),
+        L({ key: "joining_fee", label: "Joining fee", type: "text", required: true, placeholder: "\u20B999 + GST" }),
+        L({ key: "joining_fee_inr", label: "Joining fee (number)", type: "number", placeholder: "99" }),
+        // unit: the fee line also labels the entry in the admin list and under the big number if this row ever
+        // renders through the generic card (the credit-card card itself prints its own ₹x / yr ring).
+        L({ key: "annual_fee", label: "Annual / renewal fee", type: "text", required: true, unit: true, placeholder: "\u20B999 + GST ya Lifetime Free" }),
+        L({
+          key: "annual_fee_inr",
+          label: "Annual fee (number)",
+          type: "number",
+          price: true,
+          placeholder: "99",
+          hint: "Card par \u20B999 / yr ring aur feed sorting isi se banti hai"
+        }),
+        L({ key: "reward_rate", label: "Reward rate", type: "text", placeholder: "1\u20133%" }),
+        L({ key: "apr", label: "APR", type: "text", placeholder: "43.2%" }),
+        L({ key: "forex_markup", label: "Forex markup", type: "text", placeholder: "3.5%" }),
+        L({ key: "best_for", label: "Best for", type: "text", placeholder: "Shopping / Travel / Fuel" }),
+        L({ key: "welcome_benefit", label: "Welcome benefit", type: "text", placeholder: "\u20B9500 Amazon voucher" }),
+        L({ key: "domestic_lounge", label: "Domestic lounge", type: "text", placeholder: "2 per quarter" }),
+        L({ key: "international_lounge", label: "International lounge", type: "text", placeholder: "1 per year" }),
+        L({ key: "fuel_surcharge_waiver", label: "Fuel surcharge waiver", type: "text", placeholder: "1% up to \u20B9250" }),
+        L({ key: "rating", label: "Rating (0\u20135)", type: "number", placeholder: "4.5" })
+      ],
+      insurance: [
+        L({
+          key: "insurance_type",
+          label: "Insurance type",
+          type: "select",
+          required: true,
+          maxLen: 60,
+          options: ["health insurance", "term life insurance", "motor insurance", "travel insurance", "personal accident"],
+          hint: "Health / term / motor / travel \u2014 card isi category me dikhega"
+        }),
+        L({
+          key: "claim_settlement_ratio",
+          label: "Claim settlement ratio (%)",
+          type: "number",
+          required: true,
+          price: true,
+          placeholder: "98",
+          hint: "Insurance feed isi % par sort hoti hai (scraped rows bhi yehi dete hain)"
+        }),
+        L({
+          key: "premium",
+          label: "Premium from",
+          type: "text",
+          required: true,
+          unit: true,
+          placeholder: "from \u20B9499/mo",
+          hint: "Card par bade number ke neeche yahi line chhapti hai"
+        }),
+        L({ key: "sum_insured", label: "Sum insured / cover", type: "text", placeholder: "\u20B95L\u2013\u20B91Cr" }),
+        L({ key: "network", label: "Network hospitals", type: "text", placeholder: "8,000+ cashless hospitals" }),
+        L({ key: "waiting_period", label: "Waiting period", type: "text", placeholder: "30 days" }),
+        L({ key: "age_limit", label: "Entry age", type: "text", placeholder: "18\u201365 yrs" }),
+        L({ key: "policy_term", label: "Policy term", type: "text", placeholder: "1 year renewable" })
+      ],
+      account: [
+        L({
+          key: "account_type",
+          label: "Account type",
+          type: "select",
+          required: true,
+          maxLen: 60,
+          options: ["savings", "zero-balance savings", "current", "demat", "trading"],
+          hint: "Savings / current / demat \u2014 card apni list me jaayega"
+        }),
+        L({
+          key: "interest_rate",
+          label: "Rate label shown",
+          type: "text",
+          required: true,
+          unit: true,
+          placeholder: "2.5% p.a. (highest slab)",
+          hint: 'Demat/trading ke liye AMC likh do, jaise "\u20B9300 AMC per year"'
+        }),
+        L({
+          key: "interest_rate_max",
+          label: "Rate / charge (number)",
+          type: "number",
+          required: true,
+          price: true,
+          placeholder: "2.5",
+          hint: "Savings: highest slab % \xB7 Demat: AMC rupees"
+        }),
+        L({ key: "interest_rate_min", label: "Lowest slab (number)", type: "number", placeholder: "2.5" }),
+        L({ key: "monthly_average_balance", label: "Monthly average balance", type: "text", placeholder: "\u20B910,000" }),
+        L({ key: "debit_card", label: "Debit card / perks", type: "text", placeholder: "Visa Platinum \xB7 5% cashback" }),
+        L({ key: "benefits", label: "Other benefits", type: "text", placeholder: "Free NEFT/RTGS \xB7 airport lounge" }),
+        L({ key: "maintenance_charges", label: "Charges", type: "text", placeholder: "\u20B90 with MAB" })
+      ]
+    };
+  }
+});
+
 // server/marketing/financeOffers.ts
 var financeOffers_exports = {};
 __export(financeOffers_exports, {
@@ -38020,8 +38223,12 @@ function validateFinanceOffer(i) {
     return { ok: false, error: "URL must be a full https:// link" };
   }
   if (probe.protocol !== "https:") return { ok: false, error: "URL must start with https://" };
-  const price2 = i.price === null || i.price === void 0 || i.price === "" ? null : Number(i.price);
-  if (price2 !== null && !Number.isFinite(price2)) return { ok: false, error: "Price/rate value must be a number" };
+  const explicitPrice = i.price === null || i.price === void 0 || i.price === "" ? null : Number(i.price);
+  if (explicitPrice !== null && !Number.isFinite(explicitPrice)) return { ok: false, error: "Price/rate value must be a number" };
+  const sellerName = String(i.seller || "").trim().slice(0, 160) || title;
+  const fx = applyFinanceFields(vertical, i.fields, { seller: sellerName });
+  if (!fx.ok) return { ok: false, error: fx.error };
+  const price2 = explicitPrice !== null ? explicitPrice : fx.price !== void 0 ? fx.price : null;
   const image = String(i.image_url || "").trim();
   if (image) {
     const okImage = /^https:\/\//i.test(image) || /^\/api\/logos\/[A-Za-z0-9._-]+$/.test(image);
@@ -38039,8 +38246,10 @@ function validateFinanceOffer(i) {
       id: i.id ? Number(i.id) : void 0,
       vertical,
       title,
-      seller: String(i.seller || "").trim().slice(0, 160) || title,
-      rate_label: String(i.rate_label || "").trim().slice(0, 80) || null,
+      seller: sellerName,
+      // The vertical's own rate field doubles as the label the admin list shows.
+      rate_label: String(i.rate_label || "").trim().slice(0, 80) || fx.unit || null,
+      fields: fx.extras,
       price: price2 === null ? null : Math.max(0, price2),
       highlights: String(i.highlights || "").trim().slice(0, 300) || null,
       url: rawUrl.slice(0, 1500),
@@ -38073,6 +38282,10 @@ async function listManualFinanceOffers(vertical) {
       city: r.location_city || null,
       image_url: a.image || "",
       affiliate_url: a.affiliate_template || "",
+      // OWNER 18 Nov: the vertical's own fields come back so Edit reopens the same form filled in.
+      fields: Object.fromEntries(
+        fieldsForVertical(String(r.vertical || "")).map((f) => [f.key, a[f.key] === void 0 || a[f.key] === null ? "" : String(a[f.key])]).filter(([, v2]) => String(v2).length > 0)
+      ),
       active: r.freshness_status !== "INVALID",
       created_at: r.created_at,
       updated_at: r.updated_at
@@ -38091,19 +38304,22 @@ async function saveManualFinanceOffer(input) {
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
   const store7 = getStore();
+  const fieldAttrs = { ...c.fields || {} };
+  if (c.vertical === "creditcards" && !fieldAttrs.bank && c.seller) fieldAttrs.bank = String(c.seller);
   const attributes = JSON.stringify({
     manual: 1,
     rate_label: c.rate_label,
     highlights: c.highlights,
+    ...fieldAttrs,
     // Card photo + our own tracking template (rendered at click, see deeplink guard).
     ...c.image_url ? { image: c.image_url } : {},
     ...c.affiliate_url ? { affiliate_template: c.affiliate_url } : {},
     // Finance summary rows carry their category in attributes on the scraped side too,
     // so the vertical engine treats a manual row exactly like a published-rate page.
-    ...c.vertical === "loans" ? { loan_type: "personal loan" } : {},
+    ...c.vertical === "loans" && !fieldAttrs.loan_type ? { loan_type: "personal loan" } : {},
     ...c.vertical === "creditcards" ? { card_type: "credit card" } : {},
-    ...c.vertical === "insurance" ? { insurance_type: "insurance plan" } : {},
-    ...c.vertical === "account" ? { account_type: "savings account" } : {},
+    ...c.vertical === "insurance" && !fieldAttrs.insurance_type ? { insurance_type: "insurance plan" } : {},
+    ...c.vertical === "account" && !fieldAttrs.account_type ? { account_type: "savings account" } : {},
     ...c.rate_label ? { unit: c.rate_label } : {}
   });
   if (c.id) {
@@ -38198,6 +38414,7 @@ var init_financeOffers = __esm({
   "server/marketing/financeOffers.ts"() {
     init_db();
     init_deeplink();
+    init_financeFields();
     FINANCE_VERTICALS = ["loans", "creditcards", "insurance", "account"];
     SOURCE_ID = "admin_manual";
     attrsOf = (row) => {
@@ -58593,6 +58810,14 @@ var init_adminRoutes = __esm({
         });
       } catch (e2) {
         res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 160) });
+      }
+    });
+    adminRouter.get("/finance-fields", async (_req, res) => {
+      try {
+        const { FINANCE_FIELDS: FINANCE_FIELDS2 } = await Promise.resolve().then(() => (init_financeFields(), financeFields_exports));
+        res.json({ success: true, fields: FINANCE_FIELDS2 });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load finance fields" });
       }
     });
     adminRouter.get("/finance-offers", async (req, res) => {
