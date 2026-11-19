@@ -822,7 +822,7 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
             Text('Spin & Earn Reward Wheel', style: tx(context, 21, w: FontWeight.w900, color: Colors.white, h: 1.15)),
             const SizedBox(height: 6),
             Text(
-              'Earn 1 Point for every new referral you make to Try1Second! Collect $kSpinCostPoints Points to unlock an instant spin on our prize wheel for gift cards, vouchers & cashback.',
+              'Earn 1 Point when a friend you referred really uses Try1Second (their first merchant visit, or a couple of real searches). Collect $kSpinCostPoints Points to unlock an instant spin on our prize wheel for gift cards, vouchers & cashback.',
               style: tx(context, 11.5, w: FontWeight.w500, color: const Color(0xFFFFEDD5), h: 1.4),
             ),
             const Divider(height: 26, color: Colors.white24),
@@ -995,7 +995,7 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
             Text(
               w.spinsAvailable > 0
                   ? 'You have ${w.spinsAvailable} spin${w.spinsAvailable > 1 ? 's' : ''} available! Tap the center button to spin.'
-                  : 'Need ${w.pointsToNextSpin} more points. Every new referral adds +1 point!',
+                  : 'Need ${w.pointsToNextSpin} more points. A referral adds +1 once your friend actually uses Try1Second!',
               textAlign: TextAlign.center,
               style: tx(context, 11, color: T1SColors.slate500),
             ),

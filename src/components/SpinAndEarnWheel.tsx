@@ -185,7 +185,7 @@ export const SpinAndEarnWheel: React.FC = () => {
             Spin & Earn Reward Wheel
           </h1>
           <p className="text-orange-100 text-xs sm:text-sm mt-2 leading-relaxed">
-            Earn <strong>1 Point for every new referral</strong> you make to Try1Second! Collect {spinCostPoints} Points to unlock an instant spin on our prize wheel for gift cards, vouchers & cashback.
+            Earn <strong>1 Point when a friend you referred really uses Try1Second</strong> (their first merchant visit, or a couple of real searches). Collect {spinCostPoints} Points to unlock an instant spin on our prize wheel for gift cards, vouchers & cashback.
           </p>
 
         </div>

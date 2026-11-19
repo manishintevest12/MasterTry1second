@@ -252,7 +252,7 @@ export const PriceAdviceSidebar: React.FC = () => {
           <span>🎁 Referral Rewards Program</span>
         </div>
         <p className="text-[11px] leading-relaxed text-amber-800">
-          Earn <strong>1 Point for every new referral</strong> who joins Try1Second! Reach 100 points to unlock an instant guaranteed prize on our reward wheel.
+          Earn <strong>1 Point for every friend who actually uses Try1Second</strong> after joining (their first merchant visit, or a couple of real searches)! Reach 100 points to unlock an instant guaranteed prize on our reward wheel.
         </p>
       </div>
     </aside>

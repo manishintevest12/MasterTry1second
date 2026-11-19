@@ -69,6 +69,8 @@ import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, n
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows } from '../lens/assistantAnswer';
 import { parseRequestedQuantity } from '../lens/quantityIntent';
+import { qualifyReferral } from '../rewards/referralQualification';
+import { userForToken } from '../auth/authService';
 import { aiRouteQuestion, mergeAiIntent } from '../lens/assistantAi';
 import { recordEvents, withinBudget } from '../growth/funnel';
 
@@ -1287,11 +1289,15 @@ apiRouter.post('/search', async (req, res) => {
   // Funnel step 1 (owner 19 Nov): every submitted search, and every search that ended with nothing to
   // show. `zero_result` is the drop-off the product work targets, so it is recorded only when the pass is
   // FINISHED and empty - a still-scanning answer is not a zero result and must never be counted as one.
+  // /api/search sits before the auth middleware (searching works signed out), so the caller's identity
+  // comes from the Bearer token itself. Without it a signed-in user's searches carried no user id and the
+  // "compared honestly, booked elsewhere" referral path could never qualify.
+  const searchUserId = await optionalUserId(req);
   void recordEvents([
     {
       event: 'search',
       sessionId: sessionKeyOf(req),
-      userId: (req as any).user?.id ? Number((req as any).user.id) : null,
+      userId: searchUserId,
       vertical: String(input.vertical || ''),
       query: input.query,
       city: String(input.city || ''),
@@ -3454,6 +3460,23 @@ apiRouter.post('/notifications/read', authMiddleware, requireAuth, async (req, r
 });
 
 // ============ Home AI assistant: question (typed or spoken) -> vertical + query ============
+/**
+ * Who is this, if anyone? /api/track and /api/out are registered BEFORE the auth middleware (telemetry and
+ * exit links must work signed out), so they cannot read req.user. A Bearer token is verified here instead:
+ * a claimed body.userId is never trusted, because the referral award now depends on it.
+ */
+async function optionalUserId(req: any): Promise<number | null> {
+  const auth = String(req?.headers?.authorization || '');
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!token) return null;
+  try {
+    const u = await userForToken(token);
+    return u?.id ? Number(u.id) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ============ FUNNEL TELEMETRY: the client's half of the growth chain ============
 // OWNER 19 Nov: "Instrument clear funnel events across search, results, card clicks, outbound
 // redirects, shares, and repeat sessions." Server-side steps (search, zero_result, outbound_click) are
@@ -3470,11 +3493,16 @@ apiRouter.post('/track', async (req, res) => {
     body.sessionId || req.headers['x-t1s-session'] || sessionKeyOf(req) || '',
   ).slice(0, 64);
   if (!withinBudget(`track:${sessionId}`)) return res.status(429).json({ ok: false, error: 'Too many events, slow down' });
-  const userId = (req as any).user?.id ? Number((req as any).user.id) : null;
+  const userId = await optionalUserId(req);
   const accepted = await recordEvents(
     list.map((e: any) => ({ ...e, sessionId: e?.sessionId || sessionId })),
     { userId },
   );
+  // OWNER 19 Nov: a share is a real user action, so it can be the moment a referral earns its point.
+  // Fire-and-forget: the reward must never slow or break telemetry.
+  if (userId && list.some((e: any) => String(e?.event) === 'share')) {
+    void qualifyReferral(userId, 'share', getStore()).catch(() => null);
+  }
   res.json({ ok: true, accepted });
 });
 
@@ -4606,6 +4634,7 @@ apiRouter.get('/out', async (req, res) => {
   // Funnel step 3 (owner 19 Nov): the user actually left for the merchant. Recorded server-side because
   // this is the only place that knows an exit really happened - a card click that never lands here is
   // exactly the drop-off the growth work needs to see.
+  const exitUserId = await optionalUserId(req);
   void recordEvents([{
     event: 'outbound_click',
     sessionId: sessionKeyOf(req),
@@ -4613,7 +4642,10 @@ apiRouter.get('/out', async (req, res) => {
     itemId: String(resolved.offerId || ''),
     seller: String(dl.network || ''),
     platform: isInAppWebView(req.headers['user-agent']) ? 'android' : 'web',
-  }]).catch(() => 0);
+  }], { userId: exitUserId }).catch(() => 0);
+  // OWNER 19 Nov: leaving for a merchant is the qualified action a referral award waits for, so the
+  // referee's pending referral is settled here (idempotent, and never on the redirect's critical path).
+  if (exitUserId) void qualifyReferral(exitUserId, 'outbound_click', getStore()).catch(() => null);
   // Monetizable exit (owner 23 Oct): real browsers land on the /redirect
   // interstitial (4s countdown + AdSense above the fold), then hop to the
   // merchant. In-app webviews (our Flutter app) skip it — AdSense for Content

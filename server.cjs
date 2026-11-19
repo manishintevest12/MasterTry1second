@@ -8399,7 +8399,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num13 = (x) => {
+  const num14 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -8420,17 +8420,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num13(rating.value),
-      ratingCount: num13(rating.count),
-      pricePerNight: num13(pricing.bookingPrice),
-      tax: num13(tax.total_tax),
-      priceInclusive: num13(tax.final_price_with_tax),
-      slashedPrice: num13(pricing.slashedPrice),
-      discountPercentage: num13(pricing.discountPercentage),
+      rating: num14(rating.value),
+      ratingCount: num14(rating.count),
+      pricePerNight: num14(pricing.bookingPrice),
+      tax: num14(tax.total_tax),
+      priceInclusive: num14(tax.final_price_with_tax),
+      slashedPrice: num14(pricing.slashedPrice),
+      discountPercentage: num14(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num13(geo.lat ?? geo.latitude),
-      lon: num13(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num14(geo.lat ?? geo.latitude),
+      lon: num14(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -11453,8 +11453,8 @@ function etraveliFlightsItems(flights, brand, source, route2, fromCode, toCode, 
     const carrier = String(segs[0].marketingCarrier?.name || carrierCode || brand.brand);
     const flightNos = segs.map((s) => {
       const code = String(s.marketingCarrier?.code || "");
-      const num13 = String(s.flightNumber || "");
-      return num13.startsWith(code) && code ? num13 : `${code}${num13}`;
+      const num14 = String(s.flightNumber || "");
+      return num14.startsWith(code) && code ? num14 : `${code}${num14}`;
     }).join("-");
     const depTime = String(segs[0].departuredAt || "").slice(11, 16);
     const arrTime = String(segs[segs.length - 1].arrivedAt || "").slice(11, 16);
@@ -13125,9 +13125,9 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     const last = legs2[legs2.length - 1];
     const depTime = localHm2(first?.origin?.departureLocalTime);
     const arrTime = localHm2(last?.destination?.arrivalLocalTime);
-    const num13 = String(first?.flightNumber || "").trim();
+    const num14 = String(first?.flightNumber || "").trim();
     const carrier = String(first?.carrierCode || "AI");
-    if (!depTime || !arrTime || !num13) continue;
+    if (!depTime || !arrTime || !num14) continue;
     const validity = first?.validityPeriod || {};
     const starts = String(validity.start || "").slice(0, 10);
     const ends = String(validity.end || "").slice(0, 10);
@@ -13140,7 +13140,7 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     }
     const durSecs = Number(entry?.duration ?? first?.flightDuration);
     out.push({
-      flightNo: `${carrier}${num13}`,
+      flightNo: `${carrier}${num14}`,
       dateIso: wantDateIso,
       depTime,
       arrTime,
@@ -28706,7 +28706,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num13 = (key) => {
+  const num14 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -28717,8 +28717,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num13("servicecount")) || 0,
-    operators: field("operators") || num13("operators") || "",
+    servicecount: Number(num14("servicecount")) || 0,
+    operators: field("operators") || num14("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -41839,18 +41839,8 @@ async function registerReferral(referrerId, refereeId) {
   return store7.transaction(async (tx) => {
     const existing = await tx.query("SELECT id FROM referrals WHERE referee_id = ?", [refereeId]);
     if (existing.length > 0) return { ok: false, error: "This user was already referred" };
-    const res = await tx.execute("INSERT INTO referrals (referrer_id, referee_id, status) VALUES (?, ?, ?)", [referrerId, refereeId, "pending"]);
-    const referralId = res.insertId || 0;
-    await tx.execute("UPDATE referrals SET status = ?, validated_at = NOW() WHERE id = ?", ["valid", referralId]);
-    try {
-      await tx.execute("INSERT INTO referral_point_events (user_id, referral_id, points) VALUES (?, ?, ?)", [referrerId, referralId, POINTS_PER_VALID_REFERRAL]);
-    } catch (e2) {
-      if (String(e2).includes("unique") || String(e2).includes("Duplicate")) {
-        return { ok: true, awarded: false };
-      }
-      throw e2;
-    }
-    return { ok: true, awarded: true };
+    await tx.execute("INSERT INTO referrals (referrer_id, referee_id, status) VALUES (?, ?, ?)", [referrerId, refereeId, "pending"]);
+    return { ok: true, awarded: false, pending: true };
   });
 }
 async function validPointBalance(userId) {
@@ -42046,13 +42036,12 @@ async function referralStats(userId) {
   const referredCount = typeof first.c === "number" ? first.c : first.referrer_id !== void 0 ? referred.length : 0;
   return { referredCount, referredByCode };
 }
-var import_crypto28, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks, REF_CODE_ALPHABET;
+var import_crypto28, POINTS_PER_SPIN_ELIGIBILITY, userLocks, REF_CODE_ALPHABET;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
     import_crypto28 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
-    POINTS_PER_VALID_REFERRAL = 1;
     POINTS_PER_SPIN_ELIGIBILITY = 100;
     userLocks = /* @__PURE__ */ new Map();
     REF_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -46325,6 +46314,92 @@ var init_assistantAnswer = __esm({
       account: "bank accounts",
       banking: "bank accounts"
     };
+  }
+});
+
+// server/rewards/referralQualification.ts
+function num13(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+async function qualificationEvidence(refereeId, store7, now = Date.now()) {
+  if (!refereeId) return null;
+  const since = new Date(now - QUALIFY_WINDOW_DAYS * 864e5).toISOString().slice(0, 19).replace("T", " ");
+  try {
+    const rows = await store7.query(
+      `SELECT COUNT(*) AS c FROM funnel_events WHERE user_id = ? AND event = 'outbound_click' AND created_at >= ?`,
+      [refereeId, since]
+    );
+    if (num13(rows?.[0]?.c) > 0) return "outbound_click";
+  } catch {
+  }
+  try {
+    const rows = await store7.query("SELECT COUNT(*) AS c FROM affiliate_clicks WHERE user_id = ?", [refereeId]);
+    if (num13(rows?.[0]?.c) > 0) return "affiliate_click";
+  } catch {
+  }
+  try {
+    const rows = await store7.query(
+      `SELECT COUNT(DISTINCT query) AS c FROM funnel_events WHERE user_id = ? AND event = 'search' AND created_at >= ?`,
+      [refereeId, since]
+    );
+    const distinct = num13(rows?.[0]?.c);
+    if (distinct >= MIN_SEARCHES) {
+      const viewed = await store7.query(
+        `SELECT COUNT(*) AS c FROM funnel_events WHERE user_id = ? AND event = 'results_view' AND created_at >= ?`,
+        [refereeId, since]
+      );
+      if (num13(viewed?.[0]?.c) > 0) return `compared_${distinct}_searches`;
+    }
+  } catch {
+  }
+  return null;
+}
+async function qualifyReferral(refereeId, trigger, store7, now = Date.now()) {
+  if (!refereeId) return { ok: false, awarded: false, reason: "no_pending_referral" };
+  const pending = await store7.query(
+    `SELECT id, referrer_id, status FROM referrals WHERE referee_id = ? ORDER BY id DESC LIMIT 1`,
+    [refereeId]
+  );
+  const row = pending?.[0];
+  if (!row) return { ok: false, awarded: false, reason: "no_pending_referral" };
+  const status = String(row.status || "");
+  if (status === "valid") return { ok: true, awarded: false, reason: "already_valid", referralId: num13(row.id) };
+  const evidence = await qualificationEvidence(refereeId, store7, now);
+  if (!evidence) return { ok: false, awarded: false, reason: "not_qualified_yet", referralId: num13(row.id) };
+  const referrerId = num13(row.referrer_id);
+  try {
+    const cap2 = await store7.query(
+      `SELECT COUNT(*) AS c FROM referral_point_events WHERE user_id = ? AND created_at >= ?`,
+      [referrerId, new Date(now - 864e5).toISOString().slice(0, 19).replace("T", " ")]
+    );
+    if (num13(cap2?.[0]?.c) >= DAILY_AWARD_CAP) {
+      return { ok: false, awarded: false, reason: "daily_cap", referralId: num13(row.id), evidence };
+    }
+  } catch {
+  }
+  const referralId = num13(row.id);
+  await store7.execute(`UPDATE referrals SET status = ?, validated_at = NOW() WHERE id = ?`, ["valid", referralId]);
+  try {
+    await store7.execute(
+      `INSERT INTO referral_point_events (user_id, referral_id, points) VALUES (?, ?, ?)`,
+      [referrerId, referralId, POINTS_PER_VALID_REFERRAL]
+    );
+  } catch (e2) {
+    if (String(e2).includes("unique") || String(e2).includes("Duplicate")) {
+      return { ok: true, awarded: false, reason: "already_valid", referralId, evidence };
+    }
+    throw e2;
+  }
+  return { ok: true, awarded: true, referralId, evidence };
+}
+var MIN_SEARCHES, DAILY_AWARD_CAP, QUALIFY_WINDOW_DAYS, POINTS_PER_VALID_REFERRAL;
+var init_referralQualification = __esm({
+  "server/rewards/referralQualification.ts"() {
+    MIN_SEARCHES = 2;
+    DAILY_AWARD_CAP = 20;
+    QUALIFY_WINDOW_DAYS = 30;
+    POINTS_PER_VALID_REFERRAL = 1;
   }
 });
 
@@ -53444,6 +53519,17 @@ function verticalForScanUrl(url, domain) {
   if (/(bankbazaar|paisabazaar|kreditbee|moneyview|navi)/.test(u)) return "loans";
   return "ecommerce";
 }
+async function optionalUserId(req) {
+  const auth = String(req?.headers?.authorization || "");
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!token) return null;
+  try {
+    const u = await userForToken(token);
+    return u?.id ? Number(u.id) : null;
+  } catch {
+    return null;
+  }
+}
 async function answerFollowUp(res, args) {
   const { subject, verdict, sessionId, started: started3 } = args;
   const vertical = normalizeVerticalId(subject.vertical);
@@ -53800,6 +53886,8 @@ var init_routes = __esm({
     init_assistantIntent();
     init_assistantAnswer();
     init_quantityIntent();
+    init_referralQualification();
+    init_authService();
     init_assistantAi();
     init_funnel();
     init_assistantThread();
@@ -54424,11 +54512,12 @@ var init_routes = __esm({
         returnDate: input.travelDates?.return
       });
       const orderedResults = orderFlightRowsLast(gatedResponse.results, String(input.vertical));
+      const searchUserId = await optionalUserId(req);
       void recordEvents([
         {
           event: "search",
           sessionId: sessionKeyOf(req),
-          userId: req.user?.id ? Number(req.user.id) : null,
+          userId: searchUserId,
           vertical: String(input.vertical || ""),
           query: input.query,
           city: String(input.city || ""),
@@ -55779,11 +55868,14 @@ var init_routes = __esm({
         body.sessionId || req.headers["x-t1s-session"] || sessionKeyOf(req) || ""
       ).slice(0, 64);
       if (!withinBudget2(`track:${sessionId}`)) return res.status(429).json({ ok: false, error: "Too many events, slow down" });
-      const userId = req.user?.id ? Number(req.user.id) : null;
+      const userId = await optionalUserId(req);
       const accepted = await recordEvents(
         list.map((e2) => ({ ...e2, sessionId: e2?.sessionId || sessionId })),
         { userId }
       );
+      if (userId && list.some((e2) => String(e2?.event) === "share")) {
+        void qualifyReferral(userId, "share", getStore()).catch(() => null);
+      }
       res.json({ ok: true, accepted });
     });
     apiRouter.post("/assist/intent", async (req, res) => {
@@ -56449,6 +56541,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       }
       const dl = await buildSecureDeeplink(freshDestination, { vertical: resolved.vertical });
       await recordPointerClick(freshDestination, resolved.offerId, dl.network);
+      const exitUserId = await optionalUserId(req);
       void recordEvents([{
         event: "outbound_click",
         sessionId: sessionKeyOf(req),
@@ -56456,7 +56549,8 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
         itemId: String(resolved.offerId || ""),
         seller: String(dl.network || ""),
         platform: isInAppWebView(req.headers["user-agent"]) ? "android" : "web"
-      }]).catch(() => 0);
+      }], { userId: exitUserId }).catch(() => 0);
+      if (exitUserId) void qualifyReferral(exitUserId, "outbound_click", getStore()).catch(() => null);
       const fromApp = String(req.query.app || "") === "1" || isInAppWebView(req.headers["user-agent"]);
       if (fromApp) {
         res.redirect(302, dl.trackingUrl);
@@ -57430,7 +57524,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num13 = (v) => {
+    const num14 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -57441,8 +57535,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num13(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num13(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num14(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num14(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,

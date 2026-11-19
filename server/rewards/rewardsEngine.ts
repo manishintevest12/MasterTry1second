@@ -34,27 +34,26 @@ async function withUserLock<T>(userId: number, fn: () => Promise<T>): Promise<T>
 
 // ---------------- Referrals & points ----------------
 
-/** Register a referral. A referee can only ever be referred once. */
-export async function registerReferral(referrerId: number, refereeId: number): Promise<{ ok: boolean; error?: string; awarded?: boolean }> {
+/**
+ * Register a referral. A referee can only ever be referred once.
+ *
+ * OWNER 19 Nov growth brief ("unlock rewards only on qualified genuine user actions rather than raw or
+ * duplicate signups"): this used to mark the referral 'valid' and pay the point AT SIGNUP, which is the
+ * cheapest thing to farm. It now records the attribution and stops there; the point is paid by
+ * server/rewards/referralQualification.ts the first time the referee shows real use (a merchant exit, or
+ * two distinct searches with a rendered results view). A referral that never qualifies simply stays
+ * 'pending' — visible to the admin, never paid.
+ */
+export async function registerReferral(referrerId: number, refereeId: number): Promise<{ ok: boolean; error?: string; awarded?: boolean; pending?: boolean }> {
   if (referrerId === refereeId) return { ok: false, error: 'Cannot refer yourself' };
   const store = getStore();
   return store.transaction(async (tx) => {
     // Referee must not already have a referrer
     const existing: any[] = await (tx.query as any)('SELECT id FROM referrals WHERE referee_id = ?', [refereeId]);
     if (existing.length > 0) return { ok: false, error: 'This user was already referred' };
-    const res = await tx.execute('INSERT INTO referrals (referrer_id, referee_id, status) VALUES (?, ?, ?)', [referrerId, refereeId, 'pending']);
-    const referralId = (res as any).insertId || 0;
-    // Mark valid immediately at signup (points are one-per-referral, idempotent via unique constraint)
-    await tx.execute('UPDATE referrals SET status = ?, validated_at = NOW() WHERE id = ?', ['valid', referralId]);
-    try {
-      await tx.execute('INSERT INTO referral_point_events (user_id, referral_id, points) VALUES (?, ?, ?)', [referrerId, referralId, POINTS_PER_VALID_REFERRAL]);
-    } catch (e: any) {
-      if (String(e).includes('unique') || String(e).includes('Duplicate')) {
-        return { ok: true, awarded: false }; // idempotent — point already awarded for this referral
-      }
-      throw e;
-    }
-    return { ok: true, awarded: true };
+    await tx.execute('INSERT INTO referrals (referrer_id, referee_id, status) VALUES (?, ?, ?)', [referrerId, refereeId, 'pending']);
+    // No point yet: attribution only. qualificationEvidence() decides, from server-written rows.
+    return { ok: true, awarded: false, pending: true };
   });
 }
 

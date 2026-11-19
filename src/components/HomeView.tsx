@@ -345,7 +345,7 @@ export const HomeView: React.FC = () => {
               <span>Real-Time Redirection Tracker Active</span>
             </div>
             <h3 className="text-xl sm:text-2xl font-black">
-              Earn 1 Point for Every Referral. Spin at 100 Points.
+              Earn 1 Point when a Referral really uses Try1Second. Spin at 100 Points.
             </h3>
             <p className="text-xs text-slate-400 max-w-xl">
               Invite friends using your personal Try1Second referral link. Every friend who joins accredits 1 point directly to your wallet for guaranteed vouchers on the wheel.

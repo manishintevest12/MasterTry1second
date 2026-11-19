@@ -194,7 +194,7 @@ export const RedirectionModal: React.FC = () => {
               <div className="p-3 bg-orange-50 rounded-xl border border-orange-200 text-xs text-orange-950 mb-6 flex items-center justify-between">
                 <span className="text-[11px]">Want Prize Wheel Spins?</span>
                 <strong className="text-xs font-bold text-orange-700">
-                  Earn 1 Point per Friend Referred!
+                  Earn 1 Point when a Referred Friend actually uses Try1Second!
                 </strong>
               </div>
             )}
