@@ -17,6 +17,7 @@ const QuickAppsView = lazyWithRetry(() => import('./components/QuickAppsView').t
 const AiInsightsView = lazyWithRetry(() => import('./components/AiInsightsView').then((m) => ({ default: m.AiInsightsView })));
 const RewardsHub = lazyWithRetry(() => import('./components/RewardsHub').then((m) => ({ default: m.RewardsHub })));
 import { FixedBottomBar } from './components/FixedBottomBar';
+import AppEntryBar from './components/AppEntryBar';
 const RedirectionModal = lazyWithRetry(() => import('./components/RedirectionModal').then((m) => ({ default: m.RedirectionModal })));
 const ReviewModal = lazyWithRetry(() => import('./components/ReviewModal').then((m) => ({ default: m.ReviewModal })));
 const PriceAlertModal = lazyWithRetry(() => import('./components/PriceAlertModal').then((m) => ({ default: m.PriceAlertModal })));
@@ -128,6 +129,10 @@ const MainContent: React.FC = () => {
 
       {/* Fixed Bottom Bar: Home, AI Insights, Compare, Rewards */}
       {!isFullDashboard && <FixedBottomBar />}
+
+      {/* Web -> app entry (owner 19 Nov): mobile web only, after real use, once per session, dismissible for
+          30 days. It sits above the bottom bar and never covers content or interrupts a search. */}
+      {!isFullDashboard && <AppEntryBar active={!isFullDashboard} />}
     </div>
   );
 };

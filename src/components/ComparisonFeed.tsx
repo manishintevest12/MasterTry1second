@@ -251,6 +251,9 @@ export const ComparisonFeed: React.FC = () => {
   const funnelTotal = vertical === 'hotels' ? hotelGroups.length : offerGroups.length;
   useEffect(() => {
     if (funnelTotal > 0) {
+      // A results screen is the one honest moment to offer the app (see src/lib/appEntry.ts): the visitor has
+      // used the product, so the bar is useful rather than noise.
+      try { window.dispatchEvent(new Event('t1s:results-view')); } catch { /* no window in SSR/tests */ }
       trackFunnelOnce(`rv:${vertical}:${searchQuery || ''}:${funnelTotal}`, {
         event: 'results_view', vertical, query: searchQuery || '', value: funnelTotal,
       });
