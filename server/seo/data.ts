@@ -56,6 +56,11 @@ const IATA: Record<string, string> = {
 };
 
 const FLIGHT_ROUTES: [string, string][] = [
+  // OWNER 19 Nov: tier-2 coverage for the city hubs ("flights from Indore" and friends). Real, searched routes.
+  ['indore', 'delhi'], ['indore', 'mumbai'], ['indore', 'bengaluru'], ['indore', 'hyderabad'],
+  ['indore', 'pune'], ['indore', 'jaipur'], ['indore', 'ahmedabad'], ['indore', 'goa'],
+  ['bhopal', 'delhi'], ['bhopal', 'mumbai'], ['nagpur', 'mumbai'], ['nagpur', 'delhi'],
+  ['surat', 'delhi'], ['surat', 'mumbai'], ['jaipur', 'mumbai'], ['lucknow', 'delhi'],
   ['delhi', 'mumbai'], ['delhi', 'bengaluru'], ['mumbai', 'bengaluru'], ['delhi', 'goa'],
   ['mumbai', 'goa'], ['delhi', 'hyderabad'], ['delhi', 'chennai'], ['mumbai', 'delhi'],
   ['bengaluru', 'hyderabad'], ['delhi', 'kolkata'], ['mumbai', 'kolkata'],
@@ -71,6 +76,10 @@ const FLIGHT_ROUTES: [string, string][] = [
 ];
 
 const BUS_ROUTES: [string, string][] = [
+  // OWNER 19 Nov: same tier-2 coverage for "bus from <city>" hubs.
+  ['indore', 'bhopal'], ['indore', 'ujjain'], ['indore', 'mumbai'], ['indore', 'pune'],
+  ['indore', 'delhi'], ['indore', 'jaipur'], ['indore', 'ahmedabad'], ['indore', 'nagpur'],
+  ['bhopal', 'indore'], ['ujjain', 'indore'], ['nagpur', 'pune'], ['surat', 'mumbai'],
   ['delhi', 'jaipur'], ['delhi', 'agra'], ['delhi', 'lucknow'], ['delhi', 'chandigarh'],
   ['delhi', 'dehradun'], ['delhi', 'varanasi'], ['mumbai', 'pune'], ['mumbai', 'goa'],
   ['mumbai', 'surat'], ['mumbai', 'ahmedabad'], ['bengaluru', 'hyderabad'],
@@ -401,6 +410,9 @@ export function listSeoPaths(includeThin = false): string[] {
   }
   for (const [a, b] of FLIGHT_ROUTES) paths.push(`/flights/${routeSlug(a, b, 'flights')}`);
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, 'bus')}`);
+  // City hubs ("flights from Indore", "bus from Indore") - only the cities our routes actually serve.
+  for (const slug of new Set(FLIGHT_ROUTES.flat())) paths.push(`/flights/${slug}`);
+  for (const slug of new Set(BUS_ROUTES.flat())) paths.push(`/bus/${slug}`);
   // Product price pages (owner 16 Nov): built from live offers, listed only while their prices are fresh, so the
   // sitemap grows with the catalogue instead of with a copy-paste.
   {
@@ -598,6 +610,69 @@ export function resolveSeoPage(path: string): SeoPage | null {
         { label: 'Best prices in every state', href: '/answers' },
       ],
     };
+  }
+
+  // OWNER 19 Nov (SEO): "flights from <city>" and "bus from <city>" are the highest-intent city queries
+  // we did not answer - /flights/indore and /bus/indore were 404 while every route page existed. These hubs
+  // exist ONLY for cities that actually appear in our route lists, so each one lists real routes (never a
+  // template with a city name swapped in) and links onward to them.
+  if ((head === 'flights' || head === 'bus') && tail && !/-to-/.test(tail)) {
+    const citySlug = tail;
+    const routes = (head === 'flights' ? FLIGHT_ROUTES : BUS_ROUTES)
+      .filter(([a, b]) => a === citySlug || b === citySlug)
+      .map(([a, b]) => ({ from: a, to: b, label: a === citySlug ? b : a }))
+      .slice(0, 12);
+    if (routes.length >= 2) {
+      const C = cityName(citySlug);
+      const isFlights = head === 'flights';
+      const others = routes.map((r) => cityName(r.label));
+      const listPhrase = others.slice(0, 4).join(', ');
+      const noun = isFlights ? 'flights' : 'buses';
+      return {
+        path: clean,
+        title: isFlights
+          ? `Flights from ${C} — Compare Live Airfares to ${others.length} Cities | Try1Second`
+          : `Bus Tickets from ${C} — Compare Live Fares to ${others.length} Cities | Try1Second`,
+        description: isFlights
+          ? `Compare live ${noun} from ${C} to ${listPhrase} and ${others.length - 4 > 0 ? `${others.length - 4} more` : 'more'} cities across airlines and OTAs. Every fare ranked lowest first, direct booking links included.`
+          : `Compare live bus fares from ${C} to ${listPhrase} and more across redBus, zingbus, AbhiBus and state carriers. Every operator and price on one screen, cheapest seat first.`,
+        h1: isFlights ? `Flights from ${C} — Live Fare Comparison` : `Bus from ${C} — Live Fare Comparison`,
+        intro: [
+          isFlights
+            ? `Every route below is a live comparison: one search asks airlines and travel sites together for ${C} departures, and the fares come back ranked cheapest first.`
+            : `Every route below is a live comparison: one search asks redBus, zingbus, AbhiBus and state carriers together for ${C} departures, and the fares come back cheapest first.`,
+          `Fares out of ${C} move through the day, so each route page shows what every source reports right now with a direct link to book on that seller. We never resell the ticket.`,
+        ],
+        faqs: isFlights
+          ? [
+              { q: `Which cities can I fly to from ${C}?`, a: `This page lists the ${C} routes we compare live, including ${listPhrase}. Open any route to see every airline and OTA fare side by side.` },
+              { q: `How do I find the cheapest flight from ${C}?`, a: `Pick your destination route here and run the comparison: we query airlines and OTAs live and rank every returned fare lowest first.` },
+              { q: 'Do you charge a booking fee?', a: `No. You book on the airline or OTA site at their price. Try1Second only finds and ranks the fares.` },
+            ]
+          : [
+              { q: `Which operators run buses from ${C}?`, a: `The route pages here compare every operator our sources return live — private carriers plus state road transport buses where they run.` },
+              { q: `How do I find the cheapest bus from ${C}?`, a: `Open your destination route and the comparison lists every operator and fare, cheapest seat first.` },
+            ],
+        breadcrumbs: [
+          { name: 'Home', path: '/' },
+          { name: isFlights ? 'Flights' : 'Bus', path: isFlights ? '/flights' : '/bus' },
+          { name: `${isFlights ? 'Flights' : 'Bus'} from ${C}`, path: clean },
+        ],
+        links: [
+          { label: isFlights ? 'All flight routes' : 'All bus routes', href: isFlights ? '/flights' : '/bus' },
+          ...routes.slice(0, 8).map((r) => ({
+            label: isFlights
+              ? `${cityName(r.from)} to ${cityName(r.to)} flights`
+              : `${cityName(r.from)} to ${cityName(r.to)} bus`,
+            href: `/${head}/${routeSlug(r.from, r.to, isFlights ? 'flights' : 'bus')}`,
+          })),
+          { label: `${C} hotels`, href: `/hotels/${citySlug}` },
+          { label: `${C} cabs`, href: `/cabs/${citySlug}` },
+          { label: `${C} nearby places`, href: `/nearby/restaurants/${citySlug}` },
+          { label: `Best ${isFlights ? 'flight' : 'bus'} comparison in India`, href: isFlights ? '/best/flights' : '/best/bus' },
+        ],
+      };
+    }
   }
 
   // Flights route page
