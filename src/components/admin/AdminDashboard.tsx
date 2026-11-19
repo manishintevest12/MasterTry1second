@@ -47,6 +47,7 @@ import { PlacementsTab } from './PlacementsTab';
 import { FinanceVerticalsTab } from './FinanceVerticalsTab';
 import NearbyReportTab from './NearbyReportTab';
 import ReferralsTab from './ReferralsTab';
+import FunnelTab from './FunnelTab';
 import { PromoOffersTab } from './PromoOffersTab';
 import { AdsenseRevenueTab } from './AdsenseRevenueTab';
 import { AppLinksTab } from './AppLinksTab';
@@ -84,7 +85,8 @@ export type AdminTab =
   | 'placements'
   | 'finance_verticals'
   | 'nearby_report'
-  | 'referrals';
+  | 'referrals'
+  | 'funnel';
 
 /**
  * REAL admin KPI strip (owner 24 Oct): every number is fetched live from MySQL
@@ -520,6 +522,16 @@ export const AdminDashboard: React.FC = () => {
               Referrals
             </button>
             <button
+              onClick={() => setActiveTab('funnel')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                activeTab === 'funnel'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Funnel
+            </button>
+            <button
               onClick={() => setActiveTab('nearby_report')}
               className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
                 activeTab === 'nearby_report'
@@ -605,6 +617,7 @@ export const AdminDashboard: React.FC = () => {
         {activeTab === 'merchant_logos' && <MerchantLogosTab />}
         {activeTab === 'finance_verticals' && <FinanceVerticalsTab />}
         {activeTab === 'referrals' && <ReferralsTab />}
+        {activeTab === 'funnel' && <FunnelTab />}
         {activeTab === 'nearby_report' && <NearbyReportTab />}
         {activeTab === 'placements' && <PlacementsTab />}
         {activeTab === 'app_links' && <AppLinksTab />}
