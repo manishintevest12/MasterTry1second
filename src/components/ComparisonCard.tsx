@@ -241,6 +241,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
   const [expanded, setExpanded] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'sellers' | 'trend' | 'reviews' | 'specs'>('sellers');
   const [copiedCoupon, setCopiedCoupon] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState<boolean>(false);
   // Real gallery: the source's own photos of THIS listing (never other products).
   const gallery: string[] = Array.from(new Set([item.imageUrl, ...(item.images || [])].filter(Boolean) as string[]));
@@ -296,15 +297,45 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
   const tileLogoUrl = isAccountVertical ? accountBrandLogo : (isRateVertical ? lenderLogo : brandLogoUrl(item));
   const logoStyle = getLogoStyle(item);
 
-  const handleShare = (e: React.MouseEvent) => {
+  const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
     // Funnel step (owner 19 Nov): a share is the strongest organic signal we have, so it is measured.
     trackFunnel({ event: 'share', vertical: item.vertical, itemId: item.id, seller: item.provider, query: item.title });
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(
-        `Check out ${item.title} on OmniCompare for ${isRateVertical ? `${item.primaryPrice}% p.a.` : `₹${(item.primaryPrice || 0).toLocaleString('en-IN')}`}: ${window.location.href}`
-      );
-    }
+    // OWNER 19 Nov (share previews): copying the current URL produced a link with no card on WhatsApp. The
+    // server now signs what this card shows into /s/<token>, so the preview names the item, the price and the
+    // seller, and says WHEN that price was seen. If minting fails, fall back to the page URL - never to nothing.
+    let url = window.location.href;
+    try {
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: item.vertical,
+          query: typeof item.specs?.query === 'string' ? item.specs.query : item.title,
+          city: typeof item.specs?.city === 'string' ? item.specs.city : undefined,
+          title: item.title,
+          price: item.primaryPrice,
+          seller: item.provider,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.url) url = data.url;
+    } catch { /* keep the page URL */ }
+    const priceText = isRateVertical
+      ? `${item.primaryPrice}% p.a.`
+      : `₹${(item.primaryPrice || 0).toLocaleString('en-IN')}`;
+    const text = `Check out ${item.title} on Try1Second for ${priceText}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: item.title, text, url });
+        return;
+      }
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(`${text}: ${url}`);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      }
+    } catch { /* the user dismissed the share sheet: not an error */ }
   };
 
   const handleCopyCoupon = (code: string, e: React.MouseEvent) => {
@@ -382,8 +413,10 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
               <button
                 type="button"
                 onClick={handleShare}
-                title="Share this deal"
-                className="p-1.5 bg-white border border-slate-200 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
+                title={shareCopied ? 'Link copied' : 'Share this deal'}
+                className={`p-1.5 bg-white border rounded-lg transition-colors cursor-pointer ${
+                  shareCopied ? 'border-emerald-300 text-emerald-600' : 'border-slate-200 text-slate-400 hover:text-slate-700'
+                }`}
               >
                 <Share2 className="w-4 h-4" />
               </button>

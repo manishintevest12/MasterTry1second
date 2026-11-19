@@ -260,6 +260,7 @@ export async function createApp(): Promise<express.Express> {
   // countdown + AdSense above the fold). Mounted BEFORE the static SPA so the
   // SPA fallback never swallows it.
   const { redirectRouteHandler } = await import('./redirect/interstitial');
+  const shareLinks = await import('./share/shareLinks');
   /**
    * REFERRAL LANDING (owner 17 Nov: "user app pr redirect kare, abhi sirf website pr redirect karta hai").
    *
@@ -276,12 +277,35 @@ export async function createApp(): Promise<express.Express> {
     const play = `https://play.google.com/store/apps/details?id=com.try1second.try1second${codeQuery ? `&referrer=${codeQuery}` : ''}`;
     const site = `https://www.try1second.com/${code ? `?ref=${encodeURIComponent(code)}` : ''}`;
     res.setHeader('Cache-Control', 'no-store');
-    if (/android/i.test(ua)) return res.redirect(302, play);
-    // iOS has no build yet, and a desktop invite is best served by the site itself (it keeps ?ref for attribution).
-    return res.redirect(302, site);
+    // OWNER 19 Nov (share previews): a 302 is invisible to a link-preview crawler, so every invite shared on
+    // WhatsApp rendered as a bare URL. Crawlers, iOS and desktop now get a real page with OG tags and both
+    // buttons; an Android human still goes straight to Play with the code as install referrer (and a phone with
+    // the app installed never reaches this handler at all - the verified App Link opens the app first).
+    const { isLinkPreviewBot, renderInvitePage } = shareLinks;
+    if (!isLinkPreviewBot(ua) && /android/i.test(ua)) return res.redirect(302, play);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(renderInvitePage({ origin: 'https://www.try1second.com', code }));
   });
 
   app.get('/redirect', redirectRouteHandler);
+
+  /**
+   * SHARED RESULT (owner 19 Nov): /s/<signed token> is what a member shares from a card. The token carries
+   * only what the sharer saw (vertical, query, city, title, price + the moment they saw it), signed so it
+   * cannot be forged. Crawlers read the OG tags; a human gets one button that opens the live search (and the
+   * verified App Links open that link inside the app when it is installed). The page never presents the shared
+   * price as current — it is labelled "seen <date>" and the CTA is the live answer.
+   */
+  app.get('/s/:token', (req: any, res: any) => {
+    const payload = shareLinks.readShareToken(req.params?.token);
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    if (!payload) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(404).send('<!doctype html><meta charset="utf-8"><title>Link not found</title><body style="font-family:system-ui;padding:40px;text-align:center"><h2>This link is not valid</h2><p><a href="https://www.try1second.com" style="color:#E7000B;font-weight:700">Search again on Try1Second</a></p>');
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(shareLinks.renderSharePage({ origin: 'https://www.try1second.com', payload }));
+  });
 
   // Production static frontend (vite build output) — KVM4 serves `dist/`
   const dist = path.resolve(__dirname, 'dist');

@@ -70,6 +70,7 @@ import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows } from '../lens/assistantAnswer';
 import { parseRequestedQuantity } from '../lens/quantityIntent';
 import { qualifyReferral } from '../rewards/referralQualification';
+import { mintShareToken, readShareToken, resultsPath } from '../share/shareLinks';
 import { userForToken } from '../auth/authService';
 import { aiRouteQuestion, mergeAiIntent } from '../lens/assistantAi';
 import { recordEvents, withinBudget } from '../growth/funnel';
@@ -3476,6 +3477,26 @@ async function optionalUserId(req: any): Promise<number | null> {
     return null;
   }
 }
+
+// ============ SHARE LINKS: a card becomes a link that renders a preview ============
+// OWNER 19 Nov: "Implement clean share URLs, dynamic Open Graph metadata for social previews ... so shared
+// links open directly to the relevant screen/result with minimal drop-off."
+//
+// The client sends what it is showing (vertical, query, city, title, the price it displayed and the seller).
+// The server signs it into /s/<token>: the preview then says "₹X on <seller> · seen <date>" and the CTA opens
+// the live search. Nothing about the price is re-used as a quote - the shared number is always labelled with
+// the moment it was seen, and the live page is the only place a price is final.
+apiRouter.post('/share', async (req, res) => {
+  const b: any = req.body || {};
+  const token = mintShareToken({
+    v: b.vertical, q: b.query, c: b.city, t: b.title, p: b.price, s: b.seller, ts: Date.now(),
+  });
+  res.json({
+    ok: true,
+    url: `https://www.try1second.com/s/${token}`,
+    path: resultsPath(readShareToken(token) || { ts: Date.now() }),
+  });
+});
 
 // ============ FUNNEL TELEMETRY: the client's half of the growth chain ============
 // OWNER 19 Nov: "Instrument clear funnel events across search, results, card clicks, outbound

@@ -3611,12 +3611,12 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start = -1, inStr = false, esc10 = false;
+  let depth = 0, start = -1, inStr = false, esc11 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc10) esc10 = false;
-      else if (ch === "\\") esc10 = true;
+      if (esc11) esc11 = false;
+      else if (ch === "\\") esc11 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -3731,12 +3731,12 @@ function parseMyntra(html, source, pageUrl) {
     const start = /window\.__myx\s*=\s*\{/.exec(html);
     if (start) {
       const from = start.index + start[0].length - 1;
-      let depth = 0, inStr = false, esc10 = false, end = -1;
+      let depth = 0, inStr = false, esc11 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
         if (inStr) {
-          if (esc10) esc10 = false;
-          else if (ch === "\\") esc10 = true;
+          if (esc11) esc11 = false;
+          else if (ch === "\\") esc11 = true;
           else if (ch === '"') inStr = false;
           continue;
         }
@@ -4626,12 +4626,12 @@ function extractRelianceState(html) {
   if (eq < 0) return null;
   const s = html.slice(eq + 1).trimStart();
   if (s[0] !== "{") return null;
-  let depth = 0, inStr = false, esc10 = false, end = -1;
+  let depth = 0, inStr = false, esc11 = false, end = -1;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
-      if (esc10) esc10 = false;
-      else if (ch === "\\") esc10 = true;
+      if (esc11) esc11 = false;
+      else if (ch === "\\") esc11 = true;
       else if (ch === '"') inStr = false;
     } else if (ch === '"') inStr = true;
     else if (ch === "{") depth++;
@@ -6617,12 +6617,12 @@ function extractInitialState(body) {
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
-  let depth = 0, inStr = false, esc10 = false, end = -1;
+  let depth = 0, inStr = false, esc11 = false, end = -1;
   for (; i < body.length; i++) {
     const c = body[i];
     if (inStr) {
-      if (esc10) esc10 = false;
-      else if (c === "\\") esc10 = true;
+      if (esc11) esc11 = false;
+      else if (c === "\\") esc11 = true;
       else if (c === '"') inStr = false;
       continue;
     }
@@ -6753,12 +6753,12 @@ function parseMmtHotelLanding(body) {
       continue;
     }
     const objStart = j;
-    let depth = 0, inStr = false, esc10 = false, end = -1;
+    let depth = 0, inStr = false, esc11 = false, end = -1;
     for (; j < body.length; j++) {
       const c = body[j];
       if (inStr) {
-        if (esc10) esc10 = false;
-        else if (c === "\\") esc10 = true;
+        if (esc11) esc11 = false;
+        else if (c === "\\") esc11 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -13232,15 +13232,15 @@ function extractAaDataSchedule(pageHtml) {
   if (i < 0) return null;
   const start = pageHtml.indexOf("{", i + 20);
   if (start < 0) return null;
-  let depth = 0, end = -1, inStr = false, esc10 = false;
+  let depth = 0, end = -1, inStr = false, esc11 = false;
   for (let k = start; k < pageHtml.length; k++) {
     const c = pageHtml[k];
-    if (esc10) {
-      esc10 = false;
+    if (esc11) {
+      esc11 = false;
       continue;
     }
     if (c === "\\") {
-      esc10 = true;
+      esc11 = true;
       continue;
     }
     if (c === '"') {
@@ -21630,8 +21630,8 @@ function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
   const norm10 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
-  const esc10 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(`^${esc10}\\b`);
+  const esc11 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc11}\\b`);
   return cities.find((c) => norm10(c.name) === t) || cities.find((c) => rx.test(norm10(c.name))) || cities.find((c) => norm10(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
@@ -22526,11 +22526,11 @@ function uberIndiaCityFor(place) {
   const t = canonCity(place);
   const hit = BY_CANON.get(t);
   if (hit) return hit;
-  const esc10 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc11 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let best = null;
   let bestLen = 0;
   for (const [k, v] of BY_CANON) {
-    if (new RegExp(`\\b${esc10(k)}\\b`).test(t) || new RegExp(`\\b${esc10(t)}\\b`).test(k)) {
+    if (new RegExp(`\\b${esc11(k)}\\b`).test(t) || new RegExp(`\\b${esc11(t)}\\b`).test(k)) {
       if (k.length > bestLen) {
         best = v;
         bestLen = k.length;
@@ -28967,12 +28967,12 @@ function ixigoFlightText(html) {
 function parseObjectAt(text, start) {
   let depth = 0;
   let inStr = false;
-  let esc10 = false;
+  let esc11 = false;
   for (let i = start; i < text.length; i += 1) {
     const ch = text[i];
     if (inStr) {
-      if (esc10) esc10 = false;
-      else if (ch === "\\") esc10 = true;
+      if (esc11) esc11 = false;
+      else if (ch === "\\") esc11 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -42429,7 +42429,7 @@ function errorPage(title, message) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc2(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc2(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc2(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
 }
 async function adBlockHtml(slotKey) {
-  const esc10 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const esc11 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   let client = "";
   let slot2 = "";
   let customHtml = "";
@@ -42450,7 +42450,7 @@ async function adBlockHtml(slotKey) {
   }
   if (customHtml.trim()) return customHtml;
   if (!client || !slot2) return "";
-  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc10(client)}" data-ad-slot="${esc10(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc11(client)}" data-ad-slot="${esc11(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
 }
 function renderInterstitialPage(opts) {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -46403,6 +46403,211 @@ var init_referralQualification = __esm({
   }
 });
 
+// server/share/shareLinks.ts
+var shareLinks_exports = {};
+__export(shareLinks_exports, {
+  cleanPayload: () => cleanPayload,
+  esc: () => esc3,
+  isLinkPreviewBot: () => isLinkPreviewBot,
+  mintShareToken: () => mintShareToken,
+  previewCopy: () => previewCopy,
+  readShareToken: () => readShareToken,
+  renderInvitePage: () => renderInvitePage,
+  renderSharePage: () => renderSharePage,
+  resultsPath: () => resultsPath,
+  rupees: () => rupees3,
+  seenLabel: () => seenLabel
+});
+function secret3() {
+  return String(process.env.SHARE_SECRET || process.env.SESSION_SECRET || process.env.JWT_SECRET || "t1s-share-v1");
+}
+function cleanPayload(raw, now = Date.now()) {
+  const clamp2 = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+  const price2 = Number(raw?.p);
+  return {
+    v: clamp2(raw?.v, 24).toLowerCase() || void 0,
+    q: clamp2(raw?.q, 120) || void 0,
+    c: clamp2(raw?.c, 60) || void 0,
+    t: clamp2(raw?.t, 120) || void 0,
+    p: Number.isFinite(price2) && price2 > 0 && price2 < 1e8 ? Math.round(price2 * 100) / 100 : void 0,
+    s: clamp2(raw?.s, 60) || void 0,
+    ts: Number(raw?.ts) > 0 ? Number(raw.ts) : now
+  };
+}
+function mintShareToken(input, now = Date.now()) {
+  const payload = cleanPayload(input, now);
+  const body = b64u(Buffer.from(JSON.stringify(payload), "utf8"));
+  const sig = b64u(import_node_crypto6.default.createHmac("sha256", secret3()).update(body).digest());
+  return `${body}.${sig}`;
+}
+function readShareToken(token) {
+  const raw = String(token ?? "").trim();
+  if (!raw || raw.length > MAX_TOKEN) return null;
+  const [body, sig] = raw.split(".");
+  if (!body || !sig) return null;
+  const expected = b64u(import_node_crypto6.default.createHmac("sha256", secret3()).update(body).digest());
+  if (sig.length !== expected.length) return null;
+  if (!import_node_crypto6.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  try {
+    const parsed = JSON.parse(unb64u(body).toString("utf8"));
+    if (!parsed || typeof parsed !== "object") return null;
+    return cleanPayload(parsed);
+  } catch {
+    return null;
+  }
+}
+function esc3(text) {
+  return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function seenLabel(ts) {
+  const d = new Date(Number(ts) || Date.now());
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${d.getDate()} ${months[d.getMonth()]}`;
+}
+function resultsPath(payload) {
+  const vertical = String(payload.v || "").trim();
+  const params = new URLSearchParams();
+  if (payload.q) params.set("q", payload.q);
+  if (payload.c) params.set("city", payload.c);
+  const qs = params.toString();
+  const base = vertical ? `/${encodeURIComponent(vertical)}` : "/";
+  return qs ? `${base}?${qs}` : base;
+}
+function previewCopy(payload) {
+  const price2 = typeof payload.p === "number" ? payload.p : null;
+  const head3 = payload.t || payload.q || "Live prices on Try1Second";
+  const title = price2 ? `${head3} at ${rupees3(price2)}${payload.s ? ` on ${payload.s}` : ""}` : `${head3} \xB7 compare live prices`;
+  const bits = [];
+  if (price2) bits.push(`Seen at ${rupees3(price2)}${payload.s ? ` on ${payload.s}` : ""} on ${seenLabel(payload.ts)}.`);
+  if (payload.c) bits.push(`Prices for ${payload.c}.`);
+  bits.push("Open to check the live price now \u2014 sellers change it every minute.");
+  return { title: title.slice(0, 110), description: bits.join(" ").slice(0, 220) };
+}
+function renderSharePage({ origin: origin2, payload, image }) {
+  const { title, description } = previewCopy(payload);
+  const target = `${origin2}${resultsPath(payload)}`;
+  const img = image || `${origin2}/og-default.png`;
+  const priceLine = typeof payload.p === "number" ? `<p class="price">${esc3(rupees3(payload.p))}<span class="seen">${esc3(payload.s ? `on ${payload.s}` : "")}${payload.s ? " \xB7 " : ""}seen ${esc3(seenLabel(payload.ts))}</span></p>` : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc3(title)}</title>
+<meta name="description" content="${esc3(description)}" />
+<link rel="canonical" href="${esc3(target)}" />
+<meta property="og:type" content="product" />
+<meta property="og:site_name" content="Try1Second" />
+<meta property="og:title" content="${esc3(title)}" />
+<meta property="og:description" content="${esc3(description)}" />
+<meta property="og:url" content="${esc3(target)}" />
+<meta property="og:image" content="${esc3(img)}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="${esc3(title)}" />
+<meta name="twitter:description" content="${esc3(description)}" />
+<meta name="twitter:image" content="${esc3(img)}" />
+<meta name="robots" content="noindex,follow" />
+<style>
+  :root{color-scheme:light}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;max-width:520px;width:100%;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.06)}
+  .bar{height:8px;background:#E7000B}
+  .body{padding:22px}
+  .kicker{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#E7000B}
+  h1{font-size:20px;line-height:1.3;margin:8px 0 4px}
+  .price{font-size:28px;font-weight:900;margin:10px 0 2px}
+  .seen{display:block;font-size:11px;font-weight:600;color:#64748b;margin-top:4px}
+  p.note{font-size:13px;color:#475569;line-height:1.5;margin:12px 0 0}
+  a.cta{display:block;text-align:center;margin-top:18px;background:#E7000B;color:#fff;text-decoration:none;font-weight:800;padding:13px 18px;border-radius:12px;font-size:14px}
+  .foot{font-size:11px;color:#94a3b8;text-align:center;margin-top:14px}
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="bar"></div>
+    <div class="body">
+      <div class="kicker">Shared from Try1Second</div>
+      <h1>${esc3(payload.t || payload.q || "Live price comparison")}</h1>
+      ${priceLine}
+      <p class="note">${esc3(description)}</p>
+      <a class="cta" href="${esc3(target)}">Check the live price now</a>
+      <div class="foot">Try1Second compares flights, hotels, movies, grocery, food, cabs and more.</div>
+    </div>
+  </main>
+</body>
+</html>`;
+}
+function renderInvitePage({ origin: origin2, code }) {
+  const play = `https://play.google.com/store/apps/details?id=com.try1second.try1second${code ? `&referrer=${encodeURIComponent(`ref=${code}`)}` : ""}`;
+  const web = `${origin2}/${code ? `?ref=${encodeURIComponent(code)}` : ""}`;
+  const title = "You are invited to Try1Second";
+  const description = "One second. Every price. One screen. Compare flights, hotels, movies, grocery, food, cabs and more \u2014 live.";
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc3(title)}</title>
+<meta name="description" content="${esc3(description)}" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Try1Second" />
+<meta property="og:title" content="${esc3(title)}" />
+<meta property="og:description" content="${esc3(description)}" />
+<meta property="og:url" content="${esc3(web)}" />
+<meta property="og:image" content="${esc3(`${origin2}/og-default.png`)}" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="${esc3(title)}" />
+<meta name="twitter:description" content="${esc3(description)}" />
+<meta name="twitter:image" content="${esc3(`${origin2}/og-default.png`)}" />
+<meta name="robots" content="noindex,follow" />
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;max-width:520px;width:100%;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.06)}
+  .bar{height:8px;background:#E7000B}
+  .body{padding:22px}
+  h1{font-size:22px;margin:6px 0 8px}
+  p{font-size:14px;color:#475569;line-height:1.55;margin:0 0 10px}
+  .code{font-family:ui-monospace,monospace;font-weight:800;color:#0f172a}
+  a.cta{display:block;text-align:center;margin-top:16px;background:#E7000B;color:#fff;text-decoration:none;font-weight:800;padding:13px 18px;border-radius:12px;font-size:14px}
+  a.alt{display:block;text-align:center;margin-top:10px;color:#0f172a;text-decoration:none;font-weight:700;font-size:13px;border:1px solid #e2e8f0;padding:11px 18px;border-radius:12px}
+  .foot{font-size:11px;color:#94a3b8;margin-top:14px}
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="bar"></div>
+    <div class="body">
+      <h1>You are invited to Try1Second</h1>
+      <p>One second. Every price. One screen. Flights, hotels, bus, movies, grocery, food, cabs, e-commerce, loans, insurance, credit cards, accounts and nearby \u2014 compared live.</p>
+      ${code ? `<p>Invite code: <span class="code">${esc3(code)}</span></p>` : ""}
+      <a class="cta" href="${esc3(play)}">Get the Android app</a>
+      <a class="alt" href="${esc3(web)}">Continue on the website</a>
+      <div class="foot">Your friend earns a reward only when you actually use Try1Second \u2014 no signup-only credits.</div>
+    </div>
+  </main>
+</body>
+</html>`;
+}
+function isLinkPreviewBot(userAgent) {
+  const ua = String(userAgent || "");
+  return /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|pinterest|embedly|redditbot|skypeuripreview|vkshare|w3c_validator|googlebot|bingbot|applebot|iframely|quora link preview|outbrain|nuzzel|qwantify|bitlybot|tumblr/i.test(ua);
+}
+var import_node_crypto6, MAX_TOKEN, b64u, unb64u, rupees3;
+var init_shareLinks = __esm({
+  "server/share/shareLinks.ts"() {
+    import_node_crypto6 = __toESM(require("node:crypto"), 1);
+    MAX_TOKEN = 900;
+    b64u = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    unb64u = (s) => Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+    rupees3 = (n) => `\u20B9${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+  }
+});
+
 // server/lens/assistantAi.ts
 function validateAiIntent(raw) {
   if (!raw || typeof raw !== "object") return null;
@@ -46504,7 +46709,7 @@ function sessionToken(raw) {
   const text = String(raw ?? "").trim();
   if (/^[A-Za-z0-9_-]{6,64}$/.test(text)) return text;
   if (!text) return "";
-  return "h_" + (0, import_node_crypto6.createHash)("sha256").update(`t1s-funnel|${text}`).digest("hex").slice(0, 24);
+  return "h_" + (0, import_node_crypto7.createHash)("sha256").update(`t1s-funnel|${text}`).digest("hex").slice(0, 24);
 }
 function scrub(text, max = 200) {
   return String(text ?? "").replace(EMAIL_RE, "[email]").replace(LONG_DIGITS_RE, "[number]").replace(/\s+/g, " ").trim().slice(0, max);
@@ -46650,10 +46855,10 @@ async function funnelReport(daysInput, maxRows = 5e4, storeOverride) {
     repeatSessions: { sessions: sessions.size, returning, rate: pct(returning, sessions.size) }
   };
 }
-var import_node_crypto6, FUNNEL_EVENTS, VERTICALS, EMAIL_RE, LONG_DIGITS_RE, WINDOW_MS, MAX_PER_WINDOW, budget, EMPTY, pct;
+var import_node_crypto7, FUNNEL_EVENTS, VERTICALS, EMAIL_RE, LONG_DIGITS_RE, WINDOW_MS, MAX_PER_WINDOW, budget, EMPTY, pct;
 var init_funnel = __esm({
   "server/growth/funnel.ts"() {
-    import_node_crypto6 = require("node:crypto");
+    import_node_crypto7 = require("node:crypto");
     init_db();
     FUNNEL_EVENTS = [
       "search",
@@ -53887,6 +54092,7 @@ var init_routes = __esm({
     init_assistantAnswer();
     init_quantityIntent();
     init_referralQualification();
+    init_shareLinks();
     init_authService();
     init_assistantAi();
     init_funnel();
@@ -55861,6 +56067,23 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Could not mark read" });
       }
     });
+    apiRouter.post("/share", async (req, res) => {
+      const b = req.body || {};
+      const token = mintShareToken({
+        v: b.vertical,
+        q: b.query,
+        c: b.city,
+        t: b.title,
+        p: b.price,
+        s: b.seller,
+        ts: Date.now()
+      });
+      res.json({
+        ok: true,
+        url: `https://www.try1second.com/s/${token}`,
+        path: resultsPath(readShareToken(token) || { ts: Date.now() })
+      });
+    });
     apiRouter.post("/track", async (req, res) => {
       const body = req.body || {};
       const list = Array.isArray(body.events) ? body.events : [body];
@@ -56506,18 +56729,18 @@ var init_routes = __esm({
       } catch {
       }
       const appName = (scheme.split("://")[0] || "app").replace(/^olacabs$/, "ola");
-      const esc10 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const esc11 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Opening ${esc10(appName)}\u2026</title>
+<title>Opening ${esc11(appName)}\u2026</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
 .muted{color:#94a3b8;font-size:13px;margin-top:10px}.ad{margin-top:18px;background:#fff;border-radius:12px;padding:8px;color:#0f172a}</style></head><body><div class="card">
-<h2 style="margin:0 0 6px">Opening ${esc10(appName)}</h2>
-<p class="muted">Handing your pickup and drop to the ${esc10(appName)} app\u2026</p>
-<a class="btn" href="${esc10(tracked)}">Continue on the website</a>
+<h2 style="margin:0 0 6px">Opening ${esc11(appName)}</h2>
+<p class="muted">Handing your pickup and drop to the ${esc11(appName)} app\u2026</p>
+<a class="btn" href="${esc11(tracked)}">Continue on the website</a>
 ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
-<p class="muted">Fare and availability are shown by ${esc10(appName)} itself.</p>
+<p class="muted">Fare and availability are shown by ${esc11(appName)} itself.</p>
 </div>
 <script>
   var scheme = ${JSON.stringify(scheme)};
@@ -57132,12 +57355,12 @@ function parseMyx(html) {
   const start = /window\.__myx\s*=\s*\{/.exec(html);
   if (!start) return null;
   const from = start.index + start[0].length - 1;
-  let depth = 0, inStr = false, esc10 = false, end = -1;
+  let depth = 0, inStr = false, esc11 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc10) esc10 = false;
-      else if (ch === "\\") esc10 = true;
+      if (esc11) esc11 = false;
+      else if (ch === "\\") esc11 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -59140,7 +59363,7 @@ function zipStore(files) {
   eocd.writeUInt16LE(0, 20);
   return Buffer.concat([...locals, cd, eocd]);
 }
-function esc3(s) {
+function esc4(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 function colName(i) {
@@ -59159,7 +59382,7 @@ function sheetXml(s) {
       const ref = `${colName(c)}${r + 1}`;
       if (v === null || v === void 0 || v === "") return `<c r="${ref}" s="${r === 0 ? 1 : 0}"/>`;
       if (typeof v === "number" && Number.isFinite(v)) return `<c r="${ref}" s="${r === 0 ? 1 : 0}"><v>${v}</v></c>`;
-      return `<c r="${ref}" s="${r === 0 ? 1 : 0}" t="inlineStr"><is><t xml:space="preserve">${esc3(String(v))}</t></is></c>`;
+      return `<c r="${ref}" s="${r === 0 ? 1 : 0}" t="inlineStr"><is><t xml:space="preserve">${esc4(String(v))}</t></is></c>`;
     }).join("");
     return `<row r="${r + 1}"${r === 0 ? ' ht="20" customHeight="1"' : ""}>${cs}</row>`;
   }).join("");
@@ -59178,7 +59401,7 @@ function buildXlsx(sheets) {
   push("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
   push("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${safe.map((s, i) => `<sheet name="${esc3((s.name || `Sheet${i + 1}`).slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`);
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${safe.map((s, i) => `<sheet name="${esc4((s.name || `Sheet${i + 1}`).slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`);
   push("xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${safe.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
   push("xl/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -62619,7 +62842,7 @@ function findPriceEntry(path19) {
   const p = path19.replace(/\/+$/, "").toLowerCase();
   return pricePathsNow().find((e2) => e2.path === p) || null;
 }
-function esc4(s) {
+function esc5(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 function asOf(ms) {
@@ -62635,9 +62858,9 @@ function renderPriceHtml(entry, siblings, origin2) {
   const canonical = `${origin2}${entry.path}`;
   const rows = entry.vendors.map((v, i) => `
       <tr${i === 0 ? ' class="best"' : ""}>
-        <td>${i === 0 ? '<span class="tag">Cheapest</span> ' : ""}${esc4(v.vendor)}</td>
+        <td>${i === 0 ? '<span class="tag">Cheapest</span> ' : ""}${esc5(v.vendor)}</td>
         <td class="num">${inr2(v.price)}</td>
-        <td>${v.url ? `<a href="${esc4(v.url)}" rel="sponsored nofollow noopener" target="_blank">Go to store</a>` : '<span class="muted">no direct link</span>'}</td>
+        <td>${v.url ? `<a href="${esc5(v.url)}" rel="sponsored nofollow noopener" target="_blank">Go to store</a>` : '<span class="muted">no direct link</span>'}</td>
         <td class="muted">${asOf(v.checkedAt)}</td>
       </tr>`).join("");
   const otherCities = siblings.filter((s) => s.productSlug === entry.productSlug && s.citySlug !== entry.citySlug).slice(0, 8);
@@ -62656,7 +62879,7 @@ function renderPriceHtml(entry, siblings, origin2) {
       `Our catalogue worker re-checks each store through the day. The stamp on this page shows when these numbers were last verified${fresh ? "" : ", and this page is due for a refresh"}.`
     ]
   ];
-  const faqHtml = faqs.map(([q3, a]) => `<details><summary>${esc4(q3)}</summary><p>${esc4(a)}</p></details>`).join("\n");
+  const faqHtml = faqs.map(([q3, a]) => `<details><summary>${esc5(q3)}</summary><p>${esc5(a)}</p></details>`).join("\n");
   const ld = [
     {
       "@context": "https://schema.org",
@@ -62672,21 +62895,21 @@ function renderPriceHtml(entry, siblings, origin2) {
     ] },
     { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map(([q3, a]) => ({ "@type": "Question", name: q3, acceptedAnswer: { "@type": "Answer", text: a } })) }
   ].map((b) => `<script type="application/ld+json">${JSON.stringify(b)}</script>`).join("\n");
-  const linkList = (items, label) => items.length ? `<h2>${esc4(label)}</h2>
-<ul class="links">${items.map((s) => `<li><a href="${esc4(s.path)}">${esc4(s.product)} in ${esc4(s.city)} - ${inr2(s.low)}</a></li>`).join("")}</ul>` : "";
+  const linkList = (items, label) => items.length ? `<h2>${esc5(label)}</h2>
+<ul class="links">${items.map((s) => `<li><a href="${esc5(s.path)}">${esc5(s.product)} in ${esc5(s.city)} - ${inr2(s.low)}</a></li>`).join("")}</ul>` : "";
   return `<!doctype html>
 <html lang="en-IN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc4(title)} | Try1Second</title>
-<meta name="description" content="${esc4(desc)}">
+<title>${esc5(title)} | Try1Second</title>
+<meta name="description" content="${esc5(desc)}">
 <meta name="robots" content="${fresh ? "index, follow, max-image-preview:large" : "noindex, follow"}">
-<link rel="canonical" href="${esc4(canonical)}">
-<meta property="og:title" content="${esc4(title)}">
-<meta property="og:description" content="${esc4(desc)}">
+<link rel="canonical" href="${esc5(canonical)}">
+<meta property="og:title" content="${esc5(title)}">
+<meta property="og:description" content="${esc5(desc)}">
 <meta property="og:type" content="product">
-<meta property="og:url" content="${esc4(canonical)}">
+<meta property="og:url" content="${esc5(canonical)}">
 <style>
 :root{--ink:#12161c;--mut:#5b6672;--line:#e3e8ee;--good:#0a7d3e;--bg:#fff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
@@ -62710,20 +62933,20 @@ ${ld}
 </head>
 <body>
 <main>
-<nav class="crumbs"><a href="/">Try1Second</a> / <a href="/price">Price comparisons</a> / ${esc4(entry.product)} in ${esc4(entry.city)}</nav>
-<h1>${esc4(entry.product)} price in ${esc4(entry.city)}</h1>
-<p class="lede">Cheapest today: <b>${inr2(entry.low)}</b> at ${esc4(cheapest.vendor)}${save > 0 ? `, ${inr2(save)} less than ${esc4(dearest.vendor)} at ${inr2(dearest.price)}` : ""}. Compared across ${entry.vendors.length} stores.</p>
+<nav class="crumbs"><a href="/">Try1Second</a> / <a href="/price">Price comparisons</a> / ${esc5(entry.product)} in ${esc5(entry.city)}</nav>
+<h1>${esc5(entry.product)} price in ${esc5(entry.city)}</h1>
+<p class="lede">Cheapest today: <b>${inr2(entry.low)}</b> at ${esc5(cheapest.vendor)}${save > 0 ? `, ${inr2(save)} less than ${esc5(dearest.vendor)} at ${inr2(dearest.price)}` : ""}. Compared across ${entry.vendors.length} stores.</p>
 <p class="stamp">Prices last verified ${asOf(entry.checkedAt)} IST.${fresh ? "" : " This comparison is due for a refresh and is not offered for indexing until it is."}</p>
 <table>
 <thead><tr><th>Store</th><th>Price</th><th>Buy</th><th>Checked</th></tr></thead>
 <tbody>${rows}
 </tbody></table>
 <p class="muted">Prices and stock change through the day; the store's own checkout is the price you pay. We do not add a markup or invent a discount.</p>
-<h2>${esc4(entry.product)} price in ${esc4(entry.city)}: what the numbers mean</h2>
-<p>The table lists every seller we could verify for ${esc4(entry.product)} in ${esc4(entry.city)}. The spread between the cheapest and the dearest of them is ${inr2(save)}${save > 0 ? `, about ${Math.round(save / entry.high * 100)}% of the highest price` : ""}. Delivery fees, surge and membership offers are applied at the store's checkout, so the best total can differ from the best sticker price when your basket is small.</p>
+<h2>${esc5(entry.product)} price in ${esc5(entry.city)}: what the numbers mean</h2>
+<p>The table lists every seller we could verify for ${esc5(entry.product)} in ${esc5(entry.city)}. The spread between the cheapest and the dearest of them is ${inr2(save)}${save > 0 ? `, about ${Math.round(save / entry.high * 100)}% of the highest price` : ""}. Delivery fees, surge and membership offers are applied at the store's checkout, so the best total can differ from the best sticker price when your basket is small.</p>
 ${faqHtml}
-${linkList(otherCities, `${esc4(entry.product)} in other cities`)}
-${linkList(sameCity, `Other price comparisons in ${esc4(entry.city)}`)}
+${linkList(otherCities, `${esc5(entry.product)} in other cities`)}
+${linkList(sameCity, `Other price comparisons in ${esc5(entry.city)}`)}
 <h2>How Try1Second compares prices</h2>
 <p>We scan the storefront pages of India's marketplaces and quick-commerce apps through the day, keep the price each one shows, and publish the comparison with the time it was checked. When a store shows nothing we can verify, it is left out rather than filled with a guess. <a href="/ecommerce">See every store we scan</a>.</p>
 <footer>Try1Second - independent price comparison, no markup. This page is not sponsored; links to stores may earn a commission at no extra cost to you.</footer>
@@ -62741,8 +62964,8 @@ function renderPriceIndexHtml(entries2, origin2) {
   }
   const sections = [...byVertical.entries()].sort((a, b) => b[1].length - a[1].length).map(([vertical, list]) => {
     const top = list.slice(0, 40);
-    return `<h2>${esc4(vertical)} - ${list.length} verified comparisons</h2>
-<ul class="links">${top.map((e2) => `<li><a href="${esc4(e2.path)}">${esc4(e2.product)} in ${esc4(e2.city)} - ${inr2(e2.low)}</a> <span class="muted">${e2.vendors.length} stores</span></li>`).join("")}</ul>`;
+    return `<h2>${esc5(vertical)} - ${list.length} verified comparisons</h2>
+<ul class="links">${top.map((e2) => `<li><a href="${esc5(e2.path)}">${esc5(e2.product)} in ${esc5(e2.city)} - ${inr2(e2.low)}</a> <span class="muted">${e2.vendors.length} stores</span></li>`).join("")}</ul>`;
   }).join("\n");
   const title = `Product price comparison - ${fresh.length} live comparisons across India`;
   const desc = `Today's verified prices for everyday products and gadgets in ${new Set(fresh.map((e2) => e2.city)).size} Indian cities, compared across the stores that sell them. Cheapest seller first, with the time we checked.`;
@@ -62751,10 +62974,10 @@ function renderPriceIndexHtml(entries2, origin2) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc4(title)} | Try1Second</title>
-<meta name="description" content="${esc4(desc)}">
+<title>${esc5(title)} | Try1Second</title>
+<meta name="description" content="${esc5(desc)}">
 <meta name="robots" content="${fresh.length >= 20 ? "index, follow, max-image-preview:large" : "noindex, follow"}">
-<link rel="canonical" href="${esc4(origin2)}/price">
+<link rel="canonical" href="${esc5(origin2)}/price">
 <style>
 body{margin:0;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#12161c}
 main{max-width:860px;margin:0 auto;padding:24px 20px 56px}h1{font-size:clamp(24px,4vw,34px);margin:0 0 10px}
@@ -62765,7 +62988,7 @@ a{color:#0b57d0}.muted{color:#5b6672;font-size:13px}
 </head>
 <body><main>
 <h1>Product price comparison in India</h1>
-<p class="lede">${esc4(desc)}</p>
+<p class="lede">${esc5(desc)}</p>
 ${sections || '<p class="lede">Our catalogue is still filling. Comparisons appear here as soon as two stores show a verified price for the same product in the same city.</p>'}
 <p class="muted">Prices are checked through the day and stamped per page. No markup, no invented discounts.</p>
 </main></body></html>`;
@@ -64746,16 +64969,16 @@ function blocksHtml(page) {
         out.push("<ul>");
         inList = true;
       }
-      out.push(`<li>${esc5(b.x)}</li>`);
+      out.push(`<li>${esc6(b.x)}</li>`);
       continue;
     }
     closeList();
-    if (b.t === "p") out.push(`<p>${esc5(b.x)}</p>`);
+    if (b.t === "p") out.push(`<p>${esc6(b.x)}</p>`);
     else {
       if (!seenFirstHeading) {
-        out.push(`<h1>${esc5(b.x)}</h1>`);
+        out.push(`<h1>${esc6(b.x)}</h1>`);
         seenFirstHeading = true;
-      } else out.push(`<h2>${esc5(b.x)}</h2>`);
+      } else out.push(`<h2>${esc6(b.x)}</h2>`);
     }
   }
   closeList();
@@ -64771,14 +64994,14 @@ function renderLegalPage(slug5, origin2) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc5(page.title)}</title>
-<meta name="description" content="${esc5(page.description)}" />
-<link rel="canonical" href="${esc5(canonical)}" />
+<title>${esc6(page.title)}</title>
+<meta name="description" content="${esc6(page.description)}" />
+<link rel="canonical" href="${esc6(canonical)}" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="${esc5(page.title)}" />
-<meta property="og:description" content="${esc5(page.description)}" />
-<meta property="og:url" content="${esc5(canonical)}" />
+<meta property="og:title" content="${esc6(page.title)}" />
+<meta property="og:description" content="${esc6(page.description)}" />
+<meta property="og:url" content="${esc6(canonical)}" />
 <style>
 :root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
 *{box-sizing:border-box}
@@ -64819,11 +65042,11 @@ ${blocksHtml(page)}
 </body>
 </html>`;
 }
-var esc5, NAV_LABEL, LEGAL_ALIASES;
+var esc6, NAV_LABEL, LEGAL_ALIASES;
 var init_legalPages = __esm({
   "server/seo/legalPages.ts"() {
     init_legalContent();
-    esc5 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc6 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     NAV_LABEL = {
       about: "About",
       "privacy-policy": "Privacy",
@@ -65763,17 +65986,17 @@ function monetisationHtml(page) {
   const vertical = (page.path.split("/").filter(Boolean)[1] || "").replace(/[^a-z-]/g, "");
   const slot2 = (process.env.T1S_ANSWER_AD_SLOT || "").trim();
   const ad = slot2 ? `<div class="adwrap"><span class="adlabel">Advertisement</span>
-<ins class="adsbygoogle" style="display:block" data-ad-client="${ADSENSE_CLIENT}" data-ad-slot="${esc6(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins>
+<ins class="adsbygoogle" style="display:block" data-ad-client="${ADSENSE_CLIENT}" data-ad-slot="${esc7(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins>
 <script>(adsbygoogle=window.adsbygoogle||[]).push({});</script></div>` : "";
   const cta = vertical ? `<div class="cta"><a href="/${vertical}"><strong>Compare live prices now</strong><span>Run one search across every seller in this vertical, cheapest first.</span></a></div>` : "";
   return `${ad}${cta}`;
 }
 function renderAnswerHtml(page) {
   const canonical = `${ORIGIN}${page.path}`;
-  const crumbs = page.breadcrumbs.map((b) => `<a href="${b.path}">${esc6(b.name)}</a>`).join(" &rsaquo; ");
+  const crumbs = page.breadcrumbs.map((b) => `<a href="${b.path}">${esc7(b.name)}</a>`).join(" &rsaquo; ");
   const sellerTable = page.sellers.length ? `<h2>Sellers compared on this page</h2>
 <table><thead><tr><th>Seller</th><th>What we read</th></tr></thead><tbody>
-${page.sellers.map((s) => `<tr><td>${esc6(s)}</td><td>Live price returned during your search</td></tr>`).join("\n")}
+${page.sellers.map((s) => `<tr><td>${esc7(s)}</td><td>Live price returned during your search</td></tr>`).join("\n")}
 </tbody></table>
 <p>Names are the sources this engine scans for the vertical. Availability per search depends on the seller answering; a seller that returns nothing is not shown rather than guessed.</p>` : "";
   return `<!doctype html>
@@ -65781,15 +66004,15 @@ ${page.sellers.map((s) => `<tr><td>${esc6(s)}</td><td>Live price returned during
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc6(page.title)}</title>
-<meta name="description" content="${esc6(page.description)}">
+<title>${esc7(page.title)}</title>
+<meta name="description" content="${esc7(page.description)}">
 <link rel="canonical" href="${canonical}">
 <link rel="alternate" type="text/markdown" href="${canonical}">
 <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="${esc6(BRAND)}">
-<meta property="og:title" content="${esc6(page.title)}">
-<meta property="og:description" content="${esc6(page.description)}">
+<meta property="og:site_name" content="${esc7(BRAND)}">
+<meta property="og:title" content="${esc7(page.title)}">
+<meta property="og:description" content="${esc7(page.description)}">
 <meta property="og:url" content="${canonical}">
 <meta name="twitter:card" content="summary_large_image">
 <style>${STYLE2}</style>
@@ -65799,19 +66022,19 @@ ${jsonLd(page)}
 <body>
 <main>
 <nav class="crumbs">${crumbs}</nav>
-<h1>${esc6(page.h1)}</h1>
-<p class="answer"><strong>Direct answer:</strong> ${esc6(page.quickAnswer)}</p>
+<h1>${esc7(page.h1)}</h1>
+<p class="answer"><strong>Direct answer:</strong> ${esc7(page.quickAnswer)}</p>
 ${monetisationHtml(page)}
-${page.body.map((p) => `<p>${esc6(p)}</p>`).join("\n")}
+${page.body.map((p) => `<p>${esc7(p)}</p>`).join("\n")}
 ${sellerTable}
 <h2>Frequently asked questions</h2>
-${page.faqs.map((f) => `<h3>${esc6(f.q)}</h3>
-<p>${esc6(f.a)}</p>`).join("\n")}
+${page.faqs.map((f) => `<h3>${esc7(f.q)}</h3>
+<p>${esc7(f.a)}</p>`).join("\n")}
 <h2>Keep comparing</h2>
 <ul class="links">
-${page.links.map((l) => `<li><a href="${l.href}">${esc6(l.label)}</a></li>`).join("\n")}
+${page.links.map((l) => `<li><a href="${l.href}">${esc7(l.label)}</a></li>`).join("\n")}
 </ul>
-<footer>${esc6(BRAND)} is an independent comparison engine. Prices are read live from sellers at search time; bookings happen on the seller's own site. ${esc6(BUSINESS_LEGAL_NAME)}, ${esc6(BUSINESS_ADDRESS.addressLocality)}, ${esc6(BUSINESS_ADDRESS.addressRegion)} \xB7 <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> \xB7 <a href="/about">About</a> \xB7 <a href="/terms">Terms</a> \xB7 <a href="/privacy-policy">Privacy</a></footer>
+<footer>${esc7(BRAND)} is an independent comparison engine. Prices are read live from sellers at search time; bookings happen on the seller's own site. ${esc7(BUSINESS_LEGAL_NAME)}, ${esc7(BUSINESS_ADDRESS.addressLocality)}, ${esc7(BUSINESS_ADDRESS.addressRegion)} \xB7 <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> \xB7 <a href="/about">About</a> \xB7 <a href="/terms">Terms</a> \xB7 <a href="/privacy-policy">Privacy</a></footer>
 </main>
 </body>
 </html>`;
@@ -65834,7 +66057,7 @@ function renderAnswerMarkdown(page) {
     ""
   ].filter((l) => l !== void 0).join("\n");
 }
-var ORIGIN, SELLERS, esc6, sellersFor, verticalLinks, STYLE2, ADSENSE_CLIENT, ADSENSE_LOADER;
+var ORIGIN, SELLERS, esc7, sellersFor, verticalLinks, STYLE2, ADSENSE_CLIENT, ADSENSE_LOADER;
 var init_answerPages = __esm({
   "server/seo/answerPages.ts"() {
     init_data();
@@ -65852,7 +66075,7 @@ var init_answerPages = __esm({
       grocery: ["Blinkit", "Zepto", "BigBasket", "JioMart"],
       food: ["Swiggy", "Zomato"]
     };
-    esc6 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc7 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     sellersFor = (slug5, label) => {
       const direct = SELLERS[slug5];
       if (direct) return direct;
@@ -65989,15 +66212,15 @@ function renderSnapshotHtml(snapshot, heading) {
   if (!snapshot || !snapshot.rows.length) return "";
   const items = snapshot.rows.map((r) => `
     <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
-      <span style="min-width:0;font-size:13.5px;color:#111827">${esc7(r.title)}</span>
-      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc7(inr3(r.price))}</span>
-      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc7(r.seller)}</span>
+      <span style="min-width:0;font-size:13.5px;color:#111827">${esc8(r.title)}</span>
+      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc8(inr3(r.price))}</span>
+      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc8(r.seller)}</span>
     </li>`).join("");
   return [
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:0 16px 8px">`,
-    `<h2 style="font-size:15px;margin:18px 0 6px">${esc7(heading)}</h2>`,
+    `<h2 style="font-size:15px;margin:18px 0 6px">${esc8(heading)}</h2>`,
     `<ul style="list-style:none;padding:0;margin:0">${items}</ul>`,
-    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc7(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
+    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc8(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
     `</section>`
   ].join("");
 }
@@ -66112,14 +66335,14 @@ async function snapshotForPath(path19) {
 function clearSnapshotCache() {
   cache14.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache14, esc7, inr3, slugOf3;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache14, esc8, inr3, slugOf3;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
     SNAPSHOT_TTL_MS = 10 * 6e4;
     MAX_ROWS = 6;
     cache14 = /* @__PURE__ */ new Map();
-    esc7 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc8 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf3 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
   }
@@ -66134,9 +66357,9 @@ __export(guidePages_exports, {
 });
 function blocksHtml2(g) {
   return g.blocks.map((b) => {
-    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${esc8(i)}</li>`).join("")}</ul>`;
-    if (b.t === "p") return `<p>${esc8(b.x)}</p>`;
-    return `<${b.t}>${esc8(b.x)}</${b.t}>`;
+    if (b.t === "ul") return `<ul>${b.items.map((i) => `<li>${esc9(i)}</li>`).join("")}</ul>`;
+    if (b.t === "p") return `<p>${esc9(b.x)}</p>`;
+    return `<${b.t}>${esc9(b.x)}</${b.t}>`;
   }).join("\n");
 }
 function faqJsonLd(g) {
@@ -66178,19 +66401,19 @@ function renderGuidePage(slug5, origin2) {
   if (!g) return void 0;
   const canonical = `${origin2}/guides/${slug5}`;
   const related = GUIDES.filter((x) => x.slug !== slug5).slice(0, 3);
-  const verticalLinks2 = g.verticals.map((v) => `<a class="cta" href="/${v}">Compare ${esc8(v)} prices</a>`).join(" ");
+  const verticalLinks2 = g.verticals.map((v) => `<a class="cta" href="/${v}">Compare ${esc9(v)} prices</a>`).join(" ");
   return `${head2(g.title, g.description, canonical, articleJsonLd(g, origin2) + faqJsonLd(g))}
 <body>
 ${nav()}
 <main>
-<h1>${esc8(g.title)}</h1>
-<p class="meta">Try1Second editorial \xB7 Updated ${esc8(g.updated)} \xB7 ${g.verticals.length} vertical${g.verticals.length > 1 ? "s" : ""} covered</p>
-<p class="lede">${esc8(g.headline)} \u2014 ${esc8(g.description)}</p>
+<h1>${esc9(g.title)}</h1>
+<p class="meta">Try1Second editorial \xB7 Updated ${esc9(g.updated)} \xB7 ${g.verticals.length} vertical${g.verticals.length > 1 ? "s" : ""} covered</p>
+<p class="lede">${esc9(g.headline)} \u2014 ${esc9(g.description)}</p>
 ${blocksHtml2(g)}
 <p>${verticalLinks2}</p>
 <h2>More buying guides</h2>
 ${related.map(
-    (r) => `<div class="card"><h3><a href="/guides/${r.slug}">${esc8(r.title)}</a></h3><p>${esc8(r.description)}</p></div>`
+    (r) => `<div class="card"><h3><a href="/guides/${r.slug}">${esc9(r.title)}</a></h3><p>${esc9(r.description)}</p></div>`
   ).join("")}
 </main>
 ${footer()}
@@ -66211,18 +66434,18 @@ ${nav()}
 <p class="meta">Try1Second editorial \xB7 ${GUIDES.length} guides \xB7 Updated ${GUIDES[0]?.updated || ""}</p>
 <p class="lede">Every guide explains how a price is built, which fees the headline number leaves out, and what to check before you pay. We write these from the mechanics of each marketplace, not from sponsored placements.</p>
 ${GUIDES.map(
-    (g) => `<div class="card"><h3><a href="/guides/${g.slug}">${esc8(g.title)}</a></h3><p>${esc8(g.description)}</p></div>`
+    (g) => `<div class="card"><h3><a href="/guides/${g.slug}">${esc9(g.title)}</a></h3><p>${esc9(g.description)}</p></div>`
   ).join("\n")}
 </main>
 ${footer()}
 </body>
 </html>`;
 }
-var esc8, STYLE3, head2, nav, footer, GUIDE_SLUGS2;
+var esc9, STYLE3, head2, nav, footer, GUIDE_SLUGS2;
 var init_guidePages = __esm({
   "server/seo/guidePages.ts"() {
     init_guides();
-    esc8 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    esc9 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     STYLE3 = `
 :root{--ink:#0f172a;--muted:#5b6473;--line:#e5e7eb;--brand:#f97316}
 *{box-sizing:border-box}
@@ -66254,14 +66477,14 @@ footer a{color:var(--muted);text-decoration:none;margin:0 6px}
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc8(title)}</title>
-<meta name="description" content="${esc8(description)}" />
-<link rel="canonical" href="${esc8(canonical)}" />
+<title>${esc9(title)}</title>
+<meta name="description" content="${esc9(description)}" />
+<link rel="canonical" href="${esc9(canonical)}" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta property="og:type" content="article" />
-<meta property="og:title" content="${esc8(title)}" />
-<meta property="og:description" content="${esc8(description)}" />
-<meta property="og:url" content="${esc8(canonical)}" />
+<meta property="og:title" content="${esc9(title)}" />
+<meta property="og:description" content="${esc9(description)}" />
+<meta property="og:url" content="${esc9(canonical)}" />
 <style>${STYLE3}</style>
 ${extra}</head>`;
     nav = () => `<header>
@@ -66383,7 +66606,7 @@ function prerenderLoader(page) {
       </div>`).join("");
   return `<div data-t1s-prerender="loader" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f9f9fb;min-height:100vh">
     <div style="max-width:720px;margin:0 auto;padding:28px 16px 8px">
-      <h2 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc9(page.h1)}</h2>
+      <h2 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc10(page.h1)}</h2>
       <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#374151;margin-bottom:10px">
         <span style="width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block"></span>
         <span>Checking live prices&hellip;</span>
@@ -66403,16 +66626,16 @@ function prerenderBody(path19) {
   const page = resolveSeoPage(path19);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
-    <dt>${esc9(f.q)}</dt><dd>${esc9(f.a)}</dd>`).join("");
-  const links = page.links.slice(0, 10).map((l) => `<a href="${esc9(l.href)}">${esc9(l.label)}</a>`).join("");
+    <dt>${esc10(f.q)}</dt><dd>${esc10(f.a)}</dd>`).join("");
+  const links = page.links.slice(0, 10).map((l) => `<a href="${esc10(l.href)}">${esc10(l.label)}</a>`).join("");
   return [
     prerenderLoader(page),
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 40px">`,
     `<nav aria-label="Breadcrumb" style="font-size:12px;color:#6b7280;margin-bottom:8px">`,
-    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc9(b.name) : `<a href="${esc9(b.path)}" style="color:#6b7280">${esc9(b.name)}</a>`)).join(""),
+    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc10(b.name) : `<a href="${esc10(b.path)}" style="color:#6b7280">${esc10(b.name)}</a>`)).join(""),
     `</nav>`,
-    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc9(page.h1)}</h1>`,
-    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc9(p)}</p>`),
+    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc10(page.h1)}</h1>`,
+    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc10(p)}</p>`),
     `<h2 style="font-size:15px;margin:20px 0 8px">Frequently asked questions</h2>`,
     `<dl style="font-size:13.5px;line-height:1.6;color:#374151">${faqHtml}</dl>`,
     links ? `<h2 style="font-size:15px;margin:20px 0 8px">Popular comparisons</h2><p style="font-size:13px;line-height:2">${links}</p>` : "",
@@ -66428,24 +66651,24 @@ function enhanceHtml(html, path19) {
   const desc = page ? page.description : DEFAULT_DESC;
   const canonical = `${SEO_HOST}${(path19 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
-  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc9(title)}</title>`);
+  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc10(title)}</title>`);
   out = out.replace(
     /<meta name="description" content="[^"]*" \/>/,
-    `<meta name="description" content="${esc9(desc)}" />`
+    `<meta name="description" content="${esc10(desc)}" />`
   );
   out = out.replace(
     /<meta property="og:title" content="[^"]*" \/>/,
-    `<meta property="og:title" content="${esc9(title)}" />`
+    `<meta property="og:title" content="${esc10(title)}" />`
   );
   out = out.replace(
     /<meta property="og:description" content="[^"]*" \/>/,
-    `<meta property="og:description" content="${esc9(desc)}" />`
+    `<meta property="og:description" content="${esc10(desc)}" />`
   );
   const head3 = [
-    `<link rel="canonical" href="${esc9(canonical)}" />`,
-    `<meta property="og:url" content="${esc9(canonical)}" />`,
-    `<meta name="twitter:title" content="${esc9(title)}" />`,
-    `<meta name="twitter:description" content="${esc9(desc)}" />`,
+    `<link rel="canonical" href="${esc10(canonical)}" />`,
+    `<meta property="og:url" content="${esc10(canonical)}" />`,
+    `<meta name="twitter:title" content="${esc10(title)}" />`,
+    `<meta name="twitter:description" content="${esc10(desc)}" />`,
     `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : thinCity ? "noindex, follow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />`,
     `<meta name="geo.region" content="IN" />`,
     `<meta name="geo.placename" content="India" />`,
@@ -66457,8 +66680,8 @@ function enhanceHtml(html, path19) {
     `<meta property="og:image:alt" content="Try1Second \u2014 live price comparison across flights, hotels, cabs, groceries and finance in India" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:image" content="${SEO_HOST}/og-image.jpg" />`,
-    `<link rel="alternate" hreflang="en-in" href="${esc9(canonical)}" />`,
-    `<link rel="alternate" hreflang="x-default" href="${esc9(canonical)}" />`
+    `<link rel="alternate" hreflang="en-in" href="${esc10(canonical)}" />`,
+    `<link rel="alternate" hreflang="x-default" href="${esc10(canonical)}" />`
   ];
   if (!isNoindex) for (const b of jsonLd2(path19)) head3.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head3.join("\n")}
@@ -66471,13 +66694,13 @@ function enhanceHtml(html, path19) {
   }
   return out;
 }
-var esc9, DEFAULT_TITLE, DEFAULT_DESC;
+var esc10, DEFAULT_TITLE, DEFAULT_DESC;
 var init_render = __esm({
   "server/seo/render.ts"() {
     init_data();
     init_indexPolicy();
     init_agentReady();
-    esc9 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc10 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     DEFAULT_TITLE = "Try1Second \u2014 One Second Is All It Takes to Find the Lowest Price";
     DEFAULT_DESC = "Compare live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in one second.";
   }
@@ -66904,6 +67127,7 @@ async function createApp() {
     }
   }
   const { redirectRouteHandler: redirectRouteHandler2 } = await Promise.resolve().then(() => (init_interstitial(), interstitial_exports));
+  const shareLinks = await Promise.resolve().then(() => (init_shareLinks(), shareLinks_exports));
   app.get(["/r/:code", "/refer/:code", "/r"], (req, res) => {
     const raw = String(req.params?.code || req.query?.code || req.query?.ref || "").trim().toUpperCase();
     const code = /^T1S-[A-Z0-9]{4,12}$/.test(raw) ? raw : "";
@@ -66912,10 +67136,22 @@ async function createApp() {
     const play = `https://play.google.com/store/apps/details?id=com.try1second.try1second${codeQuery ? `&referrer=${codeQuery}` : ""}`;
     const site = `https://www.try1second.com/${code ? `?ref=${encodeURIComponent(code)}` : ""}`;
     res.setHeader("Cache-Control", "no-store");
-    if (/android/i.test(ua)) return res.redirect(302, play);
-    return res.redirect(302, site);
+    const { isLinkPreviewBot: isLinkPreviewBot2, renderInvitePage: renderInvitePage2 } = shareLinks;
+    if (!isLinkPreviewBot2(ua) && /android/i.test(ua)) return res.redirect(302, play);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(200).send(renderInvitePage2({ origin: "https://www.try1second.com", code }));
   });
   app.get("/redirect", redirectRouteHandler2);
+  app.get("/s/:token", (req, res) => {
+    const payload = shareLinks.readShareToken(req.params?.token);
+    res.setHeader("Cache-Control", "public, max-age=300");
+    if (!payload) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.status(404).send('<!doctype html><meta charset="utf-8"><title>Link not found</title><body style="font-family:system-ui;padding:40px;text-align:center"><h2>This link is not valid</h2><p><a href="https://www.try1second.com" style="color:#E7000B;font-weight:700">Search again on Try1Second</a></p>');
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(200).send(shareLinks.renderSharePage({ origin: "https://www.try1second.com", payload }));
+  });
   const dist = import_path9.default.resolve(__dirname2, "dist");
   {
     const { registerIndexNowRoutes: registerIndexNowRoutes2 } = await Promise.resolve().then(() => (init_indexnow(), indexnow_exports));
