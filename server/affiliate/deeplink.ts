@@ -69,7 +69,7 @@ export function repairAirlineDeepLink(destination: string): string {
   return 'https://www.airindia.com/';
 }
 
-export function createMaskingPointer(destination: string, opts: { offerId?: string; trusted?: boolean; vertical?: string } = {}): string {
+export function createMaskingPointer(destination: string, opts: { offerId?: string; trusted?: boolean; vertical?: string; direct?: boolean } = {}): string {
   const dest = repairAirlineDeepLink(String(destination || '').trim());
   // Never mint a pointer the click endpoint would refuse — a non-HTTP / malformed
   // destination yields '' so cards render without a dead-end link instead of
@@ -86,12 +86,12 @@ export function createMaskingPointer(destination: string, opts: { offerId?: stri
   // loans - and a finance row's seller can be a host we have never mapped (a new insurer, a new NBFC), so the
   // vertical the user was actually browsing is the reliable signal at click time, not the domain alone.
   const vertical = String(opts.vertical || '').toLowerCase().replace(/[^a-z]/g, '').slice(0, 16);
-  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2000), o: (opts.offerId || '').slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1000, ...(opts.trusted ? { t: 1 } : {}), ...(vertical ? { v: vertical } : {}) }));
+  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2000), o: (opts.offerId || '').slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1000, ...(opts.trusted ? { t: 1 } : {}), ...(vertical ? { v: vertical } : {}), ...(opts.direct ? { n: 1 } : {}) }));
   const sig = crypto.createHmac('sha256', secret()).update(payload).digest('base64url').slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
 
-export function resolveMaskingPointer(token: string): { destination: string; offerId?: string; trusted?: boolean; vertical?: string } | null {
+export function resolveMaskingPointer(token: string): { destination: string; offerId?: string; trusted?: boolean; vertical?: string; direct?: boolean } | null {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ''));
   if (!m) return null;
   const [payload, sig] = [m[1], m[2]];
@@ -105,6 +105,8 @@ export function resolveMaskingPointer(token: string): { destination: string; off
       offerId: j.o ? String(j.o) : undefined,
       trusted: j.t === 1,
       vertical: j.v ? String(j.v) : undefined,
+      // `n: 1` = a discovery exit (Nearby card): skip our own interstitial and go straight to the partner.
+      direct: j.n === 1,
     };
   } catch { return null; }
 }

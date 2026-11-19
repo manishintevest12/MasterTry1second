@@ -94,7 +94,7 @@ export const SERVICE_NETWORKS: Record<string, ServiceNetwork[]> = {
   cng: [
     { name: 'IGL CNG stations', url: 'https://www.iglonline.net/English/OurNetwork.aspx', sub: 'CNG network' },
     { name: 'Adani Total Gas', url: 'https://www.adanitotalgas.com/cng-stations', sub: 'CNG network' },
-    { name: 'Torrent Gas', url: 'https://www.torrentgas.com/cng-stations', sub: 'CNG network' },
+    { name: 'Torrent Gas', url: 'https://www.torrentgas.com/', sub: 'CNG network' },
     { name: 'GAIL Gas', url: 'https://www.gailgas.com/cng-stations', sub: 'CNG network' },
   ],
   lpg: [
@@ -117,9 +117,9 @@ export const SERVICE_NETWORKS: Record<string, ServiceNetwork[]> = {
     { name: 'Royal Enfield Service', url: 'https://www.royalenfield.com/in/en/service/', sub: 'two-wheeler service network' },
   ],
   puncture: [
-    { name: 'MRF dealer locator', url: 'https://www.mrftyres.com/dealer-locator', sub: 'tyre & puncture dealers' },
+    { name: 'MRF dealer locator', url: 'https://www.mrftyres.com/', sub: 'tyre & puncture dealers' },
     { name: 'Apollo Tyres dealers', url: 'https://www.apollotyres.com/en-in/find-a-dealer/', sub: 'tyre & puncture dealers' },
-    { name: 'CEAT dealers', url: 'https://www.ceat.com/dealer-locator.html', sub: 'tyre & puncture dealers' },
+    { name: 'CEAT dealers', url: 'https://www.ceat.com/', sub: 'tyre & puncture dealers' },
     { name: 'JK Tyre dealers', url: 'https://www.jktyre.com/dealer-locator.aspx', sub: 'tyre & puncture dealers' },
   ],
   battery: [
@@ -130,9 +130,9 @@ export const SERVICE_NETWORKS: Record<string, ServiceNetwork[]> = {
     { name: 'SF Sonic', url: 'https://www.sfsonic.com/', sub: 'battery dealer network' },
   ],
   tyres: [
-    { name: 'MRF dealer locator', url: 'https://www.mrftyres.com/dealer-locator', sub: 'tyre dealer network' },
+    { name: 'MRF dealer locator', url: 'https://www.mrftyres.com/', sub: 'tyre dealer network' },
     { name: 'Apollo Tyres dealers', url: 'https://www.apollotyres.com/en-in/find-a-dealer/', sub: 'tyre dealer network' },
-    { name: 'CEAT dealers', url: 'https://www.ceat.com/dealer-locator.html', sub: 'tyre dealer network' },
+    { name: 'CEAT dealers', url: 'https://www.ceat.com/', sub: 'tyre dealer network' },
     { name: 'JK Tyre dealers', url: 'https://www.jktyre.com/dealer-locator.aspx', sub: 'tyre dealer network' },
     { name: 'Michelin India', url: 'https://www.michelin.in/auto/dealers', sub: 'tyre dealer network' },
   ],

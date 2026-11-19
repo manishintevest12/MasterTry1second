@@ -4691,7 +4691,7 @@ apiRouter.get('/out', async (req, res) => {
   // recognised as the app - an older cached list, a Custom Tab whose UA reads as plain Chrome, or a relayed
   // request. The pointer already carries the vertical, so Nearby is sent straight to the partner (tracking and
   // the affiliate wrap intact) whatever the user agent says.
-  const isNearbyExit = String((resolved as any).vertical || '') === 'nearby';
+  const isNearbyExit = String((resolved as any).vertical || '') === 'nearby' || (resolved as any).direct === true;
   const fromApp = String(req.query.app || '') === '1' || isNearbyExit || isInAppWebView(req.headers['user-agent']);
   if (fromApp) {
     // Owner 2 Nov (FINAL RULE): "muje sb verticals pr hr website redirection pr aisa hi

@@ -253,7 +253,15 @@ function absoluteExit(url: string): string {
 function pointer(url: string, category: NearbyCategory): string {
   const dest = /^https?:\/\//i.test(url) ? url : '';
   if (!dest) return '';
-  return createMaskingPointer(dest, { vertical: category === 'hotels' || category === 'stays' ? 'hotels' : category === 'cabs' ? 'cab' : 'nearby', trusted: true });
+  // OWNER 19 Nov ("sb card dekho, sb Try1Second se redirect ho kar dusri site pr jana chahiye"): every Nearby
+  // exit is stamped as a DISCOVERY exit, so /api/out sends it straight to the partner. Hotel/stay rows keep the
+  // hotels vertical for tracking but no longer fall into the web interstitial, which is what parked the user on
+  // our own page.
+  return createMaskingPointer(dest, {
+    vertical: category === 'hotels' || category === 'stays' ? 'hotels' : category === 'cabs' ? 'cab' : 'nearby',
+    trusted: true,
+    direct: true,
+  });
 }
 
 function norm(name: string): string {
