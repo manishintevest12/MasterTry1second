@@ -1780,6 +1780,9 @@ async function nearbyHandler(req: any, res: Response): Promise<void> {
       offset: Number(req.query.offset) || 0,
     });
     res.setHeader('Cache-Control', 'public, max-age=300');
+    // OWNER 19 Nov: the app answer carries `app=1` exits, so a shared cache entry would hand a browser those
+    // exits (or the app the interstitial ones). Keep the two variants apart.
+    res.setHeader('Vary', 'User-Agent');
     res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(answer.results) } : answer);
   } catch (e: any) {
     // OWNER 17 Nov: this used to answer the whole tab with an apology. A city that has real hotels must never be
@@ -4682,7 +4685,14 @@ apiRouter.get('/out', async (req, res) => {
   // interstitial - four seconds parked on our own page before the partner loaded. The API now marks the exits it
   // hands to the app (`app=1`, stamped server-side, so every install benefits without a rebuild) and this flag
   // counts exactly like a webview: straight to the partner, tracking intact, no interstitial.
-  const fromApp = String(req.query.app || '') === '1' || isInAppWebView(req.headers['user-agent']);
+  // OWNER 19 Nov ("Nearby me Visit/book dabane se partner site ni khulti, Try1Second ke andar hi reh jata hai"):
+  // a Nearby card exit is a DISCOVERY hop, not a checkout, so it must never park the user on our own interstitial.
+  // The interstitial branch is what kept them on a Try1Second page (4s countdown) whenever the request was not
+  // recognised as the app - an older cached list, a Custom Tab whose UA reads as plain Chrome, or a relayed
+  // request. The pointer already carries the vertical, so Nearby is sent straight to the partner (tracking and
+  // the affiliate wrap intact) whatever the user agent says.
+  const isNearbyExit = String((resolved as any).vertical || '') === 'nearby';
+  const fromApp = String(req.query.app || '') === '1' || isNearbyExit || isInAppWebView(req.headers['user-agent']);
   if (fromApp) {
     // Owner 2 Nov (FINAL RULE): "muje sb verticals pr hr website redirection pr aisa hi
     // chaiye results app mai" — EVERY merchant exit, in EVERY vertical, must load inside the
