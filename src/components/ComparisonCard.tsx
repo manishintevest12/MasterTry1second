@@ -1,4 +1,5 @@
 import { brandLogoUrl, initials } from '../utils/brandLogo';
+import { trackFunnel } from '../lib/funnel';
 import { movieVenueLine } from '../lib/movieVenue';
 import React, { useState } from 'react';
 import {
@@ -297,6 +298,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
 
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Funnel step (owner 19 Nov): a share is the strongest organic signal we have, so it is measured.
+    trackFunnel({ event: 'share', vertical: item.vertical, itemId: item.id, seller: item.provider, query: item.title });
     if (navigator.clipboard) {
       navigator.clipboard.writeText(
         `Check out ${item.title} on OmniCompare for ${isRateVertical ? `${item.primaryPrice}% p.a.` : `₹${(item.primaryPrice || 0).toLocaleString('en-IN')}`}: ${window.location.href}`

@@ -2,6 +2,7 @@ import { scrollToResults } from '../utils/scrollToResults';
 import { DEFAULT_QUERY_FOR, queryFitsVertical, seedQueryFor } from '../lib/verticalSeed';
 import { HOME_PATH, verticalPathFor, homePathFrom } from '../utils/verticalRoutes';
 import { pollDecision } from '../lib/searchPolling';
+import { trackFunnel } from '../lib/funnel';
 import { canonicalizeRows, sameVertical, canonicalVertical } from '../lib/verticalAlias';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 // canvas-confetti (~30KB): only needed when the Spin & Earn wheel actually wins.
@@ -1439,6 +1440,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const clearSpendPrefill = () => setPendingSpendEntry(null);
 
   const startRedirection = (item: ComparisonItem, quote: SellerQuote) => {
+    // Funnel step 2 (owner 19 Nov): the user picked a deal on this card. The matching
+    // 'outbound_click' is recorded server-side in /api/out, so card -> exit measures whether the
+    // redirect actually carried them to the merchant (a gap there is a broken exit, not shy users).
+    trackFunnel({ event: 'card_click', vertical: item.vertical, itemId: item.id, seller: quote?.sellerName, query: item.title });
     // Owner 22 Oct: Uber/Ola cab rows open the provider's OWN app with the trip
     // prefilled (real in-app fare, direct booking there). appBookUrl routes
     // through /api/cab/book -> /api/out server-side, so affiliate injection

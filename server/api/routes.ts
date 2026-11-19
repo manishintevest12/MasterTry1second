@@ -56,7 +56,7 @@ import { directAppTarget, androidIntentUrl, isAndroid, keepsWebviewExit } from '
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { cachedSection } from './cachedSections';
-import { beginScrape, send429, withDeadline } from './requestGuard';
+import { beginScrape, send429, withDeadline, sessionKeyOf } from './requestGuard';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
@@ -70,6 +70,7 @@ import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows } from '../lens/assistantAnswer';
 import { parseRequestedQuantity } from '../lens/quantityIntent';
 import { aiRouteQuestion, mergeAiIntent } from '../lens/assistantAi';
+import { recordEvents, withinBudget } from '../growth/funnel';
 
 import {
   classifyFollowUp, readSubject, shapeFollowUpAnswer, subjectFromAnswer, writeSubject,
@@ -1283,6 +1284,30 @@ apiRouter.post('/search', async (req, res) => {
     returnDate: input.travelDates?.return,
   });
   const orderedResults = orderFlightRowsLast(gatedResponse.results as any[], String(input.vertical));
+  // Funnel step 1 (owner 19 Nov): every submitted search, and every search that ended with nothing to
+  // show. `zero_result` is the drop-off the product work targets, so it is recorded only when the pass is
+  // FINISHED and empty - a still-scanning answer is not a zero result and must never be counted as one.
+  void recordEvents([
+    {
+      event: 'search',
+      sessionId: sessionKeyOf(req),
+      userId: (req as any).user?.id ? Number((req as any).user.id) : null,
+      vertical: String(input.vertical || ''),
+      query: input.query,
+      city: String(input.city || ''),
+      platform: 'web',
+    },
+    ...((gatedResponse.results.length === 0 && !gatedResponse.state.pendingRefresh)
+      ? [{
+          event: 'zero_result',
+          sessionId: sessionKeyOf(req),
+          vertical: String(input.vertical || ''),
+          query: input.query,
+          city: String(input.city || ''),
+          platform: 'web',
+        }]
+      : []),
+  ]).catch(() => 0);
   res.json({
     success: gatedResponse.results.length > 0 || gatedResponse.state.servedFrom !== 'unavailable',
     ...gatedResponse,
@@ -3429,6 +3454,30 @@ apiRouter.post('/notifications/read', authMiddleware, requireAuth, async (req, r
 });
 
 // ============ Home AI assistant: question (typed or spoken) -> vertical + query ============
+// ============ FUNNEL TELEMETRY: the client's half of the growth chain ============
+// OWNER 19 Nov: "Instrument clear funnel events across search, results, card clicks, outbound
+// redirects, shares, and repeat sessions." Server-side steps (search, zero_result, outbound_click) are
+// recorded where they happen; the browser and the app post the rest here (results_view, card_click,
+// share, app_open, alert_create, push_open).
+//
+// Rules: an allowlisted event name only, no personal data (server/growth/funnel.ts scrubs and refuses),
+// a per-session budget so a looping client cannot flood the table, and a 200 with the accepted count
+// even when nothing was stored - telemetry must never become a visible failure in the product.
+apiRouter.post('/track', async (req, res) => {
+  const body: any = req.body || {};
+  const list = Array.isArray(body.events) ? body.events : [body];
+  const sessionId = String(
+    body.sessionId || req.headers['x-t1s-session'] || sessionKeyOf(req) || '',
+  ).slice(0, 64);
+  if (!withinBudget(`track:${sessionId}`)) return res.status(429).json({ ok: false, error: 'Too many events, slow down' });
+  const userId = (req as any).user?.id ? Number((req as any).user.id) : null;
+  const accepted = await recordEvents(
+    list.map((e: any) => ({ ...e, sessionId: e?.sessionId || sessionId })),
+    { userId },
+  );
+  res.json({ ok: true, accepted });
+});
+
 // OWNER 18 Nov: the master system prompt is wired in here. The rule-based interpreter answers first and
 // stays authoritative; only a question it could NOT place is handed to the AI assist, whose parameters are
 // validated before use (server/lens/assistantAi.ts). No key or no network simply means the rule-based
@@ -4554,6 +4603,17 @@ apiRouter.get('/out', async (req, res) => {
   }
   const dl = await buildSecureDeeplink(freshDestination, { vertical: resolved.vertical });
   await recordPointerClick(freshDestination, resolved.offerId, dl.network);
+  // Funnel step 3 (owner 19 Nov): the user actually left for the merchant. Recorded server-side because
+  // this is the only place that knows an exit really happened - a card click that never lands here is
+  // exactly the drop-off the growth work needs to see.
+  void recordEvents([{
+    event: 'outbound_click',
+    sessionId: sessionKeyOf(req),
+    vertical: String(resolved.vertical || ''),
+    itemId: String(resolved.offerId || ''),
+    seller: String(dl.network || ''),
+    platform: isInAppWebView(req.headers['user-agent']) ? 'android' : 'web',
+  }]).catch(() => 0);
   // Monetizable exit (owner 23 Oct): real browsers land on the /redirect
   // interstitial (4s countdown + AdSense above the fold), then hop to the
   // merchant. In-app webviews (our Flutter app) skip it — AdSense for Content

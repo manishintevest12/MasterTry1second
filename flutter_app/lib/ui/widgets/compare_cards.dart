@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_state.dart';
+import '../../core/funnel.dart';
 import '../../core/compare.dart';
 import '../../core/movie_venue.dart';
 import '../../core/theme.dart';
@@ -471,6 +472,10 @@ void _openRedirect(
   // Owner 23 Oct fix: the server emits RELATIVE paths (/api/cab/book?...) —
   // fine on the web, but launchUrl() needs an ABSOLUTE url. Prefix the app's
   // API base so the cab Book button actually redirects from the app.
+  // Funnel step (owner 19 Nov): the user picked this deal. The matching 'outbound_click' is recorded
+  // server-side in /api/out, so card -> exit measures whether the redirect actually carried them to the
+  // merchant - a gap there is a broken exit, not shy users.
+  Funnel.track('card_click', vertical: vertical, seller: sellerName, query: title);
   if (appBookUrl != null && appBookUrl.isNotEmpty) {
     unawaited(_launchCabAppBooking(appBookUrl));
     return;

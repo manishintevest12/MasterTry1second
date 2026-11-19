@@ -1,5 +1,6 @@
 import { AdBannerSlot } from './AdBannerSlot';
 import React, { useState, useEffect } from 'react';
+import { trackFunnelOnce } from '../lib/funnel';
 import { useApp } from '../context/AppContext';
 import { parseSmartFilter, matchSmartFilter } from '../utils/smartFilter';
 import { sameVertical } from '../lib/verticalAlias';
@@ -244,6 +245,18 @@ export const ComparisonFeed: React.FC = () => {
     return gs;
   }, [isHotels, sorted, sortOption, vertical]);
   const totalCount = isHotels ? hotelGroups.length : offerGroups.length;
+  // Funnel step (owner 19 Nov): the results screen really rendered rows for this search. Once per
+  // (vertical, query, count) so a re-render or a poll cannot inflate the number, and the server already
+  // records the 'search' and 'zero_result' ends of the chain.
+  const funnelTotal = vertical === 'hotels' ? hotelGroups.length : offerGroups.length;
+  useEffect(() => {
+    if (funnelTotal > 0) {
+      trackFunnelOnce(`rv:${vertical}:${searchQuery || ''}:${funnelTotal}`, {
+        event: 'results_view', vertical, query: searchQuery || '', value: funnelTotal,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vertical, searchQuery, funnelTotal]);
   const visibleGroups = offerGroups.slice(0, visibleCount);
   const visibleItems = visibleGroups;
   const visibleHotels = hotelGroups.slice(0, visibleCount);

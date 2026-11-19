@@ -13,6 +13,7 @@ import { authMiddleware, requireAdmin } from '../auth/authService';
 import { listFulfilmentsForAdmin, updateFulfilmentStatus } from '../rewards/rewardsEngine';
 import { getStore } from '../common/db';
 import { referralsReport } from './referralReport';
+import { funnelReport } from '../growth/funnel';
 import { cacheStats } from '../common/cache';
 import { redactSecrets } from '../common/logger';
 import { validateDestination } from '../affiliate/affiliateNetwork';
@@ -380,6 +381,22 @@ adminRouter.get('/nearby-report', async (req, res) => {
 adminRouter.get('/referrals', async (req, res) => {
   try {
     res.json(await referralsReport(getStore(), req.query.days));
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: String(e?.message || e).slice(0, 160) });
+  }
+});
+
+/**
+ * ADMIN → FUNNEL (owner 19 Nov growth brief): the measured drop-off, not a vanity number.
+ *
+ * Reads funnel_events and returns the rates between the steps the product actually has: search ->
+ * results view -> card click -> merchant exit -> share, plus the zero-result rate and how many sessions
+ * came back on another day. Aggregation happens in server/growth/funnel.ts so it behaves identically on
+ * MySQL and on the dev file store.
+ */
+adminRouter.get('/funnel', async (req, res) => {
+  try {
+    res.json(await funnelReport(req.query.days));
   } catch (e: any) {
     res.status(500).json({ ok: false, error: String(e?.message || e).slice(0, 160) });
   }

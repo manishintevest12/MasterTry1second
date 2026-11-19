@@ -13,6 +13,7 @@ import '../../core/theme.dart';
 import '../../core/verticals.dart';
 import '../../core/search_poll.dart';
 import '../../core/feed_page.dart';
+import '../../core/funnel.dart';
 import '../widgets/compare_cards.dart';
 import '../widgets/hint_field.dart';
 import '../widgets/journey_date_picker_modal.dart';
@@ -157,7 +158,15 @@ class _CompareScreenState extends State<CompareScreen> {
       if (_state.searched.contains(_meta.id)) {
         _res = _state.cache[_meta.id];
         _markSettledIfComplete();
-      _shownCacheKey = _state.cacheQuery[_meta.id];
+        _shownCacheKey = _state.cacheQuery[_meta.id];
+        // Funnel step (owner 19 Nov): returning to a tab that already has rows is a real results view.
+        // Keyed by the cached query so a rebuild cannot inflate the count.
+        final cachedRows = _res?.items.length ?? 0;
+        final cachedQ = _state.cacheQuery[_meta.id] ?? '';
+        if (cachedRows > 0) {
+          Funnel.trackOnce('rv:${_meta.id}:$cachedQ:$cachedRows', 'results_view',
+              vertical: _meta.id, query: cachedQ, value: cachedRows);
+        }
         _pendingFlag = false;
         _loading = false;
         _error = null;
@@ -404,6 +413,14 @@ class _CompareScreenState extends State<CompareScreen> {
           to: isCab && _to.text.trim().isNotEmpty ? _to.text.trim() : null);
 
       _shownCacheKey = _state.cacheQuery[_meta.id];
+      // Funnel step (owner 19 Nov): this results screen really rendered rows for this search. Once per
+      // (vertical, query, count) so a poll or a rebuild cannot inflate the number; the server records the
+      // 'search' and 'zero_result' ends of the same chain.
+      final rowCount = _res?.items.length ?? 0;
+      if (rowCount > 0) {
+        Funnel.trackOnce('rv:${_meta.id}:${q.trim()}:$rowCount', 'results_view',
+            vertical: _meta.id, query: q, value: rowCount);
+      }
       // Owner 23 Oct (loans/hotels 'results nahi dikhte' on device): the
       // await above resuming does NOT schedule a frame on its own —
       // AppState's notifyListeners fired INSIDE live() before _res/_shownCacheKey
