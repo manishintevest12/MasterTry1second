@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mintShareToken, readShareToken, cleanPayload, esc, previewCopy, renderSharePage, renderInvitePage,
-  resultsPath, seenLabel, isLinkPreviewBot, rupees,
+  resultsPath, seenLabel, isLinkPreviewBot, rupees, imageForVertical,
 } from '../server/share/shareLinks';
 
 /**
@@ -68,7 +68,8 @@ test('the share page carries the OG tags WhatsApp and Facebook read', () => {
   for (const tag of ['og:title', 'og:description', 'og:image', 'og:url', 'og:type', 'twitter:card', 'twitter:image']) {
     assert.ok(html.includes(`property="${tag}"`) || html.includes(`name="${tag}"`), tag);
   }
-  assert.ok(html.includes('https://www.try1second.com/og-default.png'));
+  // a Movies share now carries the Movies card, not the generic one
+  assert.ok(html.includes('https://www.try1second.com/og/movie.png'));
   assert.ok(html.includes('https://www.try1second.com/movies?q=jawan&amp;city=Indore'), 'the CTA opens the live search');
   assert.ok(html.includes('noindex'), 'a share page is not a search landing page');
 });
@@ -107,4 +108,24 @@ test('a payload is clamped so a token cannot be used as storage', () => {
   assert.equal(p.t!.length, 120);
   assert.equal(p.p, undefined, 'a negative price is not a price');
   assert.ok(p.ts > 0, 'a missing timestamp falls back to now, so the label is honest');
+});
+
+test('each vertical gets its own preview card, and an unknown one falls back', () => {
+  // OWNER 19 Nov: a Movies link and a Grocery link must not look identical in a chat list.
+  assert.equal(imageForVertical('movies'), 'https://www.try1second.com/og/movie.png');
+  assert.equal(imageForVertical('movie'), 'https://www.try1second.com/og/movie.png');
+  assert.equal(imageForVertical('grocery'), 'https://www.try1second.com/og/grocery.png');
+  assert.equal(imageForVertical('credit-cards'), 'https://www.try1second.com/og/creditcards.png');
+  assert.equal(imageForVertical('nearby'), 'https://www.try1second.com/og/nearby.png');
+  assert.equal(imageForVertical('something-new'), 'https://www.try1second.com/og-default.png');
+  assert.equal(imageForVertical(undefined), 'https://www.try1second.com/og-default.png');
+});
+
+test('the share page uses the vertical card, and the card itself never prints a price', () => {
+  const html = renderSharePage({
+    origin: 'https://www.try1second.com',
+    payload: cleanPayload({ v: 'flights', q: 'indore to mumbai', t: 'IndiGo 6E-204', p: 4199, s: 'IndiGo', ts: Date.now() }),
+  });
+  assert.ok(html.includes('content="https://www.try1second.com/og/flights.png"'));
+  assert.ok(html.includes('og:image:width" content="1200"'));
 });

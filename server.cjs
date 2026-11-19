@@ -46406,8 +46406,10 @@ var init_referralQualification = __esm({
 // server/share/shareLinks.ts
 var shareLinks_exports = {};
 __export(shareLinks_exports, {
+  VERTICAL_OG: () => VERTICAL_OG,
   cleanPayload: () => cleanPayload,
   esc: () => esc3,
+  imageForVertical: () => imageForVertical,
   isLinkPreviewBot: () => isLinkPreviewBot,
   mintShareToken: () => mintShareToken,
   previewCopy: () => previewCopy,
@@ -46483,10 +46485,14 @@ function previewCopy(payload) {
   bits.push("Open to check the live price now \u2014 sellers change it every minute.");
   return { title: title.slice(0, 110), description: bits.join(" ").slice(0, 220) };
 }
+function imageForVertical(vertical, origin2 = "https://www.try1second.com") {
+  const key = VERTICAL_OG[String(vertical || "").trim().toLowerCase()];
+  return key ? `${origin2}/og/${key}.png` : `${origin2}/og-default.png`;
+}
 function renderSharePage({ origin: origin2, payload, image }) {
   const { title, description } = previewCopy(payload);
   const target = `${origin2}${resultsPath(payload)}`;
-  const img = image || `${origin2}/og-default.png`;
+  const img = image || imageForVertical(payload.v, origin2);
   const priceLine = typeof payload.p === "number" ? `<p class="price">${esc3(rupees3(payload.p))}<span class="seen">${esc3(payload.s ? `on ${payload.s}` : "")}${payload.s ? " \xB7 " : ""}seen ${esc3(seenLabel(payload.ts))}</span></p>` : "";
   return `<!doctype html>
 <html lang="en">
@@ -46597,7 +46603,7 @@ function isLinkPreviewBot(userAgent) {
   const ua = String(userAgent || "");
   return /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|pinterest|embedly|redditbot|skypeuripreview|vkshare|w3c_validator|googlebot|bingbot|applebot|iframely|quora link preview|outbrain|nuzzel|qwantify|bitlybot|tumblr/i.test(ua);
 }
-var import_node_crypto6, MAX_TOKEN, b64u, unb64u, rupees3;
+var import_node_crypto6, MAX_TOKEN, b64u, unb64u, rupees3, VERTICAL_OG;
 var init_shareLinks = __esm({
   "server/share/shareLinks.ts"() {
     import_node_crypto6 = __toESM(require("node:crypto"), 1);
@@ -46605,6 +46611,25 @@ var init_shareLinks = __esm({
     b64u = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     unb64u = (s) => Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
     rupees3 = (n) => `\u20B9${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+    VERTICAL_OG = {
+      flights: "flights",
+      hotels: "hotels",
+      bus: "bus",
+      ecommerce: "ecommerce",
+      grocery: "grocery",
+      food: "food",
+      movie: "movie",
+      movies: "movie",
+      cab: "cab",
+      loans: "loans",
+      insurance: "insurance",
+      creditcards: "creditcards",
+      "credit-cards": "creditcards",
+      account: "account",
+      banking: "account",
+      nearby: "nearby",
+      ev: "ev"
+    };
   }
 });
 
