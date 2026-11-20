@@ -7,7 +7,16 @@ import { cartKey } from '../lib/groceryCart';
 import { trackFunnel } from '../lib/funnel';
 
 /**
- * 10-MIN GROCERY GRID (owner 20 Nov, second pass).
+ * RETAIL GRID — 10-min grocery, e-commerce and food (owner 20 Nov: "ecommerce and food mai v yahi design rkho").
+ *
+ * The same tile serves all three retail verticals because a shopper reads them the same way: image, % off,
+ * delivery time, title, pack, price with struck MRP, the partner's name, ADD/stepper, Order. Vertical-specific
+ * bits are additive, never a different layout:
+ *  - e-commerce keeps its in-site price comparison ("Compare prices" opens the product page for the same item);
+ *  - food shows the veg / non-veg mark when the source states it.
+ *
+ * Rules that do not change with the vertical: the partner is named on EVERY tile, ADD is a real persisted
+ * basket control, Order leaves through the partner's tracked exit, and no price is ever re-computed.
  *
  * The first pass added the partner name, ADD/stepper and "Order on <partner>" to the existing comparison card —
  * correct behaviour, wrong shape. A grocery shopper reads a grid of products (image, % off, delivery time, pack,
@@ -40,8 +49,8 @@ function etaOf(group: OfferGroup): string {
   return '';
 }
 
-const GroceryTile: React.FC<{ group: OfferGroup }> = ({ group }) => {
-  const { startRedirection } = useApp();
+const ProductTile: React.FC<{ group: OfferGroup; vertical: string }> = ({ group, vertical }) => {
+  const { startRedirection, openProductPage } = useApp();
   const cart = useGroceryCart();
   const item = group.best.item;
   const partner = String(group.best.site || item.provider || '').trim();
@@ -52,10 +61,14 @@ const GroceryTile: React.FC<{ group: OfferGroup }> = ({ group }) => {
   const eta = etaOf(group);
   const image = item.imageUrl || (item.images || [])[0] || '';
   const key = cartKey(item.title, unit, partner);
+  // food: the veg mark only when the source actually states it (never inferred from the dish name)
+  const vegSpec = String((item as any).specs?.['is_veg'] ?? (item as any).specs?.['veg'] ?? '').toLowerCase();
+  const veg = vertical === 'food' && (vegSpec === 'true' || vegSpec === 'yes') ? true
+    : vertical === 'food' && (vegSpec === 'false' || vegSpec === 'no') ? false : null;
   const qty = cart.qtyOf(key);
 
   const add = () => {
-    trackFunnel({ event: 'card_click', vertical: 'grocery', itemId: item.id, seller: partner, query: item.title });
+    trackFunnel({ event: 'card_click', vertical, itemId: item.id, seller: partner, query: item.title });
     cart.add({
       key,
       title: item.title,
@@ -95,6 +108,14 @@ const GroceryTile: React.FC<{ group: OfferGroup }> = ({ group }) => {
           {partner || 'Partner'}
         </p>
         <p className="mt-0.5 text-[11.5px] font-bold leading-snug text-slate-900 line-clamp-2 min-h-[2.4em]">
+          {veg !== null && (
+            <span
+              className={`inline-block align-middle mr-1 h-2.5 w-2.5 rounded-sm border ${veg ? 'border-emerald-600' : 'border-red-600'}`}
+              title={veg ? 'Vegetarian' : 'Non-vegetarian'}
+            >
+              <span className={`block h-full w-full scale-50 rounded-full ${veg ? 'bg-emerald-600' : 'bg-red-600'}`} />
+            </span>
+          )}
           {item.title}
         </p>
         <div className="mt-0.5 flex items-center gap-1">
@@ -142,6 +163,25 @@ const GroceryTile: React.FC<{ group: OfferGroup }> = ({ group }) => {
           )}
         </div>
 
+        {/* E-COMMERCE: keep the in-site product page (gallery + every seller's price) reachable from the tile */}
+        {vertical === 'ecommerce' && (
+          <button
+            type="button"
+            onClick={() =>
+              openProductPage({
+                query: item.title,
+                seed: (item.sellerQuotes || []).map((q: any) => ({
+                  seller: q.sellerName, title: item.title, price: q.price,
+                  listPrice: q.originalPrice, image: q.sellerLogo || image || null, url: q.url,
+                })),
+              })
+            }
+            className="mt-1.5 w-full rounded-lg border border-slate-300 py-1.5 text-[10px] font-extrabold text-slate-700 cursor-pointer"
+          >
+            Compare prices
+          </button>
+        )}
+
         {/* Order goes to the partner's own page for THIS product */}
         <button
           type="button"
@@ -158,10 +198,13 @@ const GroceryTile: React.FC<{ group: OfferGroup }> = ({ group }) => {
   );
 };
 
-export const GroceryGrid: React.FC<{ groups: OfferGroup[] }> = ({ groups }) => (
+export const ProductGrid: React.FC<{ groups: OfferGroup[]; vertical: string }> = ({ groups, vertical }) => (
   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
     {groups.map((g) => (
-      <GroceryTile key={g.key + g.best.item.id} group={g} />
+      <ProductTile key={g.key + g.best.item.id} group={g} vertical={vertical} />
     ))}
   </div>
 );
+
+/** Kept for the grocery call site's name; identical behaviour. */
+export const GroceryGrid = ProductGrid;

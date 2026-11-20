@@ -2394,14 +2394,14 @@ class _FeedBody {
         // Multi-class pagination is fully handled above — never re-enter the
         // shared pair math (it would double-paginate widget lists).
         return all;
-      } else if (meta.id == 'grocery') {
-        // GROCERY (owner 20 Nov): a product grid, not a list of comparison rows — the shape a 10-minute
-        // shopper reads. Its own pagination (the shared pair math assumes one card + one gap per group, and a
+      } else if (const ['grocery', 'ecommerce', 'food'].contains(meta.id)) {
+        // RETAIL GRID (owner 20 Nov: grocery first, then "ecommerce and food mai v yahi design rkho"): a product
+        // grid, not a list of comparison rows — the shape a shopper reads. Its own pagination (the shared pair math assumes one card + one gap per group, and a
         // grid chunk is one widget for several products).
         final total = groups.length;
         final showAll = !FeedPage.showLoadMore(vertical: meta.id, visible: visibleCount, total: total);
         final shown = showAll ? groups : groups.take(visibleCount).toList();
-        final out = <Widget>[GroceryGridChunk(groups: shown)];
+        final out = <Widget>[GroceryGridChunk(groups: shown, vertical: meta.id)];
         if (!showAll) {
           out.add(_LoadMoreButton(remaining: total - shown.length, noun: 'products', onTap: onLoadMore));
           out.add(const SizedBox(height: 12));

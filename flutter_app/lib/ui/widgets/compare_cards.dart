@@ -25,6 +25,11 @@ import 'kit.dart';
 /// Ecom 'Compare' button (web parity, owner rule: every e-commerce card carries
 /// one). Opens the in-app product detail page seeded with THIS card's own
 /// sellerQuotes so 100% of found sellers + gallery images show immediately.
+/// Public entry to the e-commerce product page, so the retail grid's tile can keep the same in-site comparison
+/// the ecom cards offer (owner 20 Nov: the grid must not drop a capability the old card had).
+void openComparePage(BuildContext context, {required CompareItem it, required OfferGroup g}) =>
+    _openComparePage(context, it: it, g: g);
+
 void _openComparePage(BuildContext context, {required CompareItem it, required OfferGroup g}) {
   final heroImage = it.imageUrl;
   final seed = <Map<String, Object?>>[

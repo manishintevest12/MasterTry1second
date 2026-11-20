@@ -7,7 +7,7 @@ import { sameVertical } from '../lib/verticalAlias';
 import { PriceAdviceSidebar } from './PriceAdviceSidebar';
 import { SortAndSummaryTabs } from './SortAndSummaryTabs';
 import { ComparisonCard } from './ComparisonCard';
-import { GroceryGrid } from './GroceryGrid';
+import { ProductGrid } from './GroceryGrid';
 import { initialFor, stepFor } from '../lib/feedPaging';
 import { TravelDealRow } from './TravelDealRow';
 import { liftGroupSchedule, scheduleCompleteFirst } from '../utils/flightSchedule';
@@ -199,6 +199,7 @@ export const ComparisonFeed: React.FC = () => {
 
   // OWNER 20 Nov: a grid screen is 12 tiles, not 4. The app has always opened product feeds at 12 (+8 per
   // tap); the web now follows the same rule, and only the tall movie cards keep the 4-at-a-time reveal.
+  const RETAIL_GRID_VERTICALS = ['grocery', 'ecommerce', 'food'];
   const INITIAL_VISIBLE_COUNT = initialFor(vertical);
   const LOAD_MORE_STEP = stepFor(vertical);
   // Zero-based row index the in-feed sponsored unit follows: 5 => after the 6th card (owner 9 Nov).
@@ -473,12 +474,13 @@ export const ComparisonFeed: React.FC = () => {
                   that never reaches 6 rows keeps the unit under the list so short answers still
                   monetise. Hotels keep the below-list unit because that grid renders 3-up cards and an
                   inserted full-width block would break the grid rhythm. */}
-              {/* 10-MIN GROCERY (owner 20 Nov): the shopper's own shape — a product grid with image, % off,
-                  delivery time, pack, price/MRP, the partner's name, ADD/stepper and Order — instead of a
-                  comparison row. Same data, same rules, different reading order. */}
-              {vertical === 'grocery' && <GroceryGrid groups={visibleGroups} />}
+              {/* RETAIL GRID (owner 20 Nov: grocery, then "ecommerce and food mai v yahi design rkho"): the
+                  shopper's own shape — image, % off, delivery time, pack, price/MRP, the partner's name,
+                  ADD/stepper and Order — instead of a comparison row. Same data, same rules, different reading
+                  order. E-commerce keeps its in-site price comparison on the tile; food keeps its veg mark. */}
+              {RETAIL_GRID_VERTICALS.includes(vertical) && <ProductGrid groups={visibleGroups} vertical={vertical} />}
 
-              {vertical === 'grocery' ? null : isHotels
+              {RETAIL_GRID_VERTICALS.includes(vertical) ? null : isHotels
                 ? visibleHotels.map((g) => <HotelDealCard key={g.key + g.best.item.id} group={g} />)
                 : (vertical === 'creditcards' ? visibleGroups : visibleGroups).map((g, i) => (
                     <React.Fragment key={g.key + g.best.item.id}>

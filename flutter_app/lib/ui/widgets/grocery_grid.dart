@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import '../../core/compare.dart';
 import '../../core/grocery_cart.dart';
 import '../../core/theme.dart';
-import 'compare_cards.dart' show openPartnerExit;
+import 'compare_cards.dart' show openComparePage, openPartnerExit;
 import 'grocery_cart_sheet.dart';
 import 'kit.dart';
 
-/// 10-MIN GROCERY GRID (owner 20 Nov, second pass — web parity).
+/// RETAIL GRID — grocery, e-commerce and food (owner 20 Nov: "ecommerce and food mai v yahi design rkho").
 ///
 /// The behaviour was already right (partner name, ADD/stepper, Order); the SHAPE was still a comparison row. A
 /// grocery shopper reads a grid: image, % off, delivery time, title, pack, price/MRP, partner, ADD. This is that
@@ -15,8 +15,10 @@ import 'kit.dart';
 /// persisted basket, and Order leaves through the same tracked exit as every other card (openPartnerExit), so no
 /// checkout is implied here.
 class GroceryGridChunk extends StatelessWidget {
-  const GroceryGridChunk({super.key, required this.groups});
+  const GroceryGridChunk({super.key, required this.groups, this.vertical = 'grocery'});
   final List<OfferGroup> groups;
+  /// Which retail vertical this chunk is rendering; only the additive bits differ (veg mark, compare link).
+  final String vertical;
 
   @override
   Widget build(BuildContext context) {
@@ -28,9 +30,9 @@ class GroceryGridChunk extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: GroceryTile(group: pair[0])),
+            Expanded(child: GroceryTile(group: pair[0], vertical: vertical)),
             const SizedBox(width: 10),
-            Expanded(child: pair.length > 1 ? GroceryTile(group: pair[1]) : const SizedBox.shrink()),
+            Expanded(child: pair.length > 1 ? GroceryTile(group: pair[1], vertical: vertical) : const SizedBox.shrink()),
           ],
         ),
       ));
@@ -40,10 +42,20 @@ class GroceryGridChunk extends StatelessWidget {
 }
 
 class GroceryTile extends StatelessWidget {
-  const GroceryTile({super.key, required this.group});
+  const GroceryTile({super.key, required this.group, this.vertical = 'grocery'});
   final OfferGroup group;
+  final String vertical;
 
   String _inr(double n) => groceryRupees(n);
+
+  /// Food only: true = veg, false = non-veg, null = the source did not say (never inferred from the name).
+  bool? _vegMark(CompareItem item) {
+    if (vertical != 'food') return null;
+    final raw = (item.spec('is_veg').isNotEmpty ? item.spec('is_veg') : item.spec('veg')).toLowerCase();
+    if (raw == 'true' || raw == 'yes') return true;
+    if (raw == 'false' || raw == 'no') return false;
+    return null;
+  }
 
   /// First real ETA the source gave us — never invented.
   String _eta() {
@@ -142,8 +154,36 @@ class GroceryTile extends StatelessWidget {
                     Text(partner.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: tx(context, 8.5, w: FontWeight.w900, color: muted(context))),
                     const SizedBox(height: 2),
-                    Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: tx(context, 11.5, w: FontWeight.w800, h: 1.2)),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_vegMark(item) != null) ...[
+                          Container(
+                            margin: const EdgeInsets.only(top: 2, right: 3),
+                            width: 9,
+                            height: 9,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: _vegMark(item)! ? T1SColors.emerald600 : T1SColors.red, width: 1),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                            child: Center(
+                              child: Container(
+                                width: 4,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: _vegMark(item)! ? T1SColors.emerald600 : T1SColors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                        Expanded(
+                          child: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                              style: tx(context, 11.5, w: FontWeight.w800, h: 1.2)),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 2),
                     Text(unit.isEmpty ? '' : unit, style: tx(context, 10, w: FontWeight.w600, color: muted(context))),
                     const SizedBox(height: 6),
@@ -200,6 +240,24 @@ class GroceryTile extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
+                    if (vertical == 'ecommerce')
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: GestureDetector(
+                          onTap: () => openComparePage(context, it: item, g: group),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 5),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: border(context)),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text('Compare prices',
+                                textAlign: TextAlign.center,
+                                style: tx(context, 9.5, w: FontWeight.w900, color: ink(context))),
+                          ),
+                        ),
+                      ),
                     GestureDetector(
                       onTap: quote == null
                           ? null
