@@ -8,6 +8,7 @@ import 'package:try1second/core/feed_page.dart';
 /// was left behind it. Movies now page like the web (4 +4) while the compact verticals keep the owner's
 /// 7 Nov rule (open with a full screen of 12, +8 per tap).
 void main() {
+  groceryGridPaging();
   test('movies reveal four cards first, like the web', () {
     expect(FeedPage.initialFor('movies'), 4);
     expect(FeedPage.stepFor('movies'), 4);
@@ -48,5 +49,26 @@ void main() {
     }
     expect(visible, greaterThanOrEqualTo(total));
     expect(taps, 3, reason: '4 -> 8 -> 12 -> 16 for 15 films');
+  });
+}
+
+/// OWNER 20 Nov: "abhi 4 card ke baad hi load more aa raha hai, 12 card ke baad aana chaiye." The grocery feed is
+/// a 2-up grid, so a full screen is 12 tiles and each tap adds 8 — the same numbers the web now uses. Pinned here
+/// so a future pagination tweak cannot quietly cut the grocery grid back to 4.
+void groceryGridPaging() {
+  test('grocery opens with 12 tiles and adds 8', () {
+    expect(FeedPage.initialFor('grocery'), 12);
+    expect(FeedPage.stepFor('grocery'), 8);
+  });
+
+  test('12 shown of 20 offers the pill, 12 of 12 does not', () {
+    expect(FeedPage.showLoadMore(vertical: 'grocery', visible: 12, total: 20), isTrue);
+    expect(FeedPage.showLoadMore(vertical: 'grocery', visible: 12, total: 12), isFalse);
+    expect(FeedPage.remaining(visible: 12, total: 20), 8);
+  });
+
+  test('movies keep the 4-at-a-time reveal', () {
+    expect(FeedPage.initialFor('movies'), 4);
+    expect(FeedPage.stepFor('movies'), 4);
   });
 }
