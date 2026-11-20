@@ -7,6 +7,7 @@ import { sameVertical } from '../lib/verticalAlias';
 import { PriceAdviceSidebar } from './PriceAdviceSidebar';
 import { SortAndSummaryTabs } from './SortAndSummaryTabs';
 import { ComparisonCard } from './ComparisonCard';
+import { GroceryGrid } from './GroceryGrid';
 import { TravelDealRow } from './TravelDealRow';
 import { liftGroupSchedule, scheduleCompleteFirst } from '../utils/flightSchedule';
 import { HotelDealCard } from './HotelDealCard';
@@ -468,7 +469,12 @@ export const ComparisonFeed: React.FC = () => {
                   that never reaches 6 rows keeps the unit under the list so short answers still
                   monetise. Hotels keep the below-list unit because that grid renders 3-up cards and an
                   inserted full-width block would break the grid rhythm. */}
-              {isHotels
+              {/* 10-MIN GROCERY (owner 20 Nov): the shopper's own shape — a product grid with image, % off,
+                  delivery time, pack, price/MRP, the partner's name, ADD/stepper and Order — instead of a
+                  comparison row. Same data, same rules, different reading order. */}
+              {vertical === 'grocery' && <GroceryGrid groups={visibleGroups} />}
+
+              {vertical === 'grocery' ? null : isHotels
                 ? visibleHotels.map((g) => <HotelDealCard key={g.key + g.best.item.id} group={g} />)
                 : (vertical === 'creditcards' ? visibleGroups : visibleGroups).map((g, i) => (
                     <React.Fragment key={g.key + g.best.item.id}>

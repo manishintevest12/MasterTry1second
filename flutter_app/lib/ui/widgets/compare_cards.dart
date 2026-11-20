@@ -454,6 +454,33 @@ Future<void> _launchCabAppBooking(String appBookUrl) async {
 
 /// Every Book/Buy tap first opens the redirect sheet: it confirms the direct
 /// price and surfaces the seller's real best offer/coupon before leaving.
+/// Public entry to the same redirect flow the comparison cards use (owner 20 Nov: the grocery grid tiles must
+/// leave through the SAME tracked exit as every other card — never a bare url_launcher hop).
+void openPartnerExit(
+  BuildContext context, {
+  required String sellerName,
+  required String title,
+  required String goUrl,
+  double? price,
+  String? image,
+  bool isLowest = false,
+  bool appOnly = false,
+  String vertical = '',
+  String? appBookUrl,
+}) =>
+    _openRedirect(
+      context,
+      sellerName: sellerName,
+      title: title,
+      goUrl: goUrl,
+      price: price,
+      image: image,
+      isLowest: isLowest,
+      appOnly: appOnly,
+      vertical: vertical,
+      appBookUrl: appBookUrl,
+    );
+
 void _openRedirect(
   BuildContext context, {
   required String sellerName,

@@ -15,6 +15,7 @@ import '../../core/search_poll.dart';
 import '../../core/feed_page.dart';
 import '../../core/funnel.dart';
 import '../widgets/grocery_cart_sheet.dart';
+import '../widgets/grocery_grid.dart';
 import '../widgets/compare_cards.dart';
 import '../widgets/hint_field.dart';
 import '../widgets/journey_date_picker_modal.dart';
@@ -2393,6 +2394,19 @@ class _FeedBody {
         // Multi-class pagination is fully handled above — never re-enter the
         // shared pair math (it would double-paginate widget lists).
         return all;
+      } else if (meta.id == 'grocery') {
+        // GROCERY (owner 20 Nov): a product grid, not a list of comparison rows — the shape a 10-minute
+        // shopper reads. Its own pagination (the shared pair math assumes one card + one gap per group, and a
+        // grid chunk is one widget for several products).
+        final total = groups.length;
+        final showAll = !FeedPage.showLoadMore(vertical: meta.id, visible: visibleCount, total: total);
+        final shown = showAll ? groups : groups.take(visibleCount).toList();
+        final out = <Widget>[GroceryGridChunk(groups: shown)];
+        if (!showAll) {
+          out.add(_LoadMoreButton(remaining: total - shown.length, noun: 'products', onTap: onLoadMore));
+          out.add(const SizedBox(height: 12));
+        }
+        return out;
       } else {
         all = [
           for (final g in groups) ...[
