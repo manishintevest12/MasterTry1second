@@ -64,7 +64,10 @@ export function routeTokensOf(route: unknown): { from: string; to: string } | nu
 
 const isPresenceRow = (offer: any): boolean =>
   String(offer?.id || '').startsWith('presence_')
-  || String(offer?.attributes?.price_basis || '') === 'live_fares_unavailable';
+  || String(offer?.attributes?.price_basis || '') === 'live_fares_unavailable'
+  // OWNER 19 Nov: a SELLER card for the requested date (no fare invented - e.g. Goibibo, whose route page is
+  // date-blind) is not a flight with a missing departure time, so it must not be hidden by the no-time rule.
+  || String(offer?.attributes?.seller_presence || '') === 'true';
 
 /** Route+date the row belongs to, as far as the row honestly tells us. */
 function routeDateOf(offer: any): { route: string; date: string } | null {
