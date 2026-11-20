@@ -14,6 +14,7 @@ import '../../core/verticals.dart';
 import '../../core/search_poll.dart';
 import '../../core/feed_page.dart';
 import '../../core/funnel.dart';
+import '../widgets/grocery_cart_sheet.dart';
 import '../widgets/compare_cards.dart';
 import '../widgets/hint_field.dart';
 import '../widgets/journey_date_picker_modal.dart';
@@ -838,6 +839,10 @@ class _CompareScreenState extends State<CompareScreen> {
         ),
       ),
       ]),
+      // GROCERY CART (owner 20 Nov): the basket the card steppers feed. Sits above the Smart Cart pill,
+      // shows the running total and opens the cart sheet where each group names its partner.
+      if (_meta.id == 'grocery')
+        Positioned(left: 0, right: 0, bottom: 18, child: const GroceryCartBar()),
       // Smart Cart (owner rule): floating basket on the grocery vertical.
       if (_meta.id == 'grocery' && app.smartCart.isNotEmpty)
         Positioned(

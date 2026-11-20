@@ -19960,6 +19960,46 @@ var init_flights = __esm({
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Goibibo route page HTTP ${r.status}`, r.status);
             const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
             if (!items.length) return [];
+            const depRaw = String(ctx.query?.travelDates?.depart || "");
+            const wantedDate = /^\d{4}-\d{2}-\d{2}$/.test(depRaw) ? depRaw : "";
+            if (wantedDate) {
+              const dated = items.filter((i) => String(i.travel?.date || "") === wantedDate);
+              if (dated.length) {
+                dated.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+                return dated.slice(0, 40);
+              }
+              const slug5 = (c) => String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, "-");
+              const datedUrl = `https://www.goibibo.com/flights/${slug5(rt.from)}-to-${slug5(rt.to)}-flights/?depdate=${wantedDate.replace(/-/g, "")}`;
+              const base = items[0];
+              const bAttr = base?.attributes || {};
+              return [newRawItem(ctx.source, {
+                title: `Goibibo ${bAttr.airline || "flight"} ${bAttr.flight_number || ""} ${rt.from} \u2192 ${rt.to} on ${wantedDate} \u2014 check live fare`.replace(/\s+/g, " ").slice(0, 200),
+                brand: String(bAttr.airline || "Goibibo"),
+                seller: "Goibibo",
+                sellerUrl: datedUrl,
+                travel: { route: `${String(rt.from).toLowerCase()} to ${String(rt.to).toLowerCase()}`, date: wantedDate },
+                attributes: {
+                  airline: String(bAttr.airline || ""),
+                  flight_number: String(bAttr.flight_number || ""),
+                  ...bAttr.departure ? { departure: String(bAttr.departure) } : {},
+                  ...bAttr.arrival ? { arrival: String(bAttr.arrival) } : {},
+                  ...bAttr.duration ? { duration: String(bAttr.duration) } : {},
+                  stops: String(bAttr.stops ?? ""),
+                  origin: String(bAttr.origin || ""),
+                  destination: String(bAttr.destination || ""),
+                  price_basis: "live_fares_unavailable",
+                  seller_presence: "true",
+                  booking_cta: "Check Goibibo for this date",
+                  data_note: `Goibibo's server-rendered route page only carries a far-future service date, so no fare is shown for ${wantedDate} rather than another day's price. The airline and schedule are real; the button opens Goibibo's own search for this date.`,
+                  image: String(bAttr.image_url || "")
+                },
+                identifiers: { sku: `gi-${slug5(rt.from)}-${slug5(rt.to)}-${wantedDate}` },
+                evidence: {
+                  sourceUrl: datedUrl,
+                  extractedFields: ["route page schedule (airline, flight number, times); no fare for the requested date"]
+                }
+              })];
+            }
             items.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
             return items.slice(0, 40);
           }
@@ -33139,7 +33179,7 @@ function createMaskingPointer(destination, opts = {}) {
     return "";
   }
   const vertical = String(opts.vertical || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 16);
-  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {}, ...vertical ? { v: vertical } : {} }));
+  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {}, ...vertical ? { v: vertical } : {}, ...opts.direct ? { n: 1 } : {} }));
   const sig = import_crypto23.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
@@ -33156,7 +33196,9 @@ function resolveMaskingPointer(token) {
       destination: String(j.d),
       offerId: j.o ? String(j.o) : void 0,
       trusted: j.t === 1,
-      vertical: j.v ? String(j.v) : void 0
+      vertical: j.v ? String(j.v) : void 0,
+      // `n: 1` = a discovery exit (Nearby card): skip our own interstitial and go straight to the partner.
+      direct: j.n === 1
     };
   } catch {
     return null;
@@ -37831,7 +37873,7 @@ var init_flightTimeBackfill = __esm({
     harvestCache = /* @__PURE__ */ new Map();
     harvestInflight = /* @__PURE__ */ new Map();
     slug4 = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, "_");
-    isPresenceRow = (offer) => String(offer?.id || "").startsWith("presence_") || String(offer?.attributes?.price_basis || "") === "live_fares_unavailable";
+    isPresenceRow = (offer) => String(offer?.id || "").startsWith("presence_") || String(offer?.attributes?.price_basis || "") === "live_fares_unavailable" || String(offer?.attributes?.seller_presence || "") === "true";
     withBudget2 = (p, ms, fallback) => new Promise((resolve) => {
       const timer = setTimeout(() => resolve(fallback), ms);
       if (typeof timer.unref === "function") timer.unref();
@@ -50293,7 +50335,7 @@ var init_serviceNetworks = __esm({
       cng: [
         { name: "IGL CNG stations", url: "https://www.iglonline.net/English/OurNetwork.aspx", sub: "CNG network" },
         { name: "Adani Total Gas", url: "https://www.adanitotalgas.com/cng-stations", sub: "CNG network" },
-        { name: "Torrent Gas", url: "https://www.torrentgas.com/cng-stations", sub: "CNG network" },
+        { name: "Torrent Gas", url: "https://www.torrentgas.com/", sub: "CNG network" },
         { name: "GAIL Gas", url: "https://www.gailgas.com/cng-stations", sub: "CNG network" }
       ],
       lpg: [
@@ -50316,9 +50358,9 @@ var init_serviceNetworks = __esm({
         { name: "Royal Enfield Service", url: "https://www.royalenfield.com/in/en/service/", sub: "two-wheeler service network" }
       ],
       puncture: [
-        { name: "MRF dealer locator", url: "https://www.mrftyres.com/dealer-locator", sub: "tyre & puncture dealers" },
+        { name: "MRF dealer locator", url: "https://www.mrftyres.com/", sub: "tyre & puncture dealers" },
         { name: "Apollo Tyres dealers", url: "https://www.apollotyres.com/en-in/find-a-dealer/", sub: "tyre & puncture dealers" },
-        { name: "CEAT dealers", url: "https://www.ceat.com/dealer-locator.html", sub: "tyre & puncture dealers" },
+        { name: "CEAT dealers", url: "https://www.ceat.com/", sub: "tyre & puncture dealers" },
         { name: "JK Tyre dealers", url: "https://www.jktyre.com/dealer-locator.aspx", sub: "tyre & puncture dealers" }
       ],
       battery: [
@@ -50329,9 +50371,9 @@ var init_serviceNetworks = __esm({
         { name: "SF Sonic", url: "https://www.sfsonic.com/", sub: "battery dealer network" }
       ],
       tyres: [
-        { name: "MRF dealer locator", url: "https://www.mrftyres.com/dealer-locator", sub: "tyre dealer network" },
+        { name: "MRF dealer locator", url: "https://www.mrftyres.com/", sub: "tyre dealer network" },
         { name: "Apollo Tyres dealers", url: "https://www.apollotyres.com/en-in/find-a-dealer/", sub: "tyre dealer network" },
-        { name: "CEAT dealers", url: "https://www.ceat.com/dealer-locator.html", sub: "tyre dealer network" },
+        { name: "CEAT dealers", url: "https://www.ceat.com/", sub: "tyre dealer network" },
         { name: "JK Tyre dealers", url: "https://www.jktyre.com/dealer-locator.aspx", sub: "tyre dealer network" },
         { name: "Michelin India", url: "https://www.michelin.in/auto/dealers", sub: "tyre dealer network" }
       ],
@@ -50469,7 +50511,11 @@ function absoluteExit(url) {
 function pointer(url, category) {
   const dest = /^https?:\/\//i.test(url) ? url : "";
   if (!dest) return "";
-  return createMaskingPointer(dest, { vertical: category === "hotels" || category === "stays" ? "hotels" : category === "cabs" ? "cab" : "nearby", trusted: true });
+  return createMaskingPointer(dest, {
+    vertical: category === "hotels" || category === "stays" ? "hotels" : category === "cabs" ? "cab" : "nearby",
+    trusted: true,
+    direct: true
+  });
 }
 function norm9(name) {
   return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -53710,6 +53756,7 @@ async function nearbyHandler(req, res) {
       offset: Number(req.query.offset) || 0
     });
     res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Vary", "User-Agent");
     res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(answer.results) } : answer);
   } catch (e2) {
     const message = String(e2?.message || e2).slice(0, 300);
@@ -56799,7 +56846,8 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
         platform: isInAppWebView(req.headers["user-agent"]) ? "android" : "web"
       }], { userId: exitUserId }).catch(() => 0);
       if (exitUserId) void qualifyReferral(exitUserId, "outbound_click", getStore()).catch(() => null);
-      const fromApp = String(req.query.app || "") === "1" || isInAppWebView(req.headers["user-agent"]);
+      const isNearbyExit = String(resolved.vertical || "") === "nearby" || resolved.direct === true;
+      const fromApp = String(req.query.app || "") === "1" || isNearbyExit || isInAppWebView(req.headers["user-agent"]);
       if (fromApp) {
         res.redirect(302, dl.trackingUrl);
         return;
@@ -63632,6 +63680,8 @@ function listSeoPaths(includeThin = false) {
   }
   for (const [a, b] of FLIGHT_ROUTES) paths.push(`/flights/${routeSlug(a, b, "flights")}`);
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, "bus")}`);
+  for (const slug5 of new Set(FLIGHT_ROUTES.flat())) paths.push(`/flights/${slug5}`);
+  for (const slug5 of new Set(BUS_ROUTES.flat())) paths.push(`/bus/${slug5}`);
   {
     paths.push("/price");
     for (const e2 of pricePathsNow()) paths.push(e2.path);
@@ -63820,6 +63870,51 @@ function resolveSeoPage(path19) {
         { label: "Best prices in every state", href: "/answers" }
       ]
     };
+  }
+  if ((head3 === "flights" || head3 === "bus") && tail && !/-to-/.test(tail)) {
+    const citySlug2 = tail;
+    const routes = (head3 === "flights" ? FLIGHT_ROUTES : BUS_ROUTES).filter(([a, b]) => a === citySlug2 || b === citySlug2).map(([a, b]) => ({ from: a, to: b, label: a === citySlug2 ? b : a })).slice(0, 12);
+    if (routes.length >= 2) {
+      const C = cityName(citySlug2);
+      const isFlights = head3 === "flights";
+      const others = routes.map((r) => cityName(r.label));
+      const listPhrase = others.slice(0, 4).join(", ");
+      const noun = isFlights ? "flights" : "buses";
+      return {
+        path: clean4,
+        title: isFlights ? `Flights from ${C} \u2014 Compare Live Airfares to ${others.length} Cities | Try1Second` : `Bus Tickets from ${C} \u2014 Compare Live Fares to ${others.length} Cities | Try1Second`,
+        description: isFlights ? `Compare live ${noun} from ${C} to ${listPhrase} and ${others.length - 4 > 0 ? `${others.length - 4} more` : "more"} cities across airlines and OTAs. Every fare ranked lowest first, direct booking links included.` : `Compare live bus fares from ${C} to ${listPhrase} and more across redBus, zingbus, AbhiBus and state carriers. Every operator and price on one screen, cheapest seat first.`,
+        h1: isFlights ? `Flights from ${C} \u2014 Live Fare Comparison` : `Bus from ${C} \u2014 Live Fare Comparison`,
+        intro: [
+          isFlights ? `Every route below is a live comparison: one search asks airlines and travel sites together for ${C} departures, and the fares come back ranked cheapest first.` : `Every route below is a live comparison: one search asks redBus, zingbus, AbhiBus and state carriers together for ${C} departures, and the fares come back cheapest first.`,
+          `Fares out of ${C} move through the day, so each route page shows what every source reports right now with a direct link to book on that seller. We never resell the ticket.`
+        ],
+        faqs: isFlights ? [
+          { q: `Which cities can I fly to from ${C}?`, a: `This page lists the ${C} routes we compare live, including ${listPhrase}. Open any route to see every airline and OTA fare side by side.` },
+          { q: `How do I find the cheapest flight from ${C}?`, a: `Pick your destination route here and run the comparison: we query airlines and OTAs live and rank every returned fare lowest first.` },
+          { q: "Do you charge a booking fee?", a: `No. You book on the airline or OTA site at their price. Try1Second only finds and ranks the fares.` }
+        ] : [
+          { q: `Which operators run buses from ${C}?`, a: `The route pages here compare every operator our sources return live \u2014 private carriers plus state road transport buses where they run.` },
+          { q: `How do I find the cheapest bus from ${C}?`, a: `Open your destination route and the comparison lists every operator and fare, cheapest seat first.` }
+        ],
+        breadcrumbs: [
+          { name: "Home", path: "/" },
+          { name: isFlights ? "Flights" : "Bus", path: isFlights ? "/flights" : "/bus" },
+          { name: `${isFlights ? "Flights" : "Bus"} from ${C}`, path: clean4 }
+        ],
+        links: [
+          { label: isFlights ? "All flight routes" : "All bus routes", href: isFlights ? "/flights" : "/bus" },
+          ...routes.slice(0, 8).map((r) => ({
+            label: isFlights ? `${cityName(r.from)} to ${cityName(r.to)} flights` : `${cityName(r.from)} to ${cityName(r.to)} bus`,
+            href: `/${head3}/${routeSlug(r.from, r.to, isFlights ? "flights" : "bus")}`
+          })),
+          { label: `${C} hotels`, href: `/hotels/${citySlug2}` },
+          { label: `${C} cabs`, href: `/cabs/${citySlug2}` },
+          { label: `${C} nearby places`, href: `/nearby/restaurants/${citySlug2}` },
+          { label: `Best ${isFlights ? "flight" : "bus"} comparison in India`, href: isFlights ? "/best/flights" : "/best/bus" }
+        ]
+      };
+    }
   }
   if (head3 === "flights" && /-to-.*-flights$/.test(tail)) {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-flights$/.exec(tail);
@@ -64052,6 +64147,23 @@ var init_data = __esm({
       shimla: "SLV"
     };
     FLIGHT_ROUTES = [
+      // OWNER 19 Nov: tier-2 coverage for the city hubs ("flights from Indore" and friends). Real, searched routes.
+      ["indore", "delhi"],
+      ["indore", "mumbai"],
+      ["indore", "bengaluru"],
+      ["indore", "hyderabad"],
+      ["indore", "pune"],
+      ["indore", "jaipur"],
+      ["indore", "ahmedabad"],
+      ["indore", "goa"],
+      ["bhopal", "delhi"],
+      ["bhopal", "mumbai"],
+      ["nagpur", "mumbai"],
+      ["nagpur", "delhi"],
+      ["surat", "delhi"],
+      ["surat", "mumbai"],
+      ["jaipur", "mumbai"],
+      ["lucknow", "delhi"],
       ["delhi", "mumbai"],
       ["delhi", "bengaluru"],
       ["mumbai", "bengaluru"],
@@ -64094,6 +64206,19 @@ var init_data = __esm({
       ["visakhapatnam", "delhi"]
     ];
     BUS_ROUTES = [
+      // OWNER 19 Nov: same tier-2 coverage for "bus from <city>" hubs.
+      ["indore", "bhopal"],
+      ["indore", "ujjain"],
+      ["indore", "mumbai"],
+      ["indore", "pune"],
+      ["indore", "delhi"],
+      ["indore", "jaipur"],
+      ["indore", "ahmedabad"],
+      ["indore", "nagpur"],
+      ["bhopal", "indore"],
+      ["ujjain", "indore"],
+      ["nagpur", "pune"],
+      ["surat", "mumbai"],
       ["delhi", "jaipur"],
       ["delhi", "agra"],
       ["delhi", "lucknow"],

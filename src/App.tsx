@@ -8,6 +8,8 @@ import { lazyWithRetry } from './lib/lazyWithRetry';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { SponsoredSmartlink } from './components/NetworkAdTags';
 import { AppProvider, useApp } from './context/AppContext';
+import { GroceryCartProvider } from './context/GroceryCartContext';
+import { GroceryCartBar, GroceryCartSheet } from './components/GroceryCart';
 import { Navbar } from './components/Navbar';
 import { VerticalNav } from './components/VerticalNav';
 import { SearchAndFilterHeader } from './components/SearchAndFilterHeader';
@@ -130,6 +132,10 @@ const MainContent: React.FC = () => {
       {/* Fixed Bottom Bar: Home, AI Insights, Compare, Rewards */}
       {!isFullDashboard && <FixedBottomBar />}
 
+      {/* Grocery cart: the floating bar (only when the basket has something) and its sheet. */}
+      <GroceryCartBar />
+      <GroceryCartSheet />
+
       {/* Web -> app entry (owner 19 Nov): mobile web only, after real use, once per session, dismissible for
           30 days. It sits above the bottom bar and never covers content or interrupts a search. */}
       {!isFullDashboard && <AppEntryBar active={!isFullDashboard} />}
@@ -142,10 +148,14 @@ export default function App() {
   // Owner 3 Nov: the vertical must open in THIS tab and the ad must wait in another one.
   return (
     <AppProvider>
-      {/* OWNER 31 Oct: a failed chunk/render must never leave a blank white page. */}
-      <AppErrorBoundary>
-        <MainContent />
-      </AppErrorBoundary>
+      {/* Grocery basket (owner 20 Nov): one provider above the router so the card stepper, the floating cart
+          bar and the cart sheet all read the same basket. */}
+      <GroceryCartProvider>
+        {/* OWNER 31 Oct: a failed chunk/render must never leave a blank white page. */}
+        <AppErrorBoundary>
+          <MainContent />
+        </AppErrorBoundary>
+      </GroceryCartProvider>
     </AppProvider>
   );
 }
