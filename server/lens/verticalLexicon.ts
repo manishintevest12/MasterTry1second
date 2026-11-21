@@ -68,6 +68,16 @@ const FOOD_TERMS = [
   'butter chicken', 'dal makhani', 'paneer butter masala', 'fried rice', 'mutton curry',
   'cake', 'pastry', 'ice cream', 'dessert', 'sweets', 'mithai', 'gulab jamun', 'rasgulla',
   'cold coffee', 'milkshake', 'shake', 'smoothie', 'lassi', 'falooda',
+  // OWNER 20 Nov: a cooked RICE dish is a dish, not a bag of grain. The lexicon only knew
+  // 'fried rice', so 'curd rice', 'jeera rice', 'lemon rice', 'boiled rice' and 'sambar'
+  // were priced as grocery staples (or, for sambar/rasam/upma, fell through to shopping).
+  'curd rice', 'jeera rice', 'lemon rice', 'tamarind rice', 'boiled rice', 'steamed rice',
+  'plain rice', 'veg rice', 'ghee rice', 'bisi bele bath', 'sambar', 'sambhar', 'rasam',
+  'upma', 'uppuma', 'pongal', 'khichdi', 'khichadi', 'rajma chawal', 'dal chawal',
+  'chole bhature', 'chana bhatura', 'aloo paratha', 'paneer paratha', 'parotta', 'parotta',
+  'appam', 'puttu', 'shawarma', 'chicken 65', 'chilli chicken', 'chilli paneer',
+  'misal pav', 'puri', 'dahi vada', 'medu vada', 'idli sambar', 'pav bhajji',
+  'kheer', 'payasam', 'halwa', 'jalebi', 'kulfi', 'rasmalai', 'pakora', 'pakode', 'bhajji',
   // how people ask for restaurant food
   'restaurant', 'dhaba', 'cafe', 'menu', 'order food', 'food delivery', 'near me khana',
   'khana', 'lunch', 'dinner', 'breakfast', 'nashta', 'tiffin',
@@ -79,6 +89,76 @@ const FOOD_TERMS = [
   'mcdonald', 'subway', 'starbucks', 'barbeque nation', 'bikanervala', 'eatsure',
   'oven story', 'faasos', 'behrouz', 'third wave coffee',
 ];
+
+/**
+ * Every grocery/food noun this module knows, as a flat set. The place-repair pass in
+ * questionNormalizer uses it: "basmati" is two edits from the town Baramati, so a
+ * question about basmati rice was being rewritten to "Baramati rice" and priced as a
+ * different product (owner 20 Nov: "ai ko samajhna chahiye user kya maang raha hai").
+ */
+const PRODUCT_WORDS = new Set<string>([
+  ...GROCERY_TERMS.flatMap((t) => t.split(' ')),
+  ...FOOD_TERMS.flatMap((t) => t.split(' ')),
+]);
+
+/** True when a single token is a grocery/food noun and must never be "repaired" into a place. */
+export function isProductWord(token: string): boolean {
+  const w = String(token || '').toLowerCase().replace(/[^a-z]/g, '');
+  return w.length > 0 && PRODUCT_WORDS.has(w);
+}
+
+/**
+ * Terms that live on BOTH shelves (owner 20 Nov).
+ *
+ * "dosa" came back from the grocery apps only, and "rice" only as raw grain, while the
+ * same word also exists as a restaurant dish. A single-vertical answer is therefore a
+ * wrong answer for these words: the assistant has to price both and say which is which.
+ * The pair is only used to ADD the second shelf - detectCategoryVertical keeps deciding
+ * the primary vertical, so every existing route stays exactly as it was.
+ */
+const DUAL_TERMS: Array<{ re: RegExp; primary: CategoryVertical; secondary: CategoryVertical }> = [
+  { re: /(?:^|[^a-z])rice(?![a-z])/i, primary: 'grocery', secondary: 'food' },
+  { re: /(?:^|[^a-z])chawal(?![a-z])/i, primary: 'grocery', secondary: 'food' },
+  { re: /(?:^|[^a-z])poha(?![a-z])/i, primary: 'grocery', secondary: 'food' },
+  { re: /(?:^|[^a-z])chicken(?![a-z])/i, primary: 'grocery', secondary: 'food' },
+  { re: /(?:^|[^a-z])paneer(?![a-z])/i, primary: 'grocery', secondary: 'food' },
+  { re: /(?:^|[^a-z])maggie?(?![a-z])/i, primary: 'grocery', secondary: 'food' },
+  { re: /(?:^|[^a-z])dosa(?![a-z])/i, primary: 'food', secondary: 'grocery' },
+  { re: /(?:^|[^a-z])idli(?![a-z])/i, primary: 'food', secondary: 'grocery' },
+  { re: /(?:^|[^a-z])uttapam(?![a-z])/i, primary: 'food', secondary: 'grocery' },
+  { re: /(?:^|[^a-z])parathas?(?![a-z])/i, primary: 'food', secondary: 'grocery' },
+  { re: /(?:^|[^a-z])momos?(?![a-z])/i, primary: 'food', secondary: 'grocery' },
+  { re: /(?:^|[^a-z])samosa(?![a-z])/i, primary: 'food', secondary: 'grocery' },
+];
+
+/** "raw rice" / "rice 5 kg" / "packet wala" / "basmati rice" is a shelf product, not a plate. */
+const RAW_INTENT = /\b(raw|uncooked|un\s*cooked|kaccha|kacha|packet|pack|pouch|kilo|kg|kgs|gram|grams|gm|gms|atta|flour|brand)\b|\b\d+\s*(?:g|gm|gms|gram|grams|kg|kgs|ml|l|ltr|litre|liter|pcs|pieces?)\b/i;
+/** A rice VARIETY is a bag of grain, never a plate: "basmati rice", "sona masoori rice". */
+const RICE_VARIETY = /\b(basmati|sona\s*masoori|masoori|kolam|ponni|brown|red\s*rice|black\s*rice|mogra|pusa|idli\s*rice|rawa|broken\s*rice|mini\s*rice)\b/i;
+/** "dosa batter" / "idli mix" is the packaged twin, so the grocery shelf is the answer. */
+const BATTER_INTENT = /\b(batter|batter\s*only|mix|instant\s*mix|ready\s*mix|powder)\b/i;
+/** "order" / "plate" / "hot" / "restaurant" is a dish, not a shelf product. */
+const COOKED_INTENT = /\b(order|plate|hot|cooked|ready to eat|restaurant|cafe|dhaba|zomato|swiggy|delivery|tiffin|khana|nashta|lunch|dinner|breakfast|table)\b/i;
+
+/**
+ * The second vertical an ambiguous word must also be priced in, or null.
+ * An explicit raw/cooked word settles it: "raw rice" is grocery only, "rice plate" is food only.
+ */
+export function dualCategoryFor(text: string): { primary: CategoryVertical; secondary: CategoryVertical } | null {
+  const t = String(text || '').toLowerCase();
+  if (!t.trim()) return null;
+  if (RAW_INTENT.test(t) || COOKED_INTENT.test(t)) return null;
+  if (RICE_VARIETY.test(t) || BATTER_INTENT.test(t)) return null;
+  const primary = detectCategoryVertical(t);
+  if (!primary) return null;
+  for (const d of DUAL_TERMS) {
+    if (!d.re.test(t)) continue;
+    // A dish phrase ("curd rice", "chicken biryani") is unambiguous: the dish already won.
+    if (d.primary !== primary) return null;
+    return { primary: d.primary, secondary: d.secondary };
+  }
+  return null;
+}
 
 /** Question words that must never reach a search box. */
 const QUESTION_NOISE =
@@ -113,6 +193,9 @@ const QUANTITY_RE = /\b\d+\s*(?:g|gm|gms|gram|grams|kg|kgs|ml|l|ltr|litre|liter|
 export function detectCategoryVertical(text: string): CategoryVertical | null {
   const t = String(text || '').toLowerCase();
   if (!t.trim()) return null;
+  // "dosa batter" / "idli mix" / "sambar powder" is a packaged product even though the word
+  // in front of it is a dish: the grocery shelf is the only place that can price it.
+  if (BATTER_INTENT.test(t)) return 'grocery';
   const food = FOOD_RE.test(t);
   const grocery = GROCERY_RE.test(t);
   if (food && !grocery) return 'food';
@@ -124,7 +207,14 @@ export function detectCategoryVertical(text: string): CategoryVertical | null {
     }
     return 'food';
   }
-  if (grocery) return 'grocery';
+  if (grocery) {
+    // "order rice", "rice plate", "hot chicken" is a dish even though the noun is a staple:
+    // the user named the cooked version, so the restaurant apps are the ones that can price it.
+    if (COOKED_INTENT.test(t) && /(?:^|[^a-z])(rice|chawal|poha|chicken|paneer|maggi|noodles)(?![a-z])/i.test(t)) {
+      return 'food';
+    }
+    return 'grocery';
+  }
   return null;
 }
 

@@ -9,6 +9,7 @@ import 'compare.dart';
 import 'auth.dart';
 import 'storage.dart';
 import 'verticals.dart';
+import 'movie_price_gate.dart';
 
 /// The five bottom-bar sections of the website (FixedBottomBar.tsx) + the secondary
 /// screens reachable from the header menu.
@@ -271,7 +272,16 @@ class AppState extends ChangeNotifier {
       // sources "verified") must never count as a FRESH hit — paint it
       // instantly but revalidate quietly in the background like a stale one,
       // so the healthy multi-row scan replaces it on its own.
-      if (age <= freshTtlMs(key) && !hit.pendingRefresh && hit.items.length >= 3) return hit;
+      // OWNER 21 Nov ("price kabhi app mai movie mai aata hai kabhi ni aata hai"): a film list that
+      // carries no price yet is a SNAPSHOT taken before the seat band landed, not an answer. It used
+      // to be a fresh hit for the full five minutes, so one early response froze the movie feed
+      // price-less while the website (which revalidates) showed the fares. Paint it, never trust it.
+      final hitPriced = MoviePriceGate.pricedCount(hit.items.map((i) => i.priceAvailable));
+      final freshHit = age <= freshTtlMs(key) &&
+          hit.items.length >= 3 &&
+          MoviePriceGate.cacheHitIsFresh(key,
+              rows: hit.items.length, pricedRows: hitPriced, pendingRefresh: hit.pendingRefresh);
+      if (freshHit) return hit;
       // Stale-but-valid: paint INSTANTLY from cache and refresh quietly in the
       // background (web parity: never make the user watch a spinner for a
       // result we already have on screen).

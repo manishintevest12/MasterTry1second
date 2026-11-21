@@ -20,6 +20,7 @@
 
 import { INDIAN_CITIES } from '../seo/cityCorpus';
 import { translateIndic, type IndicScript } from './indicLexicon';
+import { isProductWord } from './verticalLexicon';
 
 /** Devanagari vocabulary the site actually answers. Cities come first because a question is mostly place. */
 const DEVA_TO_LATIN: Record<string, string> = {
@@ -222,6 +223,10 @@ export function repairPlace(token: string): string {
   if (NOT_A_PLACE.has(lowerRaw)) return token;
   const known = places().get(lowerRaw);
   if (known) return token.replace(raw, known);
+  // OWNER 20 Nov: a grocery/food noun is never a city. "basmati" is two edits from Baramati, so
+  // "basmati rice" was rewritten to "Baramati rice" and priced as a completely different product.
+  // The same guard protects "sambar", "upma", "paneer" and every other staple two edits from a town.
+  if (isProductWord(lowerRaw)) return token;
   const tol = raw.length >= 7 ? 2 : raw.length >= 5 ? 1 : 0;
   if (!tol) return token;
   for (const [key, canonical] of places()) {

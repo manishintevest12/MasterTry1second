@@ -30,6 +30,9 @@ export interface AssistantSubject {
   return?: string;
   /** sellers the last answer actually showed */
   sellers: string[];
+  /** OWNER 20 Nov: the second shelf the answer also priced ("rice" -> grocery + food), so a
+   *  refinement of that question keeps both shelves instead of silently dropping one. */
+  altVertical?: string;
   best?: { title: string; provider: string; price: number };
   at: number;
 }
@@ -118,6 +121,76 @@ const ASK_WHY_ONLY = /\b(sirf|only|just)\b[\s\S]{0,24}\b(kyun|kyu|why|bata|rahe|
 const ASK_CHEAPER = /\b(sasta|saste|sabse\s*sasta|cheap|cheaper|cheapest|lowest|kam\s*daam|best\s*price)\b/i;
 const ASK_DETAIL = /\b(detail|details|specs?|feature|features|kaisa|kaisi|review|reviews|accha|good|quality)\b/i;
 const ASK_REPEAT = /^\s*(phir\s*se|fir\s*se|again|dobara|repeat|wahi|same)\b/i;
+
+/**
+ * OWNER 20 Nov ("ai ko peechle msg ka idea hi ni hota"): a message that only ADDS a constraint to
+ * the previous question ("5 kg", "indore me", "sasta wala", "500 ml") is not a new product. It used
+ * to be searched literally ("5 kg" -> shopping, no results) because the strict follow-up detector
+ * requires an EMPTY residue, and a quantity is a residue.
+ *
+ * A refinement is therefore: a real leftover (numbers/units/place/size words) where every leftover
+ * token is a constraint rather than a product noun. Anything naming a new product stays a new
+ * question - "amul butter 500g" after a Tata Tea answer is still about Amul.
+ */
+const UNITS = new Set([
+  'g', 'gm', 'gms', 'gram', 'grams', 'kg', 'kgs', 'kilo', 'kilos', 'ml', 'l', 'lt', 'ltr', 'litre',
+  'liter', 'litres', 'liters', 'pack', 'packs', 'packet', 'packets', 'pouch', 'pcs', 'pc', 'piece',
+  'pieces', 'dozen', 'size', 'wala', 'wali', 'wale', 'walo', 'vala', 'vali', 'vale', 'one', 'two',
+]);
+const CONSTRAINT_WORDS = /\b(wala|wali|wale|walo|vala|vali|vale|size|pack|packet|pouch|big|small|large|mini|jumbo|fresh|frozen|organic|branded|loose)\b/gi;
+
+const PARTICLES = new Set(['wala', 'wali', 'wale', 'walo', 'vala', 'vali', 'vale']);
+
+/** True when a token can only be a constraint (a number, a unit, a size word), never a product. */
+function isConstraintToken(token: string): boolean {
+  if (/^\d+([.,]\d+)?$/.test(token)) return true;
+  return UNITS.has(token);
+}
+
+export interface RefinementVerdict {
+  /** True when this message only narrows the previous question. */
+  refine: boolean;
+  /** The previous query with the new constraint folded in ("rice" + "5 kg" -> "rice 5 kg"). */
+  query: string;
+  vertical: string;
+  /** A place the refinement named ("indore me" -> "Indore"), to scope the same search there. */
+  city?: string;
+}
+
+/**
+ * Is `text` the previous question plus a constraint? Returns the query to re-run, or refine:false
+ * when the message introduces anything that could be a product of its own.
+ */
+export function refineSubjectQuery(text: string, subject: AssistantSubject | null, knownPlace?: (t: string) => string | null): RefinementVerdict {
+  const no: RefinementVerdict = { refine: false, query: '', vertical: '' };
+  if (!subject || !subject.query) return no;
+  const raw = String(text || '').trim();
+  if (!raw) return no;
+  // NOTE: the shared residue helper drops one-character tokens, which is right for "is it in X"
+  // follow-ups but wrong here - "5 kg" is exactly the refinement this function exists for.
+  const residue = tokens(raw).filter((x) => !FOLLOW_VOCAB.has(x));
+  if (!residue.length) return no; // nothing added: classifyFollowUp owns that case
+  let city: string | undefined;
+  const keep: string[] = [];
+  for (const t of residue) {
+    // "wala" / "wali" is a particle that points AT the previous noun ("sasta wala"), so it is a
+    // constraint but never part of the query string.
+    if (PARTICLES.has(t)) continue;
+    if (isConstraintToken(t)) { keep.push(t); continue; }
+    const place = knownPlace ? knownPlace(t) : null;
+    if (place) { city = place; continue; }
+    // A word that is neither a unit nor a place is a subject of its own: a new question.
+    return no;
+  }
+  const added = String(raw).match(CONSTRAINT_WORDS)?.[0];
+  if (!keep.length && !city && !added) return no;
+  const query = [...[subject.query], ...keep].join(' ').replace(/\s+/g, ' ').trim();
+  if (!query || query === subject.query) {
+    // "sasta wala" / "indore me" add no product word at all: re-run the same subject, scoped.
+    return { refine: true, query: subject.query, vertical: subject.vertical, ...(city ? { city } : {}) };
+  }
+  return { refine: true, query, vertical: subject.vertical, ...(city ? { city } : {}) };
+}
 
 export interface FollowUpVerdict {
   follow: boolean;

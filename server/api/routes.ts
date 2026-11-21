@@ -11,7 +11,7 @@ import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { awaitSettledAnswer, runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
-import { fillMoviePricesFromBand } from '../search/moviesPriceFill';
+import { fillMoviePricesFromBand, movieAnswerIsUnpricedSnapshot } from '../search/moviesPriceFill';
 import { cachedRead } from './readPathCache';
 import { enforceAccountKind, requestedAccountKind } from '../search/accountTypeGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
@@ -67,7 +67,8 @@ import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, normalizeTypedProductQuery } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
-import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows } from '../lens/assistantAnswer';
+import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows, altShelfQuery } from '../lens/assistantAnswer';
+import { dualReply, mergeDualRows } from '../lens/dualVertical';
 import { parseRequestedQuantity } from '../lens/quantityIntent';
 import { qualifyReferral } from '../rewards/referralQualification';
 import { mintShareToken, readShareToken, resultsPath } from '../share/shareLinks';
@@ -76,8 +77,9 @@ import { aiRouteQuestion, mergeAiIntent } from '../lens/assistantAi';
 import { recordEvents, withinBudget } from '../growth/funnel';
 
 import {
-  classifyFollowUp, readSubject, shapeFollowUpAnswer, subjectFromAnswer, writeSubject,
+  classifyFollowUp, readSubject, refineSubjectQuery, shapeFollowUpAnswer, subjectFromAnswer, writeSubject,
 } from '../lens/assistantThread';
+import { findPlaces } from '../lens/questionNormalizer';
 import { boostByReliability, ensureSearchMemoryTable, memoryNotice, questionSignature, recallAnswer, recallQuestionRoute, rememberAnswer, rememberQuestionRoute, sellerReliability } from '../lens/searchMemory';
 import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
 import { dropImplausiblePrices } from '../lens/pricePlausibility';
@@ -984,6 +986,15 @@ async function finaliseLiveAnswer(response: any, vertical: string, dates: any, q
     if (band.filled) {
       log.info('Search', 'movie rows priced from the observed seat band', { vertical, filled: band.filled });
       response.results = band.rows;
+    }
+    // OWNER 21 Nov ("price kabhi app mai movie mai aata hai kabhi ni aata hai"): a film's fare can
+    // only come from District/TicketNew's session gateway - BookMyShow publishes none. When neither
+    // of those two has answered yet and NOT ONE row is priced, this is a snapshot of the film list,
+    // not a finished answer, and every client (the app on its current build included) must keep the
+    // chain alive instead of settling into a price-less feed.
+    if (movieAnswerIsUnpricedSnapshot((response.results || []) as any[], response.sourcesSucceeded as any)) {
+      response.pendingRefresh = true;
+      log.info('Search', 'movie answer is an unpriced snapshot: band source has not answered yet', { vertical, rows: (response.results || []).length });
     }
   }
   const gated = gateRowsForDate((response.results || []) as any[], vertical, dates || {});
@@ -3704,8 +3715,32 @@ apiRouter.post('/assist/answer', async (req, res) => {
     return answerFollowUp(res, { subject, verdict, sessionId, text, started });
   }
 
+  // OWNER 20 Nov ("ai ko peechle msg ka idea hi ni hota"): a message that only NARROWS the previous
+  // question - "5 kg", "500 ml", "indore me", "sasta wala" - keeps that question. It used to be
+  // searched as a brand-new product ("5 kg" -> every shopping site), which read as if the assistant
+  // had forgotten what was just being discussed.
+  if (subject) {
+    const refinement = refineSubjectQuery(text, subject, (t) => findPlaces(t)[0] || null);
+    if (refinement.refine) {
+      const refined = {
+        ...subject,
+        query: refinement.query,
+        ...(refinement.city ? { city: refinement.city } : {}),
+      };
+      return answerFollowUp(res, {
+        subject: refined,
+        verdict: { follow: true, kind: 'repeat', query: refinement.query, vertical: subject.vertical, reason: 'refinement' },
+        sessionId,
+        text,
+        started,
+      });
+    }
+  }
+
   let { meta, input } = buildAssistantSearch(text, {
-    city: req.body?.city ? String(req.body.city).slice(0, 60) : undefined,
+    // The thread's city carries into the next question unless the user names a new one, so
+    // "aur sasta dikhao" after "dosa in Indore" does not silently lose Indore.
+    city: req.body?.city ? String(req.body.city).slice(0, 60) : (subject?.city || undefined),
     pincode: req.body?.pincode ? String(req.body.pincode).slice(0, 10) : undefined,
     locality: req.body?.locality ? String(req.body.locality).slice(0, 120) : undefined,
     lat: Number.isFinite(Number(req.body?.lat)) ? Number(req.body.lat) : undefined,
@@ -3808,6 +3843,21 @@ apiRouter.post('/assist/answer', async (req, res) => {
   };
   const remembered = await recallAnswer(memKey).catch(() => null);
 
+  // OWNER 20 Nov ("dosa sirf grocery se aaya, rice ka sirf raw aata hai"): one word can live on
+  // TWO shelves, so an ambiguous question prices both instead of answering half of it. The second
+  // leg starts here, in parallel with the first, so the answer is not slower - it is complete.
+  const altVertical = String((meta as any).altVertical || '');
+  const altQuery = String((meta as any).altQuery || '') || altShelfQuery(String(input.query || ''), String(searchInput.vertical), altVertical);
+  const altSearchInput: SearchInput | null = altVertical
+    ? {
+      ...searchInput,
+      vertical: normalizeVerticalId(altVertical) as SearchInput['vertical'],
+      query: altQuery || searchInput.query,
+    }
+    : null;
+  const altSearched = altSearchInput ? runSearch(altSearchInput) : null;
+  altSearched?.catch(() => undefined);
+
   try {
     const searched = runSearch(searchInput);
     searched.catch(() => undefined); // the abandoned race leg must never crash the process
@@ -3869,8 +3919,10 @@ apiRouter.post('/assist/answer', async (req, res) => {
       }
     }
 
+    // OWNER 20 Nov: when a real second shelf is already being priced, it IS the fallback - asking the
+    // shopping sites as well would answer a different question and bury the dish the user asked for.
     let fallbackVertical: string | undefined;
-    if (rows.length === 0 && ['grocery', 'food'].includes(String(searchInput.vertical))) {
+    if (!altSearchInput && rows.length === 0 && ['grocery', 'food'].includes(String(searchInput.vertical))) {
       const secondary: SearchInput = { ...searchInput, vertical: 'ecommerce' as SearchInput['vertical'] };
       try {
         const second = runSearch(secondary);
@@ -3891,6 +3943,25 @@ apiRouter.post('/assist/answer', async (req, res) => {
           sourcesSucceeded = (racedSecond?.state?.sourcesSucceeded || []) as string[];
         }
       } catch { /* the grocery/food answer stands; the secondary pass is best-effort */ }
+    }
+
+    // The second shelf's rows, read from the pipeline it started in parallel. Bounded exactly like
+    // the first leg: whatever a shelf has not delivered by then is honestly absent, never invented.
+    let altRows: any[] = [];
+    let altPending = false;
+    if (altSearchInput && altSearched) {
+      const altBudget = Math.min(resultDeadlineMs(), 2600);
+      const altRaced = (await Promise.race([
+        altSearched,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), altBudget)),
+      ])) as Awaited<ReturnType<typeof runSearch>> | null;
+      if (altRaced) {
+        altRows = (altRaced.results || []) as any[];
+        altPending = Boolean(altRaced.state?.pendingRefresh);
+      } else {
+        const altFallback = await lastChanceRows(altSearchInput, 500);
+        altRows = ((altFallback as any)?.results || []) as any[];
+      }
     }
 
     // Same API-boundary rule as the feed: bare flight rows trail.
@@ -3915,7 +3986,16 @@ apiRouter.post('/assist/answer', async (req, res) => {
       sellerUrl: o?.sellerUrl && String(o.sellerUrl).trim() ? o.sellerUrl : assistantExitUrl(o, exitTravel),
     }));
     // 29 Oct: every company that answered gets a card, not whichever seller filled the first 6.
-    const shaped = toAssistantRows(linked, 6, { diversify: true });
+    // OWNER 20 Nov: a two-shelf question shows BOTH shelves, each card carrying the vertical it
+    // really came from, so "raw rice" and "rice plate" are never presented as the same thing.
+    const primaryShaped = toAssistantRows(linked, 6, { diversify: true })
+      .map((r) => ({ ...r, vertical: String(r.vertical || searchInput.vertical) }));
+    const altShaped = altSearchInput
+      ? toAssistantRows(altRows, 4, { diversify: true }).map((r) => ({ ...r, vertical: String(r.vertical || altVertical) }))
+      : [];
+    const shaped = altSearchInput
+      ? mergeDualRows(primaryShaped, altShaped, { primary: String(searchInput.vertical), secondary: altVertical }, 10)
+      : primaryShaped;
     // Write the outcome back so the NEXT question of this kind starts warm. Background, never
     // blocks the answer, and an empty answer never overwrites a good memory.
     void ensureSearchMemoryTable()
@@ -3940,7 +4020,7 @@ apiRouter.post('/assist/answer', async (req, res) => {
     const answer = shapeAssistantAnswer(
       fallbackVertical ? fallbackVertical : meta.vertical,
       meta.query,
-      shaped,
+      altSearchInput ? primaryShaped : shaped,
       {
         pending,
         sourcesSucceeded,
@@ -3952,23 +4032,41 @@ apiRouter.post('/assist/answer', async (req, res) => {
           : {}),
       },
     );
-    writeSubject(sessionId, subjectFromAnswer(
-      fallbackVertical || meta.vertical || '',
-      meta.query,
-      rows,
-      { city: String(searchInput.city || ''), date: String(searchInput.travelDates?.depart || ''), return: String(searchInput.travelDates?.return || '') },
-    ));
+    // A two-shelf question answers in its own words: which shelf each price came from, and which
+    // shelf stayed silent, instead of a single "cheapest result" sentence that hides half the answer.
+    const dualText = altSearchInput
+      ? dualReply(
+        { primary: String(searchInput.vertical), secondary: altVertical },
+        String(meta.query || input.query),
+        primaryShaped,
+        altShaped,
+        { pending: pending || altPending },
+      )
+      : '';
+    writeSubject(sessionId, {
+      ...subjectFromAnswer(
+        fallbackVertical || meta.vertical || '',
+        meta.query,
+        rows,
+        { city: String(searchInput.city || ''), date: String(searchInput.travelDates?.depart || ''), return: String(searchInput.travelDates?.return || '') },
+      ),
+      // The thread remembers BOTH shelves, so the next refinement prices the same two.
+      ...(altSearchInput ? { altVertical } : {}),
+    });
     res.json({
       success: true,
       ...meta,
-      reply: shaped.length ? answer.reply : `${meta.reply} ${answer.reply}`.replace(/\s+/g, ' ').trim(),
+      ...(altSearchInput ? { altVertical, altQuery: altSearchInput.query, dualShelves: true } : {}),
+      reply: altSearchInput ? dualText : (shaped.length ? answer.reply : `${meta.reply} ${answer.reply}`.replace(/\s+/g, ' ').trim()),
       vertical: meta.vertical,
       engineVertical: String(searchInput.vertical),
       ...(fallbackVertical ? { answeredBy: fallbackVertical } : {}),
       query: meta.query,
-      results: answer.results,
-      count: answer.count,
-      pendingRefresh: pending,
+      // A two-shelf answer returns the MERGED grid (both shelves, each card labelled); a single-shelf
+      // answer keeps the exact results shapeAssistantAnswer decided.
+      results: altSearchInput ? shaped : answer.results,
+      count: altSearchInput ? shaped.length : answer.count,
+      pendingRefresh: pending || (altSearchInput ? altPending : false),
       sourcesSucceeded,
       // What the assistant remembered (never a live claim, never a price it did not verify).
       ...(remembered ? {

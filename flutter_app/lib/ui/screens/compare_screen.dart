@@ -5,18 +5,19 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
-import 'nearby_screen.dart';
 import '../../core/auth.dart';
 import '../../core/autocomplete_data.dart';
 import '../../core/compare.dart' as cmp;
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
 import '../../core/search_poll.dart';
+import '../../core/movie_price_gate.dart';
 import '../../core/feed_page.dart';
 import '../../core/funnel.dart';
 import '../widgets/grocery_cart_sheet.dart';
 import '../widgets/grocery_grid.dart';
 import '../widgets/compare_cards.dart';
+import '../widgets/vertical_tabs.dart';
 import '../widgets/hint_field.dart';
 import '../widgets/journey_date_picker_modal.dart';
 import '../widgets/location_hint_field.dart';
@@ -449,11 +450,25 @@ class _CompareScreenState extends State<CompareScreen> {
       // genuinely still polling, and an exhausted-empty chain does one final
       // non-forced read (the server's warmed cache) before releasing to the
       // honest empty state with Retry.
+      // OWNER 21 Nov ("price kabhi app mai movie mai aata hai kabhi ni aata hai"): the seat band that
+      // prices a film lands a few seconds after the film list, and the server only sets pendingRefresh
+      // while its own chain runs. A movie answer holding films with NOT ONE price is the same thing
+      // from the user's side, so it keeps the chain alive (within the same poll budget) instead of
+      // settling into a price-less feed the user has to re-search by hand.
+      final pollRows = _res?.items.length ?? 0;
+      final pollPriced = MoviePriceGate.pricedCount(
+        (_res?.items ?? const <cmp.CompareItem>[]).map((i) => i.priceAvailable),
+      );
       final decision = pollDecision(
-        pendingRefresh: _res?.pendingRefresh == true,
+        pendingRefresh: MoviePriceGate.stillPending(
+          _meta.id,
+          rows: pollRows,
+          pricedRows: pollPriced,
+          serverPending: _res?.pendingRefresh == true,
+        ),
         pollCount: _bgPollCount,
         maxPolls: kSearchMaxPolls,
-        rows: _res?.items.length ?? 0,
+        rows: pollRows,
         prevRows: _lastPollRows,
         settled: _settleDone,
       );
@@ -731,7 +746,7 @@ class _CompareScreenState extends State<CompareScreen> {
     final app = AppState.instance;
     return Stack(children: [
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _VerticalTabs(
+      VerticalTabs(
         current: _meta.id,
         onPick: (id) {
           _state.selectVertical(id);
@@ -1281,110 +1296,6 @@ class _CityPickerScreenState extends State<_CityPickerScreen> {
                     ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Vertical tabs
-// ---------------------------------------------------------------------------
-
-class _VerticalTabs extends StatelessWidget {
-  const _VerticalTabs({required this.current, required this.onPick});
-  final String current;
-  final ValueChanged<String> onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    final app = AppState.instance;
-    // OWNER 21 Nov ("horizontal category/verticals tab strip jaisa abhi hai mobile website mai, waisa hi
-    // flutter app mai chaiye"): the app strip is now the website's strip — Home, Nearby, then every vertical
-    // with its icon, its name and a count badge, in one horizontally scrolling row.
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark(context) ? T1SColors.slate900 : Colors.white,
-        border: Border(bottom: BorderSide(color: border(context))),
-      ),
-      child: SizedBox(
-        height: 52,
-        child: ListenableBuilder(
-          listenable: app,
-          builder: (context, _) {
-            final counts = app.resultCounts;
-            Widget chip({
-              required IconData icon,
-              required String label,
-              required bool active,
-              required VoidCallback onTap,
-              int? count,
-            }) {
-              final fg = active ? Colors.white : (isDark(context) ? T1SColors.slate300 : T1SColors.slate600);
-              final iconColor = active ? const Color(0xFFFB923C) : (isDark(context) ? T1SColors.slate400 : T1SColors.slate500);
-              return GestureDetector(
-                onTap: onTap,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: active ? T1SColors.slate900 : (isDark(context) ? T1SColors.slate800 : T1SColors.slate50),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: active ? T1SColors.slate900 : border(context)),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(icon, size: 15, color: iconColor),
-                    const SizedBox(width: 6),
-                    Text(label, style: tx(context, 11.5, w: FontWeight.w700, color: fg)),
-                    if (count != null) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: active ? T1SColors.slate800 : (isDark(context) ? T1SColors.slate700 : T1SColors.slate100),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text('$count',
-                            style: tx(context, 9.5, w: FontWeight.w900,
-                                color: active ? T1SColors.slate300 : muted(context))),
-                      ),
-                    ],
-                  ]),
-                ),
-              );
-            }
-
-            return ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              children: [
-                // Home: the website's strip opens with it, so the app does too.
-                chip(
-                  icon: Icons.home_rounded,
-                  label: 'Home',
-                  active: app.tab == NavTab.home,
-                  onTap: () => app.go(NavTab.home),
-                ),
-                const SizedBox(width: 8),
-                // Nearby: the thirteenth vertical, second in the strip exactly as on the site.
-                chip(
-                  icon: Icons.place_rounded,
-                  label: 'Nearby',
-                  active: current == 'nearby',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyScreen())),
-                ),
-                for (final v in kVerticals) ...[
-                  const SizedBox(width: 8),
-                  chip(
-                    icon: v.icon,
-                    label: v.name,
-                    active: v.id == current,
-                    count: counts[v.id],
-                    onTap: () => onPick(v.id),
-                  ),
-                ],
-              ],
-            );
-          },
         ),
       ),
     );
