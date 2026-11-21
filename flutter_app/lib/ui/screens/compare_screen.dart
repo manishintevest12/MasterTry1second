@@ -12,6 +12,7 @@ import '../../core/compare.dart' as cmp;
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
 import '../../core/search_poll.dart';
+import '../../core/movie_price_gate.dart';
 import '../../core/feed_page.dart';
 import '../../core/funnel.dart';
 import '../widgets/compare_cards.dart';
@@ -444,11 +445,25 @@ class _CompareScreenState extends State<CompareScreen> {
       // genuinely still polling, and an exhausted-empty chain does one final
       // non-forced read (the server's warmed cache) before releasing to the
       // honest empty state with Retry.
+      // OWNER 21 Nov ("price kabhi app mai movie mai aata hai kabhi ni aata hai"): the seat band that
+      // prices a film lands a few seconds after the film list, and the server only sets pendingRefresh
+      // while its own chain runs. A movie answer holding films with NOT ONE price is the same thing
+      // from the user's side, so it keeps the chain alive (within the same poll budget) instead of
+      // settling into a price-less feed the user has to re-search by hand.
+      final pollRows = _res?.items.length ?? 0;
+      final pollPriced = MoviePriceGate.pricedCount(
+        (_res?.items ?? const <cmp.CompareItem>[]).map((i) => i.priceAvailable),
+      );
       final decision = pollDecision(
-        pendingRefresh: _res?.pendingRefresh == true,
+        pendingRefresh: MoviePriceGate.stillPending(
+          _meta.id,
+          rows: pollRows,
+          pricedRows: pollPriced,
+          serverPending: _res?.pendingRefresh == true,
+        ),
         pollCount: _bgPollCount,
         maxPolls: kSearchMaxPolls,
-        rows: _res?.items.length ?? 0,
+        rows: pollRows,
         prevRows: _lastPollRows,
         settled: _settleDone,
       );

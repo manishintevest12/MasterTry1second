@@ -161,7 +161,11 @@ export const PriceLensAndAssistant: React.FC = () => {
   const [answer, setAnswer] = useState<{
     vertical: string | null; engineVertical?: string; query: string; date?: string;
     count: number; reply: string; pending?: boolean;
-    results: Array<{ title: string; provider: string; price: number; priceAvailable: boolean; imageUrl?: string; url?: string; specs?: Record<string, string> }>;
+    /** OWNER 20 Nov: the answer priced TWO shelves ("rice" = raw grain + rice dishes, "dosa" =
+     *  plate + batter), so each card has to say which shelf its price came from. */
+    dualShelves?: boolean;
+    altVertical?: string;
+    results: Array<{ title: string; provider: string; price: number; priceAvailable: boolean; imageUrl?: string; url?: string; specs?: Record<string, string>; vertical?: string }>;
   } | null>(null);
 
   const runAsk = async (text?: string, viaVoice = false) => {
@@ -202,6 +206,8 @@ export const PriceLensAndAssistant: React.FC = () => {
         count: Number(data.count) || 0,
         reply: data.reply || '',
         pending: Boolean(data.pendingRefresh),
+        dualShelves: Boolean(data.dualShelves),
+        altVertical: data.altVertical ? String(data.altVertical) : undefined,
         results: Array.isArray(data.results) ? data.results : [],
       } : null);
     } catch {
@@ -263,6 +269,11 @@ export const PriceLensAndAssistant: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {answer.results.slice(0, 6).map((r, i) => (
                 <div key={`${r.title}-${i}`} className="bg-slate-50 border border-slate-200 rounded-xl p-2 min-w-0">
+                  {answer.dualShelves && r.vertical && (
+                    <span className={`inline-block mb-1 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide ${r.vertical === 'food' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                      {r.vertical === 'food' ? 'Food' : r.vertical === 'grocery' ? 'Grocery' : r.vertical}
+                    </span>
+                  )}
                   <p className="text-[11px] font-bold text-slate-900 leading-tight line-clamp-2">{r.title}</p>
                   {r.specs && Object.keys(r.specs).length > 0 && (
                     <p className="text-[10px] text-slate-500 mt-0.5 truncate">

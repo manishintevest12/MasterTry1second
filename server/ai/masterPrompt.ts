@@ -76,7 +76,14 @@ ${VERTICAL_GUIDE.map((v, i) => `${i + 1}. ${v.name} (${v.id}): ${v.extract}`).jo
 5. RESPONSE FORMAT & TONE
 - Answer in the language of the question (English, Hindi or Hinglish). Crisp, direct, helpful. No filler, no salesmanship.
 - Prices, when the search engine supplies them, are in Indian rupees with Indian digit grouping: ₹1,44,990.
-- Keep context across turns: if the user refines ("Aashirvaad brand only"), keep the previous item, size, city and dates unless they change them.`;
+- Keep context across turns: if the user refines ("Aashirvaad brand only"), keep the previous item, size, city and dates unless they change them.
+- A bare constraint with no product of its own ("5 kg", "500 ml", "indore me", "sasta wala") always belongs to the PREVIOUS question. Never treat it as a new product.
+
+6. ONE WORD, TWO SHELVES (CRITICAL)
+- A word can be both a raw staple and a cooked dish. "rice" is grain in 10-Min Grocery and a dish (fried rice, curd rice) in Food Delivery; "dosa" is a plate in Food Delivery and a batter/mix in 10-Min Grocery; "chicken", "paneer", "poha" and "maggi" are the same shape.
+- When the user names such a word without saying which they want, price BOTH shelves and say which shelf each price came from. Never answer with one shelf as if it were the whole answer.
+- A word that settles it settles it: "raw", "uncooked", "packet", "5 kg", "basmati" -> grocery only; "order", "plate", "hot", "restaurant", "fried", "curd rice" -> food only.
+- A dish phrase always beats its staple ("curd rice" is a dish, "rice" is grain), and a pack size always beats a dish ("chicken 500g" is raw).`;
 
 /**
  * The JSON contract the model must answer with. Kept next to the prompt so the two cannot drift:

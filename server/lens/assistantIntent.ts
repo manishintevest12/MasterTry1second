@@ -105,6 +105,11 @@ export function interpretAssistantQuestion(raw: string, now = istToday()): Assis
   // overridden, and a bare brand/product with no category stays shopping.
   const category = detectCategoryVertical(text);
   if (category && (!vertical || vertical === 'ecommerce')) vertical = category;
+  // OWNER 20 Nov: the generic keyword list knows "rice" is a grocery word, so "curd rice" /
+  // "jeera rice" / "lemon rice" / "boiled rice" stayed on the grocery shelf even though the
+  // lexicon had already read them as dishes. The lexicon settles grocery-vs-food (it is the only
+  // place that knows a dish phrase and a pack size), so it wins that one argument - and only that one.
+  if (category && (vertical === 'grocery' || vertical === 'food') && vertical !== category) vertical = category;
 
   // A word the user actually typed ("hotel", "bus", "iphone") outranks a guess made from filler, so the
   // normalizer's keyword hit is used whenever the parser produced nothing - or produced shopping from a

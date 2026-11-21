@@ -23,7 +23,7 @@
  * fully unit-testable without network.
  */
 import { interpretAssistantQuestion, type AssistantIntent, type AssistantVertical } from './assistantIntent';
-import { cleanCategoryQuery, detectCategoryVertical } from './verticalLexicon';
+import { cleanCategoryQuery, detectCategoryVertical, dualCategoryFor } from './verticalLexicon';
 import { normalizeAssistantQuestion } from './questionNormalizer';
 import { planByQuantity, quantityVerdict, rowQuantity, type Quantity } from './quantityIntent';
 import { exactPackUnavailable, ZERO_RESULT_GUIDANCE } from '../ai/masterPrompt';
@@ -58,6 +58,15 @@ export interface AssistantAnswerMeta {
   date?: string;
   /** Rupees, when the question said "under 3000" / "3000 se kam" — used to state fit, never to hide rows. */
   budget?: number;
+  /**
+   * OWNER 20 Nov: the second shelf this question must ALSO be priced on. "rice" is raw grain in
+   * Grocery and a dish in Food, "dosa" is a plate in Food and a batter in Grocery. When this is set
+   * the route prices both and says which shelf each price came from, instead of answering with one
+   * half of the question.
+   */
+  altVertical?: AssistantVertical;
+  /** What the second shelf is being asked for, in the user's words ("dosa batter", "rice dishes"). */
+  altQuery?: string;
   reply: string;
 }
 
@@ -84,6 +93,28 @@ const ACCOUNT_HINT = /\b(bank account|savings account|saving account|current acc
 
 // Grocery staples, pack sizes and FOOD dishes come from the shared lexicon
 // (server/lens/verticalLexicon.ts) so the router and this fallback agree.
+
+/**
+ * What to send the SECOND shelf, in words that shelf can answer.
+ * A grocery shelf is asked for the packaged version of a dish ("dosa" -> "dosa batter"), and a
+ * restaurant shelf is asked for the dish version of a staple ("rice" -> "rice dishes"). Both stay
+ * the user's own noun; nothing is invented and no brand is added.
+ */
+export function altShelfQuery(query: string, from: string, to: string): string {
+  const q = String(query || '').trim();
+  if (!q) return q;
+  if (to === 'grocery' && from === 'food') {
+    // A dish on the grocery shelf is the batter / frozen twin of it.
+    if (/\b(batter|mix|frozen|packet)\b/i.test(q)) return q;
+    return `${q} batter`;
+  }
+  if (to === 'food' && from === 'grocery') {
+    // A staple on the restaurant shelf is a dish made of it.
+    if (/\b(dish|dishes|curry|plate|bowl|fried|masala)\b/i.test(q)) return q;
+    return `${q} dishes`;
+  }
+  return q;
+}
 
 /** True when the text still looks like something a source could be searched for. */
 function searchable(text: string): boolean {
@@ -172,9 +203,14 @@ export function buildAssistantSearch(raw: string, ctx: AssistantAskContext = {})
     };
   }
 
+  // OWNER 20 Nov: one word can live on two shelves. dualCategoryFor only ever ADDS the second
+  // shelf to a question the deterministic parser already placed, so no existing route changes.
+  const dual = dualCategoryFor(text);
+
   if (intent.understood && intent.vertical) {
+    const alt = dual && dual.primary === intent.vertical ? dual.secondary : null;
     return {
-      meta: { understood: true, assumedVertical: Boolean(intent.assumed), vertical: intent.vertical, query: intent.query, ...(intent.date ? { date: intent.date } : {}), ...(intent.budget ? { budget: intent.budget } : {}), reply: intent.assumed
+      meta: { understood: true, assumedVertical: Boolean(intent.assumed), vertical: intent.vertical, query: intent.query, ...(intent.date ? { date: intent.date } : {}), ...(intent.budget ? { budget: intent.budget } : {}), ...(alt ? { altVertical: alt as AssistantVertical, altQuery: altShelfQuery(intent.query, intent.vertical, alt) } : {}), reply: intent.assumed
           ? `You named a product rather than a category, so I am comparing "${intent.query}" across every shopping site. Results below.`
           : intent.reply },
       input: withContext({ query: intent.query, vertical: intent.vertical }),
@@ -197,6 +233,7 @@ export function buildAssistantSearch(raw: string, ctx: AssistantAskContext = {})
   const category = detectCategoryVertical(text);
   const vertical: AssistantVertical = ACCOUNT_HINT.test(text) ? 'account' : (category || 'ecommerce');
   const query = (category ? cleanCategoryQuery(text) : cleanAssistantQuery(text)) || text;
+  const alt = dual && dual.primary === vertical ? dual.secondary : null;
   const where = vertical === 'grocery' ? 'the 10-minute grocery apps (Blinkit, Zepto, Instamart, BigBasket)'
     : vertical === 'food' ? 'the restaurant delivery apps (Zomato, Swiggy, EatSure, Domino\'s)'
     : vertical === 'account' ? 'every bank and comparison site' : 'every shopping site';
@@ -206,6 +243,7 @@ export function buildAssistantSearch(raw: string, ctx: AssistantAskContext = {})
       assumedVertical: true,
       vertical,
       query,
+      ...(alt ? { altVertical: alt as AssistantVertical, altQuery: altShelfQuery(query, vertical, alt) } : {}),
       reply: `I could not pin a single category, so I am comparing "${query}" across ${where}. Results below.`,
     },
     input: withContext({ query, vertical }),
