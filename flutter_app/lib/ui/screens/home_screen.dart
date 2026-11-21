@@ -11,7 +11,7 @@ import '../widgets/home_banner_strip.dart';
 import '../widgets/home_showcase.dart';
 import '../widgets/hero_banner_carousel.dart';
 import '../widgets/upcoming_movies_rail.dart';
-import '../widgets/vertical_nav_strip.dart';
+import '../widgets/vertical_tabs.dart';
 import '../widgets/home_lens_and_assistant.dart';
 import '../../core/session_cache.dart';
 
@@ -53,8 +53,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // OWNER 21 Nov (mobile site vs app screenshots): the site carries the vertical strip directly
         // under the header — Home · Nearby · Flights (20) · Hotels · … — and the app home page had no
-        // such row. Same row, same order, same live counts.
-        VerticalNavStrip(state: _state),
+        // such row, because the strip was built inside the Compare screen. Same widget as that screen,
+        // so the two can never drift: Home is active here, a vertical tap opens its feed.
+        VerticalTabs(current: '', onPick: (id) => _state.openVertical(id)),
         const HomeHero(),
         // Ask Try1Second AI (Price Lens card sits inside the hero, like the site)
         Padding(
