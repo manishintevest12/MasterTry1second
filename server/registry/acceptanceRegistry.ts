@@ -158,8 +158,7 @@ export const ACCEPTANCE_TARGETS: AcceptanceTarget[] = [
     { capability: 'grocery search', url: 'https://www.bigbasket.com/ps/?q=milk' } ] },
   { id: 'flipkart_minutes', name: 'Flipkart Minutes', vertical: 'grocery', tier: 'mandated', probes: [
     { capability: 'grocery search', url: 'https://www.flipkart.com/minutes-store' } ] },
-  { id: 'digihaat_grocery', name: 'DigiHaat Grocery', vertical: 'grocery', tier: 'mandated', probes: [
-    { capability: 'grocery search', url: 'https://digihaat.in/en/search?q=milk' } ] },
+  // OWNER 21 Nov: DigiHaat removed from grocery ("digihaat.in ko aap food delivery, 10 min grocery se hata do").
   // ---- 16.10 Movies & events ----
   { id: 'bookmyshow', name: 'BookMyShow', vertical: 'movies', tier: 'mandated', probes: [
     { capability: 'movie showtimes', url: 'https://in.bookmyshow.com/explore/movies-mumbai' } ] },
@@ -190,8 +189,7 @@ export const ACCEPTANCE_TARGETS: AcceptanceTarget[] = [
     { capability: 'restaurant discovery', url: 'https://www.swiggy.com/' } ] },
   { id: 'eatsure', name: 'EatSure', vertical: 'food', tier: 'mandated', probes: [
     { capability: 'restaurant discovery', url: 'https://www.eatsure.com/' } ] },
-  { id: 'digihaat_food', name: 'DigiHaat Food', vertical: 'food', tier: 'mandated', probes: [
-    { capability: 'food search', url: 'https://digihaat.in/en/search?q=biryani' } ] },
+  // OWNER 21 Nov: DigiHaat removed from food delivery — it stays a partner for e-commerce only.
   { id: 'uber_eats', name: 'Uber Eats', vertical: 'food', tier: 'mandated', probes: [
     { capability: 'restaurant discovery', url: 'https://www.ubereats.com/in', retiredNote: 'Uber Eats exited India in 2020 (business sold to Zomato); no Indian operations to test. Retired per policy 16.15.' } ] },
   { id: 'toing', name: 'Toing', vertical: 'food', tier: 'mandated', probes: [

@@ -21022,7 +21022,6 @@ var init_food = __esm({
     init_pizzaHut();
     init_toing();
     init_curlCffiFetch();
-    init_digihaat();
     ZOMATO_SLUGS = {
       "new delhi": "ncr",
       delhi: "ncr",
@@ -21329,31 +21328,10 @@ var init_food = __esm({
             }
             return items.slice(0, 40);
           }
-        },
-        {
-          // DigiHaat (digihaat.in) — the owner's Cuelinks partner (17 Nov: "ecommerce, food aur others me add karo").
-          // DigiHaat's food domain (ONDC:RET11) lists cooked dishes — biryani, pizza, burger, samosa — with the
-          // seller kitchen's own live price, so a dish query gets a real compare-able row from a partner store.
-          sourceId: "w_food_digihaat",
-          name: "Food worker: DigiHaat (ONDC food sellers, live prices)",
-          priority: 12,
-          run: async (ctx) => {
-            const term = String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
-            if (!term) return [];
-            const place = digihaatPlace(ctx.query.location);
-            let body;
-            try {
-              body = await fetchDigihaat(term, place);
-            } catch (e2) {
-              const msg = String(e2?.message || e2);
-              const code = /HTTP 40[13]/.test(msg) ? "ACCESS_CHALLENGE" : /HTTP 429/.test(msg) ? "RATE_LIMITED" : "SERVER_ERROR";
-              throw new AcquisitionError(code, `DigiHaat: ${msg}`.slice(0, 300));
-            }
-            const all = parseDigihaat(body, ctx.source, digihaatSearchUrl(term));
-            if (!all.length) throw new AcquisitionError("EMPTY_RESPONSE", `DigiHaat food sellers had no priced dish for "${term}"`);
-            return all.slice(0, 30);
-          }
         }
+        // OWNER 21 Nov: "digihaat.in ko aap food delivery, 10 min grocery se hata do" — the DigiHaat source is
+        // no longer queried for this vertical. DigiHaat stays a partner for e-commerce (its own worker there),
+        // so this is a vertical scope change, not a partner removal: no digihaat row can reach this feed.
       ]
     };
     registerVerticalWorker(foodWorker);
@@ -26499,7 +26477,6 @@ var init_grocery = __esm({
   "server/workers/verticals/grocery.ts"() {
     init_verticalWorker();
     init_amazonIn();
-    init_digihaat();
     init_flipkart();
     init_blinkit();
     init_zeptoSsr();
@@ -26902,31 +26879,9 @@ var init_grocery = __esm({
             throw new AcquisitionError("EMPTY_RESPONSE", `Amazon.in returned no grocery products for "${term}"`);
           }
         },
-        {
-          // DigiHaat (digihaat.in) — the owner's Cuelinks partner (17 Nov: "digihaat.in bhi add karo ecommerce,
-          // food aur others me"). An ONDC buyer app, so one query compares many seller apps' live prices.
-          // The storefront is client-rendered (no product data in the HTML), so this reads the same JSON API the
-          // public web app calls, using its own anonymous guest token (see parsers/digihaat.ts for the measurement).
-          sourceId: "w_grocery_digihaat",
-          name: "Grocery worker: DigiHaat (ONDC multi-seller live prices)",
-          priority: 9,
-          run: async (ctx) => {
-            const term = q2(ctx);
-            if (!term) return [];
-            const place = digihaatPlace(ctx.query.location);
-            let body;
-            try {
-              body = await fetchDigihaat(term, place);
-            } catch (e2) {
-              const msg = String(e2?.message || e2);
-              const code = /HTTP 40[13]/.test(msg) ? "ACCESS_CHALLENGE" : /HTTP 429/.test(msg) ? "RATE_LIMITED" : "SERVER_ERROR";
-              throw new AcquisitionError(code, `DigiHaat: ${msg}`.slice(0, 300));
-            }
-            const items = parseDigihaat(body, ctx.source, digihaatSearchUrl(term));
-            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `DigiHaat had no priced listing for "${term}"`);
-            return items;
-          }
-        },
+        // OWNER 21 Nov: "digihaat.in ko aap food delivery, 10 min grocery se hata do" — the DigiHaat source is
+        // no longer queried for this vertical. DigiHaat stays a partner for e-commerce (its own worker there),
+        // so this is a vertical scope change, not a partner removal: no digihaat row can reach this feed.
         {
           sourceId: "w_grocery_flipkart",
           name: "Grocery worker: Flipkart grocery listings",
@@ -36977,6 +36932,44 @@ var init_verticalEngine = __esm({
   }
 });
 
+// server/registry/verticalExclusions.ts
+function excludedMerchantsFor(vertical) {
+  const v = String(vertical || "").toLowerCase();
+  return EXCLUSIONS[v] || [];
+}
+function isExcludedMerchant(vertical, ...texts) {
+  const tokens3 = excludedMerchantsFor(vertical);
+  if (!tokens3.length) return false;
+  const hay = texts.filter(Boolean).map((t) => String(t).toLowerCase()).join(" ");
+  if (!hay) return false;
+  return tokens3.some((t) => hay.includes(t));
+}
+function dropExcludedOffers(vertical, offers) {
+  if (!offers?.length) return offers || [];
+  if (!excludedMerchantsFor(vertical).length) return offers;
+  return offers.filter(
+    (o) => !isExcludedMerchant(
+      vertical,
+      o?.vendor,
+      o?.seller,
+      o?.site,
+      o?.provider,
+      o?.merchant,
+      o?.sourceId,
+      o?.source_id
+    )
+  );
+}
+var EXCLUSIONS;
+var init_verticalExclusions = __esm({
+  "server/registry/verticalExclusions.ts"() {
+    EXCLUSIONS = {
+      grocery: ["digihaat", "digi haat"],
+      food: ["digihaat", "digi haat"]
+    };
+  }
+});
+
 // server/catalogue/catalogueService.ts
 var catalogueService_exports = {};
 __export(catalogueService_exports, {
@@ -37088,6 +37081,10 @@ async function findCatalogueOffers(vertical, opts = {}) {
       where += " AND (location_city = ? OR location_city IS NULL)";
       params.push(opts.city);
     }
+    for (const m of excludedMerchantsFor(vertical)) {
+      where += " AND (vendor IS NULL OR LOWER(vendor) NOT LIKE ?) AND (seller IS NULL OR LOWER(seller) NOT LIKE ?)";
+      params.push(`%${m}%`, `%${m}%`);
+    }
     const terms = (opts.queryTerms || []).map((t) => String(t || "").trim().toLowerCase()).filter((t) => t.length >= 3).slice(0, 3);
     for (const t of terms) {
       where += " AND title LIKE ?";
@@ -37185,6 +37182,7 @@ var init_catalogueService = __esm({
     init_db();
     init_logger();
     init_freshness();
+    init_verticalExclusions();
     PURGE_BAD_HOTEL_ART_SQL = `DELETE FROM offers WHERE vertical = 'hotels' AND (
      JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%s2/favicons%'
      OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%brand-logos%'
@@ -39036,7 +39034,11 @@ function gateEcommerceResponse(input, response, parsedVertical) {
   return response;
 }
 async function runSearch(input) {
-  return gateEcommerceResponse(input, await runSearchPipeline(input));
+  const response = gateEcommerceResponse(input, await runSearchPipeline(input));
+  const vertical = response.query?.vertical || input.vertical;
+  const results = dropExcludedOffers(vertical, response.results || []);
+  if (results.length === (response.results || []).length) return response;
+  return { ...response, results };
 }
 async function runSearchPolled(input, deadlineMs = 15e3) {
   const deadline = Date.now() + deadlineMs;
@@ -39679,6 +39681,7 @@ var init_searchOrchestrator = __esm({
     init_deeplink();
     init_merchantLinks();
     init_pollBudget();
+    init_verticalExclusions();
     BUS_PRIMARY_LIVE_SELLERS = ["abhibus", "redbus"];
     inflightPipelines = /* @__PURE__ */ new Map();
     pipelineByQuestion = /* @__PURE__ */ new Map();
@@ -58218,9 +58221,7 @@ var init_acceptanceRegistry = __esm({
       { id: "flipkart_minutes", name: "Flipkart Minutes", vertical: "grocery", tier: "mandated", probes: [
         { capability: "grocery search", url: "https://www.flipkart.com/minutes-store" }
       ] },
-      { id: "digihaat_grocery", name: "DigiHaat Grocery", vertical: "grocery", tier: "mandated", probes: [
-        { capability: "grocery search", url: "https://digihaat.in/en/search?q=milk" }
-      ] },
+      // OWNER 21 Nov: DigiHaat removed from grocery ("digihaat.in ko aap food delivery, 10 min grocery se hata do").
       // ---- 16.10 Movies & events ----
       { id: "bookmyshow", name: "BookMyShow", vertical: "movies", tier: "mandated", probes: [
         { capability: "movie showtimes", url: "https://in.bookmyshow.com/explore/movies-mumbai" }
@@ -58264,9 +58265,7 @@ var init_acceptanceRegistry = __esm({
       { id: "eatsure", name: "EatSure", vertical: "food", tier: "mandated", probes: [
         { capability: "restaurant discovery", url: "https://www.eatsure.com/" }
       ] },
-      { id: "digihaat_food", name: "DigiHaat Food", vertical: "food", tier: "mandated", probes: [
-        { capability: "food search", url: "https://digihaat.in/en/search?q=biryani" }
-      ] },
+      // OWNER 21 Nov: DigiHaat removed from food delivery — it stays a partner for e-commerce only.
       { id: "uber_eats", name: "Uber Eats", vertical: "food", tier: "mandated", probes: [
         { capability: "restaurant discovery", url: "https://www.ubereats.com/in", retiredNote: "Uber Eats exited India in 2020 (business sold to Zomato); no Indian operations to test. Retired per policy 16.15." }
       ] },
