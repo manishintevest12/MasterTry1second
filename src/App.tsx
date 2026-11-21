@@ -82,8 +82,11 @@ const MainContent: React.FC = () => {
       {/* In Compare tab, show the Kayak-style search & filter bar */}
       {activeNavTab === 'compare' && <SearchAndFilterHeader />}
 
-      {/* Main View Router — secondary views lazy-load (PageSpeed bundle fix) */}
-      <div className="flex-1">
+      {/* Main View Router — secondary views lazy-load (PageSpeed bundle fix).
+          OWNER 21 Nov (PageSpeed a11y/best-practices: "Document does not have a main landmark"): the routed view
+          is the page's main content, so the wrapper IS the landmark now. Every tab gets it for free, and the views
+          that used to carry their own <main> render a plain <div> instead (one landmark, never nested). */}
+      <main id="main-content" className="flex-1">
         <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
         {activeNavTab === 'home' && <HomeView />}
         {activeNavTab === 'quickapps' && <QuickAppsView />}
@@ -97,7 +100,7 @@ const MainContent: React.FC = () => {
         {activeNavTab === 'admin' && (isAdminAuthenticated ? <AdminDashboard /> : <AdminLoginView />)}
         {activeNavTab === 'merchant' && (authenticatedVendor ? <MerchantPortal /> : <MerchantLoginView />)}
         </Suspense>
-      </div>
+      </main>
 
       {/* Modals & Drawers — lazy: nothing here renders on landing (TBT fix) */}
       {/* Modals & Drawers — lazily mounted ONLY when their open-flag flips, so

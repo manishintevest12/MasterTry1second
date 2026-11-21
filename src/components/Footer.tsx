@@ -375,7 +375,7 @@ export const Footer: React.FC = () => {
         </div>
 
         {/* Bottom Disclaimer & Copyright Row */}
-        <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-[11px] text-slate-400">
+        <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
           <div className="flex flex-wrap items-center gap-3">
             <span>© {new Date().getFullYear()} Try1Second Powered by Standard Petro India Private Limited</span>
             <span className="hidden sm:inline">·</span>
@@ -418,7 +418,7 @@ export const Footer: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <p className="text-[10px] text-slate-400 text-center md:text-right max-w-md">
+            <p className="text-[10px] text-slate-500 text-center md:text-right max-w-md">
               Try1Second is an independent metasearch engine. Logos and brand names are trademarks of their respective owners. Final prices confirmed upon merchant redirection.
             </p>
             <button

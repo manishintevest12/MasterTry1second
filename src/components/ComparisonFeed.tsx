@@ -369,7 +369,7 @@ export const ComparisonFeed: React.FC = () => {
         <PriceAdviceSidebar />
 
         {/* Right: Summary Tabs & Cards */}
-        <main className="flex-1 w-full min-w-0">
+        <div className="flex-1 w-full min-w-0">
           <SortAndSummaryTabs />
 
           {feedView === 'filtered' ? (
@@ -602,7 +602,7 @@ export const ComparisonFeed: React.FC = () => {
               )}
             </div>
           )}
-        </main>
+        </div>
       </div>
       {/* Smart Cart floating badge: reopen the basket while shopping groceries. */}
       {vertical === 'grocery' && smartCart.length > 0 && (

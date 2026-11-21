@@ -267,7 +267,7 @@ export const QuickAppsView: React.FC = () => {
       <HomeBannerStrip slot={0} section="quickapps" />
 
       {/* ================= PARTNER APPS GRID ================= */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {filteredPartners.length === 0 ? (
           <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center max-w-lg mx-auto shadow-xs space-y-4">
             <div className="w-14 h-14 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
@@ -346,7 +346,7 @@ export const QuickAppsView: React.FC = () => {
             ))}
           </div>
         )}
-      </main>
+      </div>
 
       {/* ================= CLEAN REDIRECTION MODAL ================= */}
       {activeRedirectPartner && (
