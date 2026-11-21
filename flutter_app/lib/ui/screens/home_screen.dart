@@ -11,6 +11,7 @@ import '../widgets/home_banner_strip.dart';
 import '../widgets/home_showcase.dart';
 import '../widgets/hero_banner_carousel.dart';
 import '../widgets/upcoming_movies_rail.dart';
+import '../widgets/vertical_nav_strip.dart';
 import '../widgets/home_lens_and_assistant.dart';
 import '../../core/session_cache.dart';
 
@@ -50,6 +51,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // OWNER 21 Nov (mobile site vs app screenshots): the site carries the vertical strip directly
+        // under the header — Home · Nearby · Flights (20) · Hotels · … — and the app home page had no
+        // such row. Same row, same order, same live counts.
+        VerticalNavStrip(state: _state),
         const HomeHero(),
         // Ask Try1Second AI (Price Lens card sits inside the hero, like the site)
         Padding(
