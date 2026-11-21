@@ -61,6 +61,9 @@ export function pagePlacement(path: string): { city?: string; queryTerms?: strin
 const SNAPSHOT_TTL_MS = 10 * 60_000;
 const MAX_ROWS = 6;
 const cache = new Map<string, { at: number; snap: PageSnapshot | null; ttl?: number }>();
+// Bounded (owner 21 Nov): a crawler walking the answer pages could otherwise grow this map without limit — 481 state
+// pages plus every city page, each holding its rows. Oldest entries are evicted first; a re-visit simply rebuilds.
+const SNAPSHOT_CACHE_MAX = Number(process.env.T1S_SNAPSHOT_CACHE_MAX || 400);
 
 const esc = (s: string) => String(s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -227,7 +230,53 @@ export function isStateAnswerPath(path: string): boolean {
   return /^\/best\/[a-z0-9-]+\/[a-z0-9-]+$/.test((path || '').replace(/\/+$/, ''));
 }
 
+/**
+ * OWNER 21 Nov (503s on the host log: GET /best/flights/bihar answered 503 after 2,544 s).
+ *
+ * These answer pages walked up to twelve cities with one sequential catalogue query each, with no budget and no
+ * single-flight. A crawler hitting a few hundred /best/<vertical>/<state> URLs therefore stacked hundreds of
+ * unbounded DB round-trips inside one Node process; each request held its socket for minutes and the edge started
+ * answering 503 for everything, including the SPA's own JS chunks. Two rules fix that without touching the data:
+ *   - every catalogue read gets a hard per-call timeout, and the whole build gets a total budget, so a page can
+ *     never outlive the request wall;
+ *   - concurrent requests for the SAME page share ONE in-flight build (single-flight), so a crawler burst costs one
+ *     pass per page instead of one per hit.
+ */
+const SNAPSHOT_BUILD_BUDGET_MS = Number(process.env.T1S_SNAPSHOT_BUDGET_MS || 4_000);
+const SNAPSHOT_QUERY_TIMEOUT_MS = Number(process.env.T1S_SNAPSHOT_QUERY_MS || 1_200);
+const inFlight = new Map<string, Promise<PageSnapshot | null>>();
+
+/** Keep the snapshot cache bounded; oldest key goes first. */
+function rememberSnapshot(key: string, entry: { at: number; snap: PageSnapshot | null; ttl?: number }): void {
+  cache.set(key, entry);
+  while (cache.size > SNAPSHOT_CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+/** Resolve with the promise's value, or null once [ms] passes. Never rejects. */
+function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    p.catch(() => null),
+    new Promise<null>((resolve) => {
+      const t = setTimeout(() => resolve(null), Math.max(50, ms));
+      if (typeof (t as any).unref === 'function') (t as any).unref();
+    }),
+  ]);
+}
+
 export async function snapshotForPath(path: string): Promise<PageSnapshot | null> {
+  const key0 = (path || '/').replace(/\/+$/, '') || '/';
+  const running = inFlight.get(key0);
+  if (running) return running;
+  const build = buildSnapshotForPath(path).finally(() => inFlight.delete(key0));
+  inFlight.set(key0, build);
+  return build;
+}
+
+async function buildSnapshotForPath(path: string): Promise<PageSnapshot | null> {
   const stateAnswer = isStateAnswerPath(path);
   const page = stateAnswer ? null : resolveSeoPage(path);
   if (!page && !stateAnswer) return null;
@@ -254,9 +303,16 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
         // MySQL). Walk the state's city list instead and stop once four CITIES WITH ROWS are collected, so a
         // state page shows everything we actually verify instead of depending on alphabet/corpus order.
         const groups: any[][] = [];
+        // Budget: a crawler must never be able to hold this page open. Each read is capped, and the walk stops
+        // once the total budget is spent — the page still renders with whatever it collected.
+        const startedAt = Date.now();
         for (const city of cities) {
           if (groups.filter((g) => g.length).length >= 4) break;
-          const rows = await findCatalogueOffers(vertical, { city, limit: 40 }).catch(() => []);
+          if (Date.now() - startedAt > SNAPSHOT_BUILD_BUDGET_MS) break;
+          const rows = (await within(
+            findCatalogueOffers(vertical, { city, limit: 40 }) as Promise<any[]>,
+            SNAPSHOT_QUERY_TIMEOUT_MS,
+          )) || [];
           const group = (rows as any[])
             .map((r) => ({
               title: `${String(r.title || '')} · ${city}`,
@@ -276,7 +332,7 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
     } catch {
       snap = null;
     }
-    cache.set(key, { at: Date.now(), snap, ttl: 60 * 60_000 });
+    rememberSnapshot(key, { at: Date.now(), snap, ttl: 60 * 60_000 });
     return snap;
   }
   try {
@@ -289,7 +345,7 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
       const { findCatalogueOffers } = await import('../catalogue/catalogueService');
       const where = prod ? {} : pagePlacement(key);
       const rows = (await Promise.all(
-        verticals.map((v) => findCatalogueOffers(v, { limit: prod ? 120 : 200, ...where }).catch(() => [])),
+        verticals.map((v) => within(findCatalogueOffers(v, { limit: prod ? 120 : 200, ...where }) as Promise<any[]>, SNAPSHOT_QUERY_TIMEOUT_MS).then((r) => r || [])),
       )).flat();
       // A city page whose city-filtered read is empty must not borrow another city's prices: try the
       // wider vertical read only when the page is not city-scoped, and let selectSnapshotRows' token
@@ -305,7 +361,10 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
         rows.push(...(prodRows as any[]));
       }
       if (!rows.length && !prod && where.city) {
-        const wider = (await findCatalogueOffers(verticals[0], { limit: 200 }).catch(() => [])) as any[];
+        const wider = ((await within(
+          findCatalogueOffers(verticals[0], { limit: 200 }) as Promise<any[]>,
+          SNAPSHOT_QUERY_TIMEOUT_MS,
+        )) || []) as any[];
         rows.push(...wider);
       }
       const candidates: SnapshotRow[] = rows
@@ -326,7 +385,7 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
   } catch {
     snap = null; // never break the page for a snapshot
   }
-  cache.set(key, { at: Date.now(), snap });
+  rememberSnapshot(key, { at: Date.now(), snap });
   return snap;
 }
 

@@ -66400,7 +66400,32 @@ function snapshotJsonLd(snapshot, path19) {
 function isStateAnswerPath(path19) {
   return /^\/best\/[a-z0-9-]+\/[a-z0-9-]+$/.test((path19 || "").replace(/\/+$/, ""));
 }
+function rememberSnapshot(key, entry) {
+  cache14.set(key, entry);
+  while (cache14.size > SNAPSHOT_CACHE_MAX) {
+    const oldest = cache14.keys().next().value;
+    if (oldest === void 0) break;
+    cache14.delete(oldest);
+  }
+}
+function within(p, ms) {
+  return Promise.race([
+    p.catch(() => null),
+    new Promise((resolve) => {
+      const t = setTimeout(() => resolve(null), Math.max(50, ms));
+      if (typeof t.unref === "function") t.unref();
+    })
+  ]);
+}
 async function snapshotForPath(path19) {
+  const key0 = (path19 || "/").replace(/\/+$/, "") || "/";
+  const running2 = inFlight2.get(key0);
+  if (running2) return running2;
+  const build2 = buildSnapshotForPath(path19).finally(() => inFlight2.delete(key0));
+  inFlight2.set(key0, build2);
+  return build2;
+}
+async function buildSnapshotForPath(path19) {
   const stateAnswer = isStateAnswerPath(path19);
   const page = stateAnswer ? null : resolveSeoPage(path19);
   if (!page && !stateAnswer) return null;
@@ -66418,9 +66443,14 @@ async function snapshotForPath(path19) {
       if (state && cities.length) {
         const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
         const groups = [];
+        const startedAt = Date.now();
         for (const city of cities) {
           if (groups.filter((g) => g.length).length >= 4) break;
-          const rows = await findCatalogueOffers2(vertical, { city, limit: 40 }).catch(() => []);
+          if (Date.now() - startedAt > SNAPSHOT_BUILD_BUDGET_MS) break;
+          const rows = await within(
+            findCatalogueOffers2(vertical, { city, limit: 40 }),
+            SNAPSHOT_QUERY_TIMEOUT_MS
+          ) || [];
           const group = rows.map((r) => ({
             title: `${String(r.title || "")} \xB7 ${city}`,
             seller: String(r.seller || r.vendor || ""),
@@ -66438,7 +66468,7 @@ async function snapshotForPath(path19) {
     } catch {
       snap = null;
     }
-    cache14.set(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
+    rememberSnapshot(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
     return snap;
   }
   try {
@@ -66449,7 +66479,7 @@ async function snapshotForPath(path19) {
       const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
       const where = prod ? {} : pagePlacement(key);
       const rows = (await Promise.all(
-        verticals.map((v) => findCatalogueOffers2(v, { limit: prod ? 120 : 200, ...where }).catch(() => []))
+        verticals.map((v) => within(findCatalogueOffers2(v, { limit: prod ? 120 : 200, ...where }), SNAPSHOT_QUERY_TIMEOUT_MS).then((r) => r || []))
       )).flat();
       if (!rows.length && !prod && verticals[0] === "ecommerce" && where.queryTerms?.length) {
         const { findProductCatalogueRows: findProductCatalogueRows2 } = await Promise.resolve().then(() => (init_productCatalogue(), productCatalogue_exports));
@@ -66460,7 +66490,10 @@ async function snapshotForPath(path19) {
         rows.push(...prodRows);
       }
       if (!rows.length && !prod && where.city) {
-        const wider = await findCatalogueOffers2(verticals[0], { limit: 200 }).catch(() => []);
+        const wider = await within(
+          findCatalogueOffers2(verticals[0], { limit: 200 }),
+          SNAPSHOT_QUERY_TIMEOUT_MS
+        ) || [];
         rows.push(...wider);
       }
       const candidates = rows.map((r) => ({
@@ -66478,22 +66511,26 @@ async function snapshotForPath(path19) {
   } catch {
     snap = null;
   }
-  cache14.set(key, { at: Date.now(), snap });
+  rememberSnapshot(key, { at: Date.now(), snap });
   return snap;
 }
 function clearSnapshotCache() {
   cache14.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache14, esc8, inr3, slugOf3;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache14, SNAPSHOT_CACHE_MAX, esc8, inr3, slugOf3, SNAPSHOT_BUILD_BUDGET_MS, SNAPSHOT_QUERY_TIMEOUT_MS, inFlight2;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
     SNAPSHOT_TTL_MS = 10 * 6e4;
     MAX_ROWS = 6;
     cache14 = /* @__PURE__ */ new Map();
+    SNAPSHOT_CACHE_MAX = Number(process.env.T1S_SNAPSHOT_CACHE_MAX || 400);
     esc8 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf3 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
+    SNAPSHOT_BUILD_BUDGET_MS = Number(process.env.T1S_SNAPSHOT_BUDGET_MS || 4e3);
+    SNAPSHOT_QUERY_TIMEOUT_MS = Number(process.env.T1S_SNAPSHOT_QUERY_MS || 1200);
+    inFlight2 = /* @__PURE__ */ new Map();
   }
 });
 
@@ -67136,6 +67173,68 @@ function securityTxt() {
   ].join("\n");
 }
 
+// server/httpServer.ts
+var import_http = __toESM(require("http"), 1);
+var KEEP_ALIVE_TIMEOUT_MS = 65e3;
+var RESPONSE_WALL_MS = Math.max(15e3, Number(process.env.T1S_RESPONSE_WALL_MS || 4e4));
+var makeResponseWall = (wallMs) => (req, res, next) => {
+  if (res.writableEnded) return next();
+  const timer = setTimeout(() => {
+    if (res.writableEnded || res.headersSent) return;
+    try {
+      if (req.path.startsWith("/api/")) {
+        res.status(200).json({
+          ok: true,
+          results: [],
+          pendingRefresh: true,
+          degraded: true,
+          honestNotice: "Live sources are still scanning. Results appear here automatically in a few seconds.",
+          sourcesAttempted: [],
+          sourcesSucceeded: [],
+          sourcesFailed: [],
+          servedFrom: "deadline",
+          resultsCount: 0,
+          latencyMs: wallMs
+        });
+      } else {
+        res.status(503).set("Retry-After", "5").type("text/plain").send("Try1Second is busy right now. Please retry in a few seconds.");
+      }
+    } catch {
+    }
+  }, wallMs);
+  if (typeof timer.unref === "function") timer.unref();
+  const clear = () => clearTimeout(timer);
+  res.on("finish", clear);
+  res.on("close", clear);
+  next();
+};
+var responseWall = makeResponseWall(RESPONSE_WALL_MS);
+var createListener = (app) => {
+  const server = import_http.default.createServer(app);
+  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1e3;
+  server.requestTimeout = 0;
+  server.maxRequestsPerSocket = 0;
+  server.timeout = 0;
+  server.on("clientError", (err, socket) => {
+    try {
+      if (socket?.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+    } catch {
+    }
+    if (err?.code && err.code !== "ECONNRESET" && err.code !== "EPIPE") {
+      console.warn("[Try1Second] client error:", err.code);
+    }
+  });
+  return server;
+};
+var listenWithKeepAlive = (app, port, label = "Try1Second") => {
+  const server = createListener(app);
+  server.listen(port, () => {
+    console.log(`[${label}] Independent metasearch engine running on port ${port}`);
+  });
+  return server;
+};
+
 // server/index.ts
 var __dirname2 = process.cwd();
 var agentLinkHeaderCache = null;
@@ -67147,6 +67246,7 @@ function agentLinkHeaderCached() {
 }
 async function createApp() {
   const app = (0, import_express5.default)();
+  app.use(responseWall);
   app.use(securityHeaders);
   app.get("/.well-known/security.txt", (_req, res) => {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -67713,35 +67813,6 @@ async function boot(start, label = "Try1Second") {
   }
   await start();
 }
-
-// server/httpServer.ts
-var import_http = __toESM(require("http"), 1);
-var KEEP_ALIVE_TIMEOUT_MS = 65e3;
-var createListener = (app) => {
-  const server = import_http.default.createServer(app);
-  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
-  server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1e3;
-  server.requestTimeout = 0;
-  server.maxRequestsPerSocket = 0;
-  server.timeout = 0;
-  server.on("clientError", (err, socket) => {
-    try {
-      if (socket?.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
-    } catch {
-    }
-    if (err?.code && err.code !== "ECONNRESET" && err.code !== "EPIPE") {
-      console.warn("[Try1Second] client error:", err.code);
-    }
-  });
-  return server;
-};
-var listenWithKeepAlive = (app, port, label = "Try1Second") => {
-  const server = createListener(app);
-  server.listen(port, () => {
-    console.log(`[${label}] Independent metasearch engine running on port ${port}`);
-  });
-  return server;
-};
 
 // server.prod.ts
 async function startWorker() {
