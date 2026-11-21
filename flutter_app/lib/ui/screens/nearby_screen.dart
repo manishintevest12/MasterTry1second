@@ -256,26 +256,29 @@ class _NearbyScreenState extends State<NearbyScreen> {
     }
   }
 
-  /// OWNER 14 Nov: "book button is not working in the app".
+  /// OWNER 14 Nov: "book button is not working in the app" — the server mints exits as root-relative
+  /// masking pointers (`/api/out?t=...`), which need [exitUrl] on a phone.
   ///
-  /// The server mints exits as root-relative masking pointers (`/api/out?t=...`), which are perfect
-  /// for a browser (it has an origin) and useless to a phone (it does not). Every other surface in
-  /// the app resolves them through [exitUrl]; nearby did not, so the tap threw away the url and
-  /// nothing opened. Now it takes the same route, and falls back to an external open when the
-  /// device has no Custom Tabs provider - a dead book button is worse than a browser hop.
+  /// OWNER 21 Nov: "nearby section mai visit/book pr click krne se app mai website... app mai try1second ke
+  /// andar hi jata hai... site ke bahar partner site pr jana chaiye." A Custom Tab (inAppBrowserView) still
+  /// looks and feels like our own chrome, so the shopper never sees that they left. Nearby is a discovery
+  /// surface — like the mobile site, its Visit/book hands the shopper to the partner in their own browser:
+  /// externalApplication, same as the site's target=_blank. The `/api/out?t=` pointer still records the click
+  /// server-side because the partner page is loaded through it.
   Future<void> _open(String url) async {
     // A map link must leave the app for the maps app: an in-app browser would only show a map inside our own chrome.
-    if (Uri.tryParse(url)?.host.contains('google.com') == true && (Uri.tryParse(url)?.path.contains('maps') ?? false)) {
-      try { await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication); return; } catch (_) {}
+    final parsed = Uri.tryParse(url);
+    if (parsed?.host.contains('google.com') == true && (parsed?.path.contains('maps') ?? false)) {
+      try { await launchUrl(parsed!, mode: LaunchMode.externalApplication); return; } catch (_) {}
     }
     final abs = exitUrl(url);
     final uri = Uri.tryParse(abs);
     if (uri == null || !uri.hasScheme) return;
     try {
-      final opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-      if (!opened) await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Last resort: the platform browser intent. Never leave a dead button.
+      try { await launchUrl(uri); } catch (_) {}
     }
   }
 
