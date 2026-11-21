@@ -202,7 +202,11 @@ class GroceryTile extends StatelessWidget {
                             ],
                           ),
                         ),
-                        qty == 0
+                        // OWNER 21 Nov: "add button sirf 10-min grocery mai hoga" — the basket belongs to the
+                        // grocery vertical, so e-commerce and food tiles carry no ADD/stepper. They keep the price,
+                        // the partner name and their Order button.
+                        if (vertical == 'grocery')
+                          qty == 0
                             ? GestureDetector(
                                 onTap: add,
                                 child: Container(

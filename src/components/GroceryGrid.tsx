@@ -132,35 +132,37 @@ const ProductTile: React.FC<{ group: OfferGroup; vertical: string }> = ({ group,
             <p className="text-[13px] font-black text-slate-900">{rupees(price)}</p>
             {mrp > price && <p className="text-[10px] text-slate-400 line-through">{rupees(mrp)}</p>}
           </div>
-          {qty === 0 ? (
-            <button
-              type="button"
-              onClick={add}
-              className="rounded-lg border-2 border-emerald-600 px-3 py-1 text-[11px] font-black text-emerald-700 hover:bg-emerald-600 hover:text-white transition-colors cursor-pointer"
-            >
-              ADD
-            </button>
-          ) : (
-            <div className="flex items-center rounded-lg border-2 border-emerald-600 overflow-hidden">
+          {/* OWNER 21 Nov: "add button sirf 10-min grocery mai hoga" — the basket is the grocery vertical's,
+              so e-commerce and food tiles show no ADD/stepper. They keep price, MRP, partner name and Order. */}
+          {vertical === 'grocery' && (qty === 0 ? (
               <button
                 type="button"
-                aria-label="Remove one"
-                onClick={() => cart.setQuantity(key, qty - 1)}
-                className="px-1.5 py-0.5 text-[13px] font-black text-emerald-700 hover:bg-emerald-50 cursor-pointer"
-              >
-                −
-              </button>
-              <span className="px-1 text-[11px] font-black text-emerald-700 min-w-4 text-center">{qty}</span>
-              <button
-                type="button"
-                aria-label="Add one"
                 onClick={add}
-                className="px-1.5 py-0.5 text-[13px] font-black text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                className="rounded-lg border-2 border-emerald-600 px-3 py-1 text-[11px] font-black text-emerald-700 hover:bg-emerald-600 hover:text-white transition-colors cursor-pointer"
               >
-                +
+                ADD
               </button>
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center rounded-lg border-2 border-emerald-600 overflow-hidden">
+                <button
+                  type="button"
+                  aria-label="Remove one"
+                  onClick={() => cart.setQuantity(key, qty - 1)}
+                  className="px-1.5 py-0.5 text-[13px] font-black text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                >
+                  −
+                </button>
+                <span className="px-1 text-[11px] font-black text-emerald-700 min-w-4 text-center">{qty}</span>
+                <button
+                  type="button"
+                  aria-label="Add one"
+                  onClick={add}
+                  className="px-1.5 py-0.5 text-[13px] font-black text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                >
+                  +
+                </button>
+              </div>
+            ))}
         </div>
 
         {/* E-COMMERCE: keep the in-site product page (gallery + every seller's price) reachable from the tile */}
