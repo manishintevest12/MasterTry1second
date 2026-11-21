@@ -171,6 +171,20 @@ class AppState extends ChangeNotifier {
     navigator.currentState?.pushNamed('product', arguments: s);
   }
 
+  /// Results the app has actually SEEN per vertical (owner 21 Nov: the strip shows a count badge like the
+  /// mobile website). Counts come from completed searches on this device only — a vertical that has not been
+  /// searched shows no badge rather than a made-up number.
+  final Map<String, int> resultCounts = {};
+
+  /// Record the live row count for a vertical after a search settles. Silent when nothing changed.
+  void noteResultCount(String v, int count) {
+    final key = v == 'movies' ? 'movie' : v;
+    if (key.isEmpty || count < 0) return;
+    if (resultCounts[key] == count) return;
+    resultCounts[key] = count;
+    notifyListeners();
+  }
+
   void selectVertical(String v) {
     vertical = v == 'movies' ? 'movie' : v;
     notifyListeners();

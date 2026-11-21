@@ -49,6 +49,7 @@ import { attachAffiliateDeepLinks } from '../affiliate/affiliateNetwork';
 import { createMaskingPointer } from '../affiliate/deeplink';
 import { merchantDeepLink } from '../affiliate/merchantLinks';
 import { pollKey, forgetPending } from '../api/pollBudget';
+import { dropExcludedOffers } from '../registry/verticalExclusions';
 
 export interface SearchInput {
   query: string;
@@ -911,7 +912,15 @@ function gateEcommerceResponse(
 }
 
 export async function runSearch(input: SearchInput): Promise<SearchResponse> {
-  return gateEcommerceResponse(input, await runSearchPipeline(input));
+  const response = gateEcommerceResponse(input, await runSearchPipeline(input));
+  // OWNER 21 Nov: "digihaat.in ko aap food delivery, 10 min grocery se hata do". Enforced at the single choke point
+  // every caller passes through, so a cached catalogue row, a last-known-good snapshot or a response-cache replay
+  // cannot put the partner back into a vertical the owner has scoped it out of. Nothing else about the response
+  // changes: surviving offers keep their prices, ranks and reasons.
+  const vertical = response.query?.vertical || input.vertical;
+  const results = dropExcludedOffers(vertical, response.results || []);
+  if (results.length === (response.results || []).length) return response;
+  return { ...response, results };
 }
 
 export async function runSearchPolled(input: SearchInput, deadlineMs = 15_000): Promise<SearchResponse> {

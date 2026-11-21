@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/app_state.dart';
+import 'core/grocery_cart.dart';
 import 'core/deep_links.dart';
 import 'core/push_alerts.dart';
 import 'core/theme.dart';
@@ -18,6 +19,9 @@ void main() {
   // for the app to render that way deliberately. Asking for edgeToEdge here means the bars are transparent, the
   // content sits underneath them, and the SafeAreas inside each screen keep text clear of them - instead of the
   // window being letterboxed on some devices and full-bleed on others.
+  // GROCERY CART (owner 20 Nov): restore the basket saved on this device before the first frame that can show a
+  // card, so the ADD/stepper on a grocery card opens in the right state instead of flashing "ADD".
+  unawaited(GroceryCart.instance.load());
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Color(0x00000000),

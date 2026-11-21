@@ -15,6 +15,8 @@ import '../../core/search_poll.dart';
 import '../../core/movie_price_gate.dart';
 import '../../core/feed_page.dart';
 import '../../core/funnel.dart';
+import '../widgets/grocery_cart_sheet.dart';
+import '../widgets/grocery_grid.dart';
 import '../widgets/compare_cards.dart';
 import '../widgets/hint_field.dart';
 import '../widgets/journey_date_picker_modal.dart';
@@ -159,7 +161,10 @@ class _CompareScreenState extends State<CompareScreen> {
       if (_state.searched.contains(_meta.id)) {
         _res = _state.cache[_meta.id];
         _markSettledIfComplete();
-        _shownCacheKey = _state.cacheQuery[_meta.id];
+        // Strip badge (owner 21 Nov): the count this vertical really returned, so the tab strip reads like the
+      // mobile website's.
+      _state.noteResultCount(_meta.id, _res?.items.length ?? 0);
+      _shownCacheKey = _state.cacheQuery[_meta.id];
         // Funnel step (owner 19 Nov): returning to a tab that already has rows is a real results view.
         // Keyed by the cached query so a rebuild cannot inflate the count.
         final cachedRows = _res?.items.length ?? 0;
@@ -853,6 +858,10 @@ class _CompareScreenState extends State<CompareScreen> {
         ),
       ),
       ]),
+      // GROCERY CART (owner 20 Nov): the basket the card steppers feed. Sits above the Smart Cart pill,
+      // shows the running total and opens the cart sheet where each group names its partner.
+      if (_meta.id == 'grocery')
+        Positioned(left: 0, right: 0, bottom: 18, child: const GroceryCartBar()),
       // Smart Cart (owner rule): floating basket on the grocery vertical.
       if (_meta.id == 'grocery' && app.smartCart.isNotEmpty)
         Positioned(
@@ -1304,6 +1313,10 @@ class _VerticalTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = AppState.instance;
+    // OWNER 21 Nov ("horizontal category/verticals tab strip jaisa abhi hai mobile website mai, waisa hi
+    // flutter app mai chaiye"): the app strip is now the website's strip — Home, Nearby, then every vertical
+    // with its icon, its name and a count badge, in one horizontally scrolling row.
     return Container(
       decoration: BoxDecoration(
         color: isDark(context) ? T1SColors.slate900 : Colors.white,
@@ -1311,50 +1324,80 @@ class _VerticalTabs extends StatelessWidget {
       ),
       child: SizedBox(
         height: 52,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          // owner 13 Nov: Nearby is the 13th vertical, so it also lives in the compare strip
-          itemCount: kVerticals.length + 1,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (c, i) {
-            if (i == kVerticals.length) {
-              final on = current == 'nearby';
+        child: ListenableBuilder(
+          listenable: app,
+          builder: (context, _) {
+            final counts = app.resultCounts;
+            Widget chip({
+              required IconData icon,
+              required String label,
+              required bool active,
+              required VoidCallback onTap,
+              int? count,
+            }) {
+              final fg = active ? Colors.white : (isDark(context) ? T1SColors.slate300 : T1SColors.slate600);
+              final iconColor = active ? const Color(0xFFFB923C) : (isDark(context) ? T1SColors.slate400 : T1SColors.slate500);
               return GestureDetector(
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyScreen())),
+                onTap: onTap,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: on ? T1SColors.red50 : (isDark(context) ? T1SColors.slate800 : T1SColors.slate50),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: on ? T1SColors.red200 : border(context)),
+                    color: active ? T1SColors.slate900 : (isDark(context) ? T1SColors.slate800 : T1SColors.slate50),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: active ? T1SColors.slate900 : border(context)),
                   ),
-                  child: Row(children: [
-                    Icon(Icons.nearby_error_rounded, size: 15, color: on ? T1SColors.red : muted(context)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(icon, size: 15, color: iconColor),
                     const SizedBox(width: 6),
-                    Text('Nearby', style: tx(context, 11.5, w: FontWeight.w800, color: on ? T1SColors.red : muted(context))),
+                    Text(label, style: tx(context, 11.5, w: FontWeight.w700, color: fg)),
+                    if (count != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: active ? T1SColors.slate800 : (isDark(context) ? T1SColors.slate700 : T1SColors.slate100),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text('$count',
+                            style: tx(context, 9.5, w: FontWeight.w900,
+                                color: active ? T1SColors.slate300 : muted(context))),
+                      ),
+                    ],
                   ]),
                 ),
               );
             }
-            final v = kVerticals[i];
-            final active = v.id == current;
-            final color = active ? T1SColors.red : muted(context);
-            return GestureDetector(
-              onTap: () => onPick(v.id),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: active ? T1SColors.red50 : (isDark(context) ? T1SColors.slate800 : T1SColors.slate50),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: active ? T1SColors.red200 : border(context)),
+
+            return ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              children: [
+                // Home: the website's strip opens with it, so the app does too.
+                chip(
+                  icon: Icons.home_rounded,
+                  label: 'Home',
+                  active: app.tab == NavTab.home,
+                  onTap: () => app.go(NavTab.home),
                 ),
-                child: Row(children: [
-                  Icon(v.icon, size: 15, color: active ? T1SColors.red : muted(context)),
-                  const SizedBox(width: 6),
-                  Text(v.name, style: tx(c, 11.5, w: FontWeight.w800, color: color)),
-                ]),
-              ),
+                const SizedBox(width: 8),
+                // Nearby: the thirteenth vertical, second in the strip exactly as on the site.
+                chip(
+                  icon: Icons.place_rounded,
+                  label: 'Nearby',
+                  active: current == 'nearby',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyScreen())),
+                ),
+                for (final v in kVerticals) ...[
+                  const SizedBox(width: 8),
+                  chip(
+                    icon: v.icon,
+                    label: v.name,
+                    active: v.id == current,
+                    count: counts[v.id],
+                    onTap: () => onPick(v.id),
+                  ),
+                ],
+              ],
             );
           },
         ),
@@ -2403,6 +2446,19 @@ class _FeedBody {
         // Multi-class pagination is fully handled above — never re-enter the
         // shared pair math (it would double-paginate widget lists).
         return all;
+      } else if (const ['grocery', 'ecommerce', 'food'].contains(meta.id)) {
+        // RETAIL GRID (owner 20 Nov: grocery first, then "ecommerce and food mai v yahi design rkho"): a product
+        // grid, not a list of comparison rows — the shape a shopper reads. Its own pagination (the shared pair math assumes one card + one gap per group, and a
+        // grid chunk is one widget for several products).
+        final total = groups.length;
+        final showAll = !FeedPage.showLoadMore(vertical: meta.id, visible: visibleCount, total: total);
+        final shown = showAll ? groups : groups.take(visibleCount).toList();
+        final out = <Widget>[GroceryGridChunk(groups: shown, vertical: meta.id)];
+        if (!showAll) {
+          out.add(_LoadMoreButton(remaining: total - shown.length, noun: 'products', onTap: onLoadMore));
+          out.add(const SizedBox(height: 12));
+        }
+        return out;
       } else {
         all = [
           for (final g in groups) ...[

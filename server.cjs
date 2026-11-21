@@ -19960,6 +19960,46 @@ var init_flights = __esm({
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Goibibo route page HTTP ${r.status}`, r.status);
             const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
             if (!items.length) return [];
+            const depRaw = String(ctx.query?.travelDates?.depart || "");
+            const wantedDate = /^\d{4}-\d{2}-\d{2}$/.test(depRaw) ? depRaw : "";
+            if (wantedDate) {
+              const dated = items.filter((i) => String(i.travel?.date || "") === wantedDate);
+              if (dated.length) {
+                dated.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+                return dated.slice(0, 40);
+              }
+              const slug5 = (c) => String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, "-");
+              const datedUrl = `https://www.goibibo.com/flights/${slug5(rt.from)}-to-${slug5(rt.to)}-flights/?depdate=${wantedDate.replace(/-/g, "")}`;
+              const base = items[0];
+              const bAttr = base?.attributes || {};
+              return [newRawItem(ctx.source, {
+                title: `Goibibo ${bAttr.airline || "flight"} ${bAttr.flight_number || ""} ${rt.from} \u2192 ${rt.to} on ${wantedDate} \u2014 check live fare`.replace(/\s+/g, " ").slice(0, 200),
+                brand: String(bAttr.airline || "Goibibo"),
+                seller: "Goibibo",
+                sellerUrl: datedUrl,
+                travel: { route: `${String(rt.from).toLowerCase()} to ${String(rt.to).toLowerCase()}`, date: wantedDate },
+                attributes: {
+                  airline: String(bAttr.airline || ""),
+                  flight_number: String(bAttr.flight_number || ""),
+                  ...bAttr.departure ? { departure: String(bAttr.departure) } : {},
+                  ...bAttr.arrival ? { arrival: String(bAttr.arrival) } : {},
+                  ...bAttr.duration ? { duration: String(bAttr.duration) } : {},
+                  stops: String(bAttr.stops ?? ""),
+                  origin: String(bAttr.origin || ""),
+                  destination: String(bAttr.destination || ""),
+                  price_basis: "live_fares_unavailable",
+                  seller_presence: "true",
+                  booking_cta: "Check Goibibo for this date",
+                  data_note: `Goibibo's server-rendered route page only carries a far-future service date, so no fare is shown for ${wantedDate} rather than another day's price. The airline and schedule are real; the button opens Goibibo's own search for this date.`,
+                  image: String(bAttr.image_url || "")
+                },
+                identifiers: { sku: `gi-${slug5(rt.from)}-${slug5(rt.to)}-${wantedDate}` },
+                evidence: {
+                  sourceUrl: datedUrl,
+                  extractedFields: ["route page schedule (airline, flight number, times); no fare for the requested date"]
+                }
+              })];
+            }
             items.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
             return items.slice(0, 40);
           }
@@ -20982,7 +21022,6 @@ var init_food = __esm({
     init_pizzaHut();
     init_toing();
     init_curlCffiFetch();
-    init_digihaat();
     ZOMATO_SLUGS = {
       "new delhi": "ncr",
       delhi: "ncr",
@@ -21289,31 +21328,10 @@ var init_food = __esm({
             }
             return items.slice(0, 40);
           }
-        },
-        {
-          // DigiHaat (digihaat.in) — the owner's Cuelinks partner (17 Nov: "ecommerce, food aur others me add karo").
-          // DigiHaat's food domain (ONDC:RET11) lists cooked dishes — biryani, pizza, burger, samosa — with the
-          // seller kitchen's own live price, so a dish query gets a real compare-able row from a partner store.
-          sourceId: "w_food_digihaat",
-          name: "Food worker: DigiHaat (ONDC food sellers, live prices)",
-          priority: 12,
-          run: async (ctx) => {
-            const term = String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
-            if (!term) return [];
-            const place = digihaatPlace(ctx.query.location);
-            let body;
-            try {
-              body = await fetchDigihaat(term, place);
-            } catch (e2) {
-              const msg = String(e2?.message || e2);
-              const code = /HTTP 40[13]/.test(msg) ? "ACCESS_CHALLENGE" : /HTTP 429/.test(msg) ? "RATE_LIMITED" : "SERVER_ERROR";
-              throw new AcquisitionError(code, `DigiHaat: ${msg}`.slice(0, 300));
-            }
-            const all = parseDigihaat(body, ctx.source, digihaatSearchUrl(term));
-            if (!all.length) throw new AcquisitionError("EMPTY_RESPONSE", `DigiHaat food sellers had no priced dish for "${term}"`);
-            return all.slice(0, 30);
-          }
         }
+        // OWNER 21 Nov: "digihaat.in ko aap food delivery, 10 min grocery se hata do" — the DigiHaat source is
+        // no longer queried for this vertical. DigiHaat stays a partner for e-commerce (its own worker there),
+        // so this is a vertical scope change, not a partner removal: no digihaat row can reach this feed.
       ]
     };
     registerVerticalWorker(foodWorker);
@@ -26459,7 +26477,6 @@ var init_grocery = __esm({
   "server/workers/verticals/grocery.ts"() {
     init_verticalWorker();
     init_amazonIn();
-    init_digihaat();
     init_flipkart();
     init_blinkit();
     init_zeptoSsr();
@@ -26862,31 +26879,9 @@ var init_grocery = __esm({
             throw new AcquisitionError("EMPTY_RESPONSE", `Amazon.in returned no grocery products for "${term}"`);
           }
         },
-        {
-          // DigiHaat (digihaat.in) — the owner's Cuelinks partner (17 Nov: "digihaat.in bhi add karo ecommerce,
-          // food aur others me"). An ONDC buyer app, so one query compares many seller apps' live prices.
-          // The storefront is client-rendered (no product data in the HTML), so this reads the same JSON API the
-          // public web app calls, using its own anonymous guest token (see parsers/digihaat.ts for the measurement).
-          sourceId: "w_grocery_digihaat",
-          name: "Grocery worker: DigiHaat (ONDC multi-seller live prices)",
-          priority: 9,
-          run: async (ctx) => {
-            const term = q2(ctx);
-            if (!term) return [];
-            const place = digihaatPlace(ctx.query.location);
-            let body;
-            try {
-              body = await fetchDigihaat(term, place);
-            } catch (e2) {
-              const msg = String(e2?.message || e2);
-              const code = /HTTP 40[13]/.test(msg) ? "ACCESS_CHALLENGE" : /HTTP 429/.test(msg) ? "RATE_LIMITED" : "SERVER_ERROR";
-              throw new AcquisitionError(code, `DigiHaat: ${msg}`.slice(0, 300));
-            }
-            const items = parseDigihaat(body, ctx.source, digihaatSearchUrl(term));
-            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `DigiHaat had no priced listing for "${term}"`);
-            return items;
-          }
-        },
+        // OWNER 21 Nov: "digihaat.in ko aap food delivery, 10 min grocery se hata do" — the DigiHaat source is
+        // no longer queried for this vertical. DigiHaat stays a partner for e-commerce (its own worker there),
+        // so this is a vertical scope change, not a partner removal: no digihaat row can reach this feed.
         {
           sourceId: "w_grocery_flipkart",
           name: "Grocery worker: Flipkart grocery listings",
@@ -33139,7 +33134,7 @@ function createMaskingPointer(destination, opts = {}) {
     return "";
   }
   const vertical = String(opts.vertical || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 16);
-  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {}, ...vertical ? { v: vertical } : {} }));
+  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {}, ...vertical ? { v: vertical } : {}, ...opts.direct ? { n: 1 } : {} }));
   const sig = import_crypto23.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
@@ -33156,7 +33151,9 @@ function resolveMaskingPointer(token) {
       destination: String(j.d),
       offerId: j.o ? String(j.o) : void 0,
       trusted: j.t === 1,
-      vertical: j.v ? String(j.v) : void 0
+      vertical: j.v ? String(j.v) : void 0,
+      // `n: 1` = a discovery exit (Nearby card): skip our own interstitial and go straight to the partner.
+      direct: j.n === 1
     };
   } catch {
     return null;
@@ -36935,6 +36932,44 @@ var init_verticalEngine = __esm({
   }
 });
 
+// server/registry/verticalExclusions.ts
+function excludedMerchantsFor(vertical) {
+  const v = String(vertical || "").toLowerCase();
+  return EXCLUSIONS[v] || [];
+}
+function isExcludedMerchant(vertical, ...texts) {
+  const tokens3 = excludedMerchantsFor(vertical);
+  if (!tokens3.length) return false;
+  const hay = texts.filter(Boolean).map((t) => String(t).toLowerCase()).join(" ");
+  if (!hay) return false;
+  return tokens3.some((t) => hay.includes(t));
+}
+function dropExcludedOffers(vertical, offers) {
+  if (!offers?.length) return offers || [];
+  if (!excludedMerchantsFor(vertical).length) return offers;
+  return offers.filter(
+    (o) => !isExcludedMerchant(
+      vertical,
+      o?.vendor,
+      o?.seller,
+      o?.site,
+      o?.provider,
+      o?.merchant,
+      o?.sourceId,
+      o?.source_id
+    )
+  );
+}
+var EXCLUSIONS;
+var init_verticalExclusions = __esm({
+  "server/registry/verticalExclusions.ts"() {
+    EXCLUSIONS = {
+      grocery: ["digihaat", "digi haat"],
+      food: ["digihaat", "digi haat"]
+    };
+  }
+});
+
 // server/catalogue/catalogueService.ts
 var catalogueService_exports = {};
 __export(catalogueService_exports, {
@@ -37046,6 +37081,10 @@ async function findCatalogueOffers(vertical, opts = {}) {
       where += " AND (location_city = ? OR location_city IS NULL)";
       params.push(opts.city);
     }
+    for (const m of excludedMerchantsFor(vertical)) {
+      where += " AND (vendor IS NULL OR LOWER(vendor) NOT LIKE ?) AND (seller IS NULL OR LOWER(seller) NOT LIKE ?)";
+      params.push(`%${m}%`, `%${m}%`);
+    }
     const terms = (opts.queryTerms || []).map((t) => String(t || "").trim().toLowerCase()).filter((t) => t.length >= 3).slice(0, 3);
     for (const t of terms) {
       where += " AND title LIKE ?";
@@ -37143,6 +37182,7 @@ var init_catalogueService = __esm({
     init_db();
     init_logger();
     init_freshness();
+    init_verticalExclusions();
     PURGE_BAD_HOTEL_ART_SQL = `DELETE FROM offers WHERE vertical = 'hotels' AND (
      JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%s2/favicons%'
      OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%brand-logos%'
@@ -37831,7 +37871,7 @@ var init_flightTimeBackfill = __esm({
     harvestCache = /* @__PURE__ */ new Map();
     harvestInflight = /* @__PURE__ */ new Map();
     slug4 = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, "_");
-    isPresenceRow = (offer) => String(offer?.id || "").startsWith("presence_") || String(offer?.attributes?.price_basis || "") === "live_fares_unavailable";
+    isPresenceRow = (offer) => String(offer?.id || "").startsWith("presence_") || String(offer?.attributes?.price_basis || "") === "live_fares_unavailable" || String(offer?.attributes?.seller_presence || "") === "true";
     withBudget2 = (p, ms, fallback) => new Promise((resolve) => {
       const timer = setTimeout(() => resolve(fallback), ms);
       if (typeof timer.unref === "function") timer.unref();
@@ -38994,7 +39034,11 @@ function gateEcommerceResponse(input, response, parsedVertical) {
   return response;
 }
 async function runSearch(input) {
-  return gateEcommerceResponse(input, await runSearchPipeline(input));
+  const response = gateEcommerceResponse(input, await runSearchPipeline(input));
+  const vertical = response.query?.vertical || input.vertical;
+  const results = dropExcludedOffers(vertical, response.results || []);
+  if (results.length === (response.results || []).length) return response;
+  return { ...response, results };
 }
 async function runSearchPolled(input, deadlineMs = 15e3) {
   const deadline = Date.now() + deadlineMs;
@@ -39637,6 +39681,7 @@ var init_searchOrchestrator = __esm({
     init_deeplink();
     init_merchantLinks();
     init_pollBudget();
+    init_verticalExclusions();
     BUS_PRIMARY_LIVE_SELLERS = ["abhibus", "redbus"];
     inflightPipelines = /* @__PURE__ */ new Map();
     pipelineByQuestion = /* @__PURE__ */ new Map();
@@ -50293,7 +50338,7 @@ var init_serviceNetworks = __esm({
       cng: [
         { name: "IGL CNG stations", url: "https://www.iglonline.net/English/OurNetwork.aspx", sub: "CNG network" },
         { name: "Adani Total Gas", url: "https://www.adanitotalgas.com/cng-stations", sub: "CNG network" },
-        { name: "Torrent Gas", url: "https://www.torrentgas.com/cng-stations", sub: "CNG network" },
+        { name: "Torrent Gas", url: "https://www.torrentgas.com/", sub: "CNG network" },
         { name: "GAIL Gas", url: "https://www.gailgas.com/cng-stations", sub: "CNG network" }
       ],
       lpg: [
@@ -50316,9 +50361,9 @@ var init_serviceNetworks = __esm({
         { name: "Royal Enfield Service", url: "https://www.royalenfield.com/in/en/service/", sub: "two-wheeler service network" }
       ],
       puncture: [
-        { name: "MRF dealer locator", url: "https://www.mrftyres.com/dealer-locator", sub: "tyre & puncture dealers" },
+        { name: "MRF dealer locator", url: "https://www.mrftyres.com/", sub: "tyre & puncture dealers" },
         { name: "Apollo Tyres dealers", url: "https://www.apollotyres.com/en-in/find-a-dealer/", sub: "tyre & puncture dealers" },
-        { name: "CEAT dealers", url: "https://www.ceat.com/dealer-locator.html", sub: "tyre & puncture dealers" },
+        { name: "CEAT dealers", url: "https://www.ceat.com/", sub: "tyre & puncture dealers" },
         { name: "JK Tyre dealers", url: "https://www.jktyre.com/dealer-locator.aspx", sub: "tyre & puncture dealers" }
       ],
       battery: [
@@ -50329,9 +50374,9 @@ var init_serviceNetworks = __esm({
         { name: "SF Sonic", url: "https://www.sfsonic.com/", sub: "battery dealer network" }
       ],
       tyres: [
-        { name: "MRF dealer locator", url: "https://www.mrftyres.com/dealer-locator", sub: "tyre dealer network" },
+        { name: "MRF dealer locator", url: "https://www.mrftyres.com/", sub: "tyre dealer network" },
         { name: "Apollo Tyres dealers", url: "https://www.apollotyres.com/en-in/find-a-dealer/", sub: "tyre dealer network" },
-        { name: "CEAT dealers", url: "https://www.ceat.com/dealer-locator.html", sub: "tyre dealer network" },
+        { name: "CEAT dealers", url: "https://www.ceat.com/", sub: "tyre dealer network" },
         { name: "JK Tyre dealers", url: "https://www.jktyre.com/dealer-locator.aspx", sub: "tyre dealer network" },
         { name: "Michelin India", url: "https://www.michelin.in/auto/dealers", sub: "tyre dealer network" }
       ],
@@ -50469,7 +50514,11 @@ function absoluteExit(url) {
 function pointer(url, category) {
   const dest = /^https?:\/\//i.test(url) ? url : "";
   if (!dest) return "";
-  return createMaskingPointer(dest, { vertical: category === "hotels" || category === "stays" ? "hotels" : category === "cabs" ? "cab" : "nearby", trusted: true });
+  return createMaskingPointer(dest, {
+    vertical: category === "hotels" || category === "stays" ? "hotels" : category === "cabs" ? "cab" : "nearby",
+    trusted: true,
+    direct: true
+  });
 }
 function norm9(name) {
   return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -53710,6 +53759,7 @@ async function nearbyHandler(req, res) {
       offset: Number(req.query.offset) || 0
     });
     res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Vary", "User-Agent");
     res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(answer.results) } : answer);
   } catch (e2) {
     const message = String(e2?.message || e2).slice(0, 300);
@@ -56799,7 +56849,8 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
         platform: isInAppWebView(req.headers["user-agent"]) ? "android" : "web"
       }], { userId: exitUserId }).catch(() => 0);
       if (exitUserId) void qualifyReferral(exitUserId, "outbound_click", getStore()).catch(() => null);
-      const fromApp = String(req.query.app || "") === "1" || isInAppWebView(req.headers["user-agent"]);
+      const isNearbyExit = String(resolved.vertical || "") === "nearby" || resolved.direct === true;
+      const fromApp = String(req.query.app || "") === "1" || isNearbyExit || isInAppWebView(req.headers["user-agent"]);
       if (fromApp) {
         res.redirect(302, dl.trackingUrl);
         return;
@@ -58170,9 +58221,7 @@ var init_acceptanceRegistry = __esm({
       { id: "flipkart_minutes", name: "Flipkart Minutes", vertical: "grocery", tier: "mandated", probes: [
         { capability: "grocery search", url: "https://www.flipkart.com/minutes-store" }
       ] },
-      { id: "digihaat_grocery", name: "DigiHaat Grocery", vertical: "grocery", tier: "mandated", probes: [
-        { capability: "grocery search", url: "https://digihaat.in/en/search?q=milk" }
-      ] },
+      // OWNER 21 Nov: DigiHaat removed from grocery ("digihaat.in ko aap food delivery, 10 min grocery se hata do").
       // ---- 16.10 Movies & events ----
       { id: "bookmyshow", name: "BookMyShow", vertical: "movies", tier: "mandated", probes: [
         { capability: "movie showtimes", url: "https://in.bookmyshow.com/explore/movies-mumbai" }
@@ -58216,9 +58265,7 @@ var init_acceptanceRegistry = __esm({
       { id: "eatsure", name: "EatSure", vertical: "food", tier: "mandated", probes: [
         { capability: "restaurant discovery", url: "https://www.eatsure.com/" }
       ] },
-      { id: "digihaat_food", name: "DigiHaat Food", vertical: "food", tier: "mandated", probes: [
-        { capability: "food search", url: "https://digihaat.in/en/search?q=biryani" }
-      ] },
+      // OWNER 21 Nov: DigiHaat removed from food delivery — it stays a partner for e-commerce only.
       { id: "uber_eats", name: "Uber Eats", vertical: "food", tier: "mandated", probes: [
         { capability: "restaurant discovery", url: "https://www.ubereats.com/in", retiredNote: "Uber Eats exited India in 2020 (business sold to Zomato); no Indian operations to test. Retired per policy 16.15." }
       ] },
@@ -63632,6 +63679,8 @@ function listSeoPaths(includeThin = false) {
   }
   for (const [a, b] of FLIGHT_ROUTES) paths.push(`/flights/${routeSlug(a, b, "flights")}`);
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, "bus")}`);
+  for (const slug5 of new Set(FLIGHT_ROUTES.flat())) paths.push(`/flights/${slug5}`);
+  for (const slug5 of new Set(BUS_ROUTES.flat())) paths.push(`/bus/${slug5}`);
   {
     paths.push("/price");
     for (const e2 of pricePathsNow()) paths.push(e2.path);
@@ -63820,6 +63869,51 @@ function resolveSeoPage(path19) {
         { label: "Best prices in every state", href: "/answers" }
       ]
     };
+  }
+  if ((head3 === "flights" || head3 === "bus") && tail && !/-to-/.test(tail)) {
+    const citySlug2 = tail;
+    const routes = (head3 === "flights" ? FLIGHT_ROUTES : BUS_ROUTES).filter(([a, b]) => a === citySlug2 || b === citySlug2).map(([a, b]) => ({ from: a, to: b, label: a === citySlug2 ? b : a })).slice(0, 12);
+    if (routes.length >= 2) {
+      const C = cityName(citySlug2);
+      const isFlights = head3 === "flights";
+      const others = routes.map((r) => cityName(r.label));
+      const listPhrase = others.slice(0, 4).join(", ");
+      const noun = isFlights ? "flights" : "buses";
+      return {
+        path: clean4,
+        title: isFlights ? `Flights from ${C} \u2014 Compare Live Airfares to ${others.length} Cities | Try1Second` : `Bus Tickets from ${C} \u2014 Compare Live Fares to ${others.length} Cities | Try1Second`,
+        description: isFlights ? `Compare live ${noun} from ${C} to ${listPhrase} and ${others.length - 4 > 0 ? `${others.length - 4} more` : "more"} cities across airlines and OTAs. Every fare ranked lowest first, direct booking links included.` : `Compare live bus fares from ${C} to ${listPhrase} and more across redBus, zingbus, AbhiBus and state carriers. Every operator and price on one screen, cheapest seat first.`,
+        h1: isFlights ? `Flights from ${C} \u2014 Live Fare Comparison` : `Bus from ${C} \u2014 Live Fare Comparison`,
+        intro: [
+          isFlights ? `Every route below is a live comparison: one search asks airlines and travel sites together for ${C} departures, and the fares come back ranked cheapest first.` : `Every route below is a live comparison: one search asks redBus, zingbus, AbhiBus and state carriers together for ${C} departures, and the fares come back cheapest first.`,
+          `Fares out of ${C} move through the day, so each route page shows what every source reports right now with a direct link to book on that seller. We never resell the ticket.`
+        ],
+        faqs: isFlights ? [
+          { q: `Which cities can I fly to from ${C}?`, a: `This page lists the ${C} routes we compare live, including ${listPhrase}. Open any route to see every airline and OTA fare side by side.` },
+          { q: `How do I find the cheapest flight from ${C}?`, a: `Pick your destination route here and run the comparison: we query airlines and OTAs live and rank every returned fare lowest first.` },
+          { q: "Do you charge a booking fee?", a: `No. You book on the airline or OTA site at their price. Try1Second only finds and ranks the fares.` }
+        ] : [
+          { q: `Which operators run buses from ${C}?`, a: `The route pages here compare every operator our sources return live \u2014 private carriers plus state road transport buses where they run.` },
+          { q: `How do I find the cheapest bus from ${C}?`, a: `Open your destination route and the comparison lists every operator and fare, cheapest seat first.` }
+        ],
+        breadcrumbs: [
+          { name: "Home", path: "/" },
+          { name: isFlights ? "Flights" : "Bus", path: isFlights ? "/flights" : "/bus" },
+          { name: `${isFlights ? "Flights" : "Bus"} from ${C}`, path: clean4 }
+        ],
+        links: [
+          { label: isFlights ? "All flight routes" : "All bus routes", href: isFlights ? "/flights" : "/bus" },
+          ...routes.slice(0, 8).map((r) => ({
+            label: isFlights ? `${cityName(r.from)} to ${cityName(r.to)} flights` : `${cityName(r.from)} to ${cityName(r.to)} bus`,
+            href: `/${head3}/${routeSlug(r.from, r.to, isFlights ? "flights" : "bus")}`
+          })),
+          { label: `${C} hotels`, href: `/hotels/${citySlug2}` },
+          { label: `${C} cabs`, href: `/cabs/${citySlug2}` },
+          { label: `${C} nearby places`, href: `/nearby/restaurants/${citySlug2}` },
+          { label: `Best ${isFlights ? "flight" : "bus"} comparison in India`, href: isFlights ? "/best/flights" : "/best/bus" }
+        ]
+      };
+    }
   }
   if (head3 === "flights" && /-to-.*-flights$/.test(tail)) {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-flights$/.exec(tail);
@@ -64052,6 +64146,23 @@ var init_data = __esm({
       shimla: "SLV"
     };
     FLIGHT_ROUTES = [
+      // OWNER 19 Nov: tier-2 coverage for the city hubs ("flights from Indore" and friends). Real, searched routes.
+      ["indore", "delhi"],
+      ["indore", "mumbai"],
+      ["indore", "bengaluru"],
+      ["indore", "hyderabad"],
+      ["indore", "pune"],
+      ["indore", "jaipur"],
+      ["indore", "ahmedabad"],
+      ["indore", "goa"],
+      ["bhopal", "delhi"],
+      ["bhopal", "mumbai"],
+      ["nagpur", "mumbai"],
+      ["nagpur", "delhi"],
+      ["surat", "delhi"],
+      ["surat", "mumbai"],
+      ["jaipur", "mumbai"],
+      ["lucknow", "delhi"],
       ["delhi", "mumbai"],
       ["delhi", "bengaluru"],
       ["mumbai", "bengaluru"],
@@ -64094,6 +64205,19 @@ var init_data = __esm({
       ["visakhapatnam", "delhi"]
     ];
     BUS_ROUTES = [
+      // OWNER 19 Nov: same tier-2 coverage for "bus from <city>" hubs.
+      ["indore", "bhopal"],
+      ["indore", "ujjain"],
+      ["indore", "mumbai"],
+      ["indore", "pune"],
+      ["indore", "delhi"],
+      ["indore", "jaipur"],
+      ["indore", "ahmedabad"],
+      ["indore", "nagpur"],
+      ["bhopal", "indore"],
+      ["ujjain", "indore"],
+      ["nagpur", "pune"],
+      ["surat", "mumbai"],
       ["delhi", "jaipur"],
       ["delhi", "agra"],
       ["delhi", "lucknow"],
@@ -66276,7 +66400,32 @@ function snapshotJsonLd(snapshot, path19) {
 function isStateAnswerPath(path19) {
   return /^\/best\/[a-z0-9-]+\/[a-z0-9-]+$/.test((path19 || "").replace(/\/+$/, ""));
 }
+function rememberSnapshot(key, entry) {
+  cache14.set(key, entry);
+  while (cache14.size > SNAPSHOT_CACHE_MAX) {
+    const oldest = cache14.keys().next().value;
+    if (oldest === void 0) break;
+    cache14.delete(oldest);
+  }
+}
+function within(p, ms) {
+  return Promise.race([
+    p.catch(() => null),
+    new Promise((resolve) => {
+      const t = setTimeout(() => resolve(null), Math.max(50, ms));
+      if (typeof t.unref === "function") t.unref();
+    })
+  ]);
+}
 async function snapshotForPath(path19) {
+  const key0 = (path19 || "/").replace(/\/+$/, "") || "/";
+  const running2 = inFlight2.get(key0);
+  if (running2) return running2;
+  const build2 = buildSnapshotForPath(path19).finally(() => inFlight2.delete(key0));
+  inFlight2.set(key0, build2);
+  return build2;
+}
+async function buildSnapshotForPath(path19) {
   const stateAnswer = isStateAnswerPath(path19);
   const page = stateAnswer ? null : resolveSeoPage(path19);
   if (!page && !stateAnswer) return null;
@@ -66294,9 +66443,14 @@ async function snapshotForPath(path19) {
       if (state && cities.length) {
         const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
         const groups = [];
+        const startedAt = Date.now();
         for (const city of cities) {
           if (groups.filter((g) => g.length).length >= 4) break;
-          const rows = await findCatalogueOffers2(vertical, { city, limit: 40 }).catch(() => []);
+          if (Date.now() - startedAt > SNAPSHOT_BUILD_BUDGET_MS) break;
+          const rows = await within(
+            findCatalogueOffers2(vertical, { city, limit: 40 }),
+            SNAPSHOT_QUERY_TIMEOUT_MS
+          ) || [];
           const group = rows.map((r) => ({
             title: `${String(r.title || "")} \xB7 ${city}`,
             seller: String(r.seller || r.vendor || ""),
@@ -66314,7 +66468,7 @@ async function snapshotForPath(path19) {
     } catch {
       snap = null;
     }
-    cache14.set(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
+    rememberSnapshot(key, { at: Date.now(), snap, ttl: 60 * 6e4 });
     return snap;
   }
   try {
@@ -66325,7 +66479,7 @@ async function snapshotForPath(path19) {
       const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
       const where = prod ? {} : pagePlacement(key);
       const rows = (await Promise.all(
-        verticals.map((v) => findCatalogueOffers2(v, { limit: prod ? 120 : 200, ...where }).catch(() => []))
+        verticals.map((v) => within(findCatalogueOffers2(v, { limit: prod ? 120 : 200, ...where }), SNAPSHOT_QUERY_TIMEOUT_MS).then((r) => r || []))
       )).flat();
       if (!rows.length && !prod && verticals[0] === "ecommerce" && where.queryTerms?.length) {
         const { findProductCatalogueRows: findProductCatalogueRows2 } = await Promise.resolve().then(() => (init_productCatalogue(), productCatalogue_exports));
@@ -66336,7 +66490,10 @@ async function snapshotForPath(path19) {
         rows.push(...prodRows);
       }
       if (!rows.length && !prod && where.city) {
-        const wider = await findCatalogueOffers2(verticals[0], { limit: 200 }).catch(() => []);
+        const wider = await within(
+          findCatalogueOffers2(verticals[0], { limit: 200 }),
+          SNAPSHOT_QUERY_TIMEOUT_MS
+        ) || [];
         rows.push(...wider);
       }
       const candidates = rows.map((r) => ({
@@ -66354,22 +66511,26 @@ async function snapshotForPath(path19) {
   } catch {
     snap = null;
   }
-  cache14.set(key, { at: Date.now(), snap });
+  rememberSnapshot(key, { at: Date.now(), snap });
   return snap;
 }
 function clearSnapshotCache() {
   cache14.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache14, esc8, inr3, slugOf3;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache14, SNAPSHOT_CACHE_MAX, esc8, inr3, slugOf3, SNAPSHOT_BUILD_BUDGET_MS, SNAPSHOT_QUERY_TIMEOUT_MS, inFlight2;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
     SNAPSHOT_TTL_MS = 10 * 6e4;
     MAX_ROWS = 6;
     cache14 = /* @__PURE__ */ new Map();
+    SNAPSHOT_CACHE_MAX = Number(process.env.T1S_SNAPSHOT_CACHE_MAX || 400);
     esc8 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf3 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
+    SNAPSHOT_BUILD_BUDGET_MS = Number(process.env.T1S_SNAPSHOT_BUDGET_MS || 4e3);
+    SNAPSHOT_QUERY_TIMEOUT_MS = Number(process.env.T1S_SNAPSHOT_QUERY_MS || 1200);
+    inFlight2 = /* @__PURE__ */ new Map();
   }
 });
 
@@ -67012,6 +67173,68 @@ function securityTxt() {
   ].join("\n");
 }
 
+// server/httpServer.ts
+var import_http = __toESM(require("http"), 1);
+var KEEP_ALIVE_TIMEOUT_MS = 65e3;
+var RESPONSE_WALL_MS = Math.max(15e3, Number(process.env.T1S_RESPONSE_WALL_MS || 4e4));
+var makeResponseWall = (wallMs) => (req, res, next) => {
+  if (res.writableEnded) return next();
+  const timer = setTimeout(() => {
+    if (res.writableEnded || res.headersSent) return;
+    try {
+      if (req.path.startsWith("/api/")) {
+        res.status(200).json({
+          ok: true,
+          results: [],
+          pendingRefresh: true,
+          degraded: true,
+          honestNotice: "Live sources are still scanning. Results appear here automatically in a few seconds.",
+          sourcesAttempted: [],
+          sourcesSucceeded: [],
+          sourcesFailed: [],
+          servedFrom: "deadline",
+          resultsCount: 0,
+          latencyMs: wallMs
+        });
+      } else {
+        res.status(503).set("Retry-After", "5").type("text/plain").send("Try1Second is busy right now. Please retry in a few seconds.");
+      }
+    } catch {
+    }
+  }, wallMs);
+  if (typeof timer.unref === "function") timer.unref();
+  const clear = () => clearTimeout(timer);
+  res.on("finish", clear);
+  res.on("close", clear);
+  next();
+};
+var responseWall = makeResponseWall(RESPONSE_WALL_MS);
+var createListener = (app) => {
+  const server = import_http.default.createServer(app);
+  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1e3;
+  server.requestTimeout = 0;
+  server.maxRequestsPerSocket = 0;
+  server.timeout = 0;
+  server.on("clientError", (err, socket) => {
+    try {
+      if (socket?.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+    } catch {
+    }
+    if (err?.code && err.code !== "ECONNRESET" && err.code !== "EPIPE") {
+      console.warn("[Try1Second] client error:", err.code);
+    }
+  });
+  return server;
+};
+var listenWithKeepAlive = (app, port, label = "Try1Second") => {
+  const server = createListener(app);
+  server.listen(port, () => {
+    console.log(`[${label}] Independent metasearch engine running on port ${port}`);
+  });
+  return server;
+};
+
 // server/index.ts
 var __dirname2 = process.cwd();
 var agentLinkHeaderCache = null;
@@ -67023,6 +67246,7 @@ function agentLinkHeaderCached() {
 }
 async function createApp() {
   const app = (0, import_express5.default)();
+  app.use(responseWall);
   app.use(securityHeaders);
   app.get("/.well-known/security.txt", (_req, res) => {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -67589,35 +67813,6 @@ async function boot(start, label = "Try1Second") {
   }
   await start();
 }
-
-// server/httpServer.ts
-var import_http = __toESM(require("http"), 1);
-var KEEP_ALIVE_TIMEOUT_MS = 65e3;
-var createListener = (app) => {
-  const server = import_http.default.createServer(app);
-  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
-  server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1e3;
-  server.requestTimeout = 0;
-  server.maxRequestsPerSocket = 0;
-  server.timeout = 0;
-  server.on("clientError", (err, socket) => {
-    try {
-      if (socket?.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
-    } catch {
-    }
-    if (err?.code && err.code !== "ECONNRESET" && err.code !== "EPIPE") {
-      console.warn("[Try1Second] client error:", err.code);
-    }
-  });
-  return server;
-};
-var listenWithKeepAlive = (app, port, label = "Try1Second") => {
-  const server = createListener(app);
-  server.listen(port, () => {
-    console.log(`[${label}] Independent metasearch engine running on port ${port}`);
-  });
-  return server;
-};
 
 // server.prod.ts
 async function startWorker() {

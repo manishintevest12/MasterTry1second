@@ -10,6 +10,7 @@ import { notifyWriteDenied } from './prune';
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
 import { buildEvidence, type EvidenceRecord } from '../pipeline/freshness';
+import { excludedMerchantsFor } from '../registry/verticalExclusions';
 
 /** Persist a validated offer. Returns the DB row id (0 on dev-file store without AUTO_INCREMENT). */
 export async function persistOffer(offer: NormalizedOffer, raw: RawSourceItem, source: SourceConfig): Promise<number> {
@@ -114,6 +115,13 @@ export async function findCatalogueOffers(
     // (0 rows) while a verified fare for THIS query sat in MySQL. A route/product term in the
     // WHERE clause puts the right rows in the candidate set; every existing gate (route,
     // relevance, department) still runs afterwards.
+    // OWNER 21 Nov: a vertical can scope a partner out entirely (DigiHaat off food + grocery). Rows written before
+    // that decision still sit in the catalogue, so the lookup itself refuses them instead of letting the cold-start
+    // floor paint a partner the owner removed.
+    for (const m of excludedMerchantsFor(vertical)) {
+      where += ' AND (vendor IS NULL OR LOWER(vendor) NOT LIKE ?) AND (seller IS NULL OR LOWER(seller) NOT LIKE ?)';
+      params.push(`%${m}%`, `%${m}%`);
+    }
     const terms = (opts.queryTerms || []).map((t) => String(t || '').trim().toLowerCase()).filter((t) => t.length >= 3).slice(0, 3);
     for (const t of terms) {
       where += ' AND title LIKE ?';

@@ -8,6 +8,8 @@ import { lazyWithRetry } from './lib/lazyWithRetry';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { SponsoredSmartlink } from './components/NetworkAdTags';
 import { AppProvider, useApp } from './context/AppContext';
+import { GroceryCartProvider } from './context/GroceryCartContext';
+import { GroceryCartBar, GroceryCartSheet } from './components/GroceryCart';
 import { Navbar } from './components/Navbar';
 import { VerticalNav } from './components/VerticalNav';
 import { SearchAndFilterHeader } from './components/SearchAndFilterHeader';
@@ -80,8 +82,11 @@ const MainContent: React.FC = () => {
       {/* In Compare tab, show the Kayak-style search & filter bar */}
       {activeNavTab === 'compare' && <SearchAndFilterHeader />}
 
-      {/* Main View Router — secondary views lazy-load (PageSpeed bundle fix) */}
-      <div className="flex-1">
+      {/* Main View Router — secondary views lazy-load (PageSpeed bundle fix).
+          OWNER 21 Nov (PageSpeed a11y/best-practices: "Document does not have a main landmark"): the routed view
+          is the page's main content, so the wrapper IS the landmark now. Every tab gets it for free, and the views
+          that used to carry their own <main> render a plain <div> instead (one landmark, never nested). */}
+      <main id="main-content" className="flex-1">
         <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
         {activeNavTab === 'home' && <HomeView />}
         {activeNavTab === 'quickapps' && <QuickAppsView />}
@@ -95,7 +100,7 @@ const MainContent: React.FC = () => {
         {activeNavTab === 'admin' && (isAdminAuthenticated ? <AdminDashboard /> : <AdminLoginView />)}
         {activeNavTab === 'merchant' && (authenticatedVendor ? <MerchantPortal /> : <MerchantLoginView />)}
         </Suspense>
-      </div>
+      </main>
 
       {/* Modals & Drawers — lazy: nothing here renders on landing (TBT fix) */}
       {/* Modals & Drawers — lazily mounted ONLY when their open-flag flips, so
@@ -130,6 +135,10 @@ const MainContent: React.FC = () => {
       {/* Fixed Bottom Bar: Home, AI Insights, Compare, Rewards */}
       {!isFullDashboard && <FixedBottomBar />}
 
+      {/* Grocery cart: the floating bar (only when the basket has something) and its sheet. */}
+      <GroceryCartBar />
+      <GroceryCartSheet />
+
       {/* Web -> app entry (owner 19 Nov): mobile web only, after real use, once per session, dismissible for
           30 days. It sits above the bottom bar and never covers content or interrupts a search. */}
       {!isFullDashboard && <AppEntryBar active={!isFullDashboard} />}
@@ -142,10 +151,14 @@ export default function App() {
   // Owner 3 Nov: the vertical must open in THIS tab and the ad must wait in another one.
   return (
     <AppProvider>
-      {/* OWNER 31 Oct: a failed chunk/render must never leave a blank white page. */}
-      <AppErrorBoundary>
-        <MainContent />
-      </AppErrorBoundary>
+      {/* Grocery basket (owner 20 Nov): one provider above the router so the card stepper, the floating cart
+          bar and the cart sheet all read the same basket. */}
+      <GroceryCartProvider>
+        {/* OWNER 31 Oct: a failed chunk/render must never leave a blank white page. */}
+        <AppErrorBoundary>
+          <MainContent />
+        </AppErrorBoundary>
+      </GroceryCartProvider>
     </AppProvider>
   );
 }

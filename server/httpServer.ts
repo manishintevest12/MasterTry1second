@@ -17,15 +17,67 @@
  *                              the connection while the proxy is still speaking.
  *  - requestTimeout 0          a cold metasearch legitimately runs a few seconds;
  *                              Node must not abort it mid-flight (the proxy's own
- *                              timeout is the honest limit).
+ *                              timeout is the honest limit) — and the app-level
+ *                              response wall below is what actually bounds a slow
+ *                              ANSWER (requestTimeout only covers reading the request).
  *  - maxRequestsPerSocket 0    no per-socket recycling: that is the edge's business.
  *  - clientError handler       a peer that vanishes mid-request is normal on mobile
  *                              networks; it must never escalate to an unhandled error.
  */
 import http from 'http';
-import type { Express } from 'express';
+import type { Express, Request, Response, NextFunction } from 'express';
 
 export const KEEP_ALIVE_TIMEOUT_MS = 65_000;
+
+/**
+ * RESPONSE WALL (owner 21 Nov: host log showed 503s with response times of 2,544 s / 4,539 s / 5,996 s on
+ * GET /best/flights/bihar and POST /api/scrape/live).
+ *
+ * Those are requests that never got an answer at all: Node's `requestTimeout` only bounds how long the CLIENT may
+ * take to send a request, so a handler that awaits a slow dependency keeps its socket — and its memory, and its
+ * upstream work — for as long as the dependency feels like it. A handful of those saturate the process, and then the
+ * edge answers 503 for everything, including the SPA's own JS chunks (25.9 s on a static asset in the same log).
+ *
+ * Every request now gets a wall. Past it we answer honestly instead of hanging:
+ *   - /api/*  -> 200 with `pendingRefresh: true` (the app already treats that as "still scanning, poll again"),
+ *                so a slow search degrades into the behaviour the client is built for and never into a 5xx;
+ *   - pages   -> 503 with `Retry-After`, because an HTML page has nothing honest to show half-rendered.
+ * The wall sits far above the slowest legitimate handler (the API's own hard deadline is 10 s).
+ */
+export const RESPONSE_WALL_MS = Math.max(15_000, Number(process.env.T1S_RESPONSE_WALL_MS || 40_000));
+
+/** Build the wall for a given budget. Exported so a test can prove the behaviour without waiting 40 s. */
+export const makeResponseWall = (wallMs: number) => (req: Request, res: Response, next: NextFunction): void => {
+  if (res.writableEnded) return next();
+  const timer = setTimeout(() => {
+    if (res.writableEnded || res.headersSent) return;
+    try {
+      if (req.path.startsWith('/api/')) {
+        res.status(200).json({
+          ok: true,
+          results: [],
+          pendingRefresh: true,
+          degraded: true,
+          honestNotice: 'Live sources are still scanning. Results appear here automatically in a few seconds.',
+          sourcesAttempted: [], sourcesSucceeded: [], sourcesFailed: [],
+          servedFrom: 'deadline', resultsCount: 0,
+          latencyMs: wallMs,
+        });
+      } else {
+        res.status(503).set('Retry-After', '5').type('text/plain')
+          .send('Try1Second is busy right now. Please retry in a few seconds.');
+      }
+    } catch { /* socket already gone */ }
+  }, wallMs);
+  if (typeof (timer as any).unref === 'function') (timer as any).unref();
+  const clear = () => clearTimeout(timer);
+  res.on('finish', clear);
+  res.on('close', clear);
+  next();
+};
+
+/** The wall every request passes through, with the configured budget. */
+export const responseWall = makeResponseWall(RESPONSE_WALL_MS);
 
 export const createListener = (app: Express): http.Server => {
   const server = http.createServer(app);

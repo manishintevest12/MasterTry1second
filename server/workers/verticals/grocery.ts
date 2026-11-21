@@ -5,7 +5,6 @@
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
 import { parseAmazonIn } from '../parsers/amazonIn';
-import { fetchDigihaat, parseDigihaat, digihaatPlace, digihaatSearchUrl } from '../parsers/digihaat';
 import { parseFlipkart } from '../parsers/flipkart';
 import { parseBlinkit } from '../parsers/blinkit';
 import { parseZeptoSsr, zeptoSsrMatches, type ZeptoSsrProduct } from '../parsers/zeptoSsr';
@@ -565,31 +564,9 @@ export const groceryWorker: VerticalWorker = {
         throw new AcquisitionError('EMPTY_RESPONSE', `Amazon.in returned no grocery products for "${term}"`);
       },
     },
-    {
-      // DigiHaat (digihaat.in) — the owner's Cuelinks partner (17 Nov: "digihaat.in bhi add karo ecommerce,
-      // food aur others me"). An ONDC buyer app, so one query compares many seller apps' live prices.
-      // The storefront is client-rendered (no product data in the HTML), so this reads the same JSON API the
-      // public web app calls, using its own anonymous guest token (see parsers/digihaat.ts for the measurement).
-      sourceId: 'w_grocery_digihaat',
-      name: 'Grocery worker: DigiHaat (ONDC multi-seller live prices)',
-      priority: 9,
-      run: async (ctx) => {
-        const term = q(ctx);
-        if (!term) return [];
-        const place = digihaatPlace(ctx.query.location);
-        let body: string;
-        try {
-          body = await fetchDigihaat(term, place);
-        } catch (e: any) {
-          const msg = String(e?.message || e);
-          const code = /HTTP 40[13]/.test(msg) ? 'ACCESS_CHALLENGE' : /HTTP 429/.test(msg) ? 'RATE_LIMITED' : 'SERVER_ERROR';
-          throw new AcquisitionError(code, `DigiHaat: ${msg}`.slice(0, 300));
-        }
-        const items = parseDigihaat(body, ctx.source, digihaatSearchUrl(term));
-        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `DigiHaat had no priced listing for "${term}"`);
-        return items;
-      },
-    },
+    // OWNER 21 Nov: "digihaat.in ko aap food delivery, 10 min grocery se hata do" — the DigiHaat source is
+    // no longer queried for this vertical. DigiHaat stays a partner for e-commerce (its own worker there),
+    // so this is a vertical scope change, not a partner removal: no digihaat row can reach this feed.
     {
       sourceId: 'w_grocery_flipkart',
       name: 'Grocery worker: Flipkart grocery listings',

@@ -1,5 +1,7 @@
 import { brandLogoUrl, initials } from '../utils/brandLogo';
 import { trackFunnel } from '../lib/funnel';
+import { useGroceryCart } from '../context/GroceryCartContext';
+import { cartKey } from '../lib/groceryCart';
 import { movieVenueLine } from '../lib/movieVenue';
 import React, { useState } from 'react';
 import {
@@ -264,6 +266,28 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
       })
     : '';
   const bestQuote = item.sellerQuotes.find((q) => q.isLowest) || item.sellerQuotes[0];
+  // GROCERY (owner 20 Nov: "hr card pr partner website ka naam, order now button and add to cart"): every
+  // grocery card names the partner it will be ordered from, carries an ADD/qty stepper, and its CTA says
+  // exactly where it goes. The cart line keeps that partner, that pack size and the price the shopper saw.
+  const groceryCart = useGroceryCart();
+  const isGroceryCard = String(item.vertical || '').toLowerCase() === 'grocery';
+  const groceryPartner = String(item.provider || bestQuote?.sellerName || '').trim();
+  const groceryUnit = String(item.unit || '').replace(/^per\s+/i, '').trim();
+  const groceryKey = isGroceryCard ? cartKey(item.title, groceryUnit, groceryPartner) : '';
+  const groceryQty = isGroceryCard ? groceryCart.qtyOf(groceryKey) : 0;
+  const addGroceryLine = () => {
+    groceryCart.add({
+      key: groceryKey,
+      title: item.title,
+      unit: groceryUnit,
+      price: Number(item.primaryPrice) || 0,
+      mrp: Number(item.originalPrice) || Number(item.primaryPrice) || 0,
+      partner: groceryPartner || 'Partner',
+      image: item.imageUrl || (item.images || [])[0],
+      url: bestQuote?.url,
+    });
+  };
+
   // Loans, insurance & bank accounts carry no product photo: show the provider's
   // real logo tile (same idea as the flight rows' carrier logos) instead of a
   // placeholder image. Owner 21 Oct: the Account vertical must render exactly like
@@ -746,16 +770,47 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
             )}
           </div>
 
-          {/* Smart Cart (grocery): add this product to the multi-store basket */}
-          {item.vertical === 'grocery' && (
-            <button
-              type="button"
-              onClick={() => addToSmartCart(item.title)}
-              className="shrink-0 px-3 py-2.5 rounded-xl border-2 border-slate-900 text-[11px] font-extrabold text-slate-900 hover:bg-slate-900 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Add to Smart Cart — compare the whole basket across stores"
-            >
-              + Cart
-            </button>
+          {/* GROCERY (owner 20 Nov): the partner this card orders from, and a real add-to-cart stepper.
+              ADD -> - 1 + , exactly like the store apps shoppers already use; the qty lives in the grocery
+              cart (localStorage) so it survives a reload and shows up in the cart bar. */}
+          {isGroceryCard && (
+            <div className="shrink-0 flex flex-col items-end gap-1.5">
+              <span
+                className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500"
+                title={`This price is from ${groceryPartner || 'the partner'}`}
+              >
+                {groceryPartner || 'Partner'}
+              </span>
+              {groceryQty === 0 ? (
+                <button
+                  type="button"
+                  onClick={addGroceryLine}
+                  className="px-4 py-1.5 rounded-lg border-2 border-emerald-600 text-[11px] font-extrabold text-emerald-700 hover:bg-emerald-600 hover:text-white transition-colors cursor-pointer"
+                >
+                  ADD
+                </button>
+              ) : (
+                <div className="flex items-center rounded-lg border-2 border-emerald-600 overflow-hidden">
+                  <button
+                    type="button"
+                    aria-label="Remove one"
+                    onClick={() => groceryCart.setQuantity(groceryKey, groceryQty - 1)}
+                    className="px-2 py-1 text-[13px] font-black text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                  >
+                    −
+                  </button>
+                  <span className="px-1.5 text-[11px] font-black text-emerald-700 min-w-4 text-center">{groceryQty}</span>
+                  <button
+                    type="button"
+                    aria-label="Add one"
+                    onClick={addGroceryLine}
+                    className="px-2 py-1 text-[13px] font-black text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Primary CTA (Kayak Orange Select Button) */}
@@ -770,7 +825,9 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   ? 'Check Eligibility & Match'
                   : item.vertical === 'insurance'
                   ? 'Instant Policy Match'
-                  : ['food', 'grocery', 'ecommerce'].includes(item.vertical)
+                  : item.vertical === 'grocery'
+                  ? (groceryPartner ? `Order on ${groceryPartner}` : 'Order Now')
+                  : ['food', 'ecommerce'].includes(item.vertical)
                   ? 'Order Now'
                   : ['movies', 'movie'].includes(item.vertical)
                   ? 'Book Cheapest Seats'

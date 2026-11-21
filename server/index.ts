@@ -31,12 +31,15 @@ function agentLinkHeaderCached(): string {
 }
 
 import { securityHeaders, apiRateLimit, securityTxt } from './security/security';
+import { responseWall } from './httpServer';
 
 export async function createApp(): Promise<express.Express> {
   const app = express();
   // OWNER 10 Nov ("security v increase kro site ki"): HSTS, nosniff, framing, referrer, permissions and a
   // report-only CSP on every response, plus a per-client budget on the expensive search endpoints.
   // See server/security/security.ts for why nothing here can change how the page renders.
+  // OWNER 21 Nov: nothing may hang. Mounted first so it also covers static files and any route added later.
+  app.use(responseWall);
   app.use(securityHeaders);
   app.get('/.well-known/security.txt', (_req: any, res: any) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');

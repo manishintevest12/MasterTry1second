@@ -1573,6 +1573,56 @@ export const flightsWorker: VerticalWorker = {
         if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Goibibo route page HTTP ${r.status}`, r.status);
         const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
         if (!items.length) return [];
+        // OWNER 19 Nov ("goibibo flights needed in flights vertical"): Goibibo was INVISIBLE on every dated
+        // search. Its SEO route page is date-blind - it always serves one far-future service date (measured
+        // 2026-11-19: every request, with or without depdate/date/itinerary params, returned 2027-01-11) - and
+        // the travel-date gate rightly drops a row whose date is not the requested one, so the seller vanished
+        // the moment the app sent a date.
+        // A dated search now keeps only the rows Goibibo actually dated for that day. When it has none, the
+        // seller is still shown for the requested date with NO price (never another day's fare dressed up as
+        // this one): the card links to Goibibo's own dated search and the fare is read there.
+        const depRaw = String(ctx.query?.travelDates?.depart || '');
+        const wantedDate = /^\d{4}-\d{2}-\d{2}$/.test(depRaw) ? depRaw : '';
+        if (wantedDate) {
+          const dated = items.filter((i: any) => String(i.travel?.date || '') === wantedDate);
+          if (dated.length) {
+            dated.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+            return dated.slice(0, 40);
+          }
+          const slug = (c: string) => String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, '').replace(/[^a-z0-9]+/g, '-');
+          const datedUrl = `https://www.goibibo.com/flights/${slug(rt.from)}-to-${slug(rt.to)}-flights/?depdate=${wantedDate.replace(/-/g, '')}`;
+          // The cheapest Goibibo journey we can see, stripped of its fare: airline, flight number, times and
+          // stops are real schedule facts, the PRICE is not published for the requested date, so none is shown.
+          const base: any = items[0];
+          const bAttr = base?.attributes || {};
+          return [newRawItem(ctx.source, {
+            title: `Goibibo ${bAttr.airline || 'flight'} ${bAttr.flight_number || ''} ${rt.from} → ${rt.to} on ${wantedDate} — check live fare`.replace(/\s+/g, ' ').slice(0, 200),
+            brand: String(bAttr.airline || 'Goibibo'),
+            seller: 'Goibibo',
+            sellerUrl: datedUrl,
+            travel: { route: `${String(rt.from).toLowerCase()} to ${String(rt.to).toLowerCase()}`, date: wantedDate },
+            attributes: {
+              airline: String(bAttr.airline || ''),
+              flight_number: String(bAttr.flight_number || ''),
+              ...(bAttr.departure ? { departure: String(bAttr.departure) } : {}),
+              ...(bAttr.arrival ? { arrival: String(bAttr.arrival) } : {}),
+              ...(bAttr.duration ? { duration: String(bAttr.duration) } : {}),
+              stops: String(bAttr.stops ?? ''),
+              origin: String(bAttr.origin || ''),
+              destination: String(bAttr.destination || ''),
+              price_basis: 'live_fares_unavailable',
+              seller_presence: 'true',
+              booking_cta: 'Check Goibibo for this date',
+              data_note: `Goibibo's server-rendered route page only carries a far-future service date, so no fare is shown for ${wantedDate} rather than another day's price. The airline and schedule are real; the button opens Goibibo's own search for this date.`,
+              image: String(bAttr.image_url || ''),
+            },
+            identifiers: { sku: `gi-${slug(rt.from)}-${slug(rt.to)}-${wantedDate}` },
+            evidence: {
+              sourceUrl: datedUrl,
+              extractedFields: ['route page schedule (airline, flight number, times); no fare for the requested date'],
+            },
+          })];
+        }
         // cheapest 40, like the other flights sources
         items.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
         return items.slice(0, 40);

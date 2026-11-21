@@ -147,7 +147,7 @@ export const Navbar: React.FC = () => {
             <button
               type="button"
               onClick={() => { setIsNotificationsOpen(!isNotificationsOpen); setMobileOpen(false); }}
-              className="relative h-10 w-10 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-full shadow-sm transition-all flex items-center justify-center cursor-pointer"
+              className="relative h-12 w-12 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-full shadow-sm transition-all flex items-center justify-center cursor-pointer"
               title="Notifications"
               aria-label="Notifications"
             >
@@ -161,7 +161,7 @@ export const Navbar: React.FC = () => {
             <button
               type="button"
               onClick={() => setMobileOpen((o) => !o)}
-              className="h-10 w-10 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center cursor-pointer"
+              className="h-12 w-12 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center cursor-pointer"
               aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
             >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}

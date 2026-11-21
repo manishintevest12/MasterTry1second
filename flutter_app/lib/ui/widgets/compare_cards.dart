@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_state.dart';
 import '../../core/funnel.dart';
+import '../../core/grocery_cart.dart';
 import '../../core/compare.dart';
 import '../../core/movie_venue.dart';
 import '../../core/theme.dart';
@@ -24,6 +25,11 @@ import 'kit.dart';
 /// Ecom 'Compare' button (web parity, owner rule: every e-commerce card carries
 /// one). Opens the in-app product detail page seeded with THIS card's own
 /// sellerQuotes so 100% of found sellers + gallery images show immediately.
+/// Public entry to the e-commerce product page, so the retail grid's tile can keep the same in-site comparison
+/// the ecom cards offer (owner 20 Nov: the grid must not drop a capability the old card had).
+void openComparePage(BuildContext context, {required CompareItem it, required OfferGroup g}) =>
+    _openComparePage(context, it: it, g: g);
+
 void _openComparePage(BuildContext context, {required CompareItem it, required OfferGroup g}) {
   final heroImage = it.imageUrl;
   final seed = <Map<String, Object?>>[
@@ -453,6 +459,33 @@ Future<void> _launchCabAppBooking(String appBookUrl) async {
 
 /// Every Book/Buy tap first opens the redirect sheet: it confirms the direct
 /// price and surfaces the seller's real best offer/coupon before leaving.
+/// Public entry to the same redirect flow the comparison cards use (owner 20 Nov: the grocery grid tiles must
+/// leave through the SAME tracked exit as every other card — never a bare url_launcher hop).
+void openPartnerExit(
+  BuildContext context, {
+  required String sellerName,
+  required String title,
+  required String goUrl,
+  double? price,
+  String? image,
+  bool isLowest = false,
+  bool appOnly = false,
+  String vertical = '',
+  String? appBookUrl,
+}) =>
+    _openRedirect(
+      context,
+      sellerName: sellerName,
+      title: title,
+      goUrl: goUrl,
+      price: price,
+      image: image,
+      isLowest: isLowest,
+      appOnly: appOnly,
+      vertical: vertical,
+      appBookUrl: appBookUrl,
+    );
+
 void _openRedirect(
   BuildContext context, {
   required String sellerName,
@@ -780,7 +813,7 @@ class TravelTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      ctaLabelFor(g.best.item.vertical),
+                      g.best.item.vertical == 'grocery' ? 'Order on $sellerName' : ctaLabelFor(g.best.item.vertical),
                       style: tx(context, 10, w: FontWeight.w900, color: Colors.white),
                     ),
                   ),
@@ -1607,7 +1640,7 @@ class GroupCard extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: _CompactCta(
-                      label: ctaLabelFor(vertical),
+                      label: vertical == 'grocery' ? 'Order on $sellerName' : ctaLabelFor(vertical),
                       onTap: () => _openRedirect(
                         context,
                         sellerName: sellerName,
@@ -1685,36 +1718,13 @@ class GroupCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // Smart Cart (owner rule): add this product to the basket.
+                    // GROCERY (owner 20 Nov: "hr card pr partner website ka naam, order now button and add to
+                    // cart functionality"): the partner this card orders from is named on the card, and ADD
+                    // becomes a real stepper backed by the shared grocery basket (persisted, shows in the cart
+                    // bar). Same rule as the web card.
                     if (vertical == 'grocery') ...[
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: () {
-                          AppState.instance.addToSmartCart(it.title);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Added to Smart Cart \u2014 ${AppState.instance.smartCart.length} item\u2026'),
-                              duration: const Duration(milliseconds: 1400),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: ink(context), width: 1.4),
-                            borderRadius: BorderRadius.circular(9),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.add_shopping_cart_rounded, size: 13, color: ink(context)),
-                              const SizedBox(width: 4),
-                              Text('Cart', style: tx(context, 10, w: FontWeight.w900, color: ink(context))),
-                            ],
-                          ),
-                        ),
-                      ),
+                      const SizedBox(width: 10),
+                      _GroceryAddControl(item: it, partner: sellerName, unit: it.unit, price: g.best.price),
                     ],
                   ],
                 ),
@@ -2031,6 +2041,87 @@ class _ChipSpecs extends StatelessWidget {
             size: 8.5,
           ),
       ],
+    );
+  }
+}
+
+
+/// GROCERY ADD CONTROL (owner 20 Nov). One widget used by every grocery card: the partner name above, then ADD
+/// which turns into  - 1 +  once the line is in the basket. The line keeps the pack size and the price the
+/// shopper saw, so the cart total is honest about being a snapshot.
+class _GroceryAddControl extends StatelessWidget {
+  const _GroceryAddControl({required this.item, required this.partner, required this.unit, required this.price});
+  final CompareItem item;
+  final String partner;
+  final String unit;
+  final double price;
+
+  @override
+  Widget build(BuildContext context) {
+    final cart = GroceryCart.instance;
+    final key = groceryKey(item.title, unit, partner);
+    return AnimatedBuilder(
+      animation: cart,
+      builder: (context, _) {
+        final qty = cart.qtyOf(key);
+        void add() => cart.add(GroceryLine(
+              key: key,
+              title: item.title,
+              unit: unit,
+              price: price > 0 ? price : item.primaryPrice,
+              mrp: item.originalPrice > 0 ? item.originalPrice : price,
+              partner: partner,
+              image: item.imageUrl,
+              url: item.bestQuote?.url,
+            ));
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(partner.isEmpty ? 'Partner' : partner,
+                style: tx(context, 9, w: FontWeight.w900, color: muted(context))),
+            const SizedBox(height: 3),
+            qty == 0
+                ? GestureDetector(
+                    onTap: add,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: T1SColors.emerald600, width: 1.6),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text('ADD', style: tx(context, 10.5, w: FontWeight.w900, color: T1SColors.emerald600)),
+                    ),
+                  )
+                : Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: T1SColors.emerald600, width: 1.6),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () => cart.setQty(key, qty - 1),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            child: Text('\u2212', style: tx(context, 12, w: FontWeight.w900, color: T1SColors.emerald600)),
+                          ),
+                        ),
+                        Text('$qty', style: tx(context, 10.5, w: FontWeight.w900, color: T1SColors.emerald600)),
+                        InkWell(
+                          onTap: add,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            child: Text('+', style: tx(context, 12, w: FontWeight.w900, color: T1SColors.emerald600)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ],
+        );
+      },
     );
   }
 }
