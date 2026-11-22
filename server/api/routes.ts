@@ -442,7 +442,10 @@ async function fetchUpcomingMovies(city: string, cacheKey: string): Promise<any[
 // real in-theatre inventory: title, genres, the likes count BMS prints, the poster and a
 // per-movie Book page. Cached 30 minutes like the upcoming tab; honest empty state.
 const nowShowingCache = new Map<string, { at: number; movies: any[] }>();
-apiRouter.get('/movies/currently-showing', async (req, res) => {
+// OWNER 22 Nov (access logs full of 5xx/404): installed app builds and cached web bundles still call the OLD
+// path `/api/store/currently-showing`. One handler answers both, so an old client gets real films instead of a
+// 404 forever (and the log stops filling with errors nobody can fix by updating).
+apiRouter.get(['/movies/currently-showing', '/store/currently-showing'], async (req, res) => {
   // OWNER 2 Nov ("homepage pr currently showing ni aa raha"): the homepage rail calls this
   // path with NO city at all (web CurrentlyShowing.tsx and the app's rail both call
   // '/api/movies/currently-showing'). An empty city sent BMS down the slowest path - measured
@@ -554,13 +557,16 @@ apiRouter.get('/geo/suggest', async (req, res) => {
   res.json({ results });
 });
 
-apiRouter.get('/geo/reverse', async (req, res) => {
+// OWNER 22 Nov: `/api/find-location?lat=&lng=` is the old path an installed build still asks for. Same handler,
+// plus a `city` field the old contract read, so those clients stop 404-ing.
+apiRouter.get(['/geo/reverse', '/find-location'], async (req, res) => {
   const lat = Number(req.query.lat), lng = Number(req.query.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     return res.status(400).json({ error: 'lat and lng are required numbers' });
   }
   const place = await geoReverse(lat, lng);
-  res.json({ place }); // place: null when Nominatim has no answer — never invented
+  // place: null when Nominatim has no answer — never invented
+  res.json({ place, city: place?.city || place?.locality || '', pincode: place?.pincode || '' });
 });
 
 // QUICK APPS (owner 22 Oct): the hub listed only ~29 curated companies and
@@ -2036,23 +2042,32 @@ apiRouter.post('/admin/proxy-discover', authMiddleware, requireAdmin, async (req
   }
 });
 
-apiRouter.post('/scrape/live', async (req, res) => {
+// OWNER 22 Nov (access log: `GET /api/search/live` and `POST /api/search/live` from installed builds, answered
+// 404/5xx): `/api/search/live` was the path older app versions shipped with, and some of them used GET. Both
+// methods and both paths now reach this one handler, so an old install searches instead of erroring - and the log
+// stops collecting errors no release can fix retroactively.
+apiRouter.all(['/scrape/live', '/search/live'], async (req, res) => {
+  // GET carries the same fields as query parameters; POST carries them in the body.
+  const src: any = (req.method === 'GET' || req.method === 'HEAD') ? req.query : (req.body || {});
+  const coords = src.coordinates || (src.lat !== undefined || src.lng !== undefined
+    ? { lat: Number(src.lat), lng: Number(src.lng) }
+    : undefined);
   const input: SearchInput = {
-    query: String(req.body.query || ''),
-    vertical: normalizeVerticalId(req.body.vertical) as SearchInput['vertical'],
-    pincode: req.body.pincode,
-    city: req.body.city,
-    locality: req.body.locality,
-    travelDates: req.body.travelDates && typeof req.body.travelDates === 'object' ? {
-      depart: String(req.body.travelDates.depart || '').slice(0, 10) || undefined,
-      return: String(req.body.travelDates.return || '').slice(0, 10) || undefined,
+    query: String(src.query || ''),
+    vertical: normalizeVerticalId(src.vertical) as SearchInput['vertical'],
+    pincode: src.pincode,
+    city: src.city,
+    locality: src.locality,
+    travelDates: src.travelDates && typeof src.travelDates === 'object' ? {
+      depart: String(src.travelDates.depart || '').slice(0, 10) || undefined,
+      return: String(src.travelDates.return || '').slice(0, 10) || undefined,
     } : undefined,
-    guests: Number(req.body.guests) || undefined,
+    guests: Number(src.guests) || undefined,
     // Exact map pin (MapPinPicker, 17 Oct): the engine gets the precise point, not just the city.
-    lat: typeof req.body.coordinates?.lat === 'number' ? req.body.coordinates.lat : undefined,
-    lng: typeof req.body.coordinates?.lng === 'number' ? req.body.coordinates.lng : undefined,
-    from: String(req.body.from || '').slice(0, 120) || undefined,
-    to: String(req.body.to || '').slice(0, 120) || undefined,
+    lat: typeof coords?.lat === 'number' && Number.isFinite(coords.lat) ? coords.lat : undefined,
+    lng: typeof coords?.lng === 'number' && Number.isFinite(coords.lng) ? coords.lng : undefined,
+    from: String(src.from || '').slice(0, 120) || undefined,
+    to: String(src.to || '').slice(0, 120) || undefined,
   };
   if (!input.query?.trim()) {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });

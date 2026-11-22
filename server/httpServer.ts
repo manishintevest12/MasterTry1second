@@ -44,7 +44,19 @@ export const KEEP_ALIVE_TIMEOUT_MS = 65_000;
  *   - pages   -> 503 with `Retry-After`, because an HTML page has nothing honest to show half-rendered.
  * The wall sits far above the slowest legitimate handler (the API's own hard deadline is 10 s).
  */
-export const RESPONSE_WALL_MS = Math.max(15_000, Number(process.env.T1S_RESPONSE_WALL_MS || 40_000));
+export const RESPONSE_WALL_MS = Math.max(15_000, Number(process.env.T1S_RESPONSE_WALL_MS || 30_000));
+
+/**
+ * Does this path belong to the JSON API? OWNER 22 Nov (access logs full of 5xx on /api/search/live,
+ * /api/store/currently-showing, /api/home/showcase with response times of 64 s to 783 s): the wall only matched
+ * `/api/`, so a bare `/api` and any path the router rewrote slipped past it and could sit on the socket far longer
+ * than the edge tolerates - which is exactly how a slow handler becomes a 5xx in the log instead of the honest
+ * `pendingRefresh` answer the app is built to poll.
+ */
+export const isApiRequest = (path: string): boolean => {
+  const p = String(path || '');
+  return p === '/api' || p.startsWith('/api/');
+};
 
 /** Build the wall for a given budget. Exported so a test can prove the behaviour without waiting 40 s. */
 export const makeResponseWall = (wallMs: number) => (req: Request, res: Response, next: NextFunction): void => {
@@ -52,7 +64,7 @@ export const makeResponseWall = (wallMs: number) => (req: Request, res: Response
   const timer = setTimeout(() => {
     if (res.writableEnded || res.headersSent) return;
     try {
-      if (req.path.startsWith('/api/')) {
+      if (isApiRequest(req.path)) {
         res.status(200).json({
           ok: true,
           results: [],
