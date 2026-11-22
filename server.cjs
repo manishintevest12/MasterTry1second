@@ -39803,7 +39803,8 @@ __export(loadGovernor_exports, {
   runGated: () => runGated,
   sampleCpu: () => sampleCpu,
   startLoadGovernor: () => startLoadGovernor,
-  stopLoadGovernor: () => stopLoadGovernor
+  stopLoadGovernor: () => stopLoadGovernor,
+  stuckJobMaxMs: () => stuckJobMaxMs
 });
 function sampleCpu(now = Date.now()) {
   const usage = process.cpuUsage(lastUsage);
@@ -39889,9 +39890,24 @@ function startJob(job) {
     try {
       return await job.runner();
     } finally {
+      if (job.watchdog) {
+        clearTimeout(job.watchdog);
+        job.watchdog = null;
+      }
       if (jobs.get(job.key) === job) jobs.delete(job.key);
     }
   })();
+  const cap2 = stuckJobMaxMs();
+  const wd = setTimeout(() => {
+    if (jobs.get(job.key) !== job) return;
+    counters.stuckJobs += 1;
+    jobs.delete(job.key);
+    for (const w of job.waiters) settle(w, { status: "timeout", waitedMs: Date.now() - job.startedAt });
+    job.waiters = [];
+    pump();
+  }, cap2);
+  if (typeof wd.unref === "function") wd.unref();
+  job.watchdog = wd;
   job.promise.then(
     () => {
       counters.completedJobs += 1;
@@ -39957,13 +39973,12 @@ async function runGated(key, work, opts = {}) {
   const job = { key, enqueuedAt, startedAt: 0, runner: work, promise: null, waiters: [] };
   if (activeCount() < liveConcurrencyLimit()) {
     jobs.set(key, job);
-    startJob(job);
-    try {
-      const value = await job.promise;
-      return { status: "ok", value, coalesced: false, waitedMs: Date.now() - enqueuedAt };
-    } catch {
-      return { status: "failed", waitedMs: Date.now() - enqueuedAt };
-    }
+    const started3 = new Promise((resolve) => {
+      const waiter = { resolve, timer: null, settled: false };
+      job.waiters.push(waiter);
+      startJob(job);
+    });
+    return started3;
   }
   if (queuedJobs().length >= liveQueueMax()) {
     counters.busyRequests += 1;
@@ -39975,7 +39990,13 @@ async function runGated(key, work, opts = {}) {
   return waiting;
 }
 function resetLoadGovernor() {
-  for (const job of jobs.values()) for (const w of job.waiters) settle(w, { status: "cancelled", waitedMs: 0 });
+  for (const job of jobs.values()) {
+    if (job.watchdog) {
+      clearTimeout(job.watchdog);
+      job.watchdog = null;
+    }
+    for (const w of job.waiters) settle(w, { status: "cancelled", waitedMs: 0 });
+  }
   jobs.clear();
   cpuPct2 = 0;
   lastUsage = process.cpuUsage();
@@ -39986,13 +40007,14 @@ function resetLoadGovernor() {
   counters.busyRequests = 0;
   counters.failedJobs = 0;
   counters.completedJobs = 0;
+  counters.stuckJobs = 0;
 }
 function pressurePercent() {
   const snap = resourceSnapshot();
   const cpu = Math.max(cpuPct2, Number(snap?.cpuPercent) || 0);
   return Math.min(100, Math.round(cpu));
 }
-var envNum, liveMaxConcurrency, liveQueueMax, cpuTargetPercent, liveFloor, defaultWaitMs, cpuPct2, lastUsage, lastSampleAt, sampler, cpuPercent, jobs, counters;
+var envNum, liveMaxConcurrency, liveQueueMax, cpuTargetPercent, liveFloor, stuckJobMaxMs, defaultWaitMs, cpuPct2, lastUsage, lastSampleAt, sampler, cpuPercent, jobs, counters;
 var init_loadGovernor = __esm({
   "server/common/loadGovernor.ts"() {
     init_resourceGuard();
@@ -40004,6 +40026,7 @@ var init_loadGovernor = __esm({
     liveQueueMax = () => Math.max(1, Math.floor(envNum("T1S_LIVE_QUEUE_MAX", 40)));
     cpuTargetPercent = () => envNum("T1S_CPU_TARGET_PCT", 50);
     liveFloor = () => Math.max(1, Math.floor(envNum("T1S_LIVE_MIN_CONCURRENCY", 2)));
+    stuckJobMaxMs = () => Math.max(5e3, Math.floor(envNum("T1S_LIVE_JOB_MAX_MS", 3e4)));
     defaultWaitMs = () => envNum("T1S_LIVE_QUEUE_WAIT_MS", 2500);
     cpuPct2 = 0;
     lastUsage = process.cpuUsage();
@@ -40011,11 +40034,20 @@ var init_loadGovernor = __esm({
     sampler = null;
     cpuPercent = () => cpuPct2;
     jobs = /* @__PURE__ */ new Map();
-    counters = { abandonedJobs: 0, coalescedRequests: 0, timedOutRequests: 0, busyRequests: 0, failedJobs: 0, completedJobs: 0 };
+    counters = { abandonedJobs: 0, coalescedRequests: 0, timedOutRequests: 0, busyRequests: 0, failedJobs: 0, completedJobs: 0, stuckJobs: 0 };
   }
 });
 
 // server/search/liveSearchGate.ts
+var liveSearchGate_exports = {};
+__export(liveSearchGate_exports, {
+  clearRepeatCache: () => clearRepeatCache,
+  liveGateStats: () => liveGateStats,
+  liveInputKey: () => liveInputKey,
+  repeatCacheLookup: () => repeatCacheLookup,
+  repeatCacheStore: () => repeatCacheStore,
+  runLiveSearch: () => runLiveSearch
+});
 function liveInputKey(input) {
   return [
     String(input.vertical || ""),
@@ -40047,6 +40079,9 @@ function store3(key, res) {
   }
   repeatCache.set(key, { at: Date.now(), body: res });
 }
+function repeatCacheStore(key, res) {
+  store3(key, res);
+}
 function repeatCacheLookup(key) {
   const hit = repeatCache.get(key);
   if (!hit) return null;
@@ -40056,6 +40091,9 @@ function repeatCacheLookup(key) {
     return null;
   }
   return hit.body;
+}
+function clearRepeatCache() {
+  repeatCache.clear();
 }
 async function runLiveSearch(input, opts = {}) {
   const key = liveInputKey(input);
@@ -59967,6 +60005,56 @@ var init_adminRoutes = __esm({
         }
       })();
     };
+    adminRouter.get("/live-health", async (req, res) => {
+      try {
+        const days = Math.max(1, Math.min(30, Number(req.query.days) || 7));
+        const verticals = String(req.query.vertical || "flights,hotels").split(",").map((v) => v.trim()).filter(Boolean);
+        const { governorStats: governorStats2 } = await Promise.resolve().then(() => (init_loadGovernor(), loadGovernor_exports));
+        const { liveGateStats: liveGateStats2 } = await Promise.resolve().then(() => (init_liveSearchGate(), liveSearchGate_exports));
+        const since = new Date(Date.now() - days * 24 * 60 * 6e4);
+        const health2 = getAllHealth();
+        const hById = new Map(health2.map((h) => [h.sourceId, h]));
+        const out = [];
+        for (const v of verticals) {
+          let rowsBySource = {};
+          try {
+            const rows = await getStore().query(
+              "SELECT source_id, COUNT(*) AS rows, MAX(fetched_at) AS last_fetched FROM offers WHERE vertical = ? AND fetched_at >= ? GROUP BY source_id",
+              [v, since]
+            );
+            for (const r of rows) rowsBySource[String(r.source_id)] = { rows: Number(r.rows) || 0, lastFetchedAt: r.last_fetched || null };
+          } catch {
+            rowsBySource = {};
+          }
+          const sources2 = getSources().filter((sc) => Array.isArray(sc.verticals) && sc.verticals.includes(v)).map((sc) => {
+            const h = hById.get(sc.id) || {};
+            const cat = rowsBySource[sc.id] || { rows: 0, lastFetchedAt: null };
+            let verdict = "ok";
+            if (!sc.enabled) verdict = "disabled in admin";
+            else if (cat.rows === 0 && !h.lastSuccessAt) verdict = "never produced a row";
+            else if (cat.rows === 0) verdict = "ran but wrote no accepted row (blocked, gated or empty)";
+            else if (h.state && h.state !== "HEALTHY") verdict = `degraded: ${h.lastFailureClass || h.state}`;
+            return {
+              id: sc.id,
+              name: sc.name,
+              enabled: sc.enabled,
+              priority: sc.priority,
+              health: h.state || "UNVERIFIED",
+              lastSuccessAt: h.lastSuccessAt || null,
+              lastFailureAt: h.lastFailureAt || null,
+              lastFailureClass: h.lastFailureClass || null,
+              catalogueRows: cat.rows,
+              lastRowAt: cat.lastFetchedAt,
+              verdict
+            };
+          }).sort((a, b) => a.priority - b.priority || String(a.id).localeCompare(String(b.id)));
+          out.push({ vertical: v, days, sources: sources2 });
+        }
+        res.json({ ok: true, governor: { ...governorStats2(), liveGate: liveGateStats2() }, verticals: out });
+      } catch (e2) {
+        res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 200) });
+      }
+    });
     adminRouter.get("/sources", (_req, res) => {
       const sources2 = getSources().map((s) => ({
         ...s,

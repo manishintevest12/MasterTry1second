@@ -49,6 +49,8 @@ interface Job<T = unknown> {
   runner: () => Promise<T>;
   promise: Promise<T> | null;
   waiters: Waiter<T>[];
+  /** Frees the concurrency slot if the pipeline never settles (see STUCK_JOB_MAX_MS). */
+  watchdog?: NodeJS.Timeout | null;
 }
 
 const envNum = (name: string, fallback: number): number => {
@@ -60,6 +62,19 @@ export const liveMaxConcurrency = (): number => Math.max(1, Math.floor(envNum('T
 export const liveQueueMax = (): number => Math.max(1, Math.floor(envNum('T1S_LIVE_QUEUE_MAX', 40)));
 export const cpuTargetPercent = (): number => envNum('T1S_CPU_TARGET_PCT', 50);
 const liveFloor = (): number => Math.max(1, Math.floor(envNum('T1S_LIVE_MIN_CONCURRENCY', 2)));
+/**
+ * OWNER 22 Nov ("goibibo, booking.com q ni hai hotels, flight vertical mai"):
+ * MEASURED on production — every /api/scrape/live call answered from the CATALOGUE with `sourcesAttempted: []`, and
+ * /api/search the same, for flights, hotels and even food (0 rows). That is the signature of the governor returning
+ * 'timeout'/'busy' for every request, which happens when the concurrency slots are held by jobs that never settle:
+ * a worker awaiting a fetch that never resolves keeps `activeCount()` at the limit forever, so no live pipeline ever
+ * runs again and the catalogue (last written when live still worked) is all anyone sees. Goibibo and Booking.com
+ * rows only ever come from live workers, so they silently disappeared from flights and hotels.
+ *
+ * A running job now has a wall. Past it the slot is released and its waiters are told honestly (status 'timeout'),
+ * so one hung pipeline can never freeze live search for the whole process.
+ */
+export const stuckJobMaxMs = (): number => Math.max(5_000, Math.floor(envNum('T1S_LIVE_JOB_MAX_MS', 30_000)));
 const defaultWaitMs = (): number => envNum('T1S_LIVE_QUEUE_WAIT_MS', 2500);
 
 /** Rolling CPU percentage of THIS process (100 = one full core). */
@@ -104,7 +119,7 @@ export function liveConcurrencyLimit(cpu: number = cpuPct): number {
 }
 
 const jobs = new Map<string, Job<any>>();
-const counters = { abandonedJobs: 0, coalescedRequests: 0, timedOutRequests: 0, busyRequests: 0, failedJobs: 0, completedJobs: 0 };
+const counters = { abandonedJobs: 0, coalescedRequests: 0, timedOutRequests: 0, busyRequests: 0, failedJobs: 0, completedJobs: 0, stuckJobs: 0 };
 
 export interface GovernorStats {
   active: number;
@@ -120,6 +135,7 @@ export interface GovernorStats {
   busyRequests: number;
   failedJobs: number;
   completedJobs: number;
+  stuckJobs: number;
 }
 
 export function governorStats(): GovernorStats {
@@ -170,9 +186,24 @@ function startJob(job: Job<any>): void {
     try {
       return await job.runner();
     } finally {
+      if (job.watchdog) { clearTimeout(job.watchdog); job.watchdog = null; }
       if (jobs.get(job.key) === job) jobs.delete(job.key);
     }
   })();
+  // STUCK-JOB WATCHDOG: a pipeline that never settles must not own a slot forever.
+  const cap = stuckJobMaxMs();
+  const wd = setTimeout(() => {
+    if (jobs.get(job.key) !== job) return;
+    counters.stuckJobs += 1;
+    // Free the slot first, then answer every waiter honestly. The orphaned promise keeps running to
+    // completion (its rows still land in the cache), but it no longer blocks anyone.
+    jobs.delete(job.key);
+    for (const w of job.waiters) settle(w, { status: 'timeout', waitedMs: Date.now() - job.startedAt });
+    job.waiters = [];
+    pump();
+  }, cap);
+  if (typeof (wd as any).unref === 'function') (wd as any).unref();
+  job.watchdog = wd;
   job.promise.then(
     () => { counters.completedJobs += 1; pump(); },
     () => { counters.failedJobs += 1; pump(); },
@@ -248,13 +279,14 @@ export async function runGated<T>(key: string, work: () => Promise<T>, opts: Gat
 
   if (activeCount() < liveConcurrencyLimit()) {
     jobs.set(key, job as Job<any>);
-    startJob(job as Job<any>);
-    try {
-      const value = await job.promise!;
-      return { status: 'ok', value, coalesced: false, waitedMs: Date.now() - enqueuedAt };
-    } catch {
-      return { status: 'failed', waitedMs: Date.now() - enqueuedAt };
-    }
+    // The immediate-start path also waits through a WAITER, not on the raw promise: the stuck-job watchdog can then
+    // answer this caller honestly instead of leaving it parked on a pipeline that never settles.
+    const started = new Promise<GateOutcome<T>>((resolve) => {
+      const waiter: Waiter<T> = { resolve, timer: null, settled: false };
+      job.waiters.push(waiter);
+      startJob(job as Job<any>);
+    });
+    return started;
   }
 
   if (queuedJobs().length >= liveQueueMax()) {
@@ -270,13 +302,16 @@ export async function runGated<T>(key: string, work: () => Promise<T>, opts: Gat
 
 /** Test/ops hook: clear all state (does not touch already-running work). */
 export function resetLoadGovernor(): void {
-  for (const job of jobs.values()) for (const w of job.waiters) settle(w, { status: 'cancelled', waitedMs: 0 });
+  for (const job of jobs.values()) {
+    if (job.watchdog) { clearTimeout(job.watchdog); job.watchdog = null; }
+    for (const w of job.waiters) settle(w, { status: 'cancelled', waitedMs: 0 });
+  }
   jobs.clear();
   cpuPct = 0;
   lastUsage = process.cpuUsage();
   lastSampleAt = Date.now();
   counters.abandonedJobs = 0; counters.coalescedRequests = 0; counters.timedOutRequests = 0;
-  counters.busyRequests = 0; counters.failedJobs = 0; counters.completedJobs = 0;
+  counters.busyRequests = 0; counters.failedJobs = 0; counters.completedJobs = 0; counters.stuckJobs = 0;
 }
 
 /** One pressure number (0-100) for callers that want a single verdict. */

@@ -69,6 +69,62 @@ const audit = (req: Request, action: string, target?: string, details?: unknown)
 };
 
 // --- Sources ---
+/**
+ * ADMIN → LIVE HEALTH (owner 22 Nov: "goibibo, booking.com q ni hai hotels, flight vertical mai").
+ *
+ * The answer is not in the UI, it is in the governor and the source registry. This endpoint reports, per source of the
+ * vertical: is it enabled, when did it last succeed/fail and with what class, how many catalogue rows it wrote in the
+ * window, and a plain verdict. It also reports the governor (active/queued/cpu/limit/stuck jobs): when every slot is
+ * held by a job that never settles, no live pipeline runs at all and the feed silently shows only the old catalogue,
+ * which is exactly how a live-only source like Goibibo or Booking.com disappears.
+ */
+adminRouter.get('/live-health', async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(30, Number(req.query.days) || 7));
+    const verticals = String(req.query.vertical || 'flights,hotels').split(',').map((v) => v.trim()).filter(Boolean);
+    const { governorStats } = await import('../common/loadGovernor');
+    const { liveGateStats } = await import('../search/liveSearchGate');
+    const since = new Date(Date.now() - days * 24 * 60 * 60_000);
+    const health = getAllHealth();
+    const hById = new Map(health.map((h: any) => [h.sourceId, h]));
+    const out: any[] = [];
+    for (const v of verticals) {
+      let rowsBySource: Record<string, { rows: number; lastFetchedAt: string | null }> = {};
+      try {
+        const rows = await getStore().query<any>(
+          'SELECT source_id, COUNT(*) AS rows, MAX(fetched_at) AS last_fetched FROM offers WHERE vertical = ? AND fetched_at >= ? GROUP BY source_id',
+          [v, since],
+        );
+        for (const r of rows) rowsBySource[String(r.source_id)] = { rows: Number(r.rows) || 0, lastFetchedAt: r.last_fetched || null };
+      } catch { rowsBySource = {}; }
+      const sources = getSources()
+        .filter((sc: any) => Array.isArray(sc.verticals) && sc.verticals.includes(v))
+        .map((sc: any) => {
+          const h: any = hById.get(sc.id) || {};
+          const cat = rowsBySource[sc.id] || { rows: 0, lastFetchedAt: null };
+          let verdict = 'ok';
+          if (!sc.enabled) verdict = 'disabled in admin';
+          else if (cat.rows === 0 && !h.lastSuccessAt) verdict = 'never produced a row';
+          else if (cat.rows === 0) verdict = 'ran but wrote no accepted row (blocked, gated or empty)';
+          else if (h.state && h.state !== 'HEALTHY') verdict = `degraded: ${h.lastFailureClass || h.state}`;
+          return {
+            id: sc.id, name: sc.name, enabled: sc.enabled, priority: sc.priority,
+            health: h.state || 'UNVERIFIED',
+            lastSuccessAt: h.lastSuccessAt || null,
+            lastFailureAt: h.lastFailureAt || null,
+            lastFailureClass: h.lastFailureClass || null,
+            catalogueRows: cat.rows, lastRowAt: cat.lastFetchedAt, verdict,
+          };
+        })
+        .sort((a: any, b: any) => a.priority - b.priority || String(a.id).localeCompare(String(b.id)));
+      out.push({ vertical: v, days, sources });
+    }
+    res.json({ ok: true, governor: { ...governorStats(), liveGate: liveGateStats() }, verticals: out });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: String(e?.message || e).slice(0, 200) });
+  }
+});
+
 adminRouter.get('/sources', (_req, res) => {
   const sources = getSources().map((s) => ({
     ...s,
