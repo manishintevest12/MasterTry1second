@@ -394,6 +394,86 @@ adminRouter.get('/referrals', async (req, res) => {
  * came back on another day. Aggregation happens in server/growth/funnel.ts so it behaves identically on
  * MySQL and on the dev file store.
  */
+/**
+ * ADMIN → MONETISATION (owner 22 Nov: "itne visitors hai phir v muje site se paisa kyun ni aa raha").
+ *
+ * The honest answer needs four facts, and only the server has all of them:
+ *   1. do ad units actually resolve? (admin row, env fallback, or nowhere) — a slot with no client/slot id renders
+ *      nothing, which is exactly how a site with traffic earns zero;
+ *   2. is any affiliate network configured? — without one, every merchant exit is a plain, unpaid link;
+ *   3. are people actually leaving for merchants? (outbound_click, by platform and by merchant);
+ *   4. where does the funnel break? (search -> results -> card click -> exit).
+ * Secrets are never echoed: the response says configured true/false and the last four characters of an id at most.
+ */
+adminRouter.get('/monetisation', async (req, res) => {
+  try {
+    const days = Math.max(1, Math.min(30, Number(req.query.days) || 7));
+    const { adSlotStatus } = await import('../marketing/placements');
+    const { funnelReport } = await import('../growth/funnel');
+
+    const adKeys = ['home_feed', 'vertical_feed', 'vertical_flights', 'vertical_hotels', 'vertical_ecommerce',
+      'vertical_grocery', 'vertical_food', 'vertical_movie', 'vertical_cab', 'vertical_loans',
+      'vertical_insurance', 'vertical_creditcards', 'vertical_account', 'rewards', 'redirect'];
+    const ads = [] as Array<{ key: string; active: boolean; source: string }>;
+    for (const k of adKeys) {
+      const st = await adSlotStatus(k).catch(() => ({ key: k, active: false, source: 'none' }));
+      ads.push({ key: st.key, active: st.active, source: st.source });
+    }
+    const adsenseClient = String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || '');
+    const adsenseSlot = String(process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || '');
+    const env = (n: string) => Boolean(String(process.env[n] || '').trim());
+    const affiliate = {
+      cuelinks: env('CUELINKS_API_KEY') || env('CUELINKS_CAMPAIGN_ID'),
+      cuelinksCampaignId: env('CUELINKS_CAMPAIGN_ID'),
+      cuelinksSubId: env('CUELINKS_SUB_ID'),
+      earnkaro: env('EKARO_API_KEY'),
+      admitad: env('ADMITAD_LINK_TEMPLATE') || env('ADMITAD_MERCHANTS'),
+      vcommission: env('VCOMMISSION_LINK_TEMPLATE') || env('VCOMMISSION_MERCHANTS'),
+      inrdeals: env('INRDEALS_LINK_TEMPLATE') || env('INRDEALS_MERCHANTS'),
+      cj: env('CJ_LINK_TEMPLATE') || env('CJ_MERCHANTS'),
+    };
+    const anyAffiliate = Object.entries(affiliate).some(([k, v]) => v === true && k !== 'cuelinksCampaignId' && k !== 'cuelinksSubId');
+
+    const funnel = await funnelReport(days).catch(() => null);
+    const byVertical = (funnel as any)?.byVertical || (funnel as any)?.perVertical || null;
+    const exitCount = Number((funnel as any)?.outbound ?? (funnel as any)?.counts?.outbound_click ?? 0) || 0;
+
+    const blockers: string[] = [];
+    if (!ads.some((a) => a.active)) {
+      blockers.push(adsenseClient
+        ? 'AdSense client set but no slot id: add ADSENSE_SLOT (or <SLOT_KEY>_AD_SLOT) in the panel, or create the unit in Admin → Ads.'
+        : 'No AdSense unit is configured anywhere: set ADSENSE_CLIENT (ca-pub-…) and ADSENSE_SLOT, or create the slot in Admin → Ads. Every unit renders nothing until then.');
+    }
+    if (!anyAffiliate) {
+      blockers.push('No affiliate network is configured: merchant exits still work and are tracked, but they pay nothing. Set CUELINKS_CAMPAIGN_ID (+ CUELINKS_API_KEY) or another network template in the panel.');
+    }
+    if (funnel && exitCount === 0) {
+      blockers.push(`Zero merchant exits recorded in the last ${days} days: clicks are not reaching /api/out, so no affiliate or AdSense-on-exit revenue can exist. Check the funnel report for where it drops.`);
+    }
+    if (!adsenseClient && !anyAffiliate) {
+      blockers.push('Both revenue engines are off. Until at least one is configured, traffic cannot earn regardless of volume.');
+    }
+
+    res.json({
+      ok: true,
+      days,
+      ads: {
+        configured: ads.some((a) => a.active),
+        units: ads,
+        clientTail: adsenseClient ? `…${adsenseClient.slice(-6)}` : null,
+        slotTail: adsenseSlot ? `…${adsenseSlot.slice(-4)}` : null,
+        adsTxt: true,
+      },
+      affiliate: { anyConfigured: anyAffiliate, networks: affiliate },
+      exits: { total: exitCount, byVertical },
+      funnel,
+      blockers,
+    });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: String(e?.message || e).slice(0, 200) });
+  }
+});
+
 adminRouter.get('/funnel', async (req, res) => {
   try {
     res.json(await funnelReport(req.query.days));

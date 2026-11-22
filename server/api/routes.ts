@@ -4778,7 +4778,10 @@ apiRouter.get('/out', async (req, res) => {
     vertical: String(resolved.vertical || ''),
     itemId: String(resolved.offerId || ''),
     seller: String(dl.network || ''),
-    platform: isInAppWebView(req.headers['user-agent']) ? 'android' : 'web',
+    // OWNER 22 Nov: the app now hands its exits to the phone's own browser, so the UA is a plain Chrome one and the
+    // exit was filed as 'web'. An app exit carries `app=1` on the pointer, which is the only reliable marker, so it
+    // counts as android here. Without this the funnel cannot tell app revenue from web revenue at all.
+    platform: String(req.query.app || '') === '1' || isInAppWebView(req.headers['user-agent']) ? 'android' : 'web',
   }], { userId: exitUserId }).catch(() => 0);
   // OWNER 19 Nov: leaving for a merchant is the qualified action a referral award waits for, so the
   // referee's pending referral is settled here (idempotent, and never on the redirect's critical path).

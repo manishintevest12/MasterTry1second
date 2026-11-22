@@ -42281,7 +42281,9 @@ var init_cachedSections = __esm({
 // server/marketing/placements.ts
 var placements_exports = {};
 __export(placements_exports, {
+  adSlotStatus: () => adSlotStatus,
   deleteTopPick: () => deleteTopPick,
+  envAdSlot: () => envAdSlot,
   getAdSlot: () => getAdSlot,
   listAdSlots: () => listAdSlots,
   listTopPicks: () => listTopPicks,
@@ -42368,11 +42370,41 @@ async function deleteTopPick(id) {
   purgeSectionCache("rewards:");
 }
 async function getAdSlot(slotKey) {
-  const rows = await getStore().query(
-    "SELECT slot_key, provider, adsense_client, adsense_slot, custom_html FROM ad_slots WHERE slot_key = ? AND is_active = 1",
-    [vert(slotKey)]
-  );
-  return rows[rows.length - 1] || null;
+  const key = vert(slotKey);
+  let row = null;
+  try {
+    const rows = await getStore().query(
+      "SELECT slot_key, provider, adsense_client, adsense_slot, custom_html FROM ad_slots WHERE slot_key = ? AND is_active = 1",
+      [key]
+    );
+    row = rows[rows.length - 1] || null;
+  } catch {
+  }
+  if (row) return row;
+  return envAdSlot(key);
+}
+function envAdSlot(slotKey) {
+  const client = String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || "").trim();
+  if (!/^ca-pub-[0-9]{10,}$/.test(client)) return null;
+  const key = vert(slotKey);
+  const perSlot = String(process.env[`${key.toUpperCase()}_AD_SLOT`] || "").trim();
+  const fallback = String(process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || "").trim();
+  const slot2 = perSlot || fallback;
+  if (!/^[0-9]{6,20}$/.test(slot2)) return null;
+  return { slot_key: key, provider: "adsense", adsense_client: client, adsense_slot: slot2, custom_html: null, source: "env" };
+}
+async function adSlotStatus(slotKey) {
+  const key = vert(slotKey);
+  try {
+    const rows = await getStore().query(
+      "SELECT adsense_client, adsense_slot, custom_html, provider FROM ad_slots WHERE slot_key = ? AND is_active = 1",
+      [key]
+    );
+    const row = rows[rows.length - 1];
+    if (row && (row.custom_html || row.adsense_client && row.adsense_slot)) return { key, active: true, source: "db" };
+  } catch {
+  }
+  return { key, active: Boolean(envAdSlot(key)), source: envAdSlot(key) ? "env" : "none" };
 }
 async function listAdSlots() {
   return getStore().query(
@@ -46977,6 +47009,18 @@ var init_assistantAi = __esm({
 });
 
 // server/growth/funnel.ts
+var funnel_exports = {};
+__export(funnel_exports, {
+  FUNNEL_EVENTS: () => FUNNEL_EVENTS,
+  funnelReport: () => funnelReport,
+  normaliseEvent: () => normaliseEvent,
+  recordEvent: () => recordEvent,
+  recordEvents: () => recordEvents,
+  resetFunnelBudget: () => resetFunnelBudget,
+  scrub: () => scrub,
+  sessionToken: () => sessionToken,
+  withinBudget: () => withinBudget2
+});
 function sessionToken(raw) {
   const text = String(raw ?? "").trim();
   if (/^[A-Za-z0-9_-]{6,64}$/.test(text)) return text;
@@ -47028,6 +47072,9 @@ function withinBudget2(key, now = Date.now()) {
   cur.count += 1;
   return true;
 }
+function resetFunnelBudget() {
+  budget.clear();
+}
 async function recordEvents(inputs, opts = {}) {
   const rows = inputs.slice(0, 20).map((e2) => normaliseEvent(e2, opts)).filter((r) => Boolean(r));
   if (!rows.length) return 0;
@@ -47044,6 +47091,9 @@ async function recordEvents(inputs, opts = {}) {
   } catch {
     return 0;
   }
+}
+async function recordEvent(input, opts = {}) {
+  return await recordEvents([input], opts) > 0;
 }
 async function funnelReport(daysInput, maxRows = 5e4, storeOverride) {
   const days = Math.max(1, Math.min(180, Number(daysInput) || 30));
@@ -57191,7 +57241,10 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
         vertical: String(resolved.vertical || ""),
         itemId: String(resolved.offerId || ""),
         seller: String(dl.network || ""),
-        platform: isInAppWebView(req.headers["user-agent"]) ? "android" : "web"
+        // OWNER 22 Nov: the app now hands its exits to the phone's own browser, so the UA is a plain Chrome one and the
+        // exit was filed as 'web'. An app exit carries `app=1` on the pointer, which is the only reliable marker, so it
+        // counts as android here. Without this the funnel cannot tell app revenue from web revenue at all.
+        platform: String(req.query.app || "") === "1" || isInAppWebView(req.headers["user-agent"]) ? "android" : "web"
       }], { userId: exitUserId }).catch(() => 0);
       if (exitUserId) void qualifyReferral(exitUserId, "outbound_click", getStore()).catch(() => null);
       if (String(req.query.json || "") === "1") {
@@ -60186,6 +60239,82 @@ var init_adminRoutes = __esm({
         res.json(await referralsReport(getStore(), req.query.days));
       } catch (e2) {
         res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 160) });
+      }
+    });
+    adminRouter.get("/monetisation", async (req, res) => {
+      try {
+        const days = Math.max(1, Math.min(30, Number(req.query.days) || 7));
+        const { adSlotStatus: adSlotStatus2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
+        const { funnelReport: funnelReport2 } = await Promise.resolve().then(() => (init_funnel(), funnel_exports));
+        const adKeys = [
+          "home_feed",
+          "vertical_feed",
+          "vertical_flights",
+          "vertical_hotels",
+          "vertical_ecommerce",
+          "vertical_grocery",
+          "vertical_food",
+          "vertical_movie",
+          "vertical_cab",
+          "vertical_loans",
+          "vertical_insurance",
+          "vertical_creditcards",
+          "vertical_account",
+          "rewards",
+          "redirect"
+        ];
+        const ads = [];
+        for (const k of adKeys) {
+          const st = await adSlotStatus2(k).catch(() => ({ key: k, active: false, source: "none" }));
+          ads.push({ key: st.key, active: st.active, source: st.source });
+        }
+        const adsenseClient = String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || "");
+        const adsenseSlot = String(process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || "");
+        const env = (n) => Boolean(String(process.env[n] || "").trim());
+        const affiliate = {
+          cuelinks: env("CUELINKS_API_KEY") || env("CUELINKS_CAMPAIGN_ID"),
+          cuelinksCampaignId: env("CUELINKS_CAMPAIGN_ID"),
+          cuelinksSubId: env("CUELINKS_SUB_ID"),
+          earnkaro: env("EKARO_API_KEY"),
+          admitad: env("ADMITAD_LINK_TEMPLATE") || env("ADMITAD_MERCHANTS"),
+          vcommission: env("VCOMMISSION_LINK_TEMPLATE") || env("VCOMMISSION_MERCHANTS"),
+          inrdeals: env("INRDEALS_LINK_TEMPLATE") || env("INRDEALS_MERCHANTS"),
+          cj: env("CJ_LINK_TEMPLATE") || env("CJ_MERCHANTS")
+        };
+        const anyAffiliate = Object.entries(affiliate).some(([k, v]) => v === true && k !== "cuelinksCampaignId" && k !== "cuelinksSubId");
+        const funnel = await funnelReport2(days).catch(() => null);
+        const byVertical = funnel?.byVertical || funnel?.perVertical || null;
+        const exitCount = Number(funnel?.outbound ?? funnel?.counts?.outbound_click ?? 0) || 0;
+        const blockers = [];
+        if (!ads.some((a) => a.active)) {
+          blockers.push(adsenseClient ? "AdSense client set but no slot id: add ADSENSE_SLOT (or <SLOT_KEY>_AD_SLOT) in the panel, or create the unit in Admin \u2192 Ads." : "No AdSense unit is configured anywhere: set ADSENSE_CLIENT (ca-pub-\u2026) and ADSENSE_SLOT, or create the slot in Admin \u2192 Ads. Every unit renders nothing until then.");
+        }
+        if (!anyAffiliate) {
+          blockers.push("No affiliate network is configured: merchant exits still work and are tracked, but they pay nothing. Set CUELINKS_CAMPAIGN_ID (+ CUELINKS_API_KEY) or another network template in the panel.");
+        }
+        if (funnel && exitCount === 0) {
+          blockers.push(`Zero merchant exits recorded in the last ${days} days: clicks are not reaching /api/out, so no affiliate or AdSense-on-exit revenue can exist. Check the funnel report for where it drops.`);
+        }
+        if (!adsenseClient && !anyAffiliate) {
+          blockers.push("Both revenue engines are off. Until at least one is configured, traffic cannot earn regardless of volume.");
+        }
+        res.json({
+          ok: true,
+          days,
+          ads: {
+            configured: ads.some((a) => a.active),
+            units: ads,
+            clientTail: adsenseClient ? `\u2026${adsenseClient.slice(-6)}` : null,
+            slotTail: adsenseSlot ? `\u2026${adsenseSlot.slice(-4)}` : null,
+            adsTxt: true
+          },
+          affiliate: { anyConfigured: anyAffiliate, networks: affiliate },
+          exits: { total: exitCount, byVertical },
+          funnel,
+          blockers
+        });
+      } catch (e2) {
+        res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 200) });
       }
     });
     adminRouter.get("/funnel", async (req, res) => {

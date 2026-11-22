@@ -111,11 +111,54 @@ export async function deleteTopPick(id: number): Promise<void> {
 }
 
 export async function getAdSlot(slotKey: string): Promise<any | null> {
-  const rows = await getStore().query<any>(
-    'SELECT slot_key, provider, adsense_client, adsense_slot, custom_html FROM ad_slots WHERE slot_key = ? AND is_active = 1',
-    [vert(slotKey)],
-  );
-  return rows[rows.length - 1] || null;
+  const key = vert(slotKey);
+  let row: any | null = null;
+  try {
+    const rows = await getStore().query<any>(
+      'SELECT slot_key, provider, adsense_client, adsense_slot, custom_html FROM ad_slots WHERE slot_key = ? AND is_active = 1',
+      [key],
+    );
+    row = rows[rows.length - 1] || null;
+  } catch { /* DB unavailable: env can still light the unit */ }
+  if (row) return row;
+  // OWNER 22 Nov ("itne visitors hai phir v paisa kyun ni aa raha"): the feed/home ad units only rendered when an
+  // admin had created an ad_slots ROW. With none created, 3.1k visitors/day saw zero AdSense units and the account
+  // earned nothing, even though the publisher script and ads.txt were already live. The interstitial already had an
+  // env fallback; this gives every unit the same one, so setting ADSENSE_CLIENT + ADSENSE_SLOT in the panel turns
+  // ads on everywhere without touching the admin UI. Nothing is invented: no client/slot, no unit.
+  return envAdSlot(key);
+}
+
+/**
+ * AdSense configuration from the environment, per slot key:
+ *   ADSENSE_CLIENT (or ADSENSE_CLIENT_ID)                 e.g. ca-pub-3144522772064172
+ *   ADSENSE_SLOT    (or ADSENSE_SLOT_ID)                  default unit id
+ *   <SLOT_KEY>_AD_SLOT                                    per-unit override, e.g. HOME_FEED_AD_SLOT=1234567890
+ * A slot-specific override always wins over the default unit.
+ */
+export function envAdSlot(slotKey: string): any | null {
+  const client = String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || '').trim();
+  if (!/^ca-pub-[0-9]{10,}$/.test(client)) return null;
+  const key = vert(slotKey);
+  const perSlot = String(process.env[`${key.toUpperCase()}_AD_SLOT`] || '').trim();
+  const fallback = String(process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || '').trim();
+  const slot = perSlot || fallback;
+  if (!/^[0-9]{6,20}$/.test(slot)) return null;
+  return { slot_key: key, provider: 'adsense', adsense_client: client, adsense_slot: slot, custom_html: null, source: 'env' };
+}
+
+/** Where a unit's configuration comes from: the admin row, the environment, or nowhere. Used by the diagnostics. */
+export async function adSlotStatus(slotKey: string): Promise<{ key: string; active: boolean; source: 'db' | 'env' | 'none' }> {
+  const key = vert(slotKey);
+  try {
+    const rows = await getStore().query<any>(
+      'SELECT adsense_client, adsense_slot, custom_html, provider FROM ad_slots WHERE slot_key = ? AND is_active = 1',
+      [key],
+    );
+    const row = rows[rows.length - 1];
+    if (row && (row.custom_html || (row.adsense_client && row.adsense_slot))) return { key, active: true, source: 'db' };
+  } catch { /* fall through to env */ }
+  return { key, active: Boolean(envAdSlot(key)), source: envAdSlot(key) ? 'env' : 'none' };
 }
 
 export async function listAdSlots(): Promise<any[]> {
