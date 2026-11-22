@@ -422,18 +422,58 @@ adminRouter.get('/monetisation', async (req, res) => {
     const adsenseClient = String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || '');
     const adsenseSlot = String(process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || '');
     const env = (n: string) => Boolean(String(process.env[n] || '').trim());
-    const affiliate = {
-      cuelinks: env('CUELINKS_API_KEY') || env('CUELINKS_CAMPAIGN_ID'),
-      cuelinksCampaignId: env('CUELINKS_CAMPAIGN_ID'),
-      cuelinksSubId: env('CUELINKS_SUB_ID'),
-      earnkaro: env('EKARO_API_KEY'),
-      admitad: env('ADMITAD_LINK_TEMPLATE') || env('ADMITAD_MERCHANTS'),
-      vcommission: env('VCOMMISSION_LINK_TEMPLATE') || env('VCOMMISSION_MERCHANTS'),
-      inrdeals: env('INRDEALS_LINK_TEMPLATE') || env('INRDEALS_MERCHANTS'),
-      cj: env('CJ_LINK_TEMPLATE') || env('CJ_MERCHANTS'),
+    // OWNER 22 Nov ("isme cuelinks hi sirf kyun bata rahe ho aur v tho partner hai"): the exit chain has SEVEN
+    // claiming layers, and Cuelinks is only one of them. Reporting one network made it look like the only option,
+    // so every layer is listed here, in the order the chain actually tries them.
+    //   1 admin rows (affiliate_configs / affiliate_links) — any direct publisher program
+    //   2 Amazon Associates (tag)
+    //   3 env-template networks: Admitad, VCommission, INRDeals, CJ (Booking.com baked in)
+    //   4 Cuelinks (approved -> applied -> fallback allow-list)
+    //   5 LinkInR
+    //   6 EarnKaro / Ekaro converter
+    //   7 direct (honest hop, earns nothing)
+    let dbConfigs = 0;
+    let dbLinks = 0;
+    try {
+      const store = getStore();
+      dbConfigs = (await store.query<any>('SELECT id FROM affiliate_configs LIMIT 200')).length;
+    } catch { /* table absent on a fresh install */ }
+    try {
+      const store = getStore();
+      dbLinks = (await store.query<any>('SELECT id FROM affiliate_links LIMIT 500')).length;
+    } catch { /* table absent on a fresh install */ }
+    const networks: Record<string, any> = {
+      adminRows: { configured: dbConfigs > 0 || dbLinks > 0, affiliateConfigs: dbConfigs, affiliateLinks: dbLinks,
+        note: 'Direct publisher programs configured in Admin → Affiliates. Always claimed first.' },
+      amazonAssociates: { configured: Boolean(String(process.env.AMAZON_ASSOCIATES_TAG || 'try1second-21').trim()),
+        tag: String(process.env.AMAZON_ASSOCIATES_TAG || 'try1second-21'), note: 'Built-in default tag; set AMAZON_ASSOCIATES_TAG to change it.' },
+      admitad: { configured: env('ADMITAD_LINK_TEMPLATE') || env('ADMITAD_MERCHANTS'), needs: ['ADMITAD_CLIENT_ID', 'ADMITAD_CLIENT_SECRET', 'ADMITAD_WEBSITE_ID', 'ADMITAD_MERCHANTS', 'ADMITAD_LINK_TEMPLATE'] },
+      vcommission: { configured: env('VCOMMISSION_LINK_TEMPLATE') || env('VCOMMISSION_MERCHANTS'), needs: ['VCOMMISSION_API_KEY', 'VCOMMISSION_MERCHANTS', 'VCOMMISSION_LINK_TEMPLATE'] },
+      inrdeals: { configured: env('INRDEALS_LINK_TEMPLATE') || env('INRDEALS_MERCHANTS'), needs: ['INRDEALS_MERCHANTS', 'INRDEALS_LINK_TEMPLATE'] },
+      cj: { configured: env('CJ_LINK_TEMPLATE') || env('CJ_MERCHANTS') || true, builtin: 'booking.com',
+        needs: ['CJ_MERCHANTS (optional)', 'CJ_LINK_TEMPLATE (optional)'], note: 'Booking.com rides the built-in CJ click link; more CJ merchants need CJ_MERCHANTS + CJ_LINK_TEMPLATE.' },
+      cuelinks: { configured: env('CUELINKS_API_KEY') || env('CUELINKS_CAMPAIGN_ID') || true,
+        campaignId: env('CUELINKS_CAMPAIGN_ID'), subId: env('CUELINKS_SUB_ID'),
+        needs: ['CUELINKS_API_KEY', 'CUELINKS_CAMPAIGN_ID', 'CUELINKS_SUB_ID (optional)', 'CUELINKS_EXTRA_MERCHANTS (optional)'],
+        note: 'Allow-list based: joined merchants pay, applied ones pass through until approval.' },
+      linkinr: { configured: String(process.env.LINKINR_ENABLED || '1') !== '0',
+        needs: ['LINKINR_ENABLED=0 to disable', 'LINKINR_SUB_ID (optional)'],
+        note: 'Local campaign registry; pays today on the merchants it holds.' },
+      ekaro: { configured: env('EKARO_API_KEY'), needs: ['EKARO_API_KEY'],
+        note: 'EarnKaro converter: catches grocery/food retailers no other network carries.' },
+      direct: { configured: true, note: 'Fallback: the exit still works and is tracked, but pays nothing.' },
     };
-    const anyAffiliate = Object.entries(affiliate).some(([k, v]) => v === true && k !== 'cuelinksCampaignId' && k !== 'cuelinksSubId');
-
+    const anyAffiliate = Object.entries(networks).some(([k, v]: any) => k !== 'direct' && v.configured);
+    // Which layer actually claimed the exits — the only honest measure of who is earning.
+    const clicksByNetwork: Array<{ network: string; clicks: number }> = [];
+    try {
+      const since = new Date(Date.now() - days * 24 * 60 * 60_000);
+      const rows = await getStore().query<any>(
+        'SELECT network_id AS network, COUNT(*) AS clicks FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY clicks DESC LIMIT 20',
+        [since],
+      );
+      for (const r of rows) clicksByNetwork.push({ network: String(r.network || 'direct'), clicks: Number(r.clicks) || 0 });
+    } catch { /* table absent on a fresh install */ }
     const funnel = await funnelReport(days).catch(() => null);
     const byVertical = (funnel as any)?.byVertical || (funnel as any)?.perVertical || null;
     const exitCount = Number((funnel as any)?.outbound ?? (funnel as any)?.counts?.outbound_click ?? 0) || 0;
@@ -445,7 +485,10 @@ adminRouter.get('/monetisation', async (req, res) => {
         : 'No AdSense unit is configured anywhere: set ADSENSE_CLIENT (ca-pub-…) and ADSENSE_SLOT, or create the slot in Admin → Ads. Every unit renders nothing until then.');
     }
     if (!anyAffiliate) {
-      blockers.push('No affiliate network is configured: merchant exits still work and are tracked, but they pay nothing. Set CUELINKS_CAMPAIGN_ID (+ CUELINKS_API_KEY) or another network template in the panel.');
+      blockers.push('No affiliate network is configured at all: merchant exits work and are tracked, but pay nothing. Any ONE of these turns revenue on — admin affiliate rows, Amazon Associates tag, ADMITAD_/VCOMMISSION_/INRDEALS_/CJ_ templates, Cuelinks, LinkInR or EKARO_API_KEY.');
+    }
+    if (clicksByNetwork.length && clicksByNetwork.every((c) => c.network === 'direct')) {
+      blockers.push(`Every exit in the last ${days} days went out as 'direct': nothing claimed them, so nothing can pay. Add the merchant's domain to the network you joined it on (e.g. CUELINKS_EXTRA_MERCHANTS, or the network's _MERCHANTS list).`);
     }
     if (funnel && exitCount === 0) {
       blockers.push(`Zero merchant exits recorded in the last ${days} days: clicks are not reaching /api/out, so no affiliate or AdSense-on-exit revenue can exist. Check the funnel report for where it drops.`);
@@ -464,7 +507,7 @@ adminRouter.get('/monetisation', async (req, res) => {
         slotTail: adsenseSlot ? `…${adsenseSlot.slice(-4)}` : null,
         adsTxt: true,
       },
-      affiliate: { anyConfigured: anyAffiliate, networks: affiliate },
+      affiliate: { anyConfigured: anyAffiliate, networks, clicksByNetwork },
       exits: { total: exitCount, byVertical },
       funnel,
       blockers,

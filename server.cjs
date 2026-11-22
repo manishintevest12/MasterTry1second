@@ -60271,17 +60271,69 @@ var init_adminRoutes = __esm({
         const adsenseClient = String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || "");
         const adsenseSlot = String(process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || "");
         const env = (n) => Boolean(String(process.env[n] || "").trim());
-        const affiliate = {
-          cuelinks: env("CUELINKS_API_KEY") || env("CUELINKS_CAMPAIGN_ID"),
-          cuelinksCampaignId: env("CUELINKS_CAMPAIGN_ID"),
-          cuelinksSubId: env("CUELINKS_SUB_ID"),
-          earnkaro: env("EKARO_API_KEY"),
-          admitad: env("ADMITAD_LINK_TEMPLATE") || env("ADMITAD_MERCHANTS"),
-          vcommission: env("VCOMMISSION_LINK_TEMPLATE") || env("VCOMMISSION_MERCHANTS"),
-          inrdeals: env("INRDEALS_LINK_TEMPLATE") || env("INRDEALS_MERCHANTS"),
-          cj: env("CJ_LINK_TEMPLATE") || env("CJ_MERCHANTS")
+        let dbConfigs = 0;
+        let dbLinks = 0;
+        try {
+          const store7 = getStore();
+          dbConfigs = (await store7.query("SELECT id FROM affiliate_configs LIMIT 200")).length;
+        } catch {
+        }
+        try {
+          const store7 = getStore();
+          dbLinks = (await store7.query("SELECT id FROM affiliate_links LIMIT 500")).length;
+        } catch {
+        }
+        const networks = {
+          adminRows: {
+            configured: dbConfigs > 0 || dbLinks > 0,
+            affiliateConfigs: dbConfigs,
+            affiliateLinks: dbLinks,
+            note: "Direct publisher programs configured in Admin \u2192 Affiliates. Always claimed first."
+          },
+          amazonAssociates: {
+            configured: Boolean(String(process.env.AMAZON_ASSOCIATES_TAG || "try1second-21").trim()),
+            tag: String(process.env.AMAZON_ASSOCIATES_TAG || "try1second-21"),
+            note: "Built-in default tag; set AMAZON_ASSOCIATES_TAG to change it."
+          },
+          admitad: { configured: env("ADMITAD_LINK_TEMPLATE") || env("ADMITAD_MERCHANTS"), needs: ["ADMITAD_CLIENT_ID", "ADMITAD_CLIENT_SECRET", "ADMITAD_WEBSITE_ID", "ADMITAD_MERCHANTS", "ADMITAD_LINK_TEMPLATE"] },
+          vcommission: { configured: env("VCOMMISSION_LINK_TEMPLATE") || env("VCOMMISSION_MERCHANTS"), needs: ["VCOMMISSION_API_KEY", "VCOMMISSION_MERCHANTS", "VCOMMISSION_LINK_TEMPLATE"] },
+          inrdeals: { configured: env("INRDEALS_LINK_TEMPLATE") || env("INRDEALS_MERCHANTS"), needs: ["INRDEALS_MERCHANTS", "INRDEALS_LINK_TEMPLATE"] },
+          cj: {
+            configured: env("CJ_LINK_TEMPLATE") || env("CJ_MERCHANTS") || true,
+            builtin: "booking.com",
+            needs: ["CJ_MERCHANTS (optional)", "CJ_LINK_TEMPLATE (optional)"],
+            note: "Booking.com rides the built-in CJ click link; more CJ merchants need CJ_MERCHANTS + CJ_LINK_TEMPLATE."
+          },
+          cuelinks: {
+            configured: env("CUELINKS_API_KEY") || env("CUELINKS_CAMPAIGN_ID") || true,
+            campaignId: env("CUELINKS_CAMPAIGN_ID"),
+            subId: env("CUELINKS_SUB_ID"),
+            needs: ["CUELINKS_API_KEY", "CUELINKS_CAMPAIGN_ID", "CUELINKS_SUB_ID (optional)", "CUELINKS_EXTRA_MERCHANTS (optional)"],
+            note: "Allow-list based: joined merchants pay, applied ones pass through until approval."
+          },
+          linkinr: {
+            configured: String(process.env.LINKINR_ENABLED || "1") !== "0",
+            needs: ["LINKINR_ENABLED=0 to disable", "LINKINR_SUB_ID (optional)"],
+            note: "Local campaign registry; pays today on the merchants it holds."
+          },
+          ekaro: {
+            configured: env("EKARO_API_KEY"),
+            needs: ["EKARO_API_KEY"],
+            note: "EarnKaro converter: catches grocery/food retailers no other network carries."
+          },
+          direct: { configured: true, note: "Fallback: the exit still works and is tracked, but pays nothing." }
         };
-        const anyAffiliate = Object.entries(affiliate).some(([k, v]) => v === true && k !== "cuelinksCampaignId" && k !== "cuelinksSubId");
+        const anyAffiliate = Object.entries(networks).some(([k, v]) => k !== "direct" && v.configured);
+        const clicksByNetwork = [];
+        try {
+          const since = new Date(Date.now() - days * 24 * 60 * 6e4);
+          const rows = await getStore().query(
+            "SELECT network_id AS network, COUNT(*) AS clicks FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY clicks DESC LIMIT 20",
+            [since]
+          );
+          for (const r of rows) clicksByNetwork.push({ network: String(r.network || "direct"), clicks: Number(r.clicks) || 0 });
+        } catch {
+        }
         const funnel = await funnelReport2(days).catch(() => null);
         const byVertical = funnel?.byVertical || funnel?.perVertical || null;
         const exitCount = Number(funnel?.outbound ?? funnel?.counts?.outbound_click ?? 0) || 0;
@@ -60290,7 +60342,10 @@ var init_adminRoutes = __esm({
           blockers.push(adsenseClient ? "AdSense client set but no slot id: add ADSENSE_SLOT (or <SLOT_KEY>_AD_SLOT) in the panel, or create the unit in Admin \u2192 Ads." : "No AdSense unit is configured anywhere: set ADSENSE_CLIENT (ca-pub-\u2026) and ADSENSE_SLOT, or create the slot in Admin \u2192 Ads. Every unit renders nothing until then.");
         }
         if (!anyAffiliate) {
-          blockers.push("No affiliate network is configured: merchant exits still work and are tracked, but they pay nothing. Set CUELINKS_CAMPAIGN_ID (+ CUELINKS_API_KEY) or another network template in the panel.");
+          blockers.push("No affiliate network is configured at all: merchant exits work and are tracked, but pay nothing. Any ONE of these turns revenue on \u2014 admin affiliate rows, Amazon Associates tag, ADMITAD_/VCOMMISSION_/INRDEALS_/CJ_ templates, Cuelinks, LinkInR or EKARO_API_KEY.");
+        }
+        if (clicksByNetwork.length && clicksByNetwork.every((c) => c.network === "direct")) {
+          blockers.push(`Every exit in the last ${days} days went out as 'direct': nothing claimed them, so nothing can pay. Add the merchant's domain to the network you joined it on (e.g. CUELINKS_EXTRA_MERCHANTS, or the network's _MERCHANTS list).`);
         }
         if (funnel && exitCount === 0) {
           blockers.push(`Zero merchant exits recorded in the last ${days} days: clicks are not reaching /api/out, so no affiliate or AdSense-on-exit revenue can exist. Check the funnel report for where it drops.`);
@@ -60308,7 +60363,7 @@ var init_adminRoutes = __esm({
             slotTail: adsenseSlot ? `\u2026${adsenseSlot.slice(-4)}` : null,
             adsTxt: true
           },
-          affiliate: { anyConfigured: anyAffiliate, networks: affiliate },
+          affiliate: { anyConfigured: anyAffiliate, networks, clicksByNetwork },
           exits: { total: exitCount, byVertical },
           funnel,
           blockers
