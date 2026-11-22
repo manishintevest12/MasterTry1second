@@ -36951,21 +36951,27 @@ function isExcludedMerchant(vertical, ...texts) {
   if (!hay) return false;
   return tokens3.some((t) => hay.includes(t));
 }
+function merchantTexts(o) {
+  if (!o) return [];
+  const quotes = Array.isArray(o.sellerQuotes) ? o.sellerQuotes : Array.isArray(o.quotes) ? o.quotes : [];
+  return [
+    o.vendor,
+    o.seller,
+    o.site,
+    o.provider,
+    o.merchant,
+    o.sourceId,
+    o.source_id,
+    o.title,
+    o.url,
+    o.exitUrl,
+    ...quotes.flatMap((q3) => [q3?.sellerName, q3?.seller, q3?.provider, q3?.site])
+  ];
+}
 function dropExcludedOffers(vertical, offers) {
   if (!offers?.length) return offers || [];
   if (!excludedMerchantsFor(vertical).length) return offers;
-  return offers.filter(
-    (o) => !isExcludedMerchant(
-      vertical,
-      o?.vendor,
-      o?.seller,
-      o?.site,
-      o?.provider,
-      o?.merchant,
-      o?.sourceId,
-      o?.source_id
-    )
-  );
+  return offers.filter((o) => !isExcludedMerchant(vertical, ...merchantTexts(o)));
 }
 var EXCLUSIONS;
 var init_verticalExclusions = __esm({
@@ -54696,7 +54702,7 @@ var init_routes = __esm({
       }
     });
     nowShowingCache = /* @__PURE__ */ new Map();
-    apiRouter.get("/movies/currently-showing", async (req, res) => {
+    apiRouter.get(["/movies/currently-showing", "/store/currently-showing"], async (req, res) => {
       const city = String(req.query.city || "").slice(0, 60).trim() || "Indore";
       const cacheKey2 = (city || "default").toLowerCase();
       const hit = nowShowingCache.get(cacheKey2);
@@ -54780,13 +54786,13 @@ var init_routes = __esm({
       });
       res.json({ results });
     });
-    apiRouter.get("/geo/reverse", async (req, res) => {
+    apiRouter.get(["/geo/reverse", "/find-location"], async (req, res) => {
       const lat = Number(req.query.lat), lng = Number(req.query.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
         return res.status(400).json({ error: "lat and lng are required numbers" });
       }
       const place = await geoReverse(lat, lng);
-      res.json({ place });
+      res.json({ place, city: place?.city || place?.locality || "", pincode: place?.pincode || "" });
     });
     QUICK_APP_ALLOW_DOMAINS = /* @__PURE__ */ new Set([
       "cred.club",
@@ -55336,23 +55342,25 @@ var init_routes = __esm({
         res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 200) });
       }
     });
-    apiRouter.post("/scrape/live", async (req, res) => {
+    apiRouter.all(["/scrape/live", "/search/live"], async (req, res) => {
+      const src2 = req.method === "GET" || req.method === "HEAD" ? req.query : req.body || {};
+      const coords = src2.coordinates || (src2.lat !== void 0 || src2.lng !== void 0 ? { lat: Number(src2.lat), lng: Number(src2.lng) } : void 0);
       const input = {
-        query: String(req.body.query || ""),
-        vertical: normalizeVerticalId(req.body.vertical),
-        pincode: req.body.pincode,
-        city: req.body.city,
-        locality: req.body.locality,
-        travelDates: req.body.travelDates && typeof req.body.travelDates === "object" ? {
-          depart: String(req.body.travelDates.depart || "").slice(0, 10) || void 0,
-          return: String(req.body.travelDates.return || "").slice(0, 10) || void 0
+        query: String(src2.query || ""),
+        vertical: normalizeVerticalId(src2.vertical),
+        pincode: src2.pincode,
+        city: src2.city,
+        locality: src2.locality,
+        travelDates: src2.travelDates && typeof src2.travelDates === "object" ? {
+          depart: String(src2.travelDates.depart || "").slice(0, 10) || void 0,
+          return: String(src2.travelDates.return || "").slice(0, 10) || void 0
         } : void 0,
-        guests: Number(req.body.guests) || void 0,
+        guests: Number(src2.guests) || void 0,
         // Exact map pin (MapPinPicker, 17 Oct): the engine gets the precise point, not just the city.
-        lat: typeof req.body.coordinates?.lat === "number" ? req.body.coordinates.lat : void 0,
-        lng: typeof req.body.coordinates?.lng === "number" ? req.body.coordinates.lng : void 0,
-        from: String(req.body.from || "").slice(0, 120) || void 0,
-        to: String(req.body.to || "").slice(0, 120) || void 0
+        lat: typeof coords?.lat === "number" && Number.isFinite(coords.lat) ? coords.lat : void 0,
+        lng: typeof coords?.lng === "number" && Number.isFinite(coords.lng) ? coords.lng : void 0,
+        from: String(src2.from || "").slice(0, 120) || void 0,
+        to: String(src2.to || "").slice(0, 120) || void 0
       };
       if (!input.query?.trim()) {
         return res.json({ results: [], honestNotice: "No query provided", latencyMs: 0 });
@@ -67516,13 +67524,17 @@ function securityTxt() {
 // server/httpServer.ts
 var import_http = __toESM(require("http"), 1);
 var KEEP_ALIVE_TIMEOUT_MS = 65e3;
-var RESPONSE_WALL_MS = Math.max(15e3, Number(process.env.T1S_RESPONSE_WALL_MS || 4e4));
+var RESPONSE_WALL_MS = Math.max(15e3, Number(process.env.T1S_RESPONSE_WALL_MS || 3e4));
+var isApiRequest = (path19) => {
+  const p = String(path19 || "");
+  return p === "/api" || p.startsWith("/api/");
+};
 var makeResponseWall = (wallMs) => (req, res, next) => {
   if (res.writableEnded) return next();
   const timer = setTimeout(() => {
     if (res.writableEnded || res.headersSent) return;
     try {
-      if (req.path.startsWith("/api/")) {
+      if (isApiRequest(req.path)) {
         res.status(200).json({
           ok: true,
           results: [],
