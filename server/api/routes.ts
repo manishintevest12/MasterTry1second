@@ -4789,6 +4789,16 @@ apiRouter.get('/out', async (req, res) => {
   // recognised as the app - an older cached list, a Custom Tab whose UA reads as plain Chrome, or a relayed
   // request. The pointer already carries the vertical, so Nearby is sent straight to the partner (tracking and
   // the affiliate wrap intact) whatever the user agent says.
+  // OWNER 22 Nov ("nearby vertical mai visit/book ka try1second ke andar hi redirect hota hai, usko site ke bahar
+  // redirect kro jaise baki vertical mai hota hai"). MEASURED root cause: the app's AndroidManifest declares
+  // autoVerify App Links for try1second.com, so handing `/api/out?t=...` to the OS (ACTION_VIEW) does not open a
+  // browser at all - Android routes it back into OUR OWN app. Nearby was the only card that launched the raw
+  // masking pointer, so it was the only vertical that never left. `json=1` lets a client ask for the resolved
+  // destination (tracking, affiliate wrap, repair and validation already applied below) so it can hand the
+  // PARTNER url to the OS, which no App Link of ours can claim.
+  if (String(req.query.json || '') === '1') {
+    return res.json({ success: true, url: dl.trackingUrl, destination: freshDestination });
+  }
   const isNearbyExit = String((resolved as any).vertical || '') === 'nearby' || (resolved as any).direct === true;
   const fromApp = String(req.query.app || '') === '1' || isNearbyExit || isInAppWebView(req.headers['user-agent']);
   if (fromApp) {

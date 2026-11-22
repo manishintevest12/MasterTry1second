@@ -271,7 +271,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
     if (parsed?.host.contains('google.com') == true && (parsed?.path.contains('maps') ?? false)) {
       try { await launchUrl(parsed!, mode: LaunchMode.externalApplication); return; } catch (_) {}
     }
-    final abs = exitUrl(url);
+    // OWNER 22 Nov ("nearby vertical mai visit/book ka try1second ke andar hi redirect hota hai"): the card's
+    // link is our OWN masking pointer (try1second.com/api/out?t=...), and the app holds autoVerify App Links for
+    // try1second.com — so ACTION_VIEW never reached a browser, Android handed the link back to this app and the
+    // shopper stayed inside Try1Second. Resolve the pointer to the partner url FIRST (the same request records
+    // the click), then hand THAT to the OS: no App Link of ours can claim a partner host, so the phone's browser
+    // opens and Nearby leaves the app exactly like every other vertical.
+    final abs = await AppState.instance.api.resolveExitPointer(url);
     final uri = Uri.tryParse(abs);
     if (uri == null || !uri.hasScheme) return;
     try {

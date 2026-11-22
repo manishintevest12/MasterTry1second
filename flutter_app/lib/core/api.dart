@@ -2036,6 +2036,34 @@ class Try1SecondApi {
   Future<Map<String, dynamic>> getJson(String path, {String? token}) =>
       _get(path, token: token);
 
+  /// Resolve one of our own masking pointers (`/api/out?t=...`) to the PARTNER url the shopper must land on.
+  ///
+  /// OWNER 22 Nov ("nearby vertical mai visit/book ka try1second ke andar hi redirect hota hai, usko site ke bahar
+  /// redirect kro jaise baki vertical mai hota hai"). The app declares autoVerify App Links for try1second.com
+  /// (AndroidManifest), so handing a try1second url to the OS does not open a browser — Android hands it back to
+  /// THIS app, and the shopper never leaves. Asking the pointer for its resolved destination (`json=1`) records the
+  /// same click server-side and returns the affiliate-wrapped partner url, which no App Link of ours can claim.
+  ///
+  /// Returns '' when the url is not one of our pointers (already a partner url) or cannot be resolved; the caller
+  /// then keeps its previous behaviour, so a dead button is never introduced.
+  Future<String> resolveExitPointer(String url) async {
+    final raw = url.trim();
+    if (raw.isEmpty) return '';
+    final abs = exitUrl(raw);
+    final uri = Uri.tryParse(abs);
+    if (uri == null || !uri.hasScheme) return '';
+    final host = uri.host.toLowerCase();
+    if (!host.endsWith('try1second.com')) return abs; // already the partner
+    if (!uri.path.contains('/api/out') && !uri.path.contains('/api/go')) return abs;
+    try {
+      final sep = abs.contains('?') ? '&' : '?';
+      final res = await getJson('${abs.replaceFirst(RegExp(r'^https?://[^/]+'), '')}${sep}json=1');
+      final resolved = res['url'] ?? res['redirectUrl'];
+      if (resolved is String && resolved.startsWith('http')) return resolved;
+    } catch (_) {/* old server or gated pointer: fall through to the pointer itself */}
+    return abs;
+  }
+
   Uri searchUrl(String query) => Uri.parse(
         '$baseUrl/?q=${Uri.encodeQueryComponent(query)}',
       );
