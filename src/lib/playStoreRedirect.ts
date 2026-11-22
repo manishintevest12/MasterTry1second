@@ -2,23 +2,27 @@
  * ANDROID WEB → PLAY STORE (owner 22 Nov: "koi mobile website open kre tho seedhe humera play store ka page open
  * ho jaye agar platform android hai tho jiss se humera app download increase ho").
  *
- * This deliberately overrides the softer rule in `appEntry.ts` (19 Nov: "no auto-redirect, a link and a close
- * button and nothing else") for exactly one case: an ANDROID PHONE BROWSER opening the HOME page. The owner wants
- * the install, so the shop window hands the phone to the Play listing immediately instead of asking politely.
+ * WIDENED 22 Nov evening (owner: "jb koi mobile website pr try1second open kre tho playstore pr link jaye, abhi
+ * mobile website khulta hai bs"). The first cut only fired for a plain Android Chrome tab on the HOME page, so the
+ * two ways people actually open us both fell through and kept showing the website:
  *
- * What still protects the business, because a careless redirect costs more installs than it wins:
+ *   - an in-app browser (WhatsApp / Instagram / Facebook / Gmail) ships `; wv` in its UA and was excluded as a
+ *     "webview". That is the majority of Indian mobile traffic, so the shop window never handed anyone over.
+ *   - a shared product or answer link is a deep page, and only `/` redirected.
  *
- *   1. NEVER A CRAWLER. Googlebot/Bingbot/etc. are served the real page, so organic search results keep working
- *      and the site is not treated as a doorway that bounces every visitor.
- *   2. NEVER OUR OWN APP. The installed app must not be told to install itself, and our app's webview is not a
- *      browser session the owner asked to interrupt.
- *   3. NEVER A SENSITIVE PATH. /admin, /merchant, /redirect, /r, /s and every /api call are untouched, and the
- *      redirect only fires on the HOME page — someone who lands on a product or answer page from a search result
- *      still gets the page they came for.
- *   4. ONCE PER SESSION, AND BACK WORKS. `location.href` (not `replace`) plus a session flag means the phone's
- *      Back button returns to the site and the redirect does not fight the user in a loop.
- *   5. A REAL OPT-OUT. "Continue on the website" remembers the choice for 7 days, so a returning visitor is not
- *      bounced every single time they open us.
+ * Now every Android phone/tablet browser is handed to the Play listing, on any consumer page, in-app browser
+ * included. What still protects the business, because a careless redirect costs more installs than it wins:
+ *
+ *   1. NEVER A CRAWLER. Googlebot/Bingbot/etc. are served the real page, so organic search keeps working and the
+ *      site is not treated as a doorway that bounces every visitor.
+ *   2. NEVER OUR OWN APP. `Try1Second/...` is our Flutter webview; the installed app must not be told to install
+ *      itself. Every OTHER app's webview is a real visitor and is redirected.
+ *   3. NEVER A MACHINE OR STAFF PATH. /admin, /merchant, /r, /s, /redirect, /api, /functions, robots.txt,
+ *      sitemap and llms.txt are untouched.
+ *   4. NO LOOP, AND BACK WORKS. `location.href` (not `replace`) plus a session flag means Back returns to the
+ *      site; and a `document.referrer` pointing at the Play listing is treated as "they just came back", so a
+ *      browser that blocks storage still cannot be trapped in a bounce.
+ *   5. A REAL OPT-OUT. "Continue on the website" remembers the choice for 7 days.
  */
 
 import { PLAY_STORE_URL, isOurAppWebview, isExcludedPath } from './appEntry';
@@ -29,6 +33,7 @@ const OPT_OUT_DAYS = 7;
 
 const uaOf = () => (typeof navigator !== 'undefined' ? navigator.userAgent : '');
 const pathOf = () => (typeof location !== 'undefined' ? location.pathname : '');
+const refOf = () => (typeof document !== 'undefined' ? document.referrer || '' : '');
 
 /** Android phone/tablet browser. Windows Phone also says "Android" in some UAs, so it is excluded. */
 export function isAndroidPhone(ua: string = uaOf()): boolean {
@@ -46,26 +51,40 @@ export function isCrawler(ua: string = uaOf()): boolean {
 }
 
 /**
- * An Android WEBVIEW (`; wv` in the UA) is an app's own embedded browser — ours included. Redirecting there is the
- * own-goal the app-entry rules already warn about: the app telling its own webview to install the app.
+ * An Android WEBVIEW (`; wv` in the UA) is an app's own embedded browser: WhatsApp, Instagram, Facebook, Gmail.
+ * Those are real visitors, so they ARE redirected now. Kept exported because the ad code and tests still ask.
  */
 export function isWebview(ua: string = uaOf()): boolean {
   return /;\s*wv\)/i.test(ua);
 }
 
-/** Only the home page. A deep page (product, answer, city hub) is what the visitor searched for. */
+/** Only the home page. Kept for callers/tests that still ask; the redirect no longer requires it. */
 export function isHomePath(path: string = pathOf()): boolean {
   const p = (path || '/').replace(/\/+$/, '');
   return p === '' || p === '/home' || p === '/index.html';
 }
 
-/** The visitor chose the website recently: respect it. */
+/** Staff surfaces, API calls, redirect hops and machine files: never a consumer install prompt. */
+export function isExcludedFromRedirect(path: string = pathOf()): boolean {
+  const p = (path || '/').replace(/\/+$/, '') || '/';
+  if (isExcludedPath(path)) return true;
+  if (/^\/(api|functions)\b/i.test(p)) return true;
+  if (/^\/(robots\.txt|sitemap|llms\.txt|ads\.txt)/i.test(p)) return true;
+  return false;
+}
+
+/** They just came back from the Play listing: never bounce them again (loop breaker when storage is blocked). */
+export function cameBackFromPlayStore(ref: string = refOf()): boolean {
+  return /play\.google\.com/i.test(ref) || /^market:\/\//i.test(ref);
+}
+
+/** The visitor chose the website recently: respect it. Storage blocked is NOT an opt-out (the referrer guard covers loops). */
 export function hasOptedOut(now: number = Date.now()): boolean {
   try {
     const at = Number(localStorage.getItem(OPT_OUT_KEY) || 0);
     return Boolean(at) && now - at < OPT_OUT_DAYS * 86_400_000;
   } catch {
-    return true; // storage blocked (private mode): do not risk bouncing them on every page view
+    return false;
   }
 }
 
@@ -74,7 +93,7 @@ export function alreadyRedirectedThisSession(): boolean {
   try {
     return Boolean(sessionStorage.getItem(SESSION_KEY));
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -82,16 +101,17 @@ export function shouldRedirectToPlayStore(opts: {
   ua?: string;
   path?: string;
   now?: number;
+  referrer?: string;
 } = {}): boolean {
   const ua = opts.ua ?? uaOf();
   const path = opts.path ?? pathOf();
   const now = opts.now ?? Date.now();
+  const ref = opts.referrer ?? refOf();
   if (!isAndroidPhone(ua)) return false;
   if (isCrawler(ua)) return false;
   if (isOurAppWebview(ua)) return false;
-  if (isWebview(ua)) return false;
-  if (isExcludedPath(path)) return false;
-  if (!isHomePath(path)) return false;
+  if (isExcludedFromRedirect(path)) return false;
+  if (cameBackFromPlayStore(ref)) return false;
   if (alreadyRedirectedThisSession()) return false;
   if (hasOptedOut(now)) return false;
   return true;
@@ -118,7 +138,11 @@ export function stayOnWebsite(now: number = Date.now()): void {
 export function installPlayStoreRedirect(): void {
   try {
     if (!shouldRedirectToPlayStore()) return;
-    sessionStorage.setItem(SESSION_KEY, String(Date.now()));
+    try {
+      sessionStorage.setItem(SESSION_KEY, String(Date.now()));
+    } catch {
+      /* storage blocked: the referrer guard keeps Back from looping */
+    }
     // href (not replace): the phone's Back button returns to this page, and the session flag stops a loop.
     window.location.href = PLAY_STORE_URL;
   } catch {
