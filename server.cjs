@@ -1567,12 +1567,20 @@ __export(health_exports, {
   canAttempt: () => canAttempt,
   getAllHealth: () => getAllHealth,
   getHealth: () => getHealth,
+  mandatedProbeDue: () => mandatedProbeDue,
+  mandatedProbeMs: () => mandatedProbeMs,
   markDisabled: () => markDisabled,
   recordAttempt: () => recordAttempt,
   recordFailure: () => recordFailure,
   recordSuccess: () => recordSuccess,
   resetHealthForTests: () => resetHealthForTests
 });
+function mandatedProbeDue(sourceId, now = Date.now()) {
+  const last = mandatedProbes.get(sourceId) ?? 0;
+  if (now - last < mandatedProbeMs()) return false;
+  mandatedProbes.set(sourceId, now);
+  return true;
+}
 function resetHealthForTests() {
   health.clear();
 }
@@ -1683,7 +1691,7 @@ async function persist(h) {
     log.debug("Health", "Persist failed (file store / no table)", { error: String(e2).slice(0, 120) });
   }
 }
-var CIRCUIT_THRESHOLD, CIRCUIT_COOLDOWN_MS, CHALLENGE_COOLDOWN_STEPS_MS, OPEN_STREAK_STEPS_MS, CAPABILITY_COOLDOWN_MS, openStreak, challengeOpenings, health;
+var CIRCUIT_THRESHOLD, CIRCUIT_COOLDOWN_MS, CHALLENGE_COOLDOWN_STEPS_MS, OPEN_STREAK_STEPS_MS, CAPABILITY_COOLDOWN_MS, openStreak, challengeOpenings, mandatedProbes, mandatedProbeMs, health;
 var init_health = __esm({
   "server/sources/health.ts"() {
     init_logger();
@@ -1694,6 +1702,11 @@ var init_health = __esm({
     CAPABILITY_COOLDOWN_MS = 6 * 60 * 6e4;
     openStreak = /* @__PURE__ */ new Map();
     challengeOpenings = /* @__PURE__ */ new Map();
+    mandatedProbes = /* @__PURE__ */ new Map();
+    mandatedProbeMs = () => {
+      const n = Number(process.env.T1S_MANDATED_PROBE_MS);
+      return Number.isFinite(n) && n > 0 ? n : 10 * 6e4;
+    };
     health = /* @__PURE__ */ new Map();
   }
 });
@@ -30446,6 +30459,7 @@ var registry_exports = {};
 __export(registry_exports, {
   getSource: () => getSource,
   getSources: () => getSources,
+  isMandatedSource: () => isMandatedSource,
   loadSourcesFromDb: () => loadSourcesFromDb,
   selectSources: () => selectSources,
   sourcesStatusReport: () => sourcesStatusReport,
@@ -30613,12 +30627,17 @@ function updateSource(id, patch) {
   })();
   return s;
 }
+function isMandatedSource(id) {
+  return MANDATED_SOURCE_IDS.has(id);
+}
 function selectSources(query, opts = {}) {
   const vertical = query.vertical;
   const candidates = sources.filter((s) => {
     if (!s.enabled) return false;
     if (vertical && s.verticals.length > 0 && !s.verticals.includes(vertical)) return false;
-    if (!canAttempt(s.id)) return false;
+    if (!canAttempt(s.id)) {
+      if (!(isMandatedSource(s.id) && mandatedProbeDue(s.id))) return false;
+    }
     if (s.requiresAuthorization && !s.config.apiKey && s.method !== "partner_feed") return false;
     return true;
   });
@@ -30654,7 +30673,7 @@ function sourcesStatusReport() {
     };
   });
 }
-var DEFAULT_FRESHNESS, sources;
+var DEFAULT_FRESHNESS, sources, MANDATED_SOURCE_IDS;
 var init_registry = __esm({
   "server/sources/registry.ts"() {
     init_settings();
@@ -30662,6 +30681,14 @@ var init_registry = __esm({
     init_verticals();
     DEFAULT_FRESHNESS = { liveVerifiedTtlSec: 900, freshTtlSec: 3600, maxStaleSec: 86400 };
     sources = seedSources();
+    MANDATED_SOURCE_IDS = /* @__PURE__ */ new Set([
+      "w_hotels_goibibo",
+      "w_hotels_booking",
+      "w_hotels_booking_demand",
+      "w_hotels_booking_apify",
+      "w_flights_goibibo",
+      "w_flights_booking"
+    ]);
   }
 });
 
@@ -60010,6 +60037,7 @@ var init_adminRoutes = __esm({
         const days = Math.max(1, Math.min(30, Number(req.query.days) || 7));
         const verticals = String(req.query.vertical || "flights,hotels").split(",").map((v) => v.trim()).filter(Boolean);
         const { governorStats: governorStats2 } = await Promise.resolve().then(() => (init_loadGovernor(), loadGovernor_exports));
+        const { isMandatedSource: isMandatedSource2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
         const { liveGateStats: liveGateStats2 } = await Promise.resolve().then(() => (init_liveSearchGate(), liveSearchGate_exports));
         const since = new Date(Date.now() - days * 24 * 60 * 6e4);
         const health2 = getAllHealth();
@@ -60045,6 +60073,9 @@ var init_adminRoutes = __esm({
               lastFailureClass: h.lastFailureClass || null,
               catalogueRows: cat.rows,
               lastRowAt: cat.lastFetchedAt,
+              // Owner 22 Nov: a mandated partner must never be silently dark — show the breaker window and the flag.
+              mandated: isMandatedSource2(sc.id),
+              circuitOpenUntil: h.circuitOpenUntil || null,
               verdict
             };
           }).sort((a, b) => a.priority - b.priority || String(a.id).localeCompare(String(b.id)));

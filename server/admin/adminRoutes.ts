@@ -83,6 +83,7 @@ adminRouter.get('/live-health', async (req, res) => {
     const days = Math.max(1, Math.min(30, Number(req.query.days) || 7));
     const verticals = String(req.query.vertical || 'flights,hotels').split(',').map((v) => v.trim()).filter(Boolean);
     const { governorStats } = await import('../common/loadGovernor');
+    const { isMandatedSource } = await import('../sources/registry');
     const { liveGateStats } = await import('../search/liveSearchGate');
     const since = new Date(Date.now() - days * 24 * 60 * 60_000);
     const health = getAllHealth();
@@ -113,7 +114,11 @@ adminRouter.get('/live-health', async (req, res) => {
             lastSuccessAt: h.lastSuccessAt || null,
             lastFailureAt: h.lastFailureAt || null,
             lastFailureClass: h.lastFailureClass || null,
-            catalogueRows: cat.rows, lastRowAt: cat.lastFetchedAt, verdict,
+            catalogueRows: cat.rows, lastRowAt: cat.lastFetchedAt,
+            // Owner 22 Nov: a mandated partner must never be silently dark — show the breaker window and the flag.
+            mandated: isMandatedSource(sc.id),
+            circuitOpenUntil: h.circuitOpenUntil || null,
+            verdict,
           };
         })
         .sort((a: any, b: any) => a.priority - b.priority || String(a.id).localeCompare(String(b.id)));

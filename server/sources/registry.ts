@@ -7,7 +7,7 @@
  */
 import type { ParsedQuery, SourceConfig, VerticalId } from '../types';
 import { settings } from '../common/settings';
-import { canAttempt, getHealth } from './health';
+import { canAttempt, getHealth, mandatedProbeDue } from './health';
 import { allVerticalWorkers } from '../workers/verticals';
 
 const DEFAULT_FRESHNESS = { liveVerifiedTtlSec: 900, freshTtlSec: 3600, maxStaleSec: 86400 };
@@ -171,12 +171,26 @@ export function updateSource(id: string, patch: Partial<SourceConfig>): SourceCo
  * Policy Engine: ordered candidate selection for a query.
  * Never returns a source that is disabled, circuit-open, or missing required credentials.
  */
+/**
+ * Partners the owner requires in the feed (22 Nov: "ye dono dikhane chaiye"). These are never left dark by the circuit
+ * breaker: when their circuit is open they still get one probe per mandatedProbeMs().
+ */
+const MANDATED_SOURCE_IDS = new Set([
+  'w_hotels_goibibo', 'w_hotels_booking', 'w_hotels_booking_demand', 'w_hotels_booking_apify',
+  'w_flights_goibibo', 'w_flights_booking',
+]);
+
+export function isMandatedSource(id: string): boolean { return MANDATED_SOURCE_IDS.has(id); }
+
 export function selectSources(query: ParsedQuery, opts: { allowStale?: boolean } = {}): SourceConfig[] {
   const vertical: VerticalId | null = query.vertical;
   const candidates = sources.filter((s) => {
     if (!s.enabled) return false;
     if (vertical && s.verticals.length > 0 && !s.verticals.includes(vertical)) return false;
-    if (!canAttempt(s.id)) return false;
+    if (!canAttempt(s.id)) {
+      // A mandated partner is probed on its own clock instead of being skipped for the whole cooldown.
+      if (!(isMandatedSource(s.id) && mandatedProbeDue(s.id))) return false;
+    }
     // Required credentials must be present for authorized sources
     if (s.requiresAuthorization && !s.config.apiKey && s.method !== 'partner_feed') return false;
     return true;

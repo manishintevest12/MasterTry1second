@@ -31,6 +31,32 @@ const CAPABILITY_COOLDOWN_MS = 6 * 60 * 60_000;
 /** Per-source count of consecutive circuit OPENINGS; cleared by recordSuccess. */
 const openStreak = new Map<string, number>();
 const challengeOpenings = new Map<string, number>();
+/**
+ * MANDATED PROBE CLOCK (owner 22 Nov: "isk fix kro ye dono dikhane chaiye" — Goibibo and Booking.com must show in
+ * hotels and flights).
+ *
+ * MEASURED on production: POST /api/scrape/live hotels "hotels in Goa" answered 267 rows from nine sources, and
+ * sourcesAttempted did not contain w_hotels_goibibo or w_hotels_booking at all — they were never even tried. A
+ * source is skipped when selectSources() sees it disabled or circuit-open, and the circuit's cooldown ladder runs to
+ * 60 min for an access challenge and up to 6 h for a re-open streak. So a partner the owner has mandated can sit
+ * dark for hours while the feed looks healthy, which is exactly what happened.
+ *
+ * A mandated partner is therefore never excluded for longer than MANDATED_PROBE_MS: one honest probe goes out on a
+ * fixed clock even while its circuit is open. The circuit still protects the answer (a failing probe costs one
+ * attempt, never a slow page) and a success immediately closes it.
+ */
+const mandatedProbes = new Map<string, number>();
+export const mandatedProbeMs = (): number => {
+  const n = Number(process.env.T1S_MANDATED_PROBE_MS);
+  return Number.isFinite(n) && n > 0 ? n : 10 * 60_000;
+};
+/** True when a mandated source is due its periodic probe (and books it so concurrent searches share one). */
+export function mandatedProbeDue(sourceId: string, now = Date.now()): boolean {
+  const last = mandatedProbes.get(sourceId) ?? 0;
+  if (now - last < mandatedProbeMs()) return false;
+  mandatedProbes.set(sourceId, now);
+  return true;
+}
 // SELF-DETECTING PROBES (owner rule 21 Oct: strictly-mandated sources must stay
 // visible and self-heal). These sources attempt the real acquisition flow by
 // design — a gated response IS their honest per-search result.
