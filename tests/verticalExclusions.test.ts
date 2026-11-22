@@ -37,3 +37,36 @@ test('e-commerce keeps its digihaat rows', () => {
   const rows = [{ vendor: 'DigiHaat', title: 'boAt Airdopes', price: 1299 }];
   assert.equal(dropExcludedOffers('ecommerce', rows).length, 1);
 });
+
+/**
+ * OWNER 22 Nov ("digihaat.in ... abhi v 10 min grocery mai aa raha hai"): the first version only read
+ * vendor/seller/site/provider/merchant/sourceId, so a row that named the merchant in its TITLE, its URL or a
+ * per-seller quote walked straight past the filter. Every one of those is caught now.
+ */
+const groceryRow = (over: Record<string, any> = {}) => ({
+  title: 'Amul Taaza Milk 500 ml',
+  provider: 'BigBasket',
+  sourceId: 'w_grocery_bb',
+  ...over,
+});
+
+test('a grocery row is dropped however it names DigiHaat', () => {
+  const shapes = [
+    groceryRow({ provider: 'DigiHaat' }),
+    groceryRow({ title: 'Amul Taaza Milk 500 ml - DigiHaat' }),
+    groceryRow({ url: 'https://digihaat.in/en/product/123' }),
+    groceryRow({ sellerQuotes: [{ sellerName: 'DigiHaat', price: 54 }] }),
+    groceryRow({ provider: 'Digi Haat' }),
+  ];
+  for (const r of shapes) {
+    assert.equal(dropExcludedOffers('grocery', [r]).length, 0, JSON.stringify(r).slice(0, 80));
+  }
+});
+
+test('clean grocery rows and every e-commerce row survive untouched', () => {
+  const clean = groceryRow();
+  assert.equal(dropExcludedOffers('grocery', [clean]).length, 1);
+  assert.deepEqual(dropExcludedOffers('grocery', [clean])[0], clean);
+  const ecom = groceryRow({ provider: 'DigiHaat' });
+  assert.equal(dropExcludedOffers('ecommerce', [ecom]).length, 1);
+});

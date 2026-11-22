@@ -10,6 +10,7 @@ import 'auth.dart';
 import 'storage.dart';
 import 'verticals.dart';
 import 'movie_price_gate.dart';
+import 'vertical_exclusions.dart';
 
 /// The five bottom-bar sections of the website (FixedBottomBar.tsx) + the secondary
 /// screens reachable from the header menu.
@@ -262,7 +263,7 @@ class AppState extends ChangeNotifier {
     // identity of an answer now.
     final cacheKey = '$key|$q|${depart ?? ''}|${returnDate ?? ''}|${city.trim().toLowerCase()}|${pincode.trim()}';
     if (!force && cache[key] != null && cacheQuery[key] == cacheKey) {
-      final hit = cache[key]!;
+      final hit = _scoped(key, cache[key]!);
       final age = _nowMs - (cacheAt[key] ?? 0);
       // Progressive partial rows (no seller quotes yet) are never a fresh
       // hit — paint them, but revalidate in the background like any stale
@@ -330,6 +331,30 @@ class AppState extends ChangeNotifier {
     return f;
   }
 
+  /// OWNER 22 Nov ("digihaat.in ... abhi v 10 min grocery mai aa raha hai usko hatao iss vertical se"): the app is
+  /// where the partner kept reappearing, because it paints the PREVIOUS session's answer from disk before any
+  /// network call — a grocery snapshot taken before the server rule could still put DigiHaat on screen. Every
+  /// response (network, memory cache, disk paint) passes through here, so a scoped-out partner never renders.
+  LiveResponse _scoped(String vertical, LiveResponse res) {
+    final banned = excludedMerchantsFor(vertical);
+    if (banned.isEmpty || res.items.isEmpty) return res;
+    final kept = [
+      for (final it in res.items)
+        if (!isExcludedMerchant(vertical, [
+          it.title,
+          it.provider,
+          it.sourceId,
+          it.site,
+          it.spec('url', 'exit url', 'merchant'),
+          ...it.sellerQuotes.map((q) => q.sellerName),
+        ]))
+          it
+    ];
+    if (kept.length == res.items.length) return res;
+    return LiveResponse(kept, res.attempted, res.succeeded, res.failed, res.servedFrom, res.latencyMs,
+        pendingRefresh: res.pendingRefresh, rawJson: res.rawJson);
+  }
+
   /// The single acquisition pipeline used by live() and stale revalidation.
   /// Owner 23 Oct: this used to be a bare api.live().then(...).whenComplete(...)
   /// chain, which measurably STALLED in the Dart VM (the completion hops never
@@ -348,9 +373,9 @@ class AppState extends ChangeNotifier {
     bool settle = false,
   }) async {
     try {
-      final res = await api
+      final res = _scoped(key, await api
           .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate, from: from, to: to,
-              settle: settle, settleMs: settle ? 22000 : null);
+              settle: settle, settleMs: settle ? 22000 : null));
       cache[key] = res;
       cacheQuery[key] = cacheKey;
       cacheAt[key] = _nowMs;
