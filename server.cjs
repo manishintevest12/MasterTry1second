@@ -739,7 +739,14 @@ ${VERTICAL_GUIDE.map((v, i) => `${i + 1}. ${v.name} (${v.id}): ${v.extract}`).jo
 5. RESPONSE FORMAT & TONE
 - Answer in the language of the question (English, Hindi or Hinglish). Crisp, direct, helpful. No filler, no salesmanship.
 - Prices, when the search engine supplies them, are in Indian rupees with Indian digit grouping: \u20B91,44,990.
-- Keep context across turns: if the user refines ("Aashirvaad brand only"), keep the previous item, size, city and dates unless they change them.`;
+- Keep context across turns: if the user refines ("Aashirvaad brand only"), keep the previous item, size, city and dates unless they change them.
+- A bare constraint with no product of its own ("5 kg", "500 ml", "indore me", "sasta wala") always belongs to the PREVIOUS question. Never treat it as a new product.
+
+6. ONE WORD, TWO SHELVES (CRITICAL)
+- A word can be both a raw staple and a cooked dish. "rice" is grain in 10-Min Grocery and a dish (fried rice, curd rice) in Food Delivery; "dosa" is a plate in Food Delivery and a batter/mix in 10-Min Grocery; "chicken", "paneer", "poha" and "maggi" are the same shape.
+- When the user names such a word without saying which they want, price BOTH shelves and say which shelf each price came from. Never answer with one shelf as if it were the whole answer.
+- A word that settles it settles it: "raw", "uncooked", "packet", "5 kg", "basmati" -> grocery only; "order", "plate", "hot", "restaurant", "fried", "curd rice" -> food only.
+- A dish phrase always beats its staple ("curd rice" is a dish, "rice" is grain), and a pack size always beats a dish ("chicken 500g" is raw).`;
     MASTER_JSON_CONTRACT = `Return STRICT JSON only, no prose, no code fences:
 {"vertical":"<one of ${VERTICAL_IDS.join("|")} or null>","query":"<the search text after typo repair and filler removal>","entity":"<product, dish, movie, place or lender name>","brand":"<brand if stated>","quantity":{"value":<number|null>,"unit":"<g|kg|ml|l|pack|pcs|null>"},"city":"<city if stated>","pincode":"<6-digit pincode if stated>","dates":{"depart":"YYYY-MM-DD if stated","return":"YYYY-MM-DD if stated"},"budget":<number|null>,"passengers":<number|null>,"attributes":{"<explicit configuration only>":"value"}}
 Rules: omit or null any field the user did not state. Never include price, stock, availability, seller or URL fields. Never change a stated quantity or variant.`;
@@ -6003,8 +6010,8 @@ async function fetchRateFrom(source) {
     const r = await cffiFetch(source, { timeoutMs: 12e3, headers: { Accept: "application/json" } });
     if (r.status !== 200) return null;
     const d = JSON.parse(r.body);
-    const inr4 = Number(d?.rates?.INR);
-    return Number.isFinite(inr4) && inr4 > 20 && inr4 < 200 ? inr4 : null;
+    const inr5 = Number(d?.rates?.INR);
+    return Number.isFinite(inr5) && inr5 > 20 && inr5 < 200 ? inr5 : null;
   } catch {
     return null;
   }
@@ -28289,19 +28296,19 @@ async function enrichWithGw(o, aggs, gwHost, forSite) {
       })).filter((x) => x.url);
       if (links.length) o.attributes["theatre_links"] = JSON.stringify(links);
     }
-    const cheapest = cheapestShow(agg.shows, {
+    const cheapest2 = cheapestShow(agg.shows, {
       host: gwHost,
       city: cityName2,
       dateISO: showDate,
       contentId: agg.contentId
     });
-    if (cheapest) {
-      o.attributes["cheapest_show"] = JSON.stringify(cheapest);
+    if (cheapest2) {
+      o.attributes["cheapest_show"] = JSON.stringify(cheapest2);
       o.evidence.extractedFields = [...o.evidence.extractedFields || [], "cheapest_show"];
-      if (cheapest.url) {
-        o.attributes["seat_url"] = cheapest.url;
-        o.attributes["book_platform"] = cheapest.platform;
-        o.attributes["book_note"] = `Seat map for the cheapest show: ${cheapest.theatre} ${cheapest.time} \xB7 ${cheapest.seatClass} \u20B9${cheapest.price} (opens on ${cheapest.platform})`;
+      if (cheapest2.url) {
+        o.attributes["seat_url"] = cheapest2.url;
+        o.attributes["book_platform"] = cheapest2.platform;
+        o.attributes["book_note"] = `Seat map for the cheapest show: ${cheapest2.theatre} ${cheapest2.time} \xB7 ${cheapest2.seatClass} \u20B9${cheapest2.price} (opens on ${cheapest2.platform})`;
       }
     }
     o.attributes["data_note"] = forSite ? `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${gwHost === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on ${forSite} is shown at seat selection.` : `Real area-level seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
@@ -40120,10 +40127,18 @@ function fillMoviePricesFromBand(rows) {
   });
   return { rows: out, filled };
 }
-var normTitle2;
+function movieAnswerIsUnpricedSnapshot(rows, sourcesSucceeded) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return false;
+  if (list.some((r) => Number(r?.primaryPrice ?? 0) > 0)) return false;
+  const answered = new Set((sourcesSucceeded || []).map(String));
+  return !MOVIE_BAND_SOURCES.some((id) => answered.has(id));
+}
+var normTitle2, MOVIE_BAND_SOURCES;
 var init_moviesPriceFill = __esm({
   "server/search/moviesPriceFill.ts"() {
     normTitle2 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    MOVIE_BAND_SOURCES = ["w_movies_district", "w_movies_ticketnew"];
   }
 });
 
@@ -43504,8 +43519,8 @@ function destinationItem(d, flights, hotels, liveUrls) {
     const c = String(r.location_city || "").toLowerCase();
     return d.keys.some((k) => t.includes(k) || c.includes(k)) || (iataRx ? iataRx.test(t) : false);
   };
-  const cheapest = (rows) => [...rows].sort((a, b) => priceOf2(a) - priceOf2(b))[0];
-  const fare = cheapest(flights.filter((r) => servableRow(r, 14) && matches(r))) ?? cheapest(flights.filter((r) => servableRow(r, 45) && matches(r))) ?? null;
+  const cheapest2 = (rows) => [...rows].sort((a, b) => priceOf2(a) - priceOf2(b))[0];
+  const fare = cheapest2(flights.filter((r) => servableRow(r, 14) && matches(r))) ?? cheapest2(flights.filter((r) => servableRow(r, 45) && matches(r))) ?? null;
   if (!fare) return null;
   const hotel = hotels.find((r) => ageDays(r) <= 60 && matches(r) && imageFromAttributes(r.attributes) && (!liveUrls || liveUrls.has(imageFromAttributes(r.attributes))));
   if (!hotel) return null;
@@ -44157,6 +44172,24 @@ var init_productLink = __esm({
 });
 
 // server/lens/verticalLexicon.ts
+function isProductWord(token) {
+  const w = String(token || "").toLowerCase().replace(/[^a-z]/g, "");
+  return w.length > 0 && PRODUCT_WORDS.has(w);
+}
+function dualCategoryFor(text) {
+  const t = String(text || "").toLowerCase();
+  if (!t.trim()) return null;
+  if (RAW_INTENT.test(t) || COOKED_INTENT.test(t)) return null;
+  if (RICE_VARIETY.test(t) || BATTER_INTENT.test(t)) return null;
+  const primary = detectCategoryVertical(t);
+  if (!primary) return null;
+  for (const d of DUAL_TERMS) {
+    if (!d.re.test(t)) continue;
+    if (d.primary !== primary) return null;
+    return { primary: d.primary, secondary: d.secondary };
+  }
+  return null;
+}
 function toTermRegex(terms) {
   const sorted = [...terms].sort((a, b) => b.length - a.length);
   const escaped = sorted.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"));
@@ -44165,6 +44198,7 @@ function toTermRegex(terms) {
 function detectCategoryVertical(text) {
   const t = String(text || "").toLowerCase();
   if (!t.trim()) return null;
+  if (BATTER_INTENT.test(t)) return "grocery";
   const food = FOOD_RE.test(t);
   const grocery = GROCERY_RE.test(t);
   if (food && !grocery) return "food";
@@ -44174,7 +44208,12 @@ function detectCategoryVertical(text) {
     }
     return "food";
   }
-  if (grocery) return "grocery";
+  if (grocery) {
+    if (COOKED_INTENT.test(t) && /(?:^|[^a-z])(rice|chawal|poha|chicken|paneer|maggi|noodles)(?![a-z])/i.test(t)) {
+      return "food";
+    }
+    return "grocery";
+  }
   return null;
 }
 function cleanCategoryQuery(raw) {
@@ -44182,7 +44221,7 @@ function cleanCategoryQuery(raw) {
   const words3 = cleaned.split(" ").filter(Boolean).map((w) => SPELLING[w.toLowerCase()] || w);
   return words3.join(" ").trim();
 }
-var GROCERY_TERMS, FOOD_TERMS, QUESTION_NOISE, PLATFORM, SPELLING, GROCERY_RE, FOOD_RE, QUANTITY_RE;
+var GROCERY_TERMS, FOOD_TERMS, PRODUCT_WORDS, DUAL_TERMS, RAW_INTENT, RICE_VARIETY, BATTER_INTENT, COOKED_INTENT, QUESTION_NOISE, PLATFORM, SPELLING, GROCERY_RE, FOOD_RE, QUANTITY_RE;
 var init_verticalLexicon = __esm({
   "server/lens/verticalLexicon.ts"() {
     GROCERY_TERMS = [
@@ -44432,6 +44471,56 @@ var init_verticalLexicon = __esm({
       "smoothie",
       "lassi",
       "falooda",
+      // OWNER 20 Nov: a cooked RICE dish is a dish, not a bag of grain. The lexicon only knew
+      // 'fried rice', so 'curd rice', 'jeera rice', 'lemon rice', 'boiled rice' and 'sambar'
+      // were priced as grocery staples (or, for sambar/rasam/upma, fell through to shopping).
+      "curd rice",
+      "jeera rice",
+      "lemon rice",
+      "tamarind rice",
+      "boiled rice",
+      "steamed rice",
+      "plain rice",
+      "veg rice",
+      "ghee rice",
+      "bisi bele bath",
+      "sambar",
+      "sambhar",
+      "rasam",
+      "upma",
+      "uppuma",
+      "pongal",
+      "khichdi",
+      "khichadi",
+      "rajma chawal",
+      "dal chawal",
+      "chole bhature",
+      "chana bhatura",
+      "aloo paratha",
+      "paneer paratha",
+      "parotta",
+      "parotta",
+      "appam",
+      "puttu",
+      "shawarma",
+      "chicken 65",
+      "chilli chicken",
+      "chilli paneer",
+      "misal pav",
+      "puri",
+      "dahi vada",
+      "medu vada",
+      "idli sambar",
+      "pav bhajji",
+      "kheer",
+      "payasam",
+      "halwa",
+      "jalebi",
+      "kulfi",
+      "rasmalai",
+      "pakora",
+      "pakode",
+      "bhajji",
       // how people ask for restaurant food
       "restaurant",
       "dhaba",
@@ -44477,6 +44566,28 @@ var init_verticalLexicon = __esm({
       "behrouz",
       "third wave coffee"
     ];
+    PRODUCT_WORDS = /* @__PURE__ */ new Set([
+      ...GROCERY_TERMS.flatMap((t) => t.split(" ")),
+      ...FOOD_TERMS.flatMap((t) => t.split(" "))
+    ]);
+    DUAL_TERMS = [
+      { re: /(?:^|[^a-z])rice(?![a-z])/i, primary: "grocery", secondary: "food" },
+      { re: /(?:^|[^a-z])chawal(?![a-z])/i, primary: "grocery", secondary: "food" },
+      { re: /(?:^|[^a-z])poha(?![a-z])/i, primary: "grocery", secondary: "food" },
+      { re: /(?:^|[^a-z])chicken(?![a-z])/i, primary: "grocery", secondary: "food" },
+      { re: /(?:^|[^a-z])paneer(?![a-z])/i, primary: "grocery", secondary: "food" },
+      { re: /(?:^|[^a-z])maggie?(?![a-z])/i, primary: "grocery", secondary: "food" },
+      { re: /(?:^|[^a-z])dosa(?![a-z])/i, primary: "food", secondary: "grocery" },
+      { re: /(?:^|[^a-z])idli(?![a-z])/i, primary: "food", secondary: "grocery" },
+      { re: /(?:^|[^a-z])uttapam(?![a-z])/i, primary: "food", secondary: "grocery" },
+      { re: /(?:^|[^a-z])parathas?(?![a-z])/i, primary: "food", secondary: "grocery" },
+      { re: /(?:^|[^a-z])momos?(?![a-z])/i, primary: "food", secondary: "grocery" },
+      { re: /(?:^|[^a-z])samosa(?![a-z])/i, primary: "food", secondary: "grocery" }
+    ];
+    RAW_INTENT = /\b(raw|uncooked|un\s*cooked|kaccha|kacha|packet|pack|pouch|kilo|kg|kgs|gram|grams|gm|gms|atta|flour|brand)\b|\b\d+\s*(?:g|gm|gms|gram|grams|kg|kgs|ml|l|ltr|litre|liter|pcs|pieces?)\b/i;
+    RICE_VARIETY = /\b(basmati|sona\s*masoori|masoori|kolam|ponni|brown|red\s*rice|black\s*rice|mogra|pusa|idli\s*rice|rawa|broken\s*rice|mini\s*rice)\b/i;
+    BATTER_INTENT = /\b(batter|batter\s*only|mix|instant\s*mix|ready\s*mix|powder)\b/i;
+    COOKED_INTENT = /\b(order|plate|hot|cooked|ready to eat|restaurant|cafe|dhaba|zomato|swiggy|delivery|tiffin|khana|nashta|lunch|dinner|breakfast|table)\b/i;
     QUESTION_NOISE = /\b(kaha|kahan|kahaan|kidhar|kaunse|kaunsi|konsa|konsi|kaunsa|which|where|milega|milegi|milta|milte|mile|milege|milegaa|available|aas\s*paas|near\s*me|nearby|sbse|sabse|sabsay|sasta|sasti|sastta|saste|cheapest|cheap|best|accha|behtar|bhav|bhaav|daam|dam|price|prices|rate|rates|kitne|kitna|kitni|kya|kaun|please|pls|plz|karna|karu|kare|karo|kar\s*do|kar|batao|bata\s*do|bata|bataye|dikhao|dikha\s*do|chahiye|chahie|hai|hain|hoga|hogi|ka|ki|ke|ko|me|mein|mai|se|tak|par|pe|is|are|the|of|for|a|an|i|want|need|looking|find|search|compare|check|what|how|much|does|cost|kaunse|par\s+mil|online|order|buy|kharidna|kharido|khareed|dukan|dukaan|store|stores|shop|shops|muje|mujhe|mujhko|mujko|mera|meri|mere|mai|main|hum|humko|hamko|apna|apni|apne|yaar|bhai|bro)\b/gi;
     PLATFORM = /\b(zomato|swiggy|blinkit|zepto|instamart|bigbasket|bb\s*now|flipkart\s*minutes|dunzo|jiomart|amazon|flipkart|shopsy|digihaat|digi\s*haat|myntra|ajio|tatacliq|tata\s*cliq)\b/gi;
     SPELLING = {
@@ -45224,6 +45335,7 @@ function repairPlace(token) {
   if (NOT_A_PLACE2.has(lowerRaw)) return token;
   const known = places().get(lowerRaw);
   if (known) return token.replace(raw, known);
+  if (isProductWord(lowerRaw)) return token;
   const tol = raw.length >= 7 ? 2 : raw.length >= 5 ? 1 : 0;
   if (!tol) return token;
   for (const [key, canonical] of places()) {
@@ -45307,6 +45419,7 @@ var init_questionNormalizer = __esm({
   "server/lens/questionNormalizer.ts"() {
     init_cityCorpus();
     init_indicLexicon();
+    init_verticalLexicon();
     DEVA_TO_LATIN = {
       // verticals / nouns
       "\u092B\u094D\u0932\u093E\u0907\u091F": "flight",
@@ -45897,6 +46010,7 @@ function interpretAssistantQuestion(raw, now = istToday()) {
   if (vertical === "coupons" || vertical === "giftcards") vertical = "ecommerce";
   const category = detectCategoryVertical(text);
   if (category && (!vertical || vertical === "ecommerce")) vertical = category;
+  if (category && (vertical === "grocery" || vertical === "food") && vertical !== category) vertical = category;
   const keyword = norm10.keywordVertical;
   if (keyword && keyword in LABEL && (!vertical || vertical === "ecommerce" && !category)) vertical = keyword;
   const STRONG_SUPPORTED = /\b(flight|flights|hotel|hotels|bus|buses|cab|cabs|taxi|movie|movies|loan|loans|insurance|policy|grocery|groceries|food|biryani|pizza|account|savings)\b/i;
@@ -46118,6 +46232,7 @@ var init_quantityIntent = __esm({
 // server/lens/assistantAnswer.ts
 var assistantAnswer_exports = {};
 __export(assistantAnswer_exports, {
+  altShelfQuery: () => altShelfQuery,
   buildAssistantSearch: () => buildAssistantSearch,
   cleanAssistantQuery: () => cleanAssistantQuery,
   diversifyByProvider: () => diversifyByProvider,
@@ -46128,6 +46243,19 @@ __export(assistantAnswer_exports, {
 });
 function cleanAssistantQuery(raw) {
   return String(raw || "").replace(NOISE3, " ").replace(/[?!.,;:]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function altShelfQuery(query, from, to) {
+  const q3 = String(query || "").trim();
+  if (!q3) return q3;
+  if (to === "grocery" && from === "food") {
+    if (/\b(batter|mix|frozen|packet)\b/i.test(q3)) return q3;
+    return `${q3} batter`;
+  }
+  if (to === "food" && from === "grocery") {
+    if (/\b(dish|dishes|curry|plate|bowl|fried|masala)\b/i.test(q3)) return q3;
+    return `${q3} dishes`;
+  }
+  return q3;
 }
 function searchable(text) {
   const t = cleanAssistantQuery(text);
@@ -46186,9 +46314,11 @@ function buildAssistantSearch(raw, ctx = {}) {
       input: withContext({ query: place || "near me", vertical: "nearby" })
     };
   }
+  const dual = dualCategoryFor(text);
   if (intent.understood && intent.vertical) {
+    const alt2 = dual && dual.primary === intent.vertical ? dual.secondary : null;
     return {
-      meta: { understood: true, assumedVertical: Boolean(intent.assumed), vertical: intent.vertical, query: intent.query, ...intent.date ? { date: intent.date } : {}, ...intent.budget ? { budget: intent.budget } : {}, reply: intent.assumed ? `You named a product rather than a category, so I am comparing "${intent.query}" across every shopping site. Results below.` : intent.reply },
+      meta: { understood: true, assumedVertical: Boolean(intent.assumed), vertical: intent.vertical, query: intent.query, ...intent.date ? { date: intent.date } : {}, ...intent.budget ? { budget: intent.budget } : {}, ...alt2 ? { altVertical: alt2, altQuery: altShelfQuery(intent.query, intent.vertical, alt2) } : {}, reply: intent.assumed ? `You named a product rather than a category, so I am comparing "${intent.query}" across every shopping site. Results below.` : intent.reply },
       input: withContext({ query: intent.query, vertical: intent.vertical })
     };
   }
@@ -46207,6 +46337,7 @@ function buildAssistantSearch(raw, ctx = {}) {
   const category = detectCategoryVertical(text);
   const vertical = ACCOUNT_HINT.test(text) ? "account" : category || "ecommerce";
   const query = (category ? cleanCategoryQuery(text) : cleanAssistantQuery(text)) || text;
+  const alt = dual && dual.primary === vertical ? dual.secondary : null;
   const where = vertical === "grocery" ? "the 10-minute grocery apps (Blinkit, Zepto, Instamart, BigBasket)" : vertical === "food" ? "the restaurant delivery apps (Zomato, Swiggy, EatSure, Domino's)" : vertical === "account" ? "every bank and comparison site" : "every shopping site";
   return {
     meta: {
@@ -46214,6 +46345,7 @@ function buildAssistantSearch(raw, ctx = {}) {
       assumedVertical: true,
       vertical,
       query,
+      ...alt ? { altVertical: alt, altQuery: altShelfQuery(query, vertical, alt) } : {},
       reply: `I could not pin a single category, so I am comparing "${query}" across ${where}. Results below.`
     },
     input: withContext({ query, vertical })
@@ -46359,6 +46491,70 @@ var init_assistantAnswer = __esm({
       account: "bank accounts",
       banking: "bank accounts"
     };
+  }
+});
+
+// server/lens/dualVertical.ts
+function labelOf2(vertical) {
+  return LABEL3[vertical] || vertical;
+}
+function cheapest(rows) {
+  let best = null;
+  for (const r of rows) {
+    if (!r.priceAvailable || !Number.isFinite(r.price) || r.price <= 0) continue;
+    if (!best || r.price < best.price) best = r;
+  }
+  return best;
+}
+function shelfLine(vertical, rows, what) {
+  if (!rows.length) return null;
+  const best = cheapest(rows);
+  const sellers = new Set(rows.map((r) => String(r.provider || "").trim()).filter(Boolean));
+  const where = labelOf2(vertical);
+  if (!best) {
+    return `${what} on the ${where} apps: ${rows.length} listing${rows.length === 1 ? "" : "s"} (price on the seller's page).`;
+  }
+  const sellerCount = sellers.size || rows.length;
+  return `${what} on the ${where} apps from ${inr(best.price, best.currency)}${best.provider ? ` on ${best.provider}` : ""} (${rows.length} option${rows.length === 1 ? "" : "s"} from ${sellerCount} site${sellerCount === 1 ? "" : "s"})`;
+}
+function dualReply(pair, query, primaryRows, secondaryRows, opts = {}) {
+  const whatPrimary = opts.primaryWhat || `"${query}"`;
+  const whatSecondary = opts.secondaryWhat || `"${query}"`;
+  const a = shelfLine(pair.primary, primaryRows, whatPrimary);
+  const b = shelfLine(pair.secondary, secondaryRows, whatSecondary);
+  const pendingTxt = opts.pending ? " More sellers are still answering and the prices fill in here automatically." : "";
+  if (a && b) return `"${query}" is on both shelves. ${a}. ${b}. Both are below, grouped by shelf.${pendingTxt}`;
+  if (a) return `${a}. Nothing priced came back from the ${labelOf2(pair.secondary)} apps for this pass, so it is not shown as if it had.${pendingTxt}`;
+  if (b) return `${b}. Nothing priced came back from the ${labelOf2(pair.primary)} apps for this pass, so it is not shown as if it had.${pendingTxt}`;
+  return `No live price for "${query}" came back from either the ${labelOf2(pair.primary)} or the ${labelOf2(pair.secondary)} apps in this pass.${pendingTxt}`;
+}
+function mergeDualRows(primaryRows, secondaryRows, pair, limit = 10) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const push = (rows, vertical) => {
+    for (const r of rows) {
+      const key = `${String(r.provider || "").toLowerCase()}|${String(r.title || "").toLowerCase().replace(/[^a-z0-9]/g, "")}|${r.price}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ ...r, vertical });
+      if (out.length >= limit) return;
+    }
+  };
+  const primaryBudget = secondaryRows.length ? Math.max(4, Math.ceil(limit * 0.6)) : limit;
+  push(primaryRows, pair.primary);
+  if (out.length > primaryBudget) out.length = primaryBudget;
+  push(secondaryRows, pair.secondary);
+  return out.slice(0, limit);
+}
+var LABEL3, inr;
+var init_dualVertical = __esm({
+  "server/lens/dualVertical.ts"() {
+    LABEL3 = {
+      grocery: "10-minute grocery",
+      food: "food delivery",
+      ecommerce: "shopping"
+    };
+    inr = (n, currency = "INR") => `${(currency || "INR").toUpperCase() === "INR" ? "\u20B9" : ""}${Math.round(n).toLocaleString("en-IN")}`;
   }
 });
 
@@ -47015,6 +47211,40 @@ function tokens2(text) {
 function followUpResidue(text) {
   return tokens2(text).filter((t) => t.length >= 2 && !FOLLOW_VOCAB.has(t));
 }
+function isConstraintToken(token) {
+  if (/^\d+([.,]\d+)?$/.test(token)) return true;
+  return UNITS.has(token);
+}
+function refineSubjectQuery(text, subject, knownPlace) {
+  const no = { refine: false, query: "", vertical: "" };
+  if (!subject || !subject.query) return no;
+  const raw = String(text || "").trim();
+  if (!raw) return no;
+  const residue = tokens2(raw).filter((x) => !FOLLOW_VOCAB.has(x));
+  if (!residue.length) return no;
+  let city;
+  const keep = [];
+  for (const t of residue) {
+    if (PARTICLES.has(t)) continue;
+    if (isConstraintToken(t)) {
+      keep.push(t);
+      continue;
+    }
+    const place = knownPlace ? knownPlace(t) : null;
+    if (place) {
+      city = place;
+      continue;
+    }
+    return no;
+  }
+  const added = String(raw).match(CONSTRAINT_WORDS)?.[0];
+  if (!keep.length && !city && !added) return no;
+  const query = [...[subject.query], ...keep].join(" ").replace(/\s+/g, " ").trim();
+  if (!query || query === subject.query) {
+    return { refine: true, query: subject.query, vertical: subject.vertical, ...city ? { city } : {} };
+  }
+  return { refine: true, query, vertical: subject.vertical, ...city ? { city } : {} };
+}
 function classifyFollowUp(text, subject) {
   const none = { follow: false, kind: "repeat", query: "", vertical: "", reason: "new-question" };
   if (!subject || !subject.query) return none;
@@ -47048,16 +47278,16 @@ function shapeFollowUpAnswer(kind, query, rows, opts = {}) {
     const tail = opts.pending ? "No site had answered yet in this pass - the prices drop in here as soon as they do." : "No other site answered for it this time.";
     return `Still about ${quoted}: ${opts.sellersLastTime?.length ? `only ${opts.sellersLastTime.join(", ")} had it. ` : ""}${tail}`;
   }
-  const list = breakdown.slice(0, 8).map((b) => `${b.provider} ${inr(b.price)}`).join(", ");
-  const cheapest = breakdown[0];
+  const list = breakdown.slice(0, 8).map((b) => `${b.provider} ${inr2(b.price)}`).join(", ");
+  const cheapest2 = breakdown[0];
   if (breakdown.length === 1) {
     const pendingOne = opts.pending ? " The other sites are still scanning; their prices appear here as they answer." : " No other site answered for it this time.";
-    return `So far only ${cheapest.provider} has ${quoted} at ${inr(cheapest.price)}.${pendingOne}`.replace(/\s+/g, " ").trim();
+    return `So far only ${cheapest2.provider} has ${quoted} at ${inr2(cheapest2.price)}.${pendingOne}`.replace(/\s+/g, " ").trim();
   }
   const where = opts.alsoShopping ? " (grocery apps + shopping sites)" : "";
   const more = breakdown.length > 8 ? ` and ${breakdown.length - 8} more` : "";
-  const kindLine = kind === "cheaper" ? `Cheapest for ${quoted}: ${cheapest.provider} at ${inr(cheapest.price)}.` : kind === "detail" ? `About ${quoted}: ${breakdown[0].title || query} - ${cheapest.provider} has it at ${inr(cheapest.price)}.` : `${breakdown.length} site${breakdown.length === 1 ? "" : "s"}${where} have ${quoted}: ${list}${more}.`;
-  const cheapestLine = kind === "cheaper" ? "" : ` Cheapest is ${cheapest.provider} at ${inr(cheapest.price)}.`;
+  const kindLine = kind === "cheaper" ? `Cheapest for ${quoted}: ${cheapest2.provider} at ${inr2(cheapest2.price)}.` : kind === "detail" ? `About ${quoted}: ${breakdown[0].title || query} - ${cheapest2.provider} has it at ${inr2(cheapest2.price)}.` : `${breakdown.length} site${breakdown.length === 1 ? "" : "s"}${where} have ${quoted}: ${list}${more}.`;
+  const cheapestLine = kind === "cheaper" ? "" : ` Cheapest is ${cheapest2.provider} at ${inr2(cheapest2.price)}.`;
   const pendingLine = opts.pending ? " The remaining sites are still scanning; their prices appear here as they answer." : "";
   return `${kindLine}${cheapestLine}${pendingLine}`.replace(/\s+/g, " ").trim();
 }
@@ -47074,7 +47304,7 @@ function subjectFromAnswer(vertical, query, rows, ctx = {}) {
     at: Date.now()
   };
 }
-var TTL_MS3, MAX_SESSIONS, store6, SITE_NAMES, FOLLOW_VOCAB, ASK_MORE, ASK_WHY_ONLY, ASK_CHEAPER, ASK_DETAIL, ASK_REPEAT, inr;
+var TTL_MS3, MAX_SESSIONS, store6, SITE_NAMES, FOLLOW_VOCAB, ASK_MORE, ASK_WHY_ONLY, ASK_CHEAPER, ASK_DETAIL, ASK_REPEAT, UNITS, CONSTRAINT_WORDS, PARTICLES, inr2;
 var init_assistantThread = __esm({
   "server/lens/assistantThread.ts"() {
     TTL_MS3 = 60 * 6e4;
@@ -47335,7 +47565,48 @@ var init_assistantThread = __esm({
     ASK_CHEAPER = /\b(sasta|saste|sabse\s*sasta|cheap|cheaper|cheapest|lowest|kam\s*daam|best\s*price)\b/i;
     ASK_DETAIL = /\b(detail|details|specs?|feature|features|kaisa|kaisi|review|reviews|accha|good|quality)\b/i;
     ASK_REPEAT = /^\s*(phir\s*se|fir\s*se|again|dobara|repeat|wahi|same)\b/i;
-    inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+    UNITS = /* @__PURE__ */ new Set([
+      "g",
+      "gm",
+      "gms",
+      "gram",
+      "grams",
+      "kg",
+      "kgs",
+      "kilo",
+      "kilos",
+      "ml",
+      "l",
+      "lt",
+      "ltr",
+      "litre",
+      "liter",
+      "litres",
+      "liters",
+      "pack",
+      "packs",
+      "packet",
+      "packets",
+      "pouch",
+      "pcs",
+      "pc",
+      "piece",
+      "pieces",
+      "dozen",
+      "size",
+      "wala",
+      "wali",
+      "wale",
+      "walo",
+      "vala",
+      "vali",
+      "vale",
+      "one",
+      "two"
+    ]);
+    CONSTRAINT_WORDS = /\b(wala|wali|wale|walo|vala|vali|vale|size|pack|packet|pouch|big|small|large|mini|jumbo|fresh|frozen|organic|branded|loose)\b/gi;
+    PARTICLES = /* @__PURE__ */ new Set(["wala", "wali", "wale", "walo", "vala", "vali", "vale"]);
+    inr2 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
   }
 });
 
@@ -47409,7 +47680,7 @@ async function rememberAnswer(k, answer) {
   const rows = answer.rows || [];
   if (!rows.length) return;
   const sellers = new Set(answer.sellers || []);
-  const cheapest = {};
+  const cheapest2 = {};
   for (const r of rows) {
     const seller = String(r?.seller || r?.vendor || r?.provider || "").trim();
     if (!seller) continue;
@@ -47418,7 +47689,7 @@ async function rememberAnswer(k, answer) {
       r?.prices?.effectivePrice ?? r?.prices?.mandatoryTotal ?? r?.price ?? r?.prices?.listPrice ?? 0
     );
     if (Number.isFinite(price2) && price2 > 0) {
-      cheapest[seller] = Math.min(cheapest[seller] || Infinity, price2);
+      cheapest2[seller] = Math.min(cheapest2[seller] || Infinity, price2);
     }
   }
   const key = memoryKey(k);
@@ -47441,7 +47712,7 @@ async function rememberAnswer(k, answer) {
         String(k.depart || "").slice(0, 10),
         JSON.stringify([...sellers]),
         rows.length,
-        JSON.stringify(cheapest),
+        JSON.stringify(cheapest2),
         at
       ]
     );
@@ -48340,10 +48611,10 @@ async function createNotification(i) {
   return { ok: true, id };
 }
 function priceDropCopy(a, price2, seller) {
-  const inr4 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const inr5 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
   const pct2 = Math.round((1 - price2 / Number(a.target_price)) * 100);
-  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr4(price2)}`;
-  const body = pct2 > 0 ? `Your tracked product just hit ${inr4(price2)} on ${seller} \u2014 ${pct2}% below your ${inr4(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr4(price2)} on ${seller}, matching your ${inr4(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
+  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr5(price2)}`;
+  const body = pct2 > 0 ? `Your tracked product just hit ${inr5(price2)} on ${seller} \u2014 ${pct2}% below your ${inr5(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr5(price2)} on ${seller}, matching your ${inr5(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
   return { title, body };
 }
 async function recordPriceDropNotification(alert, live) {
@@ -48523,13 +48794,13 @@ function shouldNotify(alert, livePrice) {
   return Number.isFinite(livePrice) && livePrice > 0 && livePrice <= Number(alert.target_price);
 }
 function alertEmail(a, price2, seller, url) {
-  const inr4 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
-  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr4(price2)}`;
+  const inr5 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr5(price2)}`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px">
   <h2 style="color:#E7000B;margin:0 0 8px">Your Try1Second price alert hit</h2>
   <p><strong>${escapeHtml(a.product_title)}</strong></p>
-  <p style="font-size:22px;margin:6px 0"><strong>${inr4(price2)}</strong> on ${escapeHtml(seller)}</p>
-  <p style="color:#475569">Your target was ${inr4(a.target_price)}.</p>
+  <p style="font-size:22px;margin:6px 0"><strong>${inr5(price2)}</strong> on ${escapeHtml(seller)}</p>
+  <p style="color:#475569">Your target was ${inr5(a.target_price)}.</p>
   <p><a href="${url}" style="background:#E7000B;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Open the deal</a></p>
   <p style="color:#94a3b8;font-size:12px">Price observed live by Try1Second. Prices can change quickly.</p></div>`;
   return { subject, html };
@@ -53442,6 +53713,10 @@ async function finaliseLiveAnswer(response, vertical, dates2, query) {
       log.info("Search", "movie rows priced from the observed seat band", { vertical, filled: band.filled });
       response.results = band.rows;
     }
+    if (movieAnswerIsUnpricedSnapshot(response.results || [], response.sourcesSucceeded)) {
+      response.pendingRefresh = true;
+      log.info("Search", "movie answer is an unpriced snapshot: band source has not answered yet", { vertical, rows: (response.results || []).length });
+    }
   }
   const gated = gateRowsForDate(response.results || [], vertical, dates2 || {});
   if (query && ["flights", "bus", "cab"].includes(String(vertical))) {
@@ -54165,6 +54440,7 @@ var init_routes = __esm({
     init_productLink();
     init_assistantIntent();
     init_assistantAnswer();
+    init_dualVertical();
     init_quantityIntent();
     init_referralQualification();
     init_shareLinks();
@@ -54172,6 +54448,7 @@ var init_routes = __esm({
     init_assistantAi();
     init_funnel();
     init_assistantThread();
+    init_questionNormalizer();
     init_searchMemory();
     init_sameProduct();
     init_pricePlausibility();
@@ -55857,7 +56134,7 @@ var init_routes = __esm({
           closestOnly = true;
         }
       }
-      const cheapest = offers[0] || null;
+      const cheapest2 = offers[0] || null;
       const seen = new Set(offers.map((r) => r.title.toLowerCase()));
       const relatedPool = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 60);
       const photoMemo = globalThis.__t1sPhotoMemo ??= /* @__PURE__ */ new Map();
@@ -55940,10 +56217,10 @@ var init_routes = __esm({
           })).finally(() => deepRefreshInFlight.delete(key));
         }
       }
-      const currentPrice = cheapest?.price ?? product.pagePrice ?? 0;
-      const deal = analyseDeal(currentPrice, history, cheapest?.price ?? null);
-      const pageVsCheapest = product.pagePrice && cheapest ? { pagePrice: product.pagePrice, cheapest: cheapest.price, saving: Math.max(0, product.pagePrice - cheapest.price) } : null;
-      const images = Array.from(new Set([product.image, cheapest?.image, ...cheapest?.images || [], ...offers.map((o) => o.image)].filter((u) => typeof u === "string" && u.startsWith("https://")))).slice(0, 8);
+      const currentPrice = cheapest2?.price ?? product.pagePrice ?? 0;
+      const deal = analyseDeal(currentPrice, history, cheapest2?.price ?? null);
+      const pageVsCheapest = product.pagePrice && cheapest2 ? { pagePrice: product.pagePrice, cheapest: cheapest2.price, saving: Math.max(0, product.pagePrice - cheapest2.price) } : null;
+      const images = Array.from(new Set([product.image, cheapest2?.image, ...cheapest2?.images || [], ...offers.map((o) => o.image)].filter((u) => typeof u === "string" && u.startsWith("https://")))).slice(0, 8);
       if (images.length === 0 && offers.length > 0) {
         const askVertical = String(req.body?.vertical || "").toLowerCase();
         const verticalOrder = Array.from(new Set([
@@ -55971,7 +56248,7 @@ var init_routes = __esm({
         spellingCorrected: Boolean(spellingFix?.corrected),
         spellingFixes: spellingFix?.fixes || [],
         staleSeconds,
-        cheapest,
+        cheapest: cheapest2,
         offers,
         related,
         series,
@@ -56195,8 +56472,27 @@ var init_routes = __esm({
       if (verdict.follow && subject) {
         return answerFollowUp(res, { subject, verdict, sessionId, text, started: started3 });
       }
+      if (subject) {
+        const refinement = refineSubjectQuery(text, subject, (t) => findPlaces(t)[0] || null);
+        if (refinement.refine) {
+          const refined = {
+            ...subject,
+            query: refinement.query,
+            ...refinement.city ? { city: refinement.city } : {}
+          };
+          return answerFollowUp(res, {
+            subject: refined,
+            verdict: { follow: true, kind: "repeat", query: refinement.query, vertical: subject.vertical, reason: "refinement" },
+            sessionId,
+            text,
+            started: started3
+          });
+        }
+      }
       let { meta, input } = buildAssistantSearch(text, {
-        city: req.body?.city ? String(req.body.city).slice(0, 60) : void 0,
+        // The thread's city carries into the next question unless the user names a new one, so
+        // "aur sasta dikhao" after "dosa in Indore" does not silently lose Indore.
+        city: req.body?.city ? String(req.body.city).slice(0, 60) : subject?.city || void 0,
         pincode: req.body?.pincode ? String(req.body.pincode).slice(0, 10) : void 0,
         locality: req.body?.locality ? String(req.body.locality).slice(0, 120) : void 0,
         lat: Number.isFinite(Number(req.body?.lat)) ? Number(req.body.lat) : void 0,
@@ -56283,6 +56579,15 @@ var init_routes = __esm({
         depart: String(searchInput.travelDates?.depart || "")
       };
       const remembered = await recallAnswer(memKey).catch(() => null);
+      const altVertical = String(meta.altVertical || "");
+      const altQuery = String(meta.altQuery || "") || altShelfQuery(String(input.query || ""), String(searchInput.vertical), altVertical);
+      const altSearchInput = altVertical ? {
+        ...searchInput,
+        vertical: normalizeVerticalId(altVertical),
+        query: altQuery || searchInput.query
+      } : null;
+      const altSearched = altSearchInput ? runSearch(altSearchInput) : null;
+      altSearched?.catch(() => void 0);
       try {
         const searched = runSearch(searchInput);
         searched.catch(() => void 0);
@@ -56327,7 +56632,7 @@ var init_routes = __esm({
           }
         }
         let fallbackVertical;
-        if (rows.length === 0 && ["grocery", "food"].includes(String(searchInput.vertical))) {
+        if (!altSearchInput && rows.length === 0 && ["grocery", "food"].includes(String(searchInput.vertical))) {
           const secondary = { ...searchInput, vertical: "ecommerce" };
           try {
             const second = runSearch(secondary);
@@ -56350,6 +56655,22 @@ var init_routes = __esm({
           } catch {
           }
         }
+        let altRows = [];
+        let altPending = false;
+        if (altSearchInput && altSearched) {
+          const altBudget = Math.min(resultDeadlineMs(), 2600);
+          const altRaced = await Promise.race([
+            altSearched,
+            new Promise((resolve) => setTimeout(() => resolve(null), altBudget))
+          ]);
+          if (altRaced) {
+            altRows = altRaced.results || [];
+            altPending = Boolean(altRaced.state?.pendingRefresh);
+          } else {
+            const altFallback = await lastChanceRows(altSearchInput, 500);
+            altRows = altFallback?.results || [];
+          }
+        }
         let ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
         try {
           const reliability = await sellerReliability(String(searchInput.vertical), 40);
@@ -56366,7 +56687,9 @@ var init_routes = __esm({
           ...o,
           sellerUrl: o?.sellerUrl && String(o.sellerUrl).trim() ? o.sellerUrl : assistantExitUrl(o, exitTravel)
         }));
-        const shaped = toAssistantRows(linked, 6, { diversify: true });
+        const primaryShaped = toAssistantRows(linked, 6, { diversify: true }).map((r) => ({ ...r, vertical: String(r.vertical || searchInput.vertical) }));
+        const altShaped = altSearchInput ? toAssistantRows(altRows, 4, { diversify: true }).map((r) => ({ ...r, vertical: String(r.vertical || altVertical) })) : [];
+        const shaped = altSearchInput ? mergeDualRows(primaryShaped, altShaped, { primary: String(searchInput.vertical), secondary: altVertical }, 10) : primaryShaped;
         void ensureSearchMemoryTable().then(() => rememberAnswer(memKey, { rows, sellers: sourcesSucceeded.map((id) => id.replace(/^w_[a-z]+_/, "")) })).catch(() => void 0);
         if (rows.length) {
           void rememberQuestionRoute(qSig, {
@@ -56382,7 +56705,7 @@ var init_routes = __esm({
         const answer = shapeAssistantAnswer(
           fallbackVertical ? fallbackVertical : meta.vertical,
           meta.query,
-          shaped,
+          altSearchInput ? primaryShaped : shaped,
           {
             pending,
             sourcesSucceeded,
@@ -56392,23 +56715,37 @@ var init_routes = __esm({
             ...fallbackVertical ? { honestNotice: `The ${meta.vertical === "grocery" ? "10-minute grocery apps" : "restaurant apps"} did not answer this time, so these are live prices from the shopping sites.` } : {}
           }
         );
-        writeSubject(sessionId, subjectFromAnswer(
-          fallbackVertical || meta.vertical || "",
-          meta.query,
-          rows,
-          { city: String(searchInput.city || ""), date: String(searchInput.travelDates?.depart || ""), return: String(searchInput.travelDates?.return || "") }
-        ));
+        const dualText = altSearchInput ? dualReply(
+          { primary: String(searchInput.vertical), secondary: altVertical },
+          String(meta.query || input.query),
+          primaryShaped,
+          altShaped,
+          { pending: pending || altPending }
+        ) : "";
+        writeSubject(sessionId, {
+          ...subjectFromAnswer(
+            fallbackVertical || meta.vertical || "",
+            meta.query,
+            rows,
+            { city: String(searchInput.city || ""), date: String(searchInput.travelDates?.depart || ""), return: String(searchInput.travelDates?.return || "") }
+          ),
+          // The thread remembers BOTH shelves, so the next refinement prices the same two.
+          ...altSearchInput ? { altVertical } : {}
+        });
         res.json({
           success: true,
           ...meta,
-          reply: shaped.length ? answer.reply : `${meta.reply} ${answer.reply}`.replace(/\s+/g, " ").trim(),
+          ...altSearchInput ? { altVertical, altQuery: altSearchInput.query, dualShelves: true } : {},
+          reply: altSearchInput ? dualText : shaped.length ? answer.reply : `${meta.reply} ${answer.reply}`.replace(/\s+/g, " ").trim(),
           vertical: meta.vertical,
           engineVertical: String(searchInput.vertical),
           ...fallbackVertical ? { answeredBy: fallbackVertical } : {},
           query: meta.query,
-          results: answer.results,
-          count: answer.count,
-          pendingRefresh: pending,
+          // A two-shelf answer returns the MERGED grid (both shelves, each card labelled); a single-shelf
+          // answer keeps the exact results shapeAssistantAnswer decided.
+          results: altSearchInput ? shaped : answer.results,
+          count: altSearchInput ? shaped.length : answer.count,
+          pendingRefresh: pending || (altSearchInput ? altPending : false),
           sourcesSucceeded,
           // What the assistant remembered (never a live claim, never a price it did not verify).
           ...remembered ? {
@@ -56849,6 +57186,9 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
         platform: isInAppWebView(req.headers["user-agent"]) ? "android" : "web"
       }], { userId: exitUserId }).catch(() => 0);
       if (exitUserId) void qualifyReferral(exitUserId, "outbound_click", getStore()).catch(() => null);
+      if (String(req.query.json || "") === "1") {
+        return res.json({ success: true, url: dl.trackingUrl, destination: freshDestination });
+      }
       const isNearbyExit = String(resolved.vertical || "") === "nearby" || resolved.direct === true;
       const fromApp = String(req.query.app || "") === "1" || isNearbyExit || isInAppWebView(req.headers["user-agent"]);
       if (fromApp) {
@@ -62783,7 +63123,7 @@ __export(pricePages_exports, {
   PRICE_FRESH_MS: () => PRICE_FRESH_MS,
   findPriceEntry: () => findPriceEntry,
   groupOffers: () => groupOffers,
-  inr: () => inr2,
+  inr: () => inr3,
   isPriceFresh: () => isPriceFresh,
   loadPriceIndex: () => loadPriceIndex,
   pricePath: () => pricePath,
@@ -62795,7 +63135,7 @@ __export(pricePages_exports, {
 function slugify2(s) {
   return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
 }
-function inr2(n) {
+function inr3(n) {
   const v = Math.round(Number(n) || 0);
   return `\u20B9${v.toLocaleString("en-IN")}`;
 }
@@ -62922,16 +63262,16 @@ function asOf(ms) {
 }
 function renderPriceHtml(entry, siblings, origin2) {
   const fresh = isPriceFresh(entry);
-  const cheapest = entry.vendors[0];
+  const cheapest2 = entry.vendors[0];
   const dearest = entry.vendors[entry.vendors.length - 1];
   const save = entry.high - entry.low;
-  const title = `${entry.product} price in ${entry.city} - ${inr2(entry.low)} at ${cheapest.vendor}${entry.vendors[1] ? ` vs ${inr2(entry.vendors[1].price)} at ${entry.vendors[1].vendor}` : ""}`;
-  const desc = `${entry.product} price in ${entry.city} today: cheapest is ${inr2(entry.low)} at ${cheapest.vendor}${save > 0 ? `, ${inr2(save)} less than ${dearest.vendor} at ${inr2(dearest.price)}` : ""}. Compared across ${entry.vendors.length} stores, checked ${asOf(entry.checkedAt)}.`;
+  const title = `${entry.product} price in ${entry.city} - ${inr3(entry.low)} at ${cheapest2.vendor}${entry.vendors[1] ? ` vs ${inr3(entry.vendors[1].price)} at ${entry.vendors[1].vendor}` : ""}`;
+  const desc = `${entry.product} price in ${entry.city} today: cheapest is ${inr3(entry.low)} at ${cheapest2.vendor}${save > 0 ? `, ${inr3(save)} less than ${dearest.vendor} at ${inr3(dearest.price)}` : ""}. Compared across ${entry.vendors.length} stores, checked ${asOf(entry.checkedAt)}.`;
   const canonical = `${origin2}${entry.path}`;
   const rows = entry.vendors.map((v, i) => `
       <tr${i === 0 ? ' class="best"' : ""}>
         <td>${i === 0 ? '<span class="tag">Cheapest</span> ' : ""}${esc5(v.vendor)}</td>
-        <td class="num">${inr2(v.price)}</td>
+        <td class="num">${inr3(v.price)}</td>
         <td>${v.url ? `<a href="${esc5(v.url)}" rel="sponsored nofollow noopener" target="_blank">Go to store</a>` : '<span class="muted">no direct link</span>'}</td>
         <td class="muted">${asOf(v.checkedAt)}</td>
       </tr>`).join("");
@@ -62940,11 +63280,11 @@ function renderPriceHtml(entry, siblings, origin2) {
   const faqs = [
     [
       `What is the price of ${entry.product} in ${entry.city} today?`,
-      `${inr2(entry.low)} at ${cheapest.vendor}${save > 0 ? `, the lowest of ${entry.vendors.length} stores we checked` : ""}. The same item is ${inr2(entry.high)} at ${dearest.vendor}. Prices checked ${asOf(entry.checkedAt)}.`
+      `${inr3(entry.low)} at ${cheapest2.vendor}${save > 0 ? `, the lowest of ${entry.vendors.length} stores we checked` : ""}. The same item is ${inr3(entry.high)} at ${dearest.vendor}. Prices checked ${asOf(entry.checkedAt)}.`
     ],
     [
       `Where is ${entry.product} cheapest in ${entry.city}?`,
-      `${cheapest.vendor} shows ${inr2(cheapest.price)}, which is ${save > 0 ? `${inr2(save)} below the highest price we found` : "the only price we could verify"}.`
+      `${cheapest2.vendor} shows ${inr3(cheapest2.price)}, which is ${save > 0 ? `${inr3(save)} below the highest price we found` : "the only price we could verify"}.`
     ],
     [
       "How often are these prices updated?",
@@ -62968,7 +63308,7 @@ function renderPriceHtml(entry, siblings, origin2) {
     { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map(([q3, a]) => ({ "@type": "Question", name: q3, acceptedAnswer: { "@type": "Answer", text: a } })) }
   ].map((b) => `<script type="application/ld+json">${JSON.stringify(b)}</script>`).join("\n");
   const linkList = (items, label) => items.length ? `<h2>${esc5(label)}</h2>
-<ul class="links">${items.map((s) => `<li><a href="${esc5(s.path)}">${esc5(s.product)} in ${esc5(s.city)} - ${inr2(s.low)}</a></li>`).join("")}</ul>` : "";
+<ul class="links">${items.map((s) => `<li><a href="${esc5(s.path)}">${esc5(s.product)} in ${esc5(s.city)} - ${inr3(s.low)}</a></li>`).join("")}</ul>` : "";
   return `<!doctype html>
 <html lang="en-IN">
 <head>
@@ -63007,7 +63347,7 @@ ${ld}
 <main>
 <nav class="crumbs"><a href="/">Try1Second</a> / <a href="/price">Price comparisons</a> / ${esc5(entry.product)} in ${esc5(entry.city)}</nav>
 <h1>${esc5(entry.product)} price in ${esc5(entry.city)}</h1>
-<p class="lede">Cheapest today: <b>${inr2(entry.low)}</b> at ${esc5(cheapest.vendor)}${save > 0 ? `, ${inr2(save)} less than ${esc5(dearest.vendor)} at ${inr2(dearest.price)}` : ""}. Compared across ${entry.vendors.length} stores.</p>
+<p class="lede">Cheapest today: <b>${inr3(entry.low)}</b> at ${esc5(cheapest2.vendor)}${save > 0 ? `, ${inr3(save)} less than ${esc5(dearest.vendor)} at ${inr3(dearest.price)}` : ""}. Compared across ${entry.vendors.length} stores.</p>
 <p class="stamp">Prices last verified ${asOf(entry.checkedAt)} IST.${fresh ? "" : " This comparison is due for a refresh and is not offered for indexing until it is."}</p>
 <table>
 <thead><tr><th>Store</th><th>Price</th><th>Buy</th><th>Checked</th></tr></thead>
@@ -63015,7 +63355,7 @@ ${ld}
 </tbody></table>
 <p class="muted">Prices and stock change through the day; the store's own checkout is the price you pay. We do not add a markup or invent a discount.</p>
 <h2>${esc5(entry.product)} price in ${esc5(entry.city)}: what the numbers mean</h2>
-<p>The table lists every seller we could verify for ${esc5(entry.product)} in ${esc5(entry.city)}. The spread between the cheapest and the dearest of them is ${inr2(save)}${save > 0 ? `, about ${Math.round(save / entry.high * 100)}% of the highest price` : ""}. Delivery fees, surge and membership offers are applied at the store's checkout, so the best total can differ from the best sticker price when your basket is small.</p>
+<p>The table lists every seller we could verify for ${esc5(entry.product)} in ${esc5(entry.city)}. The spread between the cheapest and the dearest of them is ${inr3(save)}${save > 0 ? `, about ${Math.round(save / entry.high * 100)}% of the highest price` : ""}. Delivery fees, surge and membership offers are applied at the store's checkout, so the best total can differ from the best sticker price when your basket is small.</p>
 ${faqHtml}
 ${linkList(otherCities, `${esc5(entry.product)} in other cities`)}
 ${linkList(sameCity, `Other price comparisons in ${esc5(entry.city)}`)}
@@ -63037,7 +63377,7 @@ function renderPriceIndexHtml(entries2, origin2) {
   const sections = [...byVertical.entries()].sort((a, b) => b[1].length - a[1].length).map(([vertical, list]) => {
     const top = list.slice(0, 40);
     return `<h2>${esc5(vertical)} - ${list.length} verified comparisons</h2>
-<ul class="links">${top.map((e2) => `<li><a href="${esc5(e2.path)}">${esc5(e2.product)} in ${esc5(e2.city)} - ${inr2(e2.low)}</a> <span class="muted">${e2.vendors.length} stores</span></li>`).join("")}</ul>`;
+<ul class="links">${top.map((e2) => `<li><a href="${esc5(e2.path)}">${esc5(e2.product)} in ${esc5(e2.city)} - ${inr3(e2.low)}</a> <span class="muted">${e2.vendors.length} stores</span></li>`).join("")}</ul>`;
   }).join("\n");
   const title = `Product price comparison - ${fresh.length} live comparisons across India`;
   const desc = `Today's verified prices for everyday products and gadgets in ${new Set(fresh.map((e2) => e2.city)).size} Indian cities, compared across the stores that sell them. Cheapest seller first, with the time we checked.`;
@@ -66362,7 +66702,7 @@ function renderSnapshotHtml(snapshot, heading) {
   const items = snapshot.rows.map((r) => `
     <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
       <span style="min-width:0;font-size:13.5px;color:#111827">${esc8(r.title)}</span>
-      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc8(inr3(r.price))}</span>
+      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc8(inr4(r.price))}</span>
       <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc8(r.seller)}</span>
     </li>`).join("");
   return [
@@ -66517,7 +66857,7 @@ async function buildSnapshotForPath(path19) {
 function clearSnapshotCache() {
   cache14.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache14, SNAPSHOT_CACHE_MAX, esc8, inr3, slugOf3, SNAPSHOT_BUILD_BUDGET_MS, SNAPSHOT_QUERY_TIMEOUT_MS, inFlight2;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache14, SNAPSHOT_CACHE_MAX, esc8, inr4, slugOf3, SNAPSHOT_BUILD_BUDGET_MS, SNAPSHOT_QUERY_TIMEOUT_MS, inFlight2;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
@@ -66526,7 +66866,7 @@ var init_liveSnapshot = __esm({
     cache14 = /* @__PURE__ */ new Map();
     SNAPSHOT_CACHE_MAX = Number(process.env.T1S_SNAPSHOT_CACHE_MAX || 400);
     esc8 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-    inr3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+    inr4 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
     slugOf3 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
     SNAPSHOT_BUILD_BUDGET_MS = Number(process.env.T1S_SNAPSHOT_BUDGET_MS || 4e3);
     SNAPSHOT_QUERY_TIMEOUT_MS = Number(process.env.T1S_SNAPSHOT_QUERY_MS || 1200);
