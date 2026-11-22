@@ -3,6 +3,11 @@ import App from './App.tsx';
 import './index.css';
 import { installChunkRecovery } from './lib/chunkRecovery';
 import { installApiGate } from './lib/apiGate';
+import { installPlayStoreRedirect } from './lib/playStoreRedirect';
+
+// OWNER 22 Nov: an Android phone opening the home page goes straight to our Play listing (crawlers, our own app
+// and every deep page are exempt - see playStoreRedirect.ts). Runs before the first render so there is no flash.
+installPlayStoreRedirect();
 
 // OWNER 31 Oct: recover from a throttled/blocked chunk instead of showing a blank page.
 installChunkRecovery();
