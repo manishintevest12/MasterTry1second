@@ -7309,15 +7309,15 @@ function hostAllowed(url) {
   const host = hostOf2(url);
   if (!host || !/^https?:\/\//i.test(url)) return false;
   if (BAD_HOSTS.some((b) => host.includes(b))) return false;
-  const path19 = (() => {
+  const path20 = (() => {
     try {
       return new URL(url).pathname.toLowerCase();
     } catch {
       return "";
     }
   })();
-  if (BAD_WORDS.test(path19)) return false;
-  return IMAGE_EXT.test(path19) || IMAGE_CDN_HINT.test(host);
+  if (BAD_WORDS.test(path20)) return false;
+  return IMAGE_EXT.test(path20) || IMAGE_CDN_HINT.test(host);
 }
 function decodeEntities(s) {
   return s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\\u002f/gi, "/").replace(/\\\//g, "/");
@@ -10127,8 +10127,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
             let lastBody = "";
-            for (const path19 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path19}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
+            for (const path20 of oyoCityPaths(city)) {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path20}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -10138,7 +10138,7 @@ var init_hotels = __esm({
               if (r.status !== 200) continue;
               const state = parseOyoPreloadedState(r.body);
               const hotels = parseOyoHotels(state || {});
-              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path19 });
+              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path20 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
@@ -10158,8 +10158,8 @@ var init_hotels = __esm({
             if (!city || city.length < 3) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
-            for (const path19 of emtCityPaths(city)) {
-              const r = await cffiFetch(`https://www.easemytrip.com/${path19}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+            for (const path20 of emtCityPaths(city)) {
+              const r = await cffiFetch(`https://www.easemytrip.com/${path20}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
@@ -10170,7 +10170,7 @@ var init_hotels = __esm({
               if (!items.length) continue;
               const links = parseEmtHotelLinks(r.body);
               const hotels = parseEmtHotels(items, links);
-              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path19 });
+              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path20 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
@@ -21738,24 +21738,24 @@ var init_indriveIntercity = __esm({
 });
 
 // server/common/geoProxy.ts
-async function throttledNominatim(path19) {
-  const hit = cache6.get(path19);
+async function throttledNominatim(path20) {
+  const hit = cache6.get(path20);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCallAt = Date.now();
   try {
-    const r = await fetch(`${NOMINATIM}${path19}`, {
+    const r = await fetch(`${NOMINATIM}${path20}`, {
       headers: { "User-Agent": UA3, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path19.slice(0, 60)}`);
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path20.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
-    cache6.set(path19, { at: Date.now(), value });
+    cache6.set(path20, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -21765,16 +21765,16 @@ async function throttledNominatim(path19) {
 async function geoSearch(q3, limit = 6) {
   const clean4 = q3.trim().slice(0, 120);
   if (clean4.length < 2) return [];
-  const path19 = `/search?q=${encodeURIComponent(clean4)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
-  const rows = await throttledNominatim(path19);
+  const path20 = `/search?q=${encodeURIComponent(clean4)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path20);
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
 }
 async function geoReverse(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const la = lat.toFixed(6), lo = lng.toFixed(6);
-  const path19 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
-  const row = await throttledNominatim(path19);
+  const path20 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path20);
   const a = row?.address;
   if (!row || !a) return null;
   const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
@@ -21789,24 +21789,24 @@ async function geoReverse(lat, lng) {
     pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
   };
 }
-async function throttledPhoton(path19) {
-  const hit = cache6.get(path19);
+async function throttledPhoton(path20) {
+  const hit = cache6.get(path20);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastPhotonAt + PHOTON_MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastPhotonAt = Date.now();
   try {
-    const r = await fetch(`${PHOTON}${path19}`, {
+    const r = await fetch(`${PHOTON}${path20}`, {
       headers: { "User-Agent": UA3, Accept: "application/json" },
       signal: AbortSignal.timeout(6e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path19.slice(0, 60)}`);
+      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path20.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
-    cache6.set(`photon:${path19}`, { at: Date.now(), value });
+    cache6.set(`photon:${path20}`, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Photon unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -21895,9 +21895,9 @@ async function rapidoServedCities(fetchText) {
   const xml = await fetchText(CITIES_SITEMAP);
   const cities = [];
   for (const m of xml.matchAll(/<loc>https:\/\/www\.rapido\.bike\/([^/]+)\/main-page<\/loc>/g)) {
-    const path19 = m[1];
-    if (!path19 || path19.includes(".")) continue;
-    cities.push({ name: decodeURIComponent(path19).replace(/[_%20]/g, " ").trim(), mainPagePath: path19 });
+    const path20 = m[1];
+    if (!path20 || path20.includes(".")) continue;
+    cities.push({ name: decodeURIComponent(path20).replace(/[_%20]/g, " ").trim(), mainPagePath: path20 });
   }
   if (!cities.length) throw new Error(`Rapido cities sitemap carried no city pages (len=${xml.length})`);
   citiesCache = { at: Date.now(), cities };
@@ -27882,9 +27882,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path19, timeoutMs = 12e3) {
+async function gwJson(host, path20, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path19}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path20}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -40250,7 +40250,7 @@ var init_readPathCache = __esm({
 
 // server/search/deepLinkHub.ts
 function fallbackFor(m, vertical, ctx) {
-  const path19 = m.path?.[vertical] ?? "";
+  const path20 = m.path?.[vertical] ?? "";
   if (m.domain === "booking.com" && vertical === "hotels") {
     const q3 = new URLSearchParams({ ss: ctx.city || "India", selected_currency: "INR", lang: "en-gb" });
     if (ctx.depart) q3.set("checkin", ctx.depart);
@@ -40258,9 +40258,9 @@ function fallbackFor(m, vertical, ctx) {
     return `https://www.booking.com/searchresults.html?${q3.toString()}`;
   }
   if (m.domain === "agoda.com") return `https://www.agoda.com/search?q=${encodeURIComponent(ctx.city || "India")}`;
-  const base = `https://www.${m.domain}/${path19}`;
-  if (!path19) return `https://www.${m.domain}/`;
-  return /\.html?$/.test(path19) || path19.includes("searchresults") ? base : `${base.replace(/\/+$/, "")}/`;
+  const base = `https://www.${m.domain}/${path20}`;
+  if (!path20) return `https://www.${m.domain}/`;
+  return /\.html?$/.test(path20) || path20.includes("searchresults") ? base : `${base.replace(/\/+$/, "")}/`;
 }
 function sellersPresent(rows) {
   const out = /* @__PURE__ */ new Set();
@@ -41202,10 +41202,10 @@ function routeOfRow(row) {
   const busTitle = title.match(/\s+to\s+([A-Za-z][A-Za-z .'-]{1,30}?)\s+(?:bus|volvo|sleeper|seater)\b/i);
   if (busTitle) {
     const before = title.slice(0, busTitle.index).trim().split(/\s+/).filter(Boolean);
-    const PREFIX = /* @__PURE__ */ new Set(["new", "navi", "north", "south", "east", "west", "old", "greater"]);
+    const PREFIX2 = /* @__PURE__ */ new Set(["new", "navi", "north", "south", "east", "west", "old", "greater"]);
     let from = before[before.length - 1] || "";
     const prev = (before[before.length - 2] || "").toLowerCase();
-    if (from && PREFIX.has(prev)) from = `${before[before.length - 2]} ${from}`;
+    if (from && PREFIX2.has(prev)) from = `${before[before.length - 2]} ${from}`;
     const to = busTitle[1].trim();
     if (from && to) return { from, to };
   }
@@ -41473,18 +41473,105 @@ var init_productGrouping = __esm({
   }
 });
 
+// server/auth/sessionToken.ts
+function sessionSecret() {
+  if (cachedSecret) return cachedSecret;
+  const fromEnv = String(process.env.SESSION_SECRET || "").trim();
+  if (fromEnv.length >= 16) {
+    cachedSecret = fromEnv;
+    return cachedSecret;
+  }
+  const readFile2 = () => {
+    try {
+      return String(import_fs7.default.readFileSync(SECRET_FILE, "utf8")).trim();
+    } catch {
+      return "";
+    }
+  };
+  const existing = readFile2();
+  if (existing.length >= 32) {
+    cachedSecret = existing;
+    return cachedSecret;
+  }
+  const fresh = import_crypto25.default.randomBytes(32).toString("hex");
+  try {
+    import_fs7.default.mkdirSync(dataDir, { recursive: true });
+    import_fs7.default.writeFileSync(SECRET_FILE, fresh, { mode: 384, flag: "wx" });
+    cachedSecret = fresh;
+    return cachedSecret;
+  } catch {
+    const raced = readFile2();
+    if (raced.length >= 32) {
+      cachedSecret = raced;
+      return cachedSecret;
+    }
+    cachedSecret = import_crypto25.default.createHash("sha256").update(`t1s-session|${dataDir}|${process.cwd()}`).digest("hex");
+    return cachedSecret;
+  }
+}
+function sign2(body) {
+  return b64url2(import_crypto25.default.createHmac("sha256", sessionSecret()).update(body).digest());
+}
+function mintSessionToken(userId, ttlSec, now = Date.now()) {
+  const payload = b64url2(Buffer.from(JSON.stringify({ u: Number(userId), e: Math.floor(now / 1e3) + Math.floor(ttlSec) })));
+  const body = `${PREFIX}.${payload}`;
+  return `${body}.${sign2(body)}`;
+}
+function isSignedSessionToken(token) {
+  return String(token || "").startsWith(`${PREFIX}.`);
+}
+function verifySessionToken(token, now = Date.now()) {
+  const raw = String(token || "");
+  const parts = raw.split(".");
+  if (parts.length !== 3 || parts[0] !== PREFIX) return null;
+  const body = `${parts[0]}.${parts[1]}`;
+  const expected = sign2(body);
+  const given = parts[2];
+  if (given.length !== expected.length) return null;
+  try {
+    if (!import_crypto25.default.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) return null;
+  } catch {
+    return null;
+  }
+  let claims;
+  try {
+    claims = JSON.parse(fromB64url(parts[1]).toString("utf8"));
+  } catch {
+    return null;
+  }
+  const userId = Number(claims?.u);
+  const exp = Number(claims?.e);
+  if (!Number.isFinite(userId) || userId <= 0) return null;
+  if (!Number.isFinite(exp) || exp <= Math.floor(now / 1e3)) return null;
+  return { userId };
+}
+var import_crypto25, import_fs7, import_path7, PREFIX, SECRET_FILE, cachedSecret, b64url2, fromB64url;
+var init_sessionToken = __esm({
+  "server/auth/sessionToken.ts"() {
+    import_crypto25 = __toESM(require("crypto"), 1);
+    import_fs7 = __toESM(require("fs"), 1);
+    import_path7 = __toESM(require("path"), 1);
+    init_settings();
+    PREFIX = "t1s1";
+    SECRET_FILE = import_path7.default.join(dataDir, "session-secret");
+    cachedSecret = null;
+    b64url2 = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    fromB64url = (s) => Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+  }
+});
+
 // server/auth/authService.ts
 function hashPassword(password) {
-  const salt = import_crypto25.default.randomBytes(16).toString("hex");
-  const hash2 = import_crypto25.default.scryptSync(password, salt, 32).toString("hex");
+  const salt = import_crypto26.default.randomBytes(16).toString("hex");
+  const hash2 = import_crypto26.default.scryptSync(password, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash2}`;
 }
 function verifyPassword(password, stored2) {
   try {
     const [scheme, salt, hash2] = stored2.split("$");
     if (scheme !== "scrypt") return false;
-    const candidate = import_crypto25.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto25.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash2));
+    const candidate = import_crypto26.default.scryptSync(password, salt, 32).toString("hex");
+    return import_crypto26.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash2));
   } catch {
     return false;
   }
@@ -41507,21 +41594,37 @@ async function loginUser(email, password) {
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
-  const token = import_crypto25.default.randomBytes(32).toString("hex");
-  await store7.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
-    token,
-    Number(row.id),
-    new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
-  ]);
+  const token = await issueSessionToken(Number(row.id));
   return {
     ok: true,
     token,
     user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || void 0 }
   };
 }
+async function issueSessionToken(userId, ttlSec = SESSION_TTL_SEC) {
+  const token = mintSessionToken(userId, ttlSec);
+  try {
+    const store7 = getStore();
+    await store7.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+      token,
+      Number(userId),
+      new Date(Date.now() + ttlSec * 1e3).toISOString().slice(0, 19).replace("T", " ")
+    ]);
+  } catch {
+  }
+  return token;
+}
 async function userForToken(token) {
   if (!token) return null;
   const store7 = getStore();
+  if (isSignedSessionToken(token)) {
+    const claims = verifySessionToken(token);
+    if (!claims) return null;
+    const rows2 = await store7.query(`SELECT id, email, display_name, role FROM users WHERE id = ?`, [claims.userId]);
+    if (rows2.length === 0) return null;
+    const u = rows2[0];
+    return { id: Number(u.id), email: u.email, role: u.role, displayName: u.display_name || void 0 };
+  }
   const sess = await store7.query(`SELECT user_id, expires_at FROM sessions WHERE id = ?`, [token]);
   if (sess.length === 0) return null;
   const exp = String(sess[0].expires_at || "").replace("T", " ").slice(0, 19);
@@ -41547,12 +41650,13 @@ function requireAdmin(req, res, next) {
   if (!user || user.role !== "admin") return res.status(403).json({ success: false, error: "Admin authorization required" });
   next();
 }
-var import_crypto25, SESSION_TTL_SEC;
+var import_crypto26, SESSION_TTL_SEC;
 var init_authService = __esm({
   "server/auth/authService.ts"() {
-    import_crypto25 = __toESM(require("crypto"), 1);
+    import_crypto26 = __toESM(require("crypto"), 1);
     init_settings();
     init_db();
+    init_sessionToken();
     SESSION_TTL_SEC = 30 * 24 * 3600;
   }
 });
@@ -41684,16 +41788,16 @@ var init_mailer = __esm({
 
 // server/auth/otpService.ts
 function hashOtp(code) {
-  const salt = import_crypto26.default.randomBytes(8).toString("hex");
-  const hash2 = import_crypto26.default.scryptSync(code, salt, 32).toString("hex");
+  const salt = import_crypto27.default.randomBytes(8).toString("hex");
+  const hash2 = import_crypto27.default.scryptSync(code, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash2}`;
 }
 function verifyOtpHash(code, stored2) {
   const parts = String(stored2 || "").split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const check = import_crypto26.default.scryptSync(code, parts[1], 32).toString("hex");
+  const check = import_crypto27.default.scryptSync(code, parts[1], 32).toString("hex");
   try {
-    return import_crypto26.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
+    return import_crypto27.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
   } catch {
     return false;
   }
@@ -41726,7 +41830,7 @@ async function requestAdminOtp(email) {
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
   await store7.execute("DELETE FROM otp_codes WHERE email = ?", [clean4]);
-  const code = String(import_crypto26.default.randomInt(0, 1e6)).padStart(6, "0");
+  const code = String(import_crypto27.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store7.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -41767,7 +41871,7 @@ async function verifyAdminRecovery(email, code) {
   if (!await isEligibleAdmin(clean4)) return { ok: false, error: "Not an admin account" };
   const a = Buffer.from(given);
   const b = Buffer.from(expected);
-  const same = a.length === b.length && import_crypto26.default.timingSafeEqual(a, b);
+  const same = a.length === b.length && import_crypto27.default.timingSafeEqual(a, b);
   if (!same) {
     log.warn("Otp", "Admin recovery code rejected");
     return { ok: false, error: "Invalid recovery code" };
@@ -41802,10 +41906,10 @@ async function verifyAdminOtp(email, code) {
   log.info("Otp", `Admin OTP verified for ${clean4}`);
   return { ok: true, email: clean4 };
 }
-var import_crypto26, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
+var import_crypto27, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
   "server/auth/otpService.ts"() {
-    import_crypto26 = __toESM(require("crypto"), 1);
+    import_crypto27 = __toESM(require("crypto"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -41854,8 +41958,8 @@ async function verifyFirebaseIdTokenDetailed(idToken, opts = {}) {
     }
     const certPem = certs[header.kid];
     if (!certPem) return { reason: "unknown_signing_key", detail: `kid=${header.kid}` };
-    const publicKey = new import_crypto27.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto27.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto28.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto28.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return { reason: "bad_signature" };
     return {
@@ -41907,8 +42011,8 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     const certs = certsOverride || await getGoogleCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto27.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto27.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto28.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto28.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return null;
     return {
@@ -41923,10 +42027,10 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     return null;
   }
 }
-var import_crypto27, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache, PROJECT_AUDIENCE_PREFIX;
+var import_crypto28, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache, PROJECT_AUDIENCE_PREFIX;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
-    import_crypto27 = __toESM(require("crypto"), 1);
+    import_crypto28 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
@@ -42007,7 +42111,7 @@ async function eligibleSpinCount(userId) {
 }
 async function executeSpin(userId, idempotencyKey) {
   const store7 = getStore();
-  const key = idempotencyKey || import_crypto28.default.randomUUID();
+  const key = idempotencyKey || import_crypto29.default.randomUUID();
   const prior = await store7.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
@@ -42129,7 +42233,7 @@ async function ensureReferralCode(userId) {
   if (existing) return existing;
   for (let attempt = 0; attempt < 6; attempt++) {
     let code = "T1S-";
-    const bytes = import_crypto28.default.randomBytes(6);
+    const bytes = import_crypto29.default.randomBytes(6);
     for (let i = 0; i < 6; i++) code += REF_CODE_ALPHABET[bytes[i] % REF_CODE_ALPHABET.length];
     try {
       const res = await store7.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
@@ -42167,10 +42271,10 @@ async function referralStats(userId) {
   const referredCount = typeof first.c === "number" ? first.c : first.referrer_id !== void 0 ? referred.length : 0;
   return { referredCount, referredByCode };
 }
-var import_crypto28, POINTS_PER_SPIN_ELIGIBILITY, userLocks, REF_CODE_ALPHABET;
+var import_crypto29, POINTS_PER_SPIN_ELIGIBILITY, userLocks, REF_CODE_ALPHABET;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
-    import_crypto28 = __toESM(require("crypto"), 1);
+    import_crypto29 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
     POINTS_PER_SPIN_ELIGIBILITY = 100;
@@ -42541,30 +42645,30 @@ __export(interstitial_exports, {
   resolveInterstitialMeta: () => resolveInterstitialMeta
 });
 function secret2() {
-  return process.env.AFFILIATE_SECRET || import_crypto29.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+  return process.env.AFFILIATE_SECRET || import_crypto30.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
 }
-function b64url2(s) {
+function b64url3(s) {
   return Buffer.from(s, "utf8").toString("base64url");
 }
 function unb64url2(s) {
   return Buffer.from(s, "base64url").toString("utf8");
 }
 function createInterstitialPointer(url, partner, appScheme, appIntent) {
-  const payload = b64url2(JSON.stringify({
+  const payload = b64url3(JSON.stringify({
     d: url.slice(0, 3e3),
     p: String(partner || "").slice(0, 120),
     s: String(appScheme || "").slice(0, 500),
     i: String(appIntent || "").slice(0, 1200),
     e: Date.now() + INTERSTITIAL_TTL_MS
   }));
-  const sig = import_crypto29.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
+  const sig = import_crypto30.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
   return `${payload}.${sig}`;
 }
 function resolveInterstitialMeta(token) {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
   if (!m) return null;
-  const expect = import_crypto29.default.createHmac("sha256", secret2()).update(m[1]).digest("base64url").slice(0, 32);
-  if (m[2].length !== expect.length || !import_crypto29.default.timingSafeEqual(Buffer.from(m[2]), Buffer.from(expect))) return null;
+  const expect = import_crypto30.default.createHmac("sha256", secret2()).update(m[1]).digest("base64url").slice(0, 32);
+  if (m[2].length !== expect.length || !import_crypto30.default.timingSafeEqual(Buffer.from(m[2]), Buffer.from(expect))) return null;
   try {
     const j = JSON.parse(unb64url2(m[1]));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
@@ -42823,10 +42927,10 @@ async function redirectRouteHandler(req, res) {
     adSlot
   }));
 }
-var import_crypto29, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
+var import_crypto30, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
 var init_interstitial = __esm({
   "server/redirect/interstitial.ts"() {
-    import_crypto29 = __toESM(require("crypto"), 1);
+    import_crypto30 = __toESM(require("crypto"), 1);
     init_placements();
     init_affiliateNetwork();
     init_logger();
@@ -48326,7 +48430,7 @@ async function deliver(sub, body) {
   return lib.sendNotification(sub, body, { TTL: 3600, urgency: "high" });
 }
 function fcmCacheKey(sa) {
-  return `${sa.project_id}:${sa.client_email}:${import_crypto30.default.createHash("sha256").update(sa.private_key).digest("hex").slice(0, 16)}`;
+  return `${sa.project_id}:${sa.client_email}:${import_crypto31.default.createHash("sha256").update(sa.private_key).digest("hex").slice(0, 16)}`;
 }
 function fcmServiceAccount() {
   const raw = (process.env.FCM_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "").trim();
@@ -48364,7 +48468,7 @@ async function fcmAccessToken(sa) {
     iat: now,
     exp: now + 3600
   })}`;
-  const assertion = `${unsigned}.${import_crypto30.default.createSign("RSA-SHA256").update(unsigned).sign(sa.private_key).toString("base64url")}`;
+  const assertion = `${unsigned}.${import_crypto31.default.createSign("RSA-SHA256").update(unsigned).sign(sa.private_key).toString("base64url")}`;
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -48658,10 +48762,10 @@ async function pushStats() {
   }
   return { web, android, inactive, sent24h, vapidReady, fcmReady: fcmServiceAccount() !== null };
 }
-var import_crypto30, import_node_fs9, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip3, httpsImage, fcmTokenCache;
+var import_crypto31, import_node_fs9, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip3, httpsImage, fcmTokenCache;
 var init_push = __esm({
   "server/push/push.ts"() {
-    import_crypto30 = __toESM(require("crypto"), 1);
+    import_crypto31 = __toESM(require("crypto"), 1);
     import_node_fs9 = __toESM(require("node:fs"), 1);
     init_db();
     init_logger();
@@ -48673,7 +48777,7 @@ var init_push = __esm({
     cached2 = null;
     configured = false;
     transport = null;
-    sha256 = (s) => import_crypto30.default.createHash("sha256").update(s).digest("hex");
+    sha256 = (s) => import_crypto31.default.createHash("sha256").update(s).digest("hex");
     clip3 = (s, n) => String(s ?? "").trim().slice(0, n);
     httpsImage = (raw) => {
       const s = String(raw || "").trim();
@@ -48968,15 +49072,15 @@ var init_priceAlerts = __esm({
 // src/server/catalogueStore.ts
 function saveCatalogueStore(state) {
   try {
-    if (!import_fs7.default.existsSync(DATA_DIR)) {
-      import_fs7.default.mkdirSync(DATA_DIR, { recursive: true });
+    if (!import_fs8.default.existsSync(DATA_DIR)) {
+      import_fs8.default.mkdirSync(DATA_DIR, { recursive: true });
     }
     memoryState = {
       ...memoryState,
       ...state,
       lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    import_fs7.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
+    import_fs8.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
   } catch (err) {
     console.error("[CatalogueStore] Error saving persistent catalogue to disk:", err.message);
   }
@@ -48996,14 +49100,14 @@ function saveItemToCatalogue(item) {
   }
   saveCatalogueStore({ items: memoryState.items });
 }
-var import_fs7, import_path7, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
+var import_fs8, import_path8, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
 var init_catalogueStore = __esm({
   "src/server/catalogueStore.ts"() {
-    import_fs7 = __toESM(require("fs"), 1);
-    import_path7 = __toESM(require("path"), 1);
+    import_fs8 = __toESM(require("fs"), 1);
+    import_path8 = __toESM(require("path"), 1);
     import_promise2 = __toESM(require("mysql2/promise"), 1);
-    DATA_DIR = import_path7.default.resolve(process.cwd(), ".data");
-    CATALOGUE_FILE = import_path7.default.join(DATA_DIR, "catalogue.json");
+    DATA_DIR = import_path8.default.resolve(process.cwd(), ".data");
+    CATALOGUE_FILE = import_path8.default.join(DATA_DIR, "catalogue.json");
     memoryState = {
       items: [],
       leads: [],
@@ -53517,19 +53621,19 @@ async function importRows(store7, table, cols, rows) {
 async function importFileStoreIntoMysql() {
   const store7 = getStore();
   if (store7.kind !== "mysql") return;
-  const src2 = import_path8.default.join(dataDir, "devstore.json");
-  const lock = import_path8.default.join(dataDir, LOCK);
-  if (!import_fs8.default.existsSync(src2) && !import_fs8.default.existsSync(lock)) return;
+  const src2 = import_path9.default.join(dataDir, "devstore.json");
+  const lock = import_path9.default.join(dataDir, LOCK);
+  if (!import_fs9.default.existsSync(src2) && !import_fs9.default.existsSync(lock)) return;
   let claimed = false;
   try {
-    if (import_fs8.default.existsSync(src2)) import_fs8.default.renameSync(src2, lock);
+    if (import_fs9.default.existsSync(src2)) import_fs9.default.renameSync(src2, lock);
     claimed = true;
-    const data = JSON.parse(import_fs8.default.readFileSync(lock, "utf8"));
+    const data = JSON.parse(import_fs9.default.readFileSync(lock, "utf8"));
     const tables = Object.keys(data).filter((t) => Array.isArray(data[t]) && data[t].length > 0).sort((a, b) => {
       const ai = TABLE_ORDER.indexOf(a), bi = TABLE_ORDER.indexOf(b);
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
     });
-    log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs8.default.existsSync(lock) && claimed})`);
+    log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs9.default.existsSync(lock) && claimed})`);
     for (const table of tables) {
       const cols = await tableColumns(store7, table);
       if (!cols) {
@@ -53539,18 +53643,18 @@ async function importFileStoreIntoMysql() {
       const { ok: ok3, skipped } = await importRows(store7, table, cols, data[table]);
       log.info("FileImport", `'${table}': imported ${ok3}, skipped ${skipped} of ${data[table].length}`);
     }
-    const done = import_path8.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
-    import_fs8.default.renameSync(lock, done);
-    log.info("FileImport", `File-store history import complete \u2014 snapshot kept at ${import_path8.default.basename(done)}`);
+    const done = import_path9.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
+    import_fs9.default.renameSync(lock, done);
+    log.info("FileImport", `File-store history import complete \u2014 snapshot kept at ${import_path9.default.basename(done)}`);
   } catch (err) {
     log.error("FileImport", `Import failed (will resume next boot): ${err && err.message}`);
   }
 }
-var import_fs8, import_path8, LOCK, TABLE_ORDER;
+var import_fs9, import_path9, LOCK, TABLE_ORDER;
 var init_fileImport = __esm({
   "server/common/fileImport.ts"() {
-    import_fs8 = __toESM(require("fs"), 1);
-    import_path8 = __toESM(require("path"), 1);
+    import_fs9 = __toESM(require("fs"), 1);
+    import_path9 = __toESM(require("path"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -54424,12 +54528,7 @@ async function signInGoogleUser(claims) {
     rows = await store7.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   }
   const row = rows[0];
-  const token = import_crypto31.default.randomBytes(32).toString("hex");
-  await store7.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
-    token,
-    Number(row.id),
-    new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
-  ]);
+  const token = await issueSessionToken(Number(row.id));
   return { token, row };
 }
 async function buildSectionBannersOnly(section) {
@@ -54499,7 +54598,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path9, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, cuelinksProbe, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN2, absoluteLogo, validHex, bannerGradient;
+var import_promises2, import_node_path9, import_express2, import_crypto32, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, cuelinksProbe, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN2, absoluteLogo, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
@@ -54536,7 +54635,7 @@ var init_routes = __esm({
     init_productImage();
     init_otpService();
     init_firebaseAuth();
-    import_crypto31 = __toESM(require("crypto"), 1);
+    import_crypto32 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_spendLens();
@@ -57482,7 +57581,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store7.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto31.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto32.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -57490,12 +57589,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto31.default.randomBytes(32).toString("hex");
-      await store7.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
-        token,
-        Number(u.id),
-        new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
-      ]);
+      const token = await issueSessionToken(Number(u.id));
       res.json({ success: true, token, user: { id: Number(u.id), email: u.email, role: u.role, displayName: u.display_name || void 0 } });
     });
     apiRouter.post("/auth/otp/recovery", async (req, res) => {
@@ -57507,7 +57601,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store7.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto31.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto32.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -57515,12 +57609,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto31.default.randomBytes(32).toString("hex");
-      await store7.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
-        token,
-        Number(u.id),
-        new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
-      ]);
+      const token = await issueSessionToken(Number(u.id));
       res.json({ success: true, token, user: { id: Number(u.id), email: u.email, role: u.role, displayName: u.display_name || void 0 } });
     });
     apiRouter.use(authMiddleware);
@@ -57964,7 +58053,7 @@ async function acquireMyntraDeals() {
 async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch", "kitchen appliance"], perQuery = 8) {
   const key = "Vwdu3LWvHSOhAusUG9xfFw==";
   const tokenOf = () => {
-    const cipher = (0, import_crypto32.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+    const cipher = (0, import_crypto33.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
     return cipher.update(String(Math.floor(Date.now() / 1e3)), "utf8", "base64") + cipher.final("base64");
   };
   const out = [];
@@ -58258,10 +58347,10 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto32, strip, clip4, COUPON_TXT;
+var import_crypto33, strip, clip4, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
-    import_crypto32 = require("crypto");
+    import_crypto33 = require("crypto");
     init_curlCffiFetch();
     init_logger();
     init_db();
@@ -59696,7 +59785,7 @@ function adsenseApiConfig() {
   const refreshToken = String(process.env.ADSENSE_REFRESH_TOKEN || "").trim();
   const currency = String(process.env.ADSENSE_CURRENCY || "INR").trim().toUpperCase();
   const configured2 = Boolean(accountId && clientId && clientSecret && refreshToken);
-  const credentialHash = import_crypto33.default.createHash("sha256").update(`${accountId}|${clientId}|${refreshToken}`).digest("hex").slice(0, 16);
+  const credentialHash = import_crypto34.default.createHash("sha256").update(`${accountId}|${clientId}|${refreshToken}`).digest("hex").slice(0, 16);
   return { accountId, clientId, clientSecret, refreshToken, currency, configured: configured2, credentialHash };
 }
 function adsenseApiCircuit() {
@@ -59818,10 +59907,10 @@ async function lastSyncs(limit = 5) {
   await ensureTables();
   return getStore().query("SELECT kind, ok, rows_seen, message, created_at FROM adsense_sync_log ORDER BY id DESC LIMIT ?", [limit]).catch(() => []);
 }
-var import_crypto33, HEADER_ALIASES, ensured7, circuit;
+var import_crypto34, HEADER_ALIASES, ensured7, circuit;
 var init_adsenseRevenue = __esm({
   "server/marketing/adsenseRevenue.ts"() {
-    import_crypto33 = __toESM(require("crypto"), 1);
+    import_crypto34 = __toESM(require("crypto"), 1);
     init_db();
     HEADER_ALIASES = {
       day: ["date", "day", "din"],
@@ -61932,18 +62021,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path19, params = {}) {
+      async apiGet(path20, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path19}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path20}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path19, params);
+          return this.apiGet(path20, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path19} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path20} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -61983,9 +62072,9 @@ var init_admitad = __esm({
         }
         for (const wid of websiteIds) {
           if (offers.length >= maxOffers) break;
-          const path19 = `/coupons/website/${encodeURIComponent(wid)}/`;
+          const path20 = `/coupons/website/${encodeURIComponent(wid)}/`;
           for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-            const j = await this.apiGet(path19, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+            const j = await this.apiGet(path20, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
             const results = j?.results || [];
             if (results.length === 0) break;
             for (const c of results) {
@@ -62160,12 +62249,12 @@ var init_cuelinks = __esm({
       }
       async authenticate() {
       }
-      async api(path19, init) {
-        const res = await fetch(`${settings.cuelinks.apiBase}${path19}`, {
+      async api(path20, init) {
+        const res = await fetch(`${settings.cuelinks.apiBase}${path20}`, {
           ...init,
           headers: { Authorization: `Token ${settings.cuelinks.apiKey}`, "Content-Type": "application/json", ...init?.headers || {} }
         });
-        if (!res.ok) throw new Error(`cuelinks: ${path19} HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`cuelinks: ${path20} HTTP ${res.status}`);
         return res.json();
       }
       /** Live coupons/deals across joined campaigns. Paginates a few pages; every
@@ -63561,8 +63650,8 @@ function pricePathsNow() {
   const now = Date.now();
   return cache13.entries.filter((e2) => isPriceFresh(e2, now));
 }
-function findPriceEntry(path19) {
-  const p = path19.replace(/\/+$/, "").toLowerCase();
+function findPriceEntry(path20) {
+  const p = path20.replace(/\/+$/, "").toLowerCase();
   return pricePathsNow().find((e2) => e2.path === p) || null;
 }
 function esc5(s) {
@@ -63855,13 +63944,13 @@ __export(indexPolicy_exports, {
   isIndexableCityPage: () => isIndexableCityPage,
   isTemplatedCityPath: () => isTemplatedCityPath
 });
-function isTemplatedCityPath(path19) {
-  const segs = String(path19 || "").split("?")[0].split("/").filter(Boolean);
+function isTemplatedCityPath(path20) {
+  const segs = String(path20 || "").split("?")[0].split("/").filter(Boolean);
   return segs.length === 2 && TEMPLATED_CITY_VERTICALS.has(segs[0]);
 }
-function isIndexableCityPage(path19) {
-  if (!isTemplatedCityPath(path19)) return true;
-  const [vertical, city] = String(path19).split("?")[0].split("/").filter(Boolean);
+function isIndexableCityPage(path20) {
+  if (!isTemplatedCityPath(path20)) return true;
+  const [vertical, city] = String(path20).split("?")[0].split("/").filter(Boolean);
   if (INDEXABLE_METROS.has(city)) return true;
   if (vertical === "movies" && MOVIE_CITY_CONTENT[city]) return true;
   return false;
@@ -63912,20 +64001,20 @@ __export(seo_exports, {
 function titleCase(slug5) {
   return slug5.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
-function resolveNearbyPage(path19) {
-  const parts = String(path19 || "").split("?")[0].split("/").filter(Boolean);
+function resolveNearbyPage(path20) {
+  const parts = String(path20 || "").split("?")[0].split("/").filter(Boolean);
   if (parts[0] !== "nearby") return null;
-  if (parts.length === 1) return { path: path19, category: "all", city: "", areaLabel: null };
+  if (parts.length === 1) return { path: path20, category: "all", city: "", areaLabel: null };
   const category = normalizeNearbyCategory(parts[1]);
   if (category === "all" && parts[1] !== "all") return null;
-  if (parts.length === 2) return { path: path19, category, city: "", areaLabel: null };
+  if (parts.length === 2) return { path: path20, category, city: "", areaLabel: null };
   const citySlug2 = String(parts[2] || "").toLowerCase();
   const city = CITY_SLUGS.get(citySlug2);
   if (!city) return null;
-  if (parts.length === 3) return { path: path19, category, city, areaLabel: null };
+  if (parts.length === 3) return { path: path20, category, city, areaLabel: null };
   const areaLabel = AREA_SLUGS.get(`${citySlug2}/${String(parts[3] || "").toLowerCase()}`);
   if (!areaLabel) return null;
-  return { path: path19, category, city, areaLabel };
+  return { path: path20, category, city, areaLabel };
 }
 function listNearbyPaths() {
   const paths = ["/nearby"];
@@ -63958,20 +64047,20 @@ function card(row) {
 function escapeHtml2(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-function isKnownThinNearbyPath(path19) {
-  return thinPaths.has(path19);
+function isKnownThinNearbyPath(path20) {
+  return thinPaths.has(path20);
 }
-function isRichNearbyPath(path19) {
-  return richPaths.has(path19);
+function isRichNearbyPath(path20) {
+  return richPaths.has(path20);
 }
-function recordNearbyVerdict(path19, rowCount, floor = MIN_INDEXABLE_ROWS) {
+function recordNearbyVerdict(path20, rowCount, floor = MIN_INDEXABLE_ROWS) {
   const rich = rowCount >= floor;
   if (rich) {
-    richPaths.add(path19);
-    thinPaths.delete(path19);
+    richPaths.add(path20);
+    thinPaths.delete(path20);
   } else {
-    thinPaths.add(path19);
-    richPaths.delete(path19);
+    thinPaths.add(path20);
+    richPaths.delete(path20);
   }
   return rich;
 }
@@ -63986,13 +64075,13 @@ function startNearbyThinAudit(onDone) {
   let done = 0;
   const worker = async () => {
     while (i < paths.length) {
-      const path19 = paths[i];
+      const path20 = paths[i];
       i += 1;
-      const page = resolveNearbyPage(path19);
+      const page = resolveNearbyPage(path20);
       if (!page) continue;
       try {
         const ans = await nearbyAnswer({ city: page.areaLabel || page.city, category: page.category, limit: 24, preferFull: true, noPhotos: true });
-        recordNearbyVerdict(path19, ans?.results?.length || 0);
+        recordNearbyVerdict(path20, ans?.results?.length || 0);
         done += 1;
         if (done % 20 === 0) {
           try {
@@ -64339,8 +64428,8 @@ function listSeoPaths(includeThin = false) {
   const unique = [...new Set(paths)];
   return includeThin ? unique : unique.filter(isIndexableCityPage);
 }
-function resolveAppRoute(path19) {
-  const seg = path19.replace(/\/+$/, "").split("/").filter(Boolean);
+function resolveAppRoute(path20) {
+  const seg = path20.replace(/\/+$/, "").split("/").filter(Boolean);
   if (seg.length === 0) return null;
   const head3 = seg[0];
   const tail = seg[1];
@@ -64393,8 +64482,8 @@ function resolveAppRoute(path19) {
   }
   return { vertical: vid };
 }
-function resolveSeoPage(path19) {
-  let clean4 = path19.split("?")[0].replace(/\/+$/, "") || "/";
+function resolveSeoPage(path20) {
+  let clean4 = path20.split("?")[0].replace(/\/+$/, "") || "/";
   if (clean4 === BRAND_PAGE_PATH) return brandPage();
   const ALIAS = {
     movie: "movies",
@@ -65310,14 +65399,14 @@ var init_staticPages = __esm({
   .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 22px; margin: 14px 0; }
   footer { border-top: 1px solid #e2e8f0; margin-top: 30px; padding-top: 16px; color: #64748b; font-size: 13px; }
 `;
-    shell = (title, description, path19, body) => `<!doctype html>
+    shell = (title, description, path20, body) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${title}</title>
 <meta name="description" content="${description}" />
-<link rel="canonical" href="${SEO_HOST}${path19}" />
+<link rel="canonical" href="${SEO_HOST}${path20}" />
 <meta name="robots" content="index, follow" />
 <meta property="og:title" content="${title}" />
 <meta property="og:description" content="${description}" />
@@ -65445,18 +65534,18 @@ async function productSitemapPaths(limit = 200) {
 }
 function readWarmFile() {
   try {
-    const fs19 = require("node:fs");
-    if (fs19.existsSync(WARM_FILE)) return fs19.readFileSync(WARM_FILE, "utf8");
+    const fs20 = require("node:fs");
+    if (fs20.existsSync(WARM_FILE)) return fs20.readFileSync(WARM_FILE, "utf8");
   } catch {
   }
   return null;
 }
 function writeWarmFile(xml) {
   try {
-    const fs19 = require("node:fs");
-    const path19 = require("node:path");
-    fs19.mkdirSync(path19.dirname(WARM_FILE), { recursive: true });
-    fs19.writeFileSync(WARM_FILE, xml);
+    const fs20 = require("node:fs");
+    const path20 = require("node:path");
+    fs20.mkdirSync(path20.dirname(WARM_FILE), { recursive: true });
+    fs20.writeFileSync(WARM_FILE, xml);
   } catch {
   }
 }
@@ -65524,14 +65613,14 @@ function warmSitemapSoon() {
     warming = null;
   });
 }
-function churnsDaily(path19) {
-  if (path19 === "/" || !path19.startsWith("/")) return true;
-  if (/^\/(best|answers|guides|product|about|privacy|terms|contact)\b/.test(path19)) return false;
-  return path19.split("/").filter(Boolean).length > 1;
+function churnsDaily(path20) {
+  if (path20 === "/" || !path20.startsWith("/")) return true;
+  if (/^\/(best|answers|guides|product|about|privacy|terms|contact)\b/.test(path20)) return false;
+  return path20.split("/").filter(Boolean).length > 1;
 }
-function sitemapPriority(path19) {
-  if (path19 === "/") return "1.0";
-  const segs = path19.split("/").filter(Boolean);
+function sitemapPriority(path20) {
+  if (path20 === "/") return "1.0";
+  const segs = path20.split("/").filter(Boolean);
   if (segs.length === 1) return "0.9";
   if (segs[0] === "best" && segs.length === 2) return "0.8";
   if (segs[0] === "guides") return "0.8";
@@ -65543,8 +65632,8 @@ function sitemapPriority(path19) {
   }
   return "0.7";
 }
-function sitemapBucketOf(path19) {
-  const segs = path19.split("/").filter(Boolean);
+function sitemapBucketOf(path20) {
+  const segs = path20.split("/").filter(Boolean);
   if (segs[0] === "product") return "products";
   if (CITY_VERTICALS.includes(segs[0]) && segs.length === 2) return "cities";
   return "core";
@@ -65893,8 +65982,8 @@ __export(agentReady_exports, {
   registerAgentFileRoutes: () => registerAgentFileRoutes,
   serverCard: () => serverCard
 });
-function isSecretPortalPath(path19) {
-  const clean4 = String(path19 || "/").split("?")[0].replace(/\/+$/, "").toLowerCase() || "/";
+function isSecretPortalPath(path20) {
+  const clean4 = String(path20 || "/").split("?")[0].replace(/\/+$/, "").toLowerCase() || "/";
   return SECRET_PORTAL_PATHS.has(clean4);
 }
 function knownPaths() {
@@ -65907,16 +65996,16 @@ function knownPaths() {
   knownCache = { set, at: Date.now() };
   return set;
 }
-function isKnownPath(path19) {
-  const clean4 = String(path19 || "/").split("?")[0].replace(/\/+$/, "") || "/";
+function isKnownPath(path20) {
+  const clean4 = String(path20 || "/").split("?")[0].replace(/\/+$/, "") || "/";
   if (clean4 === "/") return true;
   if (clean4 === "/llms.txt" || clean4 === "/llms-full.txt" || clean4 === "/mcp") return true;
   if (clean4.startsWith("/.well-known/")) return true;
   if (knownPaths().has(clean4)) return true;
   return APP_PREFIXES.some((p) => clean4.startsWith(p));
 }
-function origin(path19) {
-  const clean4 = String(path19 || "/").split("?")[0].replace(/\/+$/, "");
+function origin(path20) {
+  const clean4 = String(path20 || "/").split("?")[0].replace(/\/+$/, "");
   return `${SEO_HOST}${clean4 || "/"}`;
 }
 function keyPages() {
@@ -65995,8 +66084,8 @@ function llmsFullText() {
   lines.push("");
   return lines.join("\n");
 }
-function markdownForPath(path19) {
-  const clean4 = String(path19 || "/").split("?")[0].replace(/\/+$/, "") || "/";
+function markdownForPath(path20) {
+  const clean4 = String(path20 || "/").split("?")[0].replace(/\/+$/, "") || "/";
   const page = resolveSeoPage(clean4);
   const title = page?.title || (clean4 === "/" ? `${BRAND} \u2014 one second price comparison` : clean4);
   const description = page?.description || SUMMARY;
@@ -66067,8 +66156,8 @@ function serverCard() {
     documentation: `${SEO_HOST}/llms.txt`
   };
 }
-function notFoundHtml(path19) {
-  const safe = String(path19 || "/").replace(/[<>&"]/g, "");
+function notFoundHtml(path20) {
+  const safe = String(path20 || "/").replace(/[<>&"]/g, "");
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -66711,8 +66800,8 @@ function hubPage() {
     ]
   };
 }
-function resolveAnswerPage(path19) {
-  const clean4 = ("/" + String(path19 || "").replace(/^\/+|\/+$/g, "")).toLowerCase();
+function resolveAnswerPage(path20) {
+  const clean4 = ("/" + String(path20 || "").replace(/^\/+|\/+$/g, "")).toLowerCase();
   if (clean4 === "/answers" || clean4 === "/best") return hubPage();
   const m = /^\/best\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?$/.exec(clean4);
   if (!m) return null;
@@ -66923,8 +67012,8 @@ __export(liveSnapshot_exports, {
   snapshotForPath: () => snapshotForPath,
   snapshotJsonLd: () => snapshotJsonLd
 });
-function pagePlacement(path19) {
-  const clean4 = (path19 || "/").replace(/\/+$/, "");
+function pagePlacement(path20) {
+  const clean4 = (path20 || "/").replace(/\/+$/, "");
   if (clean4 === "" || clean4 === "/") return {};
   if (/^\/(product|best|guides|answers)\b/.test(clean4)) return {};
   const segs = clean4.split("/").filter(Boolean);
@@ -66957,12 +67046,12 @@ function pickCityDiverseRows(groups, max = MAX_ROWS) {
   }
   return out;
 }
-function placementTokens(path19) {
-  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path19.replace(/\/+$/, ""));
+function placementTokens(path20) {
+  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path20.replace(/\/+$/, ""));
   if (prod) {
     return prod[1].split("-").filter((t) => t.length > 1 && !/^(the|and|for|with)$/.test(t));
   }
-  const route2 = resolveAppRoute(path19);
+  const route2 = resolveAppRoute(path20);
   const hint = `${route2?.query || ""}`.replace(/\([^)]*\)/g, " ").toLowerCase();
   return hint.replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
 }
@@ -66974,9 +67063,9 @@ function productMatches(slug5, title) {
   const hit = want.filter((t) => have.has(t) || [...have].some((h) => h.startsWith(t) || t.startsWith(h))).length;
   return hit / want.length >= 0.8;
 }
-function selectSnapshotRows(candidates, path19, max = MAX_ROWS, bySlug = false) {
+function selectSnapshotRows(candidates, path20, max = MAX_ROWS, bySlug = false) {
   if (bySlug) {
-    const slug5 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path19.replace(/\/+$/, ""))?.[1] || "";
+    const slug5 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path20.replace(/\/+$/, ""))?.[1] || "";
     const pool3 = candidates.filter((r) => productMatches(slug5, r.title));
     const seen0 = /* @__PURE__ */ new Set();
     const out0 = [];
@@ -66989,7 +67078,7 @@ function selectSnapshotRows(candidates, path19, max = MAX_ROWS, bySlug = false) 
     }
     return out0;
   }
-  const tokens3 = placementTokens(path19);
+  const tokens3 = placementTokens(path20);
   const relevant = tokens3.length ? candidates.filter((r) => {
     const t = ` ${r.title.toLowerCase()} ${String(r.seller || "").toLowerCase()} `;
     return tokens3.every((tok) => t.includes(tok));
@@ -67024,9 +67113,9 @@ function renderSnapshotHtml(snapshot, heading) {
     `</section>`
   ].join("");
 }
-function snapshotJsonLd(snapshot, path19) {
+function snapshotJsonLd(snapshot, path20) {
   if (!snapshot || !snapshot.rows.length) return null;
-  const page = resolveSeoPage(path19);
+  const page = resolveSeoPage(path20);
   return JSON.stringify({
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -67048,8 +67137,8 @@ function snapshotJsonLd(snapshot, path19) {
     }))
   });
 }
-function isStateAnswerPath(path19) {
-  return /^\/best\/[a-z0-9-]+\/[a-z0-9-]+$/.test((path19 || "").replace(/\/+$/, ""));
+function isStateAnswerPath(path20) {
+  return /^\/best\/[a-z0-9-]+\/[a-z0-9-]+$/.test((path20 || "").replace(/\/+$/, ""));
 }
 function rememberSnapshot(key, entry) {
   cache14.set(key, entry);
@@ -67068,19 +67157,19 @@ function within(p, ms) {
     })
   ]);
 }
-async function snapshotForPath(path19) {
-  const key0 = (path19 || "/").replace(/\/+$/, "") || "/";
+async function snapshotForPath(path20) {
+  const key0 = (path20 || "/").replace(/\/+$/, "") || "/";
   const running2 = inFlight2.get(key0);
   if (running2) return running2;
-  const build2 = buildSnapshotForPath(path19).finally(() => inFlight2.delete(key0));
+  const build2 = buildSnapshotForPath(path20).finally(() => inFlight2.delete(key0));
   inFlight2.set(key0, build2);
   return build2;
 }
-async function buildSnapshotForPath(path19) {
-  const stateAnswer = isStateAnswerPath(path19);
-  const page = stateAnswer ? null : resolveSeoPage(path19);
+async function buildSnapshotForPath(path20) {
+  const stateAnswer = isStateAnswerPath(path20);
+  const page = stateAnswer ? null : resolveSeoPage(path20);
   if (!page && !stateAnswer) return null;
-  const key = (path19 || "/").replace(/\/+$/, "") || "/";
+  const key = (path20 || "/").replace(/\/+$/, "") || "/";
   const hit = cache14.get(key);
   if (hit && Date.now() - hit.at < (hit.ttl ?? SNAPSHOT_TTL_MS)) return hit.snap;
   let snap = null;
@@ -67123,7 +67212,7 @@ async function buildSnapshotForPath(path19) {
     return snap;
   }
   try {
-    const route2 = resolveAppRoute(path19);
+    const route2 = resolveAppRoute(path20);
     const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(key);
     const verticals = prod ? ["ecommerce", "grocery"] : route2?.vertical ? [route2.vertical] : [];
     if (verticals.length) {
@@ -67343,8 +67432,8 @@ __export(render_exports, {
   enhanceHtml: () => enhanceHtml,
   listSeoPaths: () => listSeoPaths
 });
-function jsonLd2(path19) {
-  const page = resolveSeoPage(path19);
+function jsonLd2(path20) {
+  const page = resolveSeoPage(path20);
   const blocks = [];
   const org = {
     "@context": "https://schema.org",
@@ -67383,7 +67472,7 @@ function jsonLd2(path19) {
     description: "Independent metasearch engine comparing live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in India."
   };
   blocks.push(JSON.stringify(org));
-  if (path19 === "/") {
+  if (path20 === "/") {
     blocks.push(JSON.stringify({
       "@context": "https://schema.org",
       "@type": "WebSite",
@@ -67459,8 +67548,8 @@ function prerenderLoader(page) {
     </div>
   </div>`;
 }
-function prerenderBody(path19) {
-  const page = resolveSeoPage(path19);
+function prerenderBody(path20) {
+  const page = resolveSeoPage(path20);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
     <dt>${esc10(f.q)}</dt><dd>${esc10(f.a)}</dd>`).join("");
@@ -67480,13 +67569,13 @@ function prerenderBody(path19) {
     `</section>`
   ].join("");
 }
-function enhanceHtml(html, path19) {
-  const page = resolveSeoPage(path19);
-  const isNoindex = /^\/(admin|merchant|api)/.test(path19);
-  const thinCity = !isNoindex && !isIndexableCityPage(path19.split("?")[0].replace(/\/+$/, "") || "/");
+function enhanceHtml(html, path20) {
+  const page = resolveSeoPage(path20);
+  const isNoindex = /^\/(admin|merchant|api)/.test(path20);
+  const thinCity = !isNoindex && !isIndexableCityPage(path20.split("?")[0].replace(/\/+$/, "") || "/");
   const title = page ? page.title : DEFAULT_TITLE;
   const desc = page ? page.description : DEFAULT_DESC;
-  const canonical = `${SEO_HOST}${(path19 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
+  const canonical = `${SEO_HOST}${(path20 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
   out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc10(title)}</title>`);
   out = out.replace(
@@ -67520,11 +67609,11 @@ function enhanceHtml(html, path19) {
     `<link rel="alternate" hreflang="en-in" href="${esc10(canonical)}" />`,
     `<link rel="alternate" hreflang="x-default" href="${esc10(canonical)}" />`
   ];
-  if (!isNoindex) for (const b of jsonLd2(path19)) head3.push(`<script type="application/ld+json">${b}</script>`);
+  if (!isNoindex) for (const b of jsonLd2(path20)) head3.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head3.join("\n")}
 </head>`);
   if (!isNoindex) {
-    const body = prerenderBody(path19);
+    const body = prerenderBody(path20);
     if (body) {
       out = out.replace(/<div id="root"><\/div>/, `<div id="root">${body}</div>`);
     }
@@ -67544,8 +67633,8 @@ var init_render = __esm({
 });
 
 // server.prod.ts
-var import_path10 = __toESM(require("path"), 1);
-var import_fs10 = __toESM(require("fs"), 1);
+var import_path11 = __toESM(require("path"), 1);
+var import_fs11 = __toESM(require("fs"), 1);
 var import_express6 = __toESM(require("express"), 1);
 
 // server/index.ts
@@ -67658,14 +67747,14 @@ var TRUTH_POST_PATHS = [
   "/api/client-diag"
 ];
 var isMaskable = (req) => {
-  const path19 = (req.path || req.originalUrl || "").split("?")[0];
-  if (!path19.startsWith("/api/")) return false;
-  if (path19.startsWith("/api/admin")) return false;
-  if (path19.startsWith("/api/version") || path19.startsWith("/api/health")) return false;
-  if (path19.startsWith("/api/client-diag")) return false;
+  const path20 = (req.path || req.originalUrl || "").split("?")[0];
+  if (!path20.startsWith("/api/")) return false;
+  if (path20.startsWith("/api/admin")) return false;
+  if (path20.startsWith("/api/version") || path20.startsWith("/api/health")) return false;
+  if (path20.startsWith("/api/client-diag")) return false;
   if (req.method === "GET" || req.method === "HEAD") return true;
   if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
-    return !TRUTH_POST_PATHS.some((p) => path19.startsWith(p));
+    return !TRUTH_POST_PATHS.some((p) => path20.startsWith(p));
   }
   return false;
 };
@@ -67686,7 +67775,7 @@ function gracefulPublicStatus(app, options = {}) {
       }
       res.status(200);
       const base = body && typeof body === "object" && !Array.isArray(body) ? body : {};
-      const path19 = String(req.path || req.originalUrl || "").split("?")[0];
+      const path20 = String(req.path || req.originalUrl || "").split("?")[0];
       const masked = {
         ...base,
         success: false,
@@ -67696,7 +67785,7 @@ function gracefulPublicStatus(app, options = {}) {
         retryAfterSec: 4,
         notice: "Still gathering results from the sources. Retrying automatically."
       };
-      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path19)) {
+      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path20)) {
         const current = Array.isArray(masked.results) ? masked.results : [];
         if (!current.length) {
           try {
@@ -67719,26 +67808,26 @@ function gracefulPublicStatus(app, options = {}) {
 
 // server/index.ts
 init_lastKnownGood();
-var import_path9 = __toESM(require("path"), 1);
-var import_fs9 = __toESM(require("fs"), 1);
+var import_path10 = __toESM(require("path"), 1);
+var import_fs10 = __toESM(require("fs"), 1);
 var import_express5 = __toESM(require("express"), 1);
 var import_compression = __toESM(require("compression"), 1);
 init_jsonMemo();
 
 // server/common/canonicalHost.ts
 var APEX_HOST = "try1second.com";
-function isVerificationPath(path19) {
-  return String(path19 || "").toLowerCase().startsWith("/.well-known/");
+function isVerificationPath(path20) {
+  return String(path20 || "").toLowerCase().startsWith("/.well-known/");
 }
 function apexRedirectEnabled() {
   return String(process.env.FORCE_WWW_REDIRECT || "").trim() === "1";
 }
-function shouldRedirectApexToWww(host, path19) {
+function shouldRedirectApexToWww(host, path20) {
   if (!apexRedirectEnabled()) return false;
   const h = String(host || "").toLowerCase();
   const isApex = h === APEX_HOST || new RegExp(`^${APEX_HOST.replace(/\./g, "\\.")}:\\d+$`).test(h);
   if (!isApex) return false;
-  if (isVerificationPath(String(path19 || ""))) return false;
+  if (isVerificationPath(String(path20 || ""))) return false;
   return true;
 }
 function canonicalWwwUrl(originalUrl) {
@@ -67777,15 +67866,15 @@ var lastSweep = Date.now();
 function clientKey(req) {
   return String(req.ip || req.socket?.remoteAddress || "unknown");
 }
-var defaultMatch = (path19, method) => method !== "GET" && (path19.startsWith("/api/search") || path19.startsWith("/api/scrape") || path19.startsWith("/api/out") || path19.startsWith("/api/lead"));
+var defaultMatch = (path20, method) => method !== "GET" && (path20.startsWith("/api/search") || path20.startsWith("/api/scrape") || path20.startsWith("/api/out") || path20.startsWith("/api/lead"));
 function apiRateLimit(opts) {
   const match = opts.match || defaultMatch;
   return (req, res, next) => {
     try {
-      const path19 = String(req.path || "");
-      if (!match(path19, String(req.method || "GET").toUpperCase())) return next();
+      const path20 = String(req.path || "");
+      if (!match(path20, String(req.method || "GET").toUpperCase())) return next();
       const now = Date.now();
-      const key = `${clientKey(req)}|${path19.split("/").slice(0, 3).join("/")}`;
+      const key = `${clientKey(req)}|${path20.split("/").slice(0, 3).join("/")}`;
       const refillPerMs = opts.limit / opts.windowMs;
       let b = buckets.get(key);
       if (!b) {
@@ -67828,8 +67917,8 @@ function securityTxt() {
 var import_http = __toESM(require("http"), 1);
 var KEEP_ALIVE_TIMEOUT_MS = 65e3;
 var RESPONSE_WALL_MS = Math.max(15e3, Number(process.env.T1S_RESPONSE_WALL_MS || 3e4));
-var isApiRequest = (path19) => {
-  const p = String(path19 || "");
+var isApiRequest = (path20) => {
+  const p = String(path20 || "");
   return p === "/api" || p.startsWith("/api/");
 };
 var makeResponseWall = (wallMs) => (req, res, next) => {
@@ -67959,8 +68048,8 @@ async function createApp() {
       next(err);
       return;
     }
-    const path19 = String(req?.path || req?.originalUrl || "");
-    const publicRead = path19.startsWith("/api/") && !path19.startsWith("/api/admin");
+    const path20 = String(req?.path || req?.originalUrl || "");
+    const publicRead = path20.startsWith("/api/") && !path20.startsWith("/api/admin");
     res.status(publicRead ? 200 : 400).json({
       success: false,
       ok: false,
@@ -68056,7 +68145,7 @@ async function createApp() {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(200).send(shareLinks.renderSharePage({ origin: "https://www.try1second.com", payload }));
   });
-  const dist = import_path9.default.resolve(__dirname2, "dist");
+  const dist = import_path10.default.resolve(__dirname2, "dist");
   {
     const { registerIndexNowRoutes: registerIndexNowRoutes2 } = await Promise.resolve().then(() => (init_indexnow(), indexnow_exports));
     registerIndexNowRoutes2(app);
@@ -68083,13 +68172,13 @@ async function createApp() {
     });
   }, 3 * 6e4).unref?.();
   app.get(/^\/google[0-9a-f]+\.html$/i, (req, res) => {
-    const name = import_path9.default.basename(req.path);
-    const candidates = [import_path9.default.join(dist, name), import_path9.default.join(process.cwd(), "public", name)];
+    const name = import_path10.default.basename(req.path);
+    const candidates = [import_path10.default.join(dist, name), import_path10.default.join(process.cwd(), "public", name)];
     for (const file of candidates) {
-      if (import_fs9.default.existsSync(file)) {
+      if (import_fs10.default.existsSync(file)) {
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.setHeader("Cache-Control", "public, max-age=3600");
-        res.send(import_fs9.default.readFileSync(file, "utf8"));
+        res.send(import_fs10.default.readFileSync(file, "utf8"));
         return;
       }
     }
@@ -68202,8 +68291,8 @@ async function createApp() {
       res.send(html);
     });
   }
-  const publicDir = import_path9.default.join(process.cwd(), "public");
-  if (import_fs9.default.existsSync(publicDir)) {
+  const publicDir = import_path10.default.join(process.cwd(), "public");
+  if (import_fs10.default.existsSync(publicDir)) {
     app.use(import_express5.default.static(publicDir, {
       index: false,
       setHeaders: (res, filePath) => {
@@ -68215,11 +68304,11 @@ async function createApp() {
       }
     }));
   }
-  if (import_fs9.default.existsSync(dist)) {
+  if (import_fs10.default.existsSync(dist)) {
     let assetFiles = function() {
       if (Date.now() - assetScan.at < 3e4) return assetScan.files;
       try {
-        assetScan = { at: Date.now(), files: import_fs9.default.readdirSync(assetDir) };
+        assetScan = { at: Date.now(), files: import_fs10.default.readdirSync(assetDir) };
       } catch {
         assetScan = { at: Date.now(), files: [] };
       }
@@ -68272,8 +68361,8 @@ async function createApp() {
     const { enhanceHtml: enhanceHtml2 } = await Promise.resolve().then(() => (init_render(), render_exports));
     const { snapshotForPath: snapshotForPath2, renderSnapshotHtml: renderSnapshotHtml2, snapshotJsonLd: snapshotJsonLd2 } = await Promise.resolve().then(() => (init_liveSnapshot(), liveSnapshot_exports));
     const { isKnownPath: isKnownPath2, isSecretPortalPath: isSecretPortalPath2, markdownForPath: markdownForPath2, agentLinkHeader: agentLinkHeader2, notFoundHtml: notFoundHtml2, CONTACT_EMAIL: CONTACT_EMAIL2 } = await Promise.resolve().then(() => (init_agentReady(), agentReady_exports));
-    let baseHtml = import_fs9.default.readFileSync(import_path9.default.join(dist, "index.html"), "utf8");
-    const assetDir = import_path9.default.join(dist, "assets");
+    let baseHtml = import_fs10.default.readFileSync(import_path10.default.join(dist, "index.html"), "utf8");
+    const assetDir = import_path10.default.join(dist, "assets");
     let assetScan = { at: 0, files: [] };
     let lastIntegrityWarn = 0;
     baseHtml = healAssetRefs(baseHtml);
@@ -68332,7 +68421,7 @@ async function createApp() {
       }
       const wantsShell = acc === "" || acc.includes("text/html") || acc.includes("*/*");
       if (!wantsShell) {
-        res.sendFile(import_path9.default.join(dist, "index.html"));
+        res.sendFile(import_path10.default.join(dist, "index.html"));
         return;
       }
       if (!isKnownPath2(cleanPath)) {
@@ -68472,8 +68561,8 @@ async function boot(start, label = "Try1Second") {
 // server.prod.ts
 async function startWorker() {
   const app = await createApp();
-  const dist = import_path10.default.resolve(process.cwd(), "dist");
-  if (import_fs10.default.existsSync(dist)) {
+  const dist = import_path11.default.resolve(process.cwd(), "dist");
+  if (import_fs11.default.existsSync(dist)) {
     app.use(import_express6.default.static(dist, {
       // index.html must never be cached (it names the current hashed bundle);
       // hashed /assets/* files are immutable and safe to cache for a year.
@@ -68484,7 +68573,7 @@ async function startWorker() {
     }));
     app.get("*", (_req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
-      res.sendFile(import_path10.default.join(dist, "index.html"));
+      res.sendFile(import_path11.default.join(dist, "index.html"));
     });
   }
   const PORT = Number(process.env.PORT || 3e3);

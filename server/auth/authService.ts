@@ -8,6 +8,7 @@ import { settings } from '../common/settings';
 import type { NextFunction, Request, Response } from 'express';
 import type { AuthUser } from '../types';
 import { getStore } from '../common/db';
+import { mintSessionToken, verifySessionToken, isSignedSessionToken } from './sessionToken';
 
 export const SESSION_TTL_SEC = 30 * 24 * 3600;
 
@@ -48,10 +49,7 @@ export async function loginUser(email: string, password: string): Promise<{ ok: 
   if (rows.length === 0) return { ok: false, error: 'Invalid credentials' };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: 'Invalid credentials' };
-  const token = crypto.randomBytes(32).toString('hex');
-  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
-    token, Number(row.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
-  ]);
+  const token = await issueSessionToken(Number(row.id));
   return {
     ok: true,
     token,
@@ -59,9 +57,39 @@ export async function loginUser(email: string, password: string): Promise<{ ok: 
   };
 }
 
+/**
+ * Mint the session token a client keeps. It is SELF-VERIFYING (see sessionToken.ts): every Passenger
+ * instance can authenticate it without reading the sessions table, which on this host is not shared
+ * reliably between instances. The row is still written so admin views and logout keep working — but a
+ * failure to write it can never stop a sign-in again.
+ */
+export async function issueSessionToken(userId: number, ttlSec: number = SESSION_TTL_SEC): Promise<string> {
+  const token = mintSessionToken(userId, ttlSec);
+  try {
+    const store = getStore();
+    await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
+      token, Number(userId), new Date(Date.now() + ttlSec * 1000).toISOString().slice(0, 19).replace('T', ' '),
+    ]);
+  } catch {
+    /* best effort: the signed token is the source of truth, the row is bookkeeping */
+  }
+  return token;
+}
+
 export async function userForToken(token?: string): Promise<AuthUser | null> {
   if (!token) return null;
   const store = getStore();
+  // OWNER 22 Nov (every authenticated call answered 401 with a token minted seconds earlier): a signed
+  // token needs no shared session row, so the user is loaded straight from the durable users table.
+  if (isSignedSessionToken(token)) {
+    const claims = verifySessionToken(token);
+    if (!claims) return null;
+    const rows = await store.query<any>(`SELECT id, email, display_name, role FROM users WHERE id = ?`, [claims.userId]);
+    if (rows.length === 0) return null;
+    const u = rows[0];
+    return { id: Number(u.id), email: u.email, role: u.role, displayName: u.display_name || undefined };
+  }
+  // Legacy 64-hex session ids (anyone already signed in before the switch) still resolve here.
   // Two simple lookups (no JOIN) so the dev file store and MySQL behave identically.
   const sess = await store.query<any>(`SELECT user_id, expires_at FROM sessions WHERE id = ?`, [token]);
   if (sess.length === 0) return null;

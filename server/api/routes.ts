@@ -35,7 +35,7 @@ import { enforceRequestedRoute } from '../search/routeGate';
 import { geoSearch, geoReverse, geoSuggest } from '../common/geoProxy';
 import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
-import { authMiddleware, requireAuth, requireAdmin, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
+import { authMiddleware, requireAuth, requireAdmin, loginUser, registerUser, SESSION_TTL_SEC, issueSessionToken } from '../auth/authService';
 import { resolveCatalogueImage } from '../lens/productImage';
 import { requestAdminOtp, verifyAdminOtp, verifyAdminRecovery } from '../auth/otpService';
 import { verifyFirebaseIdTokenDetailed, verifyGoogleIdToken } from '../auth/firebaseAuth';
@@ -4932,10 +4932,7 @@ async function signInGoogleUser(claims: { email: string; uid: string; displayNam
     rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
   }
   const row = rows[0];
-  const token = crypto.randomBytes(32).toString('hex');
-  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
-    token, Number(row.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
-  ]);
+  const token = await issueSessionToken(Number(row.id));
   return { token, row };
 }
 
@@ -5049,10 +5046,7 @@ apiRouter.post('/auth/otp/verify', async (req, res) => {
   }
   if (rows.length === 0 || rows[0].role !== 'admin') return res.status(403).json({ success: false, error: 'Not an admin account' });
   const u = rows[0];
-  const token = crypto.randomBytes(32).toString('hex');
-  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
-    token, Number(u.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
-  ]);
+  const token = await issueSessionToken(Number(u.id));
   res.json({ success: true, token, user: { id: Number(u.id), email: u.email, role: u.role, displayName: u.display_name || undefined } });
 });
 
@@ -5072,10 +5066,7 @@ apiRouter.post('/auth/otp/recovery', async (req, res) => {
   }
   if (rows.length === 0 || rows[0].role !== 'admin') return res.status(403).json({ success: false, error: 'Not an admin account' });
   const u = rows[0];
-  const token = crypto.randomBytes(32).toString('hex');
-  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
-    token, Number(u.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
-  ]);
+  const token = await issueSessionToken(Number(u.id));
   res.json({ success: true, token, user: { id: Number(u.id), email: u.email, role: u.role, displayName: u.display_name || undefined } });
 });
 
