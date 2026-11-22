@@ -33,20 +33,33 @@ export function isExcludedMerchant(vertical: string | undefined | null, ...texts
   return tokens.some((t) => hay.includes(t));
 }
 
+/**
+ * Every text a row can carry the merchant's name in. OWNER 22 Nov ("digihaat.in ... abhi v 10 min grocery mai aa raha
+ * hai"): the first version only read the top-level vendor/seller/site/provider fields, so a row whose merchant name
+ * lived in its TITLE ("Milk 500 ml - DigiHaat"), in its URL, or in a per-seller quote survived the filter and showed
+ * up in the feed. All of them are checked now.
+ */
+function merchantTexts(o: Record<string, any> | undefined | null): Array<string | undefined | null> {
+  if (!o) return [];
+  const quotes: any[] = Array.isArray(o.sellerQuotes) ? o.sellerQuotes : Array.isArray(o.quotes) ? o.quotes : [];
+  return [
+    o.vendor,
+    o.seller,
+    o.site,
+    o.provider,
+    o.merchant,
+    o.sourceId,
+    o.source_id,
+    o.title,
+    o.url,
+    o.exitUrl,
+    ...quotes.flatMap((q) => [q?.sellerName, q?.seller, q?.provider, q?.site]),
+  ];
+}
+
 /** Drop offers naming an excluded merchant for the vertical. Never re-prices or re-ranks what survives. */
 export function dropExcludedOffers<T extends Record<string, any>>(vertical: string | undefined | null, offers: T[]): T[] {
   if (!offers?.length) return offers || [];
   if (!excludedMerchantsFor(vertical).length) return offers;
-  return offers.filter((o) =>
-    !isExcludedMerchant(
-      vertical,
-      o?.vendor,
-      o?.seller,
-      o?.site,
-      o?.provider,
-      o?.merchant,
-      o?.sourceId,
-      o?.source_id,
-    ),
-  );
+  return offers.filter((o) => !isExcludedMerchant(vertical, ...merchantTexts(o)));
 }
