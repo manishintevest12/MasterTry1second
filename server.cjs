@@ -9602,7 +9602,8 @@ var init_hotels = __esm({
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
             const base = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-            for (const slug5 of [`hotels-in-${base}-ct`, `hotels-in-${base}`]) {
+            const { ownRenderAvailable: browserConfigured } = await Promise.resolve().then(() => (init_rescueFetch(), rescueFetch_exports));
+            for (const slug5 of browserConfigured() ? [`hotels-in-${base}-ct`, `hotels-in-${base}`] : []) {
               const pageUrl = `https://www.goibibo.com/hotels/${slug5}/`;
               try {
                 const rr = await rescueFetch(pageUrl, {
@@ -10026,22 +10027,25 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
             const UA8 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
-            try {
-              const rr = await rescueFetch(url, {
-                timeoutMs: 9e3,
-                render: true,
-                maxRungs: 2,
-                minHtmlBytes: 5e4,
-                validate: (body) => parseBookingHotels(body, ctx.source, url, checkin, checkout).length > 0
-              });
-              if (rr && rr.body) {
-                const cards = parseBookingHotels(rr.body, ctx.source, url, checkin, checkout);
-                if (cards.length) {
-                  log.info("Hotels", `Booking.com via ${rr.via}`, { cards: cards.length });
-                  return cards;
+            const { ownRenderAvailable: bookingBrowserConfigured } = await Promise.resolve().then(() => (init_rescueFetch(), rescueFetch_exports));
+            if (bookingBrowserConfigured()) {
+              try {
+                const rr = await rescueFetch(url, {
+                  timeoutMs: 9e3,
+                  render: true,
+                  maxRungs: 2,
+                  minHtmlBytes: 5e4,
+                  validate: (body) => parseBookingHotels(body, ctx.source, url, checkin, checkout).length > 0
+                });
+                if (rr && rr.body) {
+                  const cards = parseBookingHotels(rr.body, ctx.source, url, checkin, checkout);
+                  if (cards.length) {
+                    log.info("Hotels", `Booking.com via ${rr.via}`, { cards: cards.length });
+                    return cards;
+                  }
                 }
+              } catch {
               }
-            } catch {
             }
             let cookies = void 0;
             let directErr = null;

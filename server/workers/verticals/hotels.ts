@@ -376,7 +376,11 @@ export const hotelsWorker: VerticalWorker = {
 
         // BROWSER-FIRST (own render service or Cloudflare Browser Rendering). Nothing is invented: the same page is
         // fetched, only through a real browser, and its body must look like the real 100KB+ listing.
-        for (const slug of [`hotels-in-${base}-ct`, `hotels-in-${base}`]) {
+        // OWNER 23 Nov: this block is skipped entirely when no browser transport is configured — otherwise the ladder
+        // is [direct, reader] and the slow reader rung alone burns the task budget, producing a bare TIMEOUT that hid
+        // the real cause (no transport). Without one, the direct recipes are the honest attempt.
+        const { ownRenderAvailable: browserConfigured } = await import('../../sources/rescueFetch');
+        for (const slug of browserConfigured() ? [`hotels-in-${base}-ct`, `hotels-in-${base}`] : []) {
           const pageUrl = `https://www.goibibo.com/hotels/${slug}/`;
           try {
             const rr = await rescueFetch(pageUrl, {
@@ -836,22 +840,25 @@ export const hotelsWorker: VerticalWorker = {
         // ran past the task's own 18s limit, so the browser rung below never executed. The browser rung is now tried
         // FIRST with a fixed 12s slice (Booking only serves its cards to a real session), and the cookie session is
         // the fallback. Same page, same parser, honest prices.
-        try {
-          const rr = await rescueFetch(url, {
-            timeoutMs: 9_000,
-            render: true,
-            maxRungs: 2,
-            minHtmlBytes: 50_000,
-            validate: (body: string) => parseBookingHotels(body, ctx.source, url, checkin, checkout).length > 0,
-          });
-          if (rr && rr.body) {
-            const cards = parseBookingHotels(rr.body, ctx.source, url, checkin, checkout);
-            if (cards.length) {
-              log.info('Hotels', `Booking.com via ${rr.via}`, { cards: cards.length });
-              return cards;
+        const { ownRenderAvailable: bookingBrowserConfigured } = await import('../../sources/rescueFetch');
+        if (bookingBrowserConfigured()) {
+          try {
+            const rr = await rescueFetch(url, {
+              timeoutMs: 9_000,
+              render: true,
+              maxRungs: 2,
+              minHtmlBytes: 50_000,
+              validate: (body: string) => parseBookingHotels(body, ctx.source, url, checkin, checkout).length > 0,
+            });
+            if (rr && rr.body) {
+              const cards = parseBookingHotels(rr.body, ctx.source, url, checkin, checkout);
+              if (cards.length) {
+                log.info('Hotels', `Booking.com via ${rr.via}`, { cards: cards.length });
+                return cards;
+              }
             }
-          }
-        } catch { /* fall through to the cookie session */ }
+          } catch { /* fall through to the cookie session */ }
+        }
 
         let cookies: any = undefined;
         // The direct session is captured rather than thrown so the rescue rung below always gets its turn; if the
