@@ -51,6 +51,34 @@ export function startWorkers() {
   if (keepWarmTimer.unref) keepWarmTimer.unref();
   timers.push(keepWarmTimer);
 
+  // SLOW-SOURCE CACHE (owner 23 Nov): Goibibo + Booking.com only answer a real browser session (10-30 s), so they are
+  // fetched HERE on a 15-minute clock and written to the catalogue, never inside a user's search. Their rows then
+  // appear instantly in results and age out honestly if a cycle fails.
+  const slowTimer = setInterval(() => {
+    void withLock('slow-sources', async () => {
+      try {
+        const { refreshSlowSourcesOnce } = await import('../cron/slowSources');
+        const r = await refreshSlowSourcesOnce();
+        log.info('Worker', 'Slow-source cache refreshed', { sources: r.sources, rows: r.rows, failed: r.failed.slice(0, 4) });
+      } catch (e: any) {
+        log.warn('Worker', 'Slow-source cache pass failed (retries next tick)', { error: String(e?.message || e).slice(0, 140) });
+      }
+    }).catch(() => undefined);
+  }, 15 * 60_000);
+  if (slowTimer.unref) slowTimer.unref();
+  timers.push(slowTimer);
+  // One pass shortly after boot so a restart does not leave the partners empty for a full cycle.
+  const slowBoot = setTimeout(() => {
+    void withLock('slow-sources', async () => {
+      try {
+        const { refreshSlowSourcesOnce } = await import('../cron/slowSources');
+        await refreshSlowSourcesOnce();
+      } catch { /* first tick retries */ }
+    }).catch(() => undefined);
+  }, 90_000);
+  if (slowBoot.unref) slowBoot.unref();
+  timers.push(slowBoot);
+
   // Price alerts (14 Oct): every 30 min re-search each active alert's product and e-mail the user
   // once when a VERIFIED same-product price is at/below their target. No live price = no e-mail.
   const alertTimer = setInterval(() => {

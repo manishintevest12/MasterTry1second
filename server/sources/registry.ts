@@ -182,10 +182,22 @@ const MANDATED_SOURCE_IDS = new Set([
 
 export function isMandatedSource(id: string): boolean { return MANDATED_SOURCE_IDS.has(id); }
 
-export function selectSources(query: ParsedQuery, opts: { allowStale?: boolean } = {}): SourceConfig[] {
+/**
+ * OWNER 23 Nov: "jo time le rahe hai unko cache mai rakho hr 15min mai refresh krte rhna."
+ * These sources only answer a real browser session and take 10-30 s, so they are NEVER attempted inside a user's
+ * search (they used to time out there and cost the user the whole sweep). server/cron/slowSources.ts refreshes them
+ * every 15 minutes and writes their rows into the catalogue, which the search serves instantly.
+ */
+const SLOW_SOURCE_IDS = new Set(['w_hotels_goibibo', 'w_hotels_booking', 'w_flights_goibibo']);
+
+export function isSlowSource(id: string): boolean { return SLOW_SOURCE_IDS.has(id); }
+
+export function selectSources(query: ParsedQuery, opts: { allowStale?: boolean; includeSlow?: boolean } = {}): SourceConfig[] {
   const vertical: VerticalId | null = query.vertical;
   const candidates = sources.filter((s) => {
     if (!s.enabled) return false;
+    // A slow source is served from the catalogue warmer, never from the user's search.
+    if (!opts.includeSlow && SLOW_SOURCE_IDS.has(s.id)) return false;
     if (vertical && s.verticals.length > 0 && !s.verticals.includes(vertical)) return false;
     if (!canAttempt(s.id)) {
       // A mandated partner is probed on its own clock instead of being skipped for the whole cooldown.

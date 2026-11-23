@@ -3517,6 +3517,9 @@ function registerVerticalWorker(worker) {
   WORKERS.set(worker.vertical, worker);
   for (const t of worker.tasks) TASK_INDEX.set(t.sourceId, { worker, task: t });
 }
+function getVerticalWorker(v) {
+  return WORKERS.get(v);
+}
 function allVerticalWorkers() {
   return [...WORKERS.values()];
 }
@@ -30700,6 +30703,7 @@ __export(registry_exports, {
   getSource: () => getSource,
   getSources: () => getSources,
   isMandatedSource: () => isMandatedSource,
+  isSlowSource: () => isSlowSource,
   loadSourcesFromDb: () => loadSourcesFromDb,
   selectSources: () => selectSources,
   sourcesStatusReport: () => sourcesStatusReport,
@@ -30870,10 +30874,14 @@ function updateSource(id, patch) {
 function isMandatedSource(id) {
   return MANDATED_SOURCE_IDS.has(id);
 }
+function isSlowSource(id) {
+  return SLOW_SOURCE_IDS.has(id);
+}
 function selectSources(query, opts = {}) {
   const vertical = query.vertical;
   const candidates = sources.filter((s) => {
     if (!s.enabled) return false;
+    if (!opts.includeSlow && SLOW_SOURCE_IDS.has(s.id)) return false;
     if (vertical && s.verticals.length > 0 && !s.verticals.includes(vertical)) return false;
     if (!canAttempt(s.id)) {
       if (!(isMandatedSource(s.id) && mandatedProbeDue(s.id))) return false;
@@ -30913,7 +30921,7 @@ function sourcesStatusReport() {
     };
   });
 }
-var DEFAULT_FRESHNESS, sources, MANDATED_SOURCE_IDS;
+var DEFAULT_FRESHNESS, sources, MANDATED_SOURCE_IDS, SLOW_SOURCE_IDS;
 var init_registry = __esm({
   "server/sources/registry.ts"() {
     init_settings();
@@ -30929,6 +30937,7 @@ var init_registry = __esm({
       "w_flights_goibibo",
       "w_flights_booking"
     ]);
+    SLOW_SOURCE_IDS = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_flights_goibibo"]);
   }
 });
 
@@ -62302,6 +62311,122 @@ var init_recoveryScanner = __esm({
   }
 });
 
+// server/cron/slowSources.ts
+var slowSources_exports = {};
+__export(slowSources_exports, {
+  SLOW_SOURCE_IDS: () => SLOW_SOURCE_IDS2,
+  refreshSlowSourcesOnce: () => refreshSlowSourcesOnce
+});
+async function citiesFor(vertical) {
+  const out = [];
+  try {
+    const rows = await getStore().query(
+      `SELECT city, COUNT(*) AS n FROM funnel_events
+       WHERE vertical = ? AND city IS NOT NULL AND city <> '' AND created_at >= ?
+       GROUP BY city ORDER BY n DESC LIMIT ?`,
+      [vertical, new Date(Date.now() - 14 * 24 * 36e5), CITIES_PER_CYCLE]
+    );
+    for (const r of rows) if (r.city) out.push(String(r.city));
+  } catch {
+  }
+  const seeds = vertical === "hotels" ? ["Goa", "Indore", "Delhi", "Mumbai"] : ["Indore", "Delhi", "Mumbai", "Pune"];
+  for (const s of seeds) if (!out.includes(s)) out.push(s);
+  return out.slice(0, CITIES_PER_CYCLE);
+}
+function queryFor(vertical, city) {
+  if (vertical === "hotels") return `hotels in ${city}`;
+  if (vertical === "flights") return `${city} to New Delhi`;
+  return city;
+}
+async function refreshSlowSourcesOnce() {
+  const failed = [];
+  let rowsWritten = 0;
+  let sourcesRun = 0;
+  for (const vertical of ["hotels", "flights"]) {
+    const worker = getVerticalWorker(vertical);
+    if (!worker) continue;
+    const tasks = worker.tasks.filter((t) => SLOW_SOURCE_IDS2.has(t.sourceId));
+    if (!tasks.length) continue;
+    const cities = await citiesFor(vertical);
+    for (const city of cities) {
+      const parsed = understandQuery(queryFor(vertical, city), { city });
+      for (const task of tasks) {
+        const source = getSource(task.sourceId);
+        if (!source || !source.enabled) continue;
+        sourcesRun += 1;
+        const started3 = Date.now();
+        try {
+          const result = await runTask(worker, { ...task, timeoutMs: Number(process.env.T1S_SLOW_TASK_MS || 75e3) }, source, parsed);
+          if (!result.success || !result.rawItems?.length) {
+            failed.push(`${task.sourceId}:${result.failureClass || "EMPTY_RESPONSE"}`);
+            recordFailure(task.sourceId, result.failureClass || "EMPTY_RESPONSE", result.error || "no rows");
+            continue;
+          }
+          let kept = 0;
+          for (const raw of result.rawItems) {
+            try {
+              const offer = normalizeOffer(raw, source, parsed.vertical || "hotels");
+              const parsedLoc = Object.fromEntries(
+                Object.entries(parsed.location || {}).filter(([, v]) => v !== void 0 && v !== null && v !== "")
+              );
+              offer.location = { ...offer.location, ...parsedLoc };
+              const breakdown = computeEffectivePrice(offer.prices.fees, offer.prices.currency, { coupon: false, bank: false, cashback: false, giftCard: false });
+              offer.prices.mandatoryTotal = breakdown.mandatoryTotal;
+              offer.prices.effectivePrice = breakdown.effectivePrice;
+              offer.prices.finalPayablePrice = breakdown.finalPayablePrice;
+              offer.prices.listPrice = breakdown.listPrice;
+              offer.prices.verifiedSavings = breakdown.verifiedSavings;
+              const validation = validateOffer(offer, parsed);
+              offer.validationStatus = validation.status;
+              offer.confidence = validation.confidence;
+              if (validation.status === "INVALID") continue;
+              const match = await resolveCanonicalEntity(offer);
+              offer.canonicalEntityId = match.canonicalEntityId;
+              offer.canonicalVariantId = match.canonicalVariantId;
+              offer.matchState = match.matchState;
+              offer.matchEvidence = match.matchEvidence;
+              offer.freshnessStatus = computeFreshness(offer, { fetchedAt: raw.fetchedAt }, source.freshnessPolicy, true, true);
+              if (!isServable(offer.freshnessStatus)) continue;
+              if (!source.permittedForRetention) continue;
+              const rowId = await persistOffer(offer, raw, source);
+              await recordPriceSnapshot(offer, rowId);
+              kept += 1;
+            } catch {
+            }
+          }
+          rowsWritten += kept;
+          recordSuccess(task.sourceId, Date.now() - started3);
+          log.info("SlowWarm", `${task.sourceId} ${vertical}/${city}`, { rows: kept, ms: Date.now() - started3 });
+        } catch (e2) {
+          failed.push(`${task.sourceId}:${String(e2?.message || e2).slice(0, 60)}`);
+          recordFailure(task.sourceId, "SERVER_ERROR", String(e2?.message || e2).slice(0, 160));
+        }
+      }
+    }
+  }
+  return { sources: sourcesRun, rows: rowsWritten, failed };
+}
+var SLOW_SOURCE_IDS2, CITIES_PER_CYCLE;
+var init_slowSources = __esm({
+  "server/cron/slowSources.ts"() {
+    init_logger();
+    init_db();
+    init_verticalWorker();
+    init_verticalWorker();
+    init_registry();
+    init_queryUnderstanding();
+    init_normalization();
+    init_validation();
+    init_pricing();
+    init_freshness();
+    init_entityMatching();
+    init_catalogueService();
+    init_health();
+    SLOW_SOURCE_IDS2 = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_flights_goibibo"]);
+    CITIES_PER_CYCLE = Math.max(1, Number(process.env.T1S_SLOW_WARM_CITIES || 4));
+  }
+});
+
 // server/workers/refreshWorker.ts
 var refreshWorker_exports = {};
 __export(refreshWorker_exports, {
@@ -62330,6 +62455,30 @@ function startWorkers() {
   }, 12 * 6e4);
   if (keepWarmTimer.unref) keepWarmTimer.unref();
   timers.push(keepWarmTimer);
+  const slowTimer = setInterval(() => {
+    void withLock("slow-sources", async () => {
+      try {
+        const { refreshSlowSourcesOnce: refreshSlowSourcesOnce2 } = await Promise.resolve().then(() => (init_slowSources(), slowSources_exports));
+        const r = await refreshSlowSourcesOnce2();
+        log.info("Worker", "Slow-source cache refreshed", { sources: r.sources, rows: r.rows, failed: r.failed.slice(0, 4) });
+      } catch (e2) {
+        log.warn("Worker", "Slow-source cache pass failed (retries next tick)", { error: String(e2?.message || e2).slice(0, 140) });
+      }
+    }).catch(() => void 0);
+  }, 15 * 6e4);
+  if (slowTimer.unref) slowTimer.unref();
+  timers.push(slowTimer);
+  const slowBoot = setTimeout(() => {
+    void withLock("slow-sources", async () => {
+      try {
+        const { refreshSlowSourcesOnce: refreshSlowSourcesOnce2 } = await Promise.resolve().then(() => (init_slowSources(), slowSources_exports));
+        await refreshSlowSourcesOnce2();
+      } catch {
+      }
+    }).catch(() => void 0);
+  }, 9e4);
+  if (slowBoot.unref) slowBoot.unref();
+  timers.push(slowBoot);
   const alertTimer = setInterval(() => {
     void withLock("price-alerts", async () => {
       try {

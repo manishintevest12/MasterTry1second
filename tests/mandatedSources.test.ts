@@ -17,18 +17,17 @@ test('goibibo and booking are mandated in both verticals', () => {
 
 test('a mandated source is still selected while its circuit is open, on its own probe clock', () => {
   process.env.T1S_MANDATED_PROBE_MS = '1';
-  // Open the circuit for the partner the way production did.
-  for (let i = 0; i < 4; i += 1) recordFailure('w_hotels_goibibo', 'ACCESS_CHALLENGE', 'HTTP 403');
-  assert.equal(getHealth('w_hotels_goibibo').state, 'CIRCUIT_OPEN');
+  // w_flights_booking is mandated and probe-only; the slow hotel partners are now warmer-only (see slowSourceCache).
+  for (let i = 0; i < 4; i += 1) recordFailure('w_flights_booking', 'ACCESS_CHALLENGE', 'HTTP 403');
+  assert.equal(getHealth('w_flights_booking').state, 'CIRCUIT_OPEN');
 
-  const hotels = selectSources({ vertical: 'hotels' } as any).map((s) => s.id);
-  assert.ok(hotels.includes('w_hotels_goibibo'), 'the mandated partner must still be probed');
-  assert.ok(hotels.includes('w_hotels_booking'), 'booking is mandated too');
+  const flights = selectSources({ vertical: 'flights' } as any).map((s) => s.id);
+  assert.ok(flights.includes('w_flights_booking'), 'the mandated partner must still be probed');
 
   // A non-mandated source that is circuit-open stays out of the attempt list.
-  for (let i = 0; i < 4; i += 1) recordFailure('w_hotels_oyo', 'ACCESS_CHALLENGE', 'HTTP 403');
-  const again = selectSources({ vertical: 'hotels' } as any).map((s) => s.id);
-  assert.equal(again.includes('w_hotels_oyo'), false, 'the breaker still protects the answer for others');
+  for (let i = 0; i < 4; i += 1) recordFailure('w_flights_yatra', 'ACCESS_CHALLENGE', 'HTTP 403');
+  const again = selectSources({ vertical: 'flights' } as any).map((s) => s.id);
+  assert.equal(again.includes('w_flights_yatra'), false, 'the breaker still protects the answer for others');
   delete process.env.T1S_MANDATED_PROBE_MS;
 });
 
