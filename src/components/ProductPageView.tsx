@@ -17,6 +17,9 @@ interface Offer {
   id: string; title: string; seller: string; price: number; listPrice: number;
   image: string | null; images: string[]; availability: string; rating: number | null; reviews: number | null;
   canonicalEntityId: number | string | null; goUrl: string; variantCount?: number;
+  /** OWNER 23 Nov: the seller's real logo, used only when this row has no product photo of its own — never the
+   *  searched product's picture (that repeated one image across the whole related grid). */
+  sellerLogo?: string; sellerLogoUrl?: string;
 }
 interface Deal {
   hasHistory: boolean; points: number; current: number; allTimeLow: number | null; allTimeHigh: number | null;
@@ -441,7 +444,16 @@ export const ProductPageView: React.FC = () => {
                   <button key={r.id || i} onClick={() => openProductPage({ query: r.title })}
                     className="text-left bg-white rounded-2xl border border-slate-200 hover:border-red-300 hover:shadow-md transition-all p-3 cursor-pointer">
                     <div className="aspect-square rounded-xl bg-slate-50 flex items-center justify-center overflow-hidden">
-                      {r.image ? <img src={r.image} alt={r.title} className="w-full h-full object-contain" loading="lazy" /> : <Link2 className="w-6 h-6 text-slate-300" />}
+                      {r.image || r.sellerLogo ? (
+                        <img
+                          src={r.image || r.sellerLogo}
+                          alt={r.title}
+                          className="w-full h-full object-contain"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <Link2 className="w-6 h-6 text-slate-300" />
+                      )}
                     </div>
                     <div className="mt-2 flex items-center gap-1.5">{FAV(r.seller) && <img src={FAV(r.seller)} alt="" className="w-4 h-4" />}<span className="text-[10px] font-bold text-slate-400 truncate">{r.seller}</span></div>
                     <p className="mt-1 text-xs font-bold text-slate-800 line-clamp-2 min-h-[2rem]">{r.title}</p>

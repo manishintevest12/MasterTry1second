@@ -41739,6 +41739,28 @@ var init_productImage = __esm({
   }
 });
 
+// server/lens/relatedRowImages.ts
+function rowPhotos(o) {
+  if (!o) return [];
+  const attrs = o.attributes && typeof o.attributes === "object" ? o.attributes : {};
+  const candidates = [
+    attrs.image_url,
+    attrs.image,
+    o.image,
+    o.imageUrl,
+    o.thumbnail,
+    o.thumbnail_url,
+    Array.isArray(o.images) ? o.images[0] : void 0
+  ];
+  const first = candidates.map((u) => typeof u === "string" ? u : "").find((u) => u.startsWith("https://")) || "";
+  const gallery = String(attrs.image_urls || attrs.images || "").split("|").map((u) => u.trim()).filter((u) => u.startsWith("https://"));
+  return Array.from(new Set([first, ...gallery].filter((u) => u.startsWith("https://"))));
+}
+var init_relatedRowImages = __esm({
+  "server/lens/relatedRowImages.ts"() {
+  }
+});
+
 // server/auth/mailer.ts
 async function post(from, to, subject, html, text) {
   try {
@@ -54633,6 +54655,7 @@ var init_routes = __esm({
     init_health();
     init_authService();
     init_productImage();
+    init_relatedRowImages();
     init_otpService();
     init_firebaseAuth();
     import_crypto32 = __toESM(require("crypto"), 1);
@@ -56211,20 +56234,7 @@ var init_routes = __esm({
       const productImageUrls = [product?.image, ...Array.isArray(product?.images) ? product.images : []].filter((u) => typeof u === "string" && u.startsWith("https://"));
       const toRow = ({ o, price: price2 }) => {
         const attrs = o.attributes || {};
-        const firstPhoto = [
-          attrs.image_url,
-          attrs.image,
-          o.image,
-          o.imageUrl,
-          o.thumbnail,
-          o.thumbnail_url,
-          o.images?.[0]
-        ].map((u) => typeof u === "string" ? u : "").find((u) => u.startsWith("https://")) || "";
-        const imgs = Array.from(new Set([
-          String(firstPhoto || ""),
-          ...String(attrs.image_urls || attrs.images || "").split("|"),
-          ...productImageUrls
-        ].filter((u) => u.startsWith("https://"))));
+        const imgs = rowPhotos(o);
         const sellerName = String(o.seller || o.vendor || "");
         const logoKey = merchantKeyOf(sellerName);
         return {
@@ -56404,7 +56414,7 @@ var init_routes = __esm({
           filled: relatedPool.filter((r) => r.image).length
         });
       }
-      const related = relatedPool.filter((r) => Boolean(r.image)).slice(0, 36);
+      const related = relatedPool.slice(0, 36);
       let history = [];
       let historyEntity = null;
       const historyLookup = (async () => {

@@ -25,7 +25,7 @@ test('a minted token verifies on another instance (no session row needed)', () =
   const token = mintSessionToken(42, HOUR, NOW);
   assert.equal(isSignedSessionToken(token), true);
   assert.deepEqual(verifySessionToken(token, NOW + 1000), { userId: 42 });
-  assert.equal(verifySessionToken(token, NOW + 30_000).userId, 42);
+  assert.equal(verifySessionToken(token, NOW + 30_000)?.userId, 42);
 });
 
 test('an expired token is refused', () => {
