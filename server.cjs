@@ -7154,9 +7154,60 @@ function scraperKey() {
 function readerEnabled() {
   return String(process.env.T1S_READER_RESCUE || "1").trim() !== "0";
 }
+function ownRenderConfigured() {
+  return Boolean(
+    String(process.env.T1S_RENDER_URL || "").trim() || String(process.env.CF_ACCOUNT_ID || "").trim() && String(process.env.CF_BROWSER_TOKEN || "").trim()
+  );
+}
+async function viaOwn(url, timeoutMs) {
+  const ownUrl = String(process.env.T1S_RENDER_URL || "").trim();
+  const budget2 = Math.max(timeoutMs, 3e4);
+  if (ownUrl) {
+    const token2 = String(process.env.T1S_RENDER_TOKEN || "").trim();
+    const res2 = await cffiFetch(`${ownUrl.replace(/\/+$/, "")}/render`, {
+      method: "POST",
+      impersonate: "chrome",
+      timeoutMs: budget2,
+      headers: {
+        "Content-Type": "application/json",
+        ...token2 ? { Authorization: `Bearer ${token2}` } : {}
+      },
+      body: JSON.stringify({ url, timeoutMs: budget2, waitUntil: "networkidle2" })
+    });
+    const body = String(res2.body || "");
+    const status = Number(res2.status || 0);
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed.html === "string") return { status: Number(parsed.status) || 200, body: parsed.html };
+      if (parsed && typeof parsed.content === "string") return { status: Number(parsed.status) || 200, body: parsed.content };
+    } catch {
+    }
+    return { status, body };
+  }
+  const account = String(process.env.CF_ACCOUNT_ID || "").trim();
+  const token = String(process.env.CF_BROWSER_TOKEN || "").trim();
+  if (!account || !token) throw new Error("own render not configured");
+  const res = await cffiFetch(`https://api.cloudflare.com/client/v4/accounts/${account}/browser-rendering/content`, {
+    method: "POST",
+    impersonate: "chrome",
+    timeoutMs: budget2,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ url, gotoOptions: { waitUntil: "networkidle0", timeout: budget2 } })
+  });
+  const raw = String(res.body || "");
+  try {
+    const parsed = JSON.parse(raw);
+    const html = parsed?.result;
+    if (typeof html === "string") return { status: 200, body: html };
+    if (parsed?.success === false) return { status: 500, body: raw.slice(0, 400) };
+  } catch {
+  }
+  return { status: Number(res.status || 0), body: raw };
+}
 function rescueRungs() {
   const out = ["direct"];
   if (relayConfigured()) out.push("relay");
+  if (ownRenderConfigured()) out.push("own");
   if (scraperKey()) out.push("scraperapi");
   if (readerEnabled()) out.push("reader");
   return out;
@@ -7256,15 +7307,16 @@ async function rescueFetch(url, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? 25e3;
   const maxRungs = Math.max(1, opts.maxRungs ?? 4);
   const order = rescueOrderFor(host).slice(0, maxRungs);
-  if (opts.render && order.includes("scraperapi")) {
-    order.sort((a, b) => a === "scraperapi" ? -1 : b === "scraperapi" ? 1 : 0);
+  if (opts.render) {
+    const first = order.includes("own") ? "own" : order.includes("scraperapi") ? "scraperapi" : null;
+    if (first) order.sort((a, b) => a === first ? -1 : b === first ? 1 : 0);
   }
   const attempts = [];
   let best = { status: 0, body: "" };
   for (const via of order) {
     const started3 = Date.now();
     try {
-      const res = via === "direct" ? await viaDirect(url, timeoutMs) : via === "relay" ? await viaRelay(url, timeoutMs) : via === "scraperapi" ? await viaScraperApi(url, timeoutMs, opts.render) : await viaReader(url, timeoutMs);
+      const res = via === "direct" ? await viaDirect(url, timeoutMs) : via === "relay" ? await viaRelay(url, timeoutMs) : via === "own" ? await viaOwn(url, timeoutMs) : via === "scraperapi" ? await viaScraperApi(url, timeoutMs, opts.render) : await viaReader(url, timeoutMs);
       const verdict = looksUsable(res.status, res.body, minHtmlBytes, opts.validate);
       if (res.body.length > best.body.length) best = res;
       attempts.push({ via, ok: verdict.ok, status: res.status, bytes: res.body.length, reason: verdict.reason, ms: Date.now() - started3 });
@@ -9546,6 +9598,22 @@ var init_hotels = __esm({
                 lastErr = new AcquisitionError("ACCESS_CHALLENGE", `Goibibo hotels Akamai-sampled a ${r.body.length}B stub (attempt ${attempt}/2); ladder retries next search`);
                 await sleep(900);
               }
+              if (!bigBody && Date.now() < giDeadline + 3e3) {
+                try {
+                  const rr = await rescueFetch(url, {
+                    timeoutMs: 12e3,
+                    render: true,
+                    // a browser is what Akamai wants: put our own render rung first
+                    minHtmlBytes: 1e5,
+                    validate: (body) => body.length >= 1e5 && /hotel|₹|check-?in/i.test(body.slice(0, 4e4))
+                  });
+                  if (rr && rr.body && rr.body.length >= 1e5) {
+                    bigBody = rr.body;
+                    log.info("Hotels", `Goibibo hotels rescued via ${rr.via}`, { bytes: rr.body.length });
+                  }
+                } catch {
+                }
+              }
               if (!bigBody) continue;
               const st = parseGoibiboHotelSsrState(bigBody);
               let rows = st.rows;
@@ -9835,19 +9903,41 @@ var init_hotels = __esm({
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
             const UA8 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             let cookies = void 0;
-            for (let attempt = 1; attempt <= 3; attempt++) {
-              const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
-              cookies = r.cookies || cookies;
-              if (r.status !== 200 && r.status !== 202) throw new AcquisitionError("FORBIDDEN", `Booking.com HTTP ${r.status}`, r.status);
-              const items = parseBookingHotels(r.body, ctx.source, url, checkin, checkout);
-              if (items.length) return items;
-              if (looksLikeChallenge(r.body) && attempt < 3) {
-                await new Promise((res) => setTimeout(res, 2500 * attempt));
-                continue;
+            let directErr = null;
+            try {
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
+                cookies = r.cookies || cookies;
+                if (r.status !== 200 && r.status !== 202) throw new AcquisitionError("FORBIDDEN", `Booking.com HTTP ${r.status}`, r.status);
+                const items = parseBookingHotels(r.body, ctx.source, url, checkin, checkout);
+                if (items.length) return items;
+                if (looksLikeChallenge(r.body) && attempt < 3) {
+                  await new Promise((res) => setTimeout(res, 2500 * attempt));
+                  continue;
+                }
+                throw new AcquisitionError("ACCESS_CHALLENGE", "Booking.com presented a challenge page (no parseable property cards)");
               }
-              throw new AcquisitionError("ACCESS_CHALLENGE", "Booking.com presented a challenge page (no parseable property cards)");
+            } catch (e2) {
+              directErr = e2 instanceof AcquisitionError ? e2 : new AcquisitionError("SERVER_ERROR", String(e2?.message || e2).slice(0, 120));
             }
-            throw new AcquisitionError("EMPTY_RESPONSE", "Booking.com returned no property cards");
+            try {
+              const rr = await rescueFetch(url, {
+                timeoutMs: 15e3,
+                render: true,
+                // Booking's edge serves the listing only to a real browser session
+                minHtmlBytes: 5e4,
+                validate: (body) => parseBookingHotels(body, ctx.source, url, checkin, checkout).length > 0
+              });
+              if (rr && rr.body) {
+                const rescued = parseBookingHotels(rr.body, ctx.source, url, checkin, checkout);
+                if (rescued.length) {
+                  log.info("Hotels", `Booking.com rescued via ${rr.via}`, { cards: rescued.length });
+                  return rescued;
+                }
+              }
+            } catch {
+            }
+            throw directErr || new AcquisitionError("EMPTY_RESPONSE", "Booking.com returned no property cards");
           }
         },
         {

@@ -1,0 +1,13 @@
+{
+  "name": "t1s-render-service",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Try1Second's own browser render service (replaces the paid per-call scraper proxy for Goibibo/Booking.com)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}

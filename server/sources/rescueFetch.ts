@@ -10,7 +10,9 @@
  *
  *   1. direct      - our own cffiFetch (chrome impersonation). Free, fastest, already the default.
  *   2. relay       - our own edge relay workers (aws / cloudflare egress), for hosts that block our server IP.
- *   3. scraperapi  - SCRAPER_API_KEY (verified working 10 Nov after the quoting residue was stripped).
+ *   3. own         - our own browser render service (T1S_RENDER_URL) or Cloudflare Browser Rendering
+ *                    (CF_ACCOUNT_ID + CF_BROWSER_TOKEN). Free at the margin, so it runs before the paid rung.
+ *   4. scraperapi  - SCRAPER_API_KEY (verified working 10 Nov after the quoting residue was stripped).
  *   4. reader      - r.jina.ai rendering reader, for client-rendered shells that carry no HTML server-side.
  *
  * Everything is fail-closed and side-effect free: a rung that is not configured is skipped, a rung that
@@ -23,7 +25,7 @@ import { edgeRelayFetch, isGatedResponse, relayConfigured } from './edgeRelay';
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
 
-export type RescueVia = 'direct' | 'relay' | 'scraperapi' | 'reader';
+export type RescueVia = 'direct' | 'relay' | 'own' | 'scraperapi' | 'reader';
 
 export interface RescueAttempt {
   via: RescueVia;
@@ -61,7 +63,7 @@ export interface RescueOpts {
 }
 
 /** Rung order learned per host, defaulting to the canonical cheapest-first ladder. */
-const CANONICAL: RescueVia[] = ['direct', 'relay', 'scraperapi', 'reader'];
+const CANONICAL: RescueVia[] = ['direct', 'relay', 'own', 'scraperapi', 'reader'];
 const _order = new Map<string, RescueVia[]>();
 
 function scraperKey(): string {
@@ -72,9 +74,75 @@ function readerEnabled(): boolean {
   return String(process.env.T1S_READER_RESCUE || '1').trim() !== '0';
 }
 
+/**
+ * OUR OWN RENDER RUNG (owner 23 Nov: "scrapper api charge krega hume apna scrapper api jaisa kaam chaiye").
+ *
+ * ScraperAPI is a paid per-call browser proxy. The job it does for us is narrow: run one page in a real browser
+ * from a clean IP and hand back the HTML. That is a ~150-line service (tools/render-service) we can host on any
+ * cheap VPS, or Cloudflare's Browser Rendering API on its free tier — so the paid rung becomes optional instead of
+ * required. Both shapes are supported here behind one rung:
+ *   T1S_RENDER_URL   + T1S_RENDER_TOKEN   -> our own service: POST {url, timeoutMs, waitUntil} -> {html} | text
+ *   CF_ACCOUNT_ID    + CF_BROWSER_TOKEN   -> Cloudflare browser-rendering/content (free tier, no server to run)
+ * The rung sits BEFORE scraperapi: our own capacity is free at the margin, so it should always be spent first.
+ */
+function ownRenderConfigured(): boolean {
+  return Boolean(
+    String(process.env.T1S_RENDER_URL || '').trim()
+    || (String(process.env.CF_ACCOUNT_ID || '').trim() && String(process.env.CF_BROWSER_TOKEN || '').trim()),
+  );
+}
+
+async function viaOwn(url: string, timeoutMs: number): Promise<{ status: number; body: string }> {
+  const ownUrl = String(process.env.T1S_RENDER_URL || '').trim();
+  const budget = Math.max(timeoutMs, 30_000);
+  if (ownUrl) {
+    const token = String(process.env.T1S_RENDER_TOKEN || '').trim();
+    const res = await cffiFetch(`${ownUrl.replace(/\/+$/, '')}/render`, {
+      method: 'POST',
+      impersonate: 'chrome',
+      timeoutMs: budget,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ url, timeoutMs: budget, waitUntil: 'networkidle2' }),
+    });
+    const body = String((res as any).body || '');
+    const status = Number((res as any).status || 0);
+    // Our service answers JSON {status, html}; a plain body is accepted too so a hand-rolled service works.
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed.html === 'string') return { status: Number(parsed.status) || 200, body: parsed.html };
+      if (parsed && typeof parsed.content === 'string') return { status: Number(parsed.status) || 200, body: parsed.content };
+    } catch { /* not JSON: use as-is */ }
+    return { status, body };
+  }
+  const account = String(process.env.CF_ACCOUNT_ID || '').trim();
+  const token = String(process.env.CF_BROWSER_TOKEN || '').trim();
+  if (!account || !token) throw new Error('own render not configured');
+  const res = await cffiFetch(`https://api.cloudflare.com/client/v4/accounts/${account}/browser-rendering/content`, {
+    method: 'POST',
+    impersonate: 'chrome',
+    timeoutMs: budget,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ url, gotoOptions: { waitUntil: 'networkidle0', timeout: budget } }),
+  });
+  const raw = String((res as any).body || '');
+  try {
+    const parsed = JSON.parse(raw);
+    const html = parsed?.result;
+    if (typeof html === 'string') return { status: 200, body: html };
+    if (parsed?.success === false) return { status: 500, body: raw.slice(0, 400) };
+  } catch { /* fall through */ }
+  return { status: Number((res as any).status || 0), body: raw };
+}
+
+export function ownRenderAvailable(): boolean { return ownRenderConfigured(); }
+
 export function rescueRungs(): RescueVia[] {
   const out: RescueVia[] = ['direct'];
   if (relayConfigured()) out.push('relay');
+  if (ownRenderConfigured()) out.push('own');
   if (scraperKey()) out.push('scraperapi');
   if (readerEnabled()) out.push('reader');
   return out;
@@ -189,8 +257,10 @@ export async function rescueFetch(url: string, opts: RescueOpts = {}): Promise<R
   const order = rescueOrderFor(host).slice(0, maxRungs);
   // A render-only source (a React listing) cannot be served by a plain HTTP rung, so the browser rung goes
   // first instead of being wasted at the end of the ladder.
-  if (opts.render && order.includes('scraperapi')) {
-    order.sort((a, b) => (a === 'scraperapi' ? -1 : b === 'scraperapi' ? 1 : 0));
+  if (opts.render) {
+    // A render-only source needs a browser: our own rung first (free at the margin), then the paid one.
+    const first = order.includes('own') ? 'own' : order.includes('scraperapi') ? 'scraperapi' : null;
+    if (first) order.sort((a, b) => (a === first ? -1 : b === first ? 1 : 0));
   }
   const attempts: RescueAttempt[] = [];
   let best: { status: number; body: string } = { status: 0, body: '' };
@@ -200,6 +270,7 @@ export async function rescueFetch(url: string, opts: RescueOpts = {}): Promise<R
     try {
       const res = via === 'direct' ? await viaDirect(url, timeoutMs)
         : via === 'relay' ? await viaRelay(url, timeoutMs)
+        : via === 'own' ? await viaOwn(url, timeoutMs)
         : via === 'scraperapi' ? await viaScraperApi(url, timeoutMs, opts.render)
         : await viaReader(url, timeoutMs);
       const verdict = looksUsable(res.status, res.body, minHtmlBytes, opts.validate);

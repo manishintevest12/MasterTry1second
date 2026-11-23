@@ -458,6 +458,25 @@ export const hotelsWorker: VerticalWorker = {
             lastErr = new AcquisitionError('ACCESS_CHALLENGE', `Goibibo hotels Akamai-sampled a ${r.body.length}B stub (attempt ${attempt}/2); ladder retries next search`);
             await sleep(900);
           }
+          // OWNER 22 Nov ("gibibo and booking.com"): MEASURED on production, this task is now attempted on every
+          // search (mandated probe clock) and fails honestly with ACCESS_CHALLENGE — "Akamai-sampled a 8B stub".
+          // curl-impersonate alone cannot beat Akamai's sensor cookie, but the rescue ladder can: relay ->
+          // ScraperAPI (a real browser, enabled by SCRAPER_API_KEY) -> reader. It is tried LAST so it costs nothing
+          // when a direct profile already won, and its body must pass the same "real page" contract.
+          if (!bigBody && Date.now() < giDeadline + 3_000) {
+            try {
+              const rr = await rescueFetch(url, {
+                timeoutMs: 12_000,
+                render: true, // a browser is what Akamai wants: put our own render rung first
+                minHtmlBytes: 100_000,
+                validate: (body: string) => body.length >= 100_000 && /hotel|₹|check-?in/i.test(body.slice(0, 40_000)),
+              });
+              if (rr && rr.body && rr.body.length >= 100_000) {
+                bigBody = rr.body;
+                log.info('Hotels', `Goibibo hotels rescued via ${rr.via}`, { bytes: rr.body.length });
+              }
+            } catch { /* the honest failure below still stands */ }
+          }
           if (!bigBody) continue;
           const st = parseGoibiboHotelSsrState(bigBody);
           let rows = st.rows;
@@ -758,16 +777,43 @@ export const hotelsWorker: VerticalWorker = {
         // acquisition as ONE cffi cookie session with spaced retries (cookies carried over),
         // then an honest ACCESS_CHALLENGE if the edge still refuses.
         let cookies: any = undefined;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          const r: any = await cffiFetch(url, { timeoutMs: 20_000, cookies, returnCookies: true, headers: { 'Accept-Language': 'en-IN,en;q=0.9' } });
-          cookies = r.cookies || cookies;
-          if (r.status !== 200 && r.status !== 202) throw new AcquisitionError('FORBIDDEN', `Booking.com HTTP ${r.status}`, r.status);
-          const items = parseBookingHotels(r.body, ctx.source, url, checkin, checkout);
-          if (items.length) return items;
-          if (looksLikeChallenge(r.body) && attempt < 3) { await new Promise((res) => setTimeout(res, 2500 * attempt)); continue; }
-          throw new AcquisitionError('ACCESS_CHALLENGE', 'Booking.com presented a challenge page (no parseable property cards)');
+        // The direct session is captured rather than thrown so the rescue rung below always gets its turn; if the
+        // ladder also fails, the ORIGINAL failure class is what gets reported (honest, not downgraded).
+        let directErr: AcquisitionError | null = null;
+        try {
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            const r: any = await cffiFetch(url, { timeoutMs: 20_000, cookies, returnCookies: true, headers: { 'Accept-Language': 'en-IN,en;q=0.9' } });
+            cookies = r.cookies || cookies;
+            if (r.status !== 200 && r.status !== 202) throw new AcquisitionError('FORBIDDEN', `Booking.com HTTP ${r.status}`, r.status);
+            const items = parseBookingHotels(r.body, ctx.source, url, checkin, checkout);
+            if (items.length) return items;
+            if (looksLikeChallenge(r.body) && attempt < 3) { await new Promise((res) => setTimeout(res, 2500 * attempt)); continue; }
+            throw new AcquisitionError('ACCESS_CHALLENGE', 'Booking.com presented a challenge page (no parseable property cards)');
+          }
+        } catch (e: any) {
+          directErr = e instanceof AcquisitionError ? e : new AcquisitionError('SERVER_ERROR', String(e?.message || e).slice(0, 120));
         }
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Booking.com returned no property cards');
+        // OWNER 22 Nov ("booking.com"): production measured ACCESS_CHALLENGE on this task every search ("presented a
+        // challenge page"). Booking's AWS-WAF/DataDome edge answers a cookie-less curl with a 202 interstitial, so the
+        // cookie session above cannot win alone. The rescue ladder is the honest next rung: relay -> ScraperAPI (a
+        // real browser, enabled by SCRAPER_API_KEY) -> reader, with the same "real property cards" contract. It runs
+        // only after the direct session failed, so it never costs a working search anything.
+        try {
+          const rr = await rescueFetch(url, {
+            timeoutMs: 15_000,
+            render: true, // Booking's edge serves the listing only to a real browser session
+            minHtmlBytes: 50_000,
+            validate: (body: string) => parseBookingHotels(body, ctx.source, url, checkin, checkout).length > 0,
+          });
+          if (rr && rr.body) {
+            const rescued = parseBookingHotels(rr.body, ctx.source, url, checkin, checkout);
+            if (rescued.length) {
+              log.info('Hotels', `Booking.com rescued via ${rr.via}`, { cards: rescued.length });
+              return rescued;
+            }
+          }
+        } catch { /* the honest failure below still stands */ }
+        throw directErr || new AcquisitionError('EMPTY_RESPONSE', 'Booking.com returned no property cards');
       },
     },
     {
