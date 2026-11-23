@@ -380,7 +380,7 @@ export const hotelsWorker: VerticalWorker = {
           const pageUrl = `https://www.goibibo.com/hotels/${slug}/`;
           try {
             const rr = await rescueFetch(pageUrl, {
-              timeoutMs: 12_000,
+              timeoutMs: 9_000,
               render: true,
               maxRungs: 2,
               minHtmlBytes: 100_000,
@@ -478,7 +478,10 @@ export const hotelsWorker: VerticalWorker = {
         // answered an 8-byte stub every single time, so real sellers (Agoda/Yatra/Ixigo/OYO/EMT/Airbnb) lost the
         // budget. The self-healing property only needs one honest sample per client profile per search, so the
         // loop is now 2 attempts per slug (chrome + iOS profile) inside a 9s deadline for the whole task.
-        const giDeadline = Date.now() + 7_000;
+        // OWNER 23 Nov: the task must finish inside its own 30s limit, so the direct recipes get a hard 6s and the
+        // browser rung above already had its 9s slice. A task that overruns reports a bare TIMEOUT and hides which
+        // transport failed; finishing early means the real reason is what gets reported.
+        const giDeadline = Date.now() + 6_000;
         for (const slug of attempts) {
           if (Date.now() > giDeadline) break;
           const url = `https://www.goibibo.com/hotels/${slug}/`;
@@ -553,7 +556,15 @@ export const hotelsWorker: VerticalWorker = {
           }
           return offers;
         }
-        throw lastErr || lastHermesErr || new AcquisitionError('NOT_FOUND', `Goibibo has no hotels page for "${city}"`, 404);
+        {
+          const { ownRenderEnvNames } = await import('../../sources/rescueFetch');
+          const mode = ownRenderEnvNames().mode;
+          throw lastErr || lastHermesErr || new AcquisitionError(
+            'NOT_FOUND',
+            `Goibibo has no hotels page for "${city}" (browser transport: ${mode === 'none' ? 'NOT CONFIGURED — set T1S_RENDER_URL or CLOUDFLARE_ACCOUNT_ID+CLOUDFLARE_API_TOKEN' : mode})`,
+            404,
+          );
+        }
       },
     },
     {
@@ -827,7 +838,7 @@ export const hotelsWorker: VerticalWorker = {
         // the fallback. Same page, same parser, honest prices.
         try {
           const rr = await rescueFetch(url, {
-            timeoutMs: 12_000,
+            timeoutMs: 9_000,
             render: true,
             maxRungs: 2,
             minHtmlBytes: 50_000,
@@ -847,13 +858,13 @@ export const hotelsWorker: VerticalWorker = {
         // ladder also fails, the ORIGINAL failure class is what gets reported (honest, not downgraded).
         let directErr: AcquisitionError | null = null;
         try {
-          for (let attempt = 1; attempt <= 3; attempt++) {
-            const r: any = await cffiFetch(url, { timeoutMs: 20_000, cookies, returnCookies: true, headers: { 'Accept-Language': 'en-IN,en;q=0.9' } });
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            const r: any = await cffiFetch(url, { timeoutMs: 6_000, cookies, returnCookies: true, headers: { 'Accept-Language': 'en-IN,en;q=0.9' } });
             cookies = r.cookies || cookies;
             if (r.status !== 200 && r.status !== 202) throw new AcquisitionError('FORBIDDEN', `Booking.com HTTP ${r.status}`, r.status);
             const items = parseBookingHotels(r.body, ctx.source, url, checkin, checkout);
             if (items.length) return items;
-            if (looksLikeChallenge(r.body) && attempt < 3) { await new Promise((res) => setTimeout(res, 2500 * attempt)); continue; }
+            if (looksLikeChallenge(r.body) && attempt < 2) { await new Promise((res) => setTimeout(res, 1500 * attempt)); continue; }
             throw new AcquisitionError('ACCESS_CHALLENGE', 'Booking.com presented a challenge page (no parseable property cards)');
           }
         } catch (e: any) {
@@ -879,7 +890,16 @@ export const hotelsWorker: VerticalWorker = {
             }
           }
         } catch { /* the honest failure below still stands */ }
-        throw directErr || new AcquisitionError('EMPTY_RESPONSE', 'Booking.com returned no property cards');
+        {
+          const { ownRenderEnvNames } = await import('../../sources/rescueFetch');
+          const mode = ownRenderEnvNames().mode;
+          const suffix = mode === 'none'
+            ? ' (browser transport NOT CONFIGURED — set T1S_RENDER_URL or CLOUDFLARE_ACCOUNT_ID+CLOUDFLARE_API_TOKEN)'
+            : ` (browser transport: ${mode})`;
+          throw directErr
+            ? new AcquisitionError(directErr.failureClass, `${String(directErr.message).slice(0, 160)}${suffix}`, (directErr as any).status)
+            : new AcquisitionError('EMPTY_RESPONSE', `Booking.com returned no property cards${suffix}`);
+        }
       },
     },
     {

@@ -9606,7 +9606,7 @@ var init_hotels = __esm({
               const pageUrl = `https://www.goibibo.com/hotels/${slug5}/`;
               try {
                 const rr = await rescueFetch(pageUrl, {
-                  timeoutMs: 12e3,
+                  timeoutMs: 9e3,
                   render: true,
                   maxRungs: 2,
                   minHtmlBytes: 1e5,
@@ -9682,7 +9682,7 @@ var init_hotels = __esm({
             };
             let lastErr = null;
             const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-            const giDeadline = Date.now() + 7e3;
+            const giDeadline = Date.now() + 6e3;
             for (const slug5 of attempts) {
               if (Date.now() > giDeadline) break;
               const url = `https://www.goibibo.com/hotels/${slug5}/`;
@@ -9765,7 +9765,15 @@ var init_hotels = __esm({
               }
               return offers;
             }
-            throw lastErr || lastHermesErr || new AcquisitionError("NOT_FOUND", `Goibibo has no hotels page for "${city}"`, 404);
+            {
+              const { ownRenderEnvNames: ownRenderEnvNames2 } = await Promise.resolve().then(() => (init_rescueFetch(), rescueFetch_exports));
+              const mode = ownRenderEnvNames2().mode;
+              throw lastErr || lastHermesErr || new AcquisitionError(
+                "NOT_FOUND",
+                `Goibibo has no hotels page for "${city}" (browser transport: ${mode === "none" ? "NOT CONFIGURED \u2014 set T1S_RENDER_URL or CLOUDFLARE_ACCOUNT_ID+CLOUDFLARE_API_TOKEN" : mode})`,
+                404
+              );
+            }
           }
         },
         {
@@ -10020,7 +10028,7 @@ var init_hotels = __esm({
             const UA8 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             try {
               const rr = await rescueFetch(url, {
-                timeoutMs: 12e3,
+                timeoutMs: 9e3,
                 render: true,
                 maxRungs: 2,
                 minHtmlBytes: 5e4,
@@ -10038,14 +10046,14 @@ var init_hotels = __esm({
             let cookies = void 0;
             let directErr = null;
             try {
-              for (let attempt = 1; attempt <= 3; attempt++) {
-                const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
+              for (let attempt = 1; attempt <= 2; attempt++) {
+                const r = await cffiFetch(url, { timeoutMs: 6e3, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
                 cookies = r.cookies || cookies;
                 if (r.status !== 200 && r.status !== 202) throw new AcquisitionError("FORBIDDEN", `Booking.com HTTP ${r.status}`, r.status);
                 const items = parseBookingHotels(r.body, ctx.source, url, checkin, checkout);
                 if (items.length) return items;
-                if (looksLikeChallenge(r.body) && attempt < 3) {
-                  await new Promise((res) => setTimeout(res, 2500 * attempt));
+                if (looksLikeChallenge(r.body) && attempt < 2) {
+                  await new Promise((res) => setTimeout(res, 1500 * attempt));
                   continue;
                 }
                 throw new AcquisitionError("ACCESS_CHALLENGE", "Booking.com presented a challenge page (no parseable property cards)");
@@ -10070,7 +10078,12 @@ var init_hotels = __esm({
               }
             } catch {
             }
-            throw directErr || new AcquisitionError("EMPTY_RESPONSE", "Booking.com returned no property cards");
+            {
+              const { ownRenderEnvNames: ownRenderEnvNames2 } = await Promise.resolve().then(() => (init_rescueFetch(), rescueFetch_exports));
+              const mode = ownRenderEnvNames2().mode;
+              const suffix = mode === "none" ? " (browser transport NOT CONFIGURED \u2014 set T1S_RENDER_URL or CLOUDFLARE_ACCOUNT_ID+CLOUDFLARE_API_TOKEN)" : ` (browser transport: ${mode})`;
+              throw directErr ? new AcquisitionError(directErr.failureClass, `${String(directErr.message).slice(0, 160)}${suffix}`, directErr.status) : new AcquisitionError("EMPTY_RESPONSE", `Booking.com returned no property cards${suffix}`);
+            }
           }
         },
         {
