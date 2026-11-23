@@ -18,6 +18,8 @@
  *    if the destination were somehow right).
  */
 
+import { IATA } from '../common/airportLookup';
+
 export interface GateRoute { from: { city: string; code?: string }; to: { city: string; code?: string } }
 
 /** Normalise a place for comparison: lowercase, letters only, common qualifiers removed. */
@@ -30,10 +32,32 @@ function normPlace(raw: unknown): string {
     .trim();
 }
 
+/**
+ * Reverse of the airport table (code -> city), so a source that publishes ONLY IATA codes is comparable with a
+ * query typed in city names. OWNER 23 Nov ("check aertrip why the data is not coming"): Aertrip's API answers
+ * real IDR->DEL fares, reports success, and every row was dropped here because the query said "Indore"/"Delhi"
+ * while the row said "IDR"/"DEL".
+ */
+const CODE_TO_CITY: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  for (const [city, code] of Object.entries(IATA)) {
+    const c = String(code || '').toLowerCase();
+    if (c && !map[c]) map[c] = city;
+  }
+  return map;
+})();
+
+/** Normalise a place, resolving a bare IATA code to its city name before comparing. */
+function placeName(raw: unknown): string {
+  const n = normPlace(raw);
+  if (/^[a-z]{3}$/.test(n)) return CODE_TO_CITY[n] || n;
+  return n;
+}
+
 /** True when two place strings can be the same place. */
 export function samePlace(a: unknown, b: unknown): boolean {
-  const x = normPlace(a);
-  const y = normPlace(b);
+  const x = placeName(a);
+  const y = placeName(b);
   if (!x || !y) return false;
   if (x === y) return true;
   // "new delhi" vs "delhi", "bengaluru" vs "bengaluru international"

@@ -48,11 +48,42 @@ test('routeTokensOf reads city names and IATA codes', () => {
   assert.equal(routeTokensOf(''), null);
 });
 
-test('a flight row with a fare but no time is hidden', () => {
-  const rows = [flight(), flight({ id: 'f2', title: 'Air India AI1852' })];
+test('a flight row with a real fare survives even without a clock time', () => {
+  // OWNER 23 Nov: Goibibo publishes a dated lowest fare through its fare-calendar API but no per-flight
+  // times, and Aertrip's API rows arrive the same way. A priced row is the comparison; hiding it made
+  // both partners report success while showing the user nothing.
+  const goibibo = {
+    id: 'off_w_flights_goibibo_x1',
+    vertical: 'flights',
+    title: 'Goibibo Indore → Delhi on 2026-11-28 from ₹7337 (Air India Express)',
+    seller: 'Goibibo',
+    attributes: { airline: 'Air India Express', route: 'Indore → Delhi', price_basis: 'live_fare' },
+    travel: { route: 'indore to delhi', date: '2026-11-28' },
+    prices: { currency: 'INR', fees: { basePrice: 7337 }, effectivePrice: 7337 },
+  };
+  const aertrip = {
+    id: 'off_w_flights_aertrip_y1',
+    vertical: 'flights',
+    title: 'Aertrip Indore → Delhi',
+    seller: 'Aertrip',
+    attributes: { route: 'Indore → Delhi' },
+    travel: { route: 'indore to delhi', date: '2026-11-28' },
+    prices: { currency: 'INR', effectivePrice: 7100 },
+  };
+  const out = hideFlightRowsWithoutTimes([goibibo, aertrip] as any);
+  assert.equal(out.kept.length, 2);
+  assert.equal(out.dropped.length, 0);
+
+  // A row that names a flight but has no time is still hidden — the backfill repairs those.
+  const barePerFlight = hideFlightRowsWithoutTimes([flight()] as any);
+  assert.equal(barePerFlight.kept.length, 0);
+});
+
+test('a schedule-less row with no fare is still hidden', () => {
+  const rows = [flight({ prices: { currency: 'INR', effectivePrice: 0 }, price: 0 })];
   const out = hideFlightRowsWithoutTimes(rows);
   assert.equal(out.kept.length, 0);
-  assert.equal(out.dropped.length, 2);
+  assert.equal(out.dropped.length, 1);
   assert.equal(out.dropped[0].reason, 'no_time');
 });
 

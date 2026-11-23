@@ -62,6 +62,27 @@ export function routeTokensOf(route: unknown): { from: string; to: string } | nu
   return null;
 }
 
+/**
+ * A ROUTE-LEVEL row that carries a real price: the partner published a fare for this route+date through its
+ * own fare-calendar API (Goibibo, Aertrip) but no per-flight clock time, because it never claimed to name one
+ * flight. That is a comparable offer, not a broken flight row.
+ *
+ * A row that DOES name a flight number and has no time stays hidden: that is a per-flight row missing its
+ * schedule, which the backfill exists to repair.
+ */
+const isRouteLevelPriced = (offer: any): boolean => {
+  const attrs = offer?.attributes || {};
+  const flightNumber = String(attrs.flight_number ?? attrs['flight number'] ?? '').trim();
+  if (flightNumber) return false;
+  const p = Number(
+    offer?.prices?.effectivePrice
+    ?? offer?.prices?.fees?.basePrice
+    ?? offer?.price
+    ?? 0,
+  );
+  return Number.isFinite(p) && p > 0;
+};
+
 const isPresenceRow = (offer: any): boolean =>
   String(offer?.id || '').startsWith('presence_')
   || String(offer?.attributes?.price_basis || '') === 'live_fares_unavailable'
@@ -211,6 +232,11 @@ export function hideFlightRowsWithoutTimes<T extends Record<string, any>>(offers
     // A route-level card with no fare at all is not a bookable flight either; it has
     // nothing to compare, so it is not kept as a "flight with a missing time".
     if (hasFlightSchedule(offer as any)) { kept.push(offer); continue; }
+    // OWNER 23 Nov ("goibibo flight should come on all dates like other sites"): a partner that publishes a
+    // real fare for the requested date through its own fare-calendar API HAS something to compare, even when
+    // it does not publish per-flight clock times. Hiding a priced row for a missing departure time removed
+    // Goibibo (and Aertrip) from every flight answer while their sources reported success.
+    if (isRouteLevelPriced(offer as any)) { kept.push(offer); continue; }
     dropped.push({
       title: String((offer as any)?.title || '').slice(0, 80),
       seller: String((offer as any)?.seller || (offer as any)?.vendor || '').slice(0, 40),

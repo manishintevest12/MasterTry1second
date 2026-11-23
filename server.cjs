@@ -20787,7 +20787,8 @@ var init_flights = __esm({
           name: "Flights worker: Aertrip own flight results API (INR)",
           priority: 12,
           maxPerMinute: 3,
-          timeoutMs: 45e3,
+          // 45 s was above the sweep ceiling, so a slow round silently lost every Aertrip row (23 Nov).
+          timeoutMs: 2e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
             const rt = routeFromQuery(raw);
@@ -20819,20 +20820,22 @@ var init_flights = __esm({
             if (!sid) return [];
             const out = [];
             const seen = /* @__PURE__ */ new Set();
-            for (let round = 0; round < 5; round++) {
-              for (const group of AERTRIP_GROUPS) {
-                let r;
+            for (let round = 0; round < 2; round++) {
+              const answers = await Promise.all(AERTRIP_GROUPS.map(async (group) => {
                 try {
-                  r = await cffiFetch(aertripResultsUrl(sid, group), {
+                  const r = await cffiFetch(aertripResultsUrl(sid, group), {
                     impersonate: "chrome",
-                    timeoutMs: 15e3,
+                    timeoutMs: 8e3,
                     headers: { Referer: aertripDeeplink(from, to, dep), Accept: "application/json, text/plain, */*" }
                   });
+                  return r.status === 200 ? r.body : "";
                 } catch {
-                  continue;
+                  return "";
                 }
-                if (r.status !== 200) continue;
-                const rows = parseAertripJourneys(r.body, { source: ctx.source, fromCode: from, toCode: to, dateIso: dep, routeLabel, today: today2 });
+              }));
+              for (const body of answers) {
+                if (!body) continue;
+                const rows = parseAertripJourneys(body, { source: ctx.source, fromCode: from, toCode: to, dateIso: dep, routeLabel, today: today2 });
                 for (const it of rows) {
                   const k = String(it.identifiers?.sku || "");
                   if (k && seen.has(k)) continue;
@@ -20841,7 +20844,7 @@ var init_flights = __esm({
                 }
               }
               if (out.length >= 12) break;
-              await new Promise((res) => setTimeout(res, 1200));
+              if (round === 0) await new Promise((res) => setTimeout(res, 700));
             }
             if (out.length) return out;
             throw new AcquisitionError("EMPTY_RESPONSE", `Aertrip answered no priced journeys for ${from}-${to} ${dep} (sid ${sid.slice(0, 8)}\u2026, ${AERTRIP_SELLER} groups polled).`);
@@ -38272,6 +38275,10 @@ function hideFlightRowsWithoutTimes(offers) {
       kept.push(offer);
       continue;
     }
+    if (isRouteLevelPriced(offer)) {
+      kept.push(offer);
+      continue;
+    }
     dropped.push({
       title: String(offer?.title || "").slice(0, 80),
       seller: String(offer?.seller || offer?.vendor || "").slice(0, 40),
@@ -38289,7 +38296,7 @@ function noteFlightTimeDrop(vertical, dropped, remaining) {
     sample: dropped.slice(0, 3).map((d) => `${d.seller}: ${d.title}`.slice(0, 70))
   });
 }
-var HARVEST_OK_TTL_MS, HARVEST_FAIL_TTL_MS, HARVEST_TIMEOUT_MS, HARVEST_KEY_LIMIT, harvestCache, harvestInflight, slug4, isPresenceRow, withBudget2;
+var HARVEST_OK_TTL_MS, HARVEST_FAIL_TTL_MS, HARVEST_TIMEOUT_MS, HARVEST_KEY_LIMIT, harvestCache, harvestInflight, slug4, isRouteLevelPriced, isPresenceRow, withBudget2;
 var init_flightTimeBackfill = __esm({
   "server/search/flightTimeBackfill.ts"() {
     init_curlCffiFetch();
@@ -38303,6 +38310,15 @@ var init_flightTimeBackfill = __esm({
     harvestCache = /* @__PURE__ */ new Map();
     harvestInflight = /* @__PURE__ */ new Map();
     slug4 = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, "_");
+    isRouteLevelPriced = (offer) => {
+      const attrs = offer?.attributes || {};
+      const flightNumber = String(attrs.flight_number ?? attrs["flight number"] ?? "").trim();
+      if (flightNumber) return false;
+      const p = Number(
+        offer?.prices?.effectivePrice ?? offer?.prices?.fees?.basePrice ?? offer?.price ?? 0
+      );
+      return Number.isFinite(p) && p > 0;
+    };
     isPresenceRow = (offer) => String(offer?.id || "").startsWith("presence_") || String(offer?.attributes?.price_basis || "") === "live_fares_unavailable" || String(offer?.attributes?.seller_presence || "") === "true";
     withBudget2 = (p, ms, fallback) => new Promise((resolve) => {
       const timer = setTimeout(() => resolve(fallback), ms);
@@ -41551,9 +41567,14 @@ var init_basket = __esm({
 function normPlace3(raw) {
   return String(raw ?? "").toLowerCase().replace(/[^a-z ]+/g, " ").replace(/\b(tahsil|tehsil|taluka|district|village|gram|nagar|cantt|city|india|airport|intl|international|terminal)\b/g, " ").replace(/\s+/g, " ").trim();
 }
+function placeName(raw) {
+  const n = normPlace3(raw);
+  if (/^[a-z]{3}$/.test(n)) return CODE_TO_CITY[n] || n;
+  return n;
+}
 function samePlace(a, b) {
-  const x = normPlace3(a);
-  const y = normPlace3(b);
+  const x = placeName(a);
+  const y = placeName(b);
   if (!x || !y) return false;
   if (x === y) return true;
   const xs = x.split(" ");
@@ -41629,8 +41650,18 @@ function enforceRequestedRoute(rows, requested) {
   }
   return { rows: keep, dropped: droppedRows, droppedOn: { from: from_M, to: to_M }, examples };
 }
+var CODE_TO_CITY;
 var init_routeGate = __esm({
   "server/search/routeGate.ts"() {
+    init_airportLookup();
+    CODE_TO_CITY = (() => {
+      const map = {};
+      for (const [city, code] of Object.entries(IATA)) {
+        const c = String(code || "").toLowerCase();
+        if (c && !map[c]) map[c] = city;
+      }
+      return map;
+    })();
   }
 });
 

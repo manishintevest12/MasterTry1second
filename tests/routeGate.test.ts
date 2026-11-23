@@ -80,3 +80,24 @@ test('bus titles that carry the cities only in text are read, so another city pa
   assert.equal(res.rows[0].title, bhopal.title);
   assert.equal(res.dropped, 1);
 });
+
+test('a source that names airports as IATA codes is not dropped for a city-name query (Aertrip, 23 Nov)', () => {
+  // Aertrip's API publishes "IDR to DEL" while the visitor typed "Indore to Delhi". Before this, every one of
+  // its 14 real fares was dropped as "another city pair" while the source reported success.
+  const aertrip = {
+    vertical: 'flights',
+    title: 'Aertrip Indore → Delhi',
+    travel: { route: 'idr to del', date: '2026-11-28' },
+    attributes: { route: 'IDR to DEL' },
+  };
+  const out = enforceRequestedRoute([aertrip] as any, { from: { city: 'indore' }, to: { city: 'delhi' } });
+  assert.equal(out.dropped, 0);
+  assert.equal(out.rows.length, 1);
+
+  // The code form still has to be the RIGHT pair: BOM-DEL is not an Indore answer.
+  const wrong = enforceRequestedRoute(
+    [{ ...aertrip, attributes: { route: 'BOM to DEL' }, travel: { route: 'bom to del', date: '2026-11-28' } }] as any,
+    { from: { city: 'indore' }, to: { city: 'delhi' } },
+  );
+  assert.equal(wrong.dropped, 1);
+});

@@ -2086,7 +2086,8 @@ export const flightsWorker: VerticalWorker = {
       name: 'Flights worker: Aertrip own flight results API (INR)',
       priority: 12,
       maxPerMinute: 3,
-      timeoutMs: 45_000,
+      // 45 s was above the sweep ceiling, so a slow round silently lost every Aertrip row (23 Nov).
+      timeoutMs: 20_000,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
         const rt = routeFromQuery(raw);
@@ -2124,18 +2125,25 @@ export const flightsWorker: VerticalWorker = {
         // were not enough to see that data, so the worker polls up to five rounds (1.2s apart, well
         // inside its 45s ceiling) and stops as soon as it has a usable set. No row is ever invented:
         // if Aertrip really has nothing priced for the date, the worker still says so honestly.
-        for (let round = 0; round < 5; round++) {
-          for (const group of AERTRIP_GROUPS) {
-            let r;
+        // OWNER 23 Nov ("check aertrip why the data is not coming"): MEASURED — polling the seven supplier
+        // groups ONE BY ONE took 16.7 s, so the flights sweep (28-42 s, shared across 28 sources) cut Aertrip
+        // before it could answer: it was in sourcesAttempted and in NEITHER succeeded nor failed. The groups
+        // are independent reads of the same session, so they now go out TOGETHER (one round ≈ one request
+        // time, not seven), two rounds instead of five, and a tighter per-call ceiling.
+        for (let round = 0; round < 2; round++) {
+          const answers = await Promise.all(AERTRIP_GROUPS.map(async (group) => {
             try {
-              r = await cffiFetch(aertripResultsUrl(sid, group), {
+              const r = await cffiFetch(aertripResultsUrl(sid, group), {
                 impersonate: 'chrome',
-                timeoutMs: 15_000,
+                timeoutMs: 8_000,
                 headers: { Referer: aertripDeeplink(from, to, dep), Accept: 'application/json, text/plain, */*' },
               });
-            } catch { continue; }
-            if (r.status !== 200) continue;
-            const rows = parseAertripJourneys(r.body, { source: ctx.source, fromCode: from, toCode: to, dateIso: dep, routeLabel, today });
+              return r.status === 200 ? r.body : '';
+            } catch { return ''; }
+          }));
+          for (const body of answers) {
+            if (!body) continue;
+            const rows = parseAertripJourneys(body, { source: ctx.source, fromCode: from, toCode: to, dateIso: dep, routeLabel, today });
             for (const it of rows) {
               const k = String(it.identifiers?.sku || '');
               if (k && seen.has(k)) continue;
@@ -2144,7 +2152,7 @@ export const flightsWorker: VerticalWorker = {
             }
           }
           if (out.length >= 12) break; // enough for a comparison card set; stop spending requests
-          await new Promise((res) => setTimeout(res, 1200));
+          if (round === 0) await new Promise((res) => setTimeout(res, 700));
         }
         if (out.length) return out;
         throw new AcquisitionError('EMPTY_RESPONSE', `Aertrip answered no priced journeys for ${from}-${to} ${dep} (sid ${sid.slice(0, 8)}…, ${AERTRIP_SELLER} groups polled).`);
