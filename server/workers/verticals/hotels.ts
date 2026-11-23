@@ -364,11 +364,55 @@ export const hotelsWorker: VerticalWorker = {
       // The parser is shape-tolerant (walks __NEXT_DATA__ for hotel-shaped rows).
       sourceId: 'w_hotels_goibibo',
       priority: 15,
+      // OWNER 23 Nov: MEASURED production failure was TIMEOUT "worker task exceeded 30s" — the direct curl attempts
+      // (hermes + 2 slugs x 2 profiles x 8s) burned the whole budget and the browser rung never got its turn, so a
+      // mandated partner could not appear no matter how often it was probed. The browser rung now runs FIRST with a
+      // fixed 12s slice (it is the only transport that can beat Akamai), and the direct recipes are the fallback.
       timeoutMs: 30_000,
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city || city.length < 3) return [];
         const base = city.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
+
+        // BROWSER-FIRST (own render service or Cloudflare Browser Rendering). Nothing is invented: the same page is
+        // fetched, only through a real browser, and its body must look like the real 100KB+ listing.
+        for (const slug of [`hotels-in-${base}-ct`, `hotels-in-${base}`]) {
+          const pageUrl = `https://www.goibibo.com/hotels/${slug}/`;
+          try {
+            const rr = await rescueFetch(pageUrl, {
+              timeoutMs: 12_000,
+              render: true,
+              maxRungs: 2,
+              minHtmlBytes: 100_000,
+              validate: (body: string) => body.length >= 100_000 && /hotel|\u20b9|check-?in/i.test(body.slice(0, 40_000)),
+            });
+            if (rr && rr.body && rr.body.length >= 100_000) {
+              const st = parseGoibiboHotelSsrState(rr.body);
+              let rows = st.rows;
+              if (!rows.length) rows = parseGoibiboHotelsSsr(rr.body);
+              if (rows.length) {
+                log.info('Hotels', `Goibibo hotels via ${rr.via}`, { rows: rows.length, bytes: rr.body.length });
+                rows.sort((a, b) => a.price - b.price);
+                return rows.slice(0, 40).map((h) => newRawItem(ctx.source, {
+                  title: h.name,
+                  seller: 'Goibibo',
+                  sellerUrl: h.url || pageUrl,
+                  currency: 'INR',
+                  price: h.price,
+                  attributes: {
+                    image_url: h.image || '',
+                    rating: h.rating !== undefined ? String(h.rating) : '',
+                    locality: h.locality || '',
+                    city,
+                    price_basis: 'per night for 1 room (page\'s own service date)',
+                    data_note: 'Live nightly rates from Goibibo hotel search results (rendered page)',
+                  },
+                  evidence: { sourceUrl: pageUrl, sourceReference: h.url, extractedFields: ['title', 'price', 'rating', 'locality', 'image_url'] },
+                }));
+              }
+            }
+          } catch { /* fall through to the direct recipes */ }
+        }
 
         // RECIPE 1 (21 Oct): hermes.goibibo.com/hotels/v12/search/data/v3 — Goibibo's
         // own hotel search API. Akamai denies datacenter IPs (sandbox tarpit,
@@ -766,6 +810,7 @@ export const hotelsWorker: VerticalWorker = {
       sourceId: 'w_hotels_booking',
       name: 'Hotels worker: Booking.com live rates (worldwide)',
       priority: 10,
+      timeoutMs: 28_000,
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city) return [];
@@ -776,6 +821,27 @@ export const hotelsWorker: VerticalWorker = {
         // interstitial (rate sampling) but serves a normal session the first time. Run the
         // acquisition as ONE cffi cookie session with spaced retries (cookies carried over),
         // then an honest ACCESS_CHALLENGE if the edge still refuses.
+        // OWNER 23 Nov: MEASURED production failure was TIMEOUT "worker task exceeded 18s" — three 20s cookie attempts
+        // ran past the task's own 18s limit, so the browser rung below never executed. The browser rung is now tried
+        // FIRST with a fixed 12s slice (Booking only serves its cards to a real session), and the cookie session is
+        // the fallback. Same page, same parser, honest prices.
+        try {
+          const rr = await rescueFetch(url, {
+            timeoutMs: 12_000,
+            render: true,
+            maxRungs: 2,
+            minHtmlBytes: 50_000,
+            validate: (body: string) => parseBookingHotels(body, ctx.source, url, checkin, checkout).length > 0,
+          });
+          if (rr && rr.body) {
+            const cards = parseBookingHotels(rr.body, ctx.source, url, checkin, checkout);
+            if (cards.length) {
+              log.info('Hotels', `Booking.com via ${rr.via}`, { cards: cards.length });
+              return cards;
+            }
+          }
+        } catch { /* fall through to the cookie session */ }
+
         let cookies: any = undefined;
         // The direct session is captured rather than thrown so the rescue rung below always gets its turn; if the
         // ladder also fails, the ORIGINAL failure class is what gets reported (honest, not downgraded).

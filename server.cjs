@@ -9593,11 +9593,53 @@ var init_hotels = __esm({
           // The parser is shape-tolerant (walks __NEXT_DATA__ for hotel-shaped rows).
           sourceId: "w_hotels_goibibo",
           priority: 15,
+          // OWNER 23 Nov: MEASURED production failure was TIMEOUT "worker task exceeded 30s" — the direct curl attempts
+          // (hermes + 2 slugs x 2 profiles x 8s) burned the whole budget and the browser rung never got its turn, so a
+          // mandated partner could not appear no matter how often it was probed. The browser rung now runs FIRST with a
+          // fixed 12s slice (it is the only transport that can beat Akamai), and the direct recipes are the fallback.
           timeoutMs: 3e4,
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
             const base = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            for (const slug5 of [`hotels-in-${base}-ct`, `hotels-in-${base}`]) {
+              const pageUrl = `https://www.goibibo.com/hotels/${slug5}/`;
+              try {
+                const rr = await rescueFetch(pageUrl, {
+                  timeoutMs: 12e3,
+                  render: true,
+                  maxRungs: 2,
+                  minHtmlBytes: 1e5,
+                  validate: (body) => body.length >= 1e5 && /hotel|\u20b9|check-?in/i.test(body.slice(0, 4e4))
+                });
+                if (rr && rr.body && rr.body.length >= 1e5) {
+                  const st = parseGoibiboHotelSsrState(rr.body);
+                  let rows = st.rows;
+                  if (!rows.length) rows = parseGoibiboHotelsSsr(rr.body);
+                  if (rows.length) {
+                    log.info("Hotels", `Goibibo hotels via ${rr.via}`, { rows: rows.length, bytes: rr.body.length });
+                    rows.sort((a, b) => a.price - b.price);
+                    return rows.slice(0, 40).map((h) => newRawItem(ctx.source, {
+                      title: h.name,
+                      seller: "Goibibo",
+                      sellerUrl: h.url || pageUrl,
+                      currency: "INR",
+                      price: h.price,
+                      attributes: {
+                        image_url: h.image || "",
+                        rating: h.rating !== void 0 ? String(h.rating) : "",
+                        locality: h.locality || "",
+                        city,
+                        price_basis: "per night for 1 room (page's own service date)",
+                        data_note: "Live nightly rates from Goibibo hotel search results (rendered page)"
+                      },
+                      evidence: { sourceUrl: pageUrl, sourceReference: h.url, extractedFields: ["title", "price", "rating", "locality", "image_url"] }
+                    }));
+                  }
+                }
+              } catch {
+              }
+            }
             const tomorrow = new Date(Date.now() + 864e5);
             const dayAfter = new Date(Date.now() + 2 * 864e5);
             const fmt = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
@@ -9969,12 +10011,30 @@ var init_hotels = __esm({
           sourceId: "w_hotels_booking",
           name: "Hotels worker: Booking.com live rates (worldwide)",
           priority: 10,
+          timeoutMs: 28e3,
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
             const UA8 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+            try {
+              const rr = await rescueFetch(url, {
+                timeoutMs: 12e3,
+                render: true,
+                maxRungs: 2,
+                minHtmlBytes: 5e4,
+                validate: (body) => parseBookingHotels(body, ctx.source, url, checkin, checkout).length > 0
+              });
+              if (rr && rr.body) {
+                const cards = parseBookingHotels(rr.body, ctx.source, url, checkin, checkout);
+                if (cards.length) {
+                  log.info("Hotels", `Booking.com via ${rr.via}`, { cards: cards.length });
+                  return cards;
+                }
+              }
+            } catch {
+            }
             let cookies = void 0;
             let directErr = null;
             try {
