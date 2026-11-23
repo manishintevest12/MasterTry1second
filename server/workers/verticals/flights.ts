@@ -33,6 +33,7 @@ import { parseBookingFlights, bookingFlightsApiUrl, bookingFlightsSrpUrl } from 
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems, parseViaSearchJourneys, viaSearchItems, viaSearchApiUrl, viaSearchRequestBody } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
+import { parseGoibiboFareCalendar, goibiboDayFareItems, goibiboFareCalendarUrl, goibiboCalendarHeaders } from '../parsers/goibiboFareCalendar';
 import { parseMmtFareCalendar, mmtFareCalendarUrl, mmtCalendarHeaders, mmtDayFareItems } from '../parsers/mmtFareCalendar';
 import { parseAixLowFares, aixLowFaresUrl, aixLowFaresHeaders, aixLowFaresBody, aixDayFareItems } from '../parsers/aixLowFares';
 import { aixTripStatusUrl, aixTripStatusHeaders, aixTripStatusBody, parseAixTripStatus, aixScheduledFareItems } from '../parsers/aixTripStatus';
@@ -1518,14 +1519,20 @@ export const flightsWorker: VerticalWorker = {
       },
     },
     {
-      // Goibibo LIVE (17 Oct 2026): the SPA search tarpits on datacenter IPs, but
-      // the SEO route landing pages are SERVER-RENDERED with the full listing
-      // state in __NEXT_DATA__ (props.pageProps.data.state.listing): real per-flight
-      // total INR fares, airline names, times, stops, and the page's own service
-      // date (itinerary DEL-BOM-20/10/2026). Every offer is labelled with that
-      // real date. Discovered via browser recon + verified browserless.
+      // Goibibo LIVE, TWO surfaces (owner 23 Nov: "goibibo flights add kro").
+      //
+      // (a) FARE CALENDAR (new 23 Nov 2026): flights-cb.goibibo.com/api/fareCalendar is open browserless
+      //     and publishes the per-date LOWEST INR fare with the cheapest airline named (verified live
+      //     from the sandbox: IDR-DEL 28 Nov 2026 -> Rs 7,337 Air India Express, 327 date keys). Until
+      //     this, Goibibo was the only flight seller in the answer with NO price at all.
+      // (b) SEO ROUTE PAGE (17 Oct 2026): server-rendered per-flight schedule (airline, flight number,
+      //     times) out of __NEXT_DATA__, but DATE-BLIND - it always serves one far-future service date.
+      //     Kept for the schedule row, and for the honest no-fare presence card on a date it lacks.
+      //
+      // Neither surface may make Goibibo vanish: a priced calendar row is a complete answer on its own,
+      // and a blocked route page then only costs the schedule rows.
       sourceId: 'w_flights_goibibo',
-      name: 'Flights worker: Goibibo SSR route-page fares',
+      name: 'Flights worker: Goibibo dated fares (fare-calendar API) + SSR route-page schedule',
       priority: 9,
       maxPerMinute: 4,
       timeoutMs: 35_000,
@@ -1536,18 +1543,50 @@ export const flightsWorker: VerticalWorker = {
         const fromA = await resolveAirport(rt.from, rt.fromCode);
         const toA = await resolveAirport(rt.to, rt.toCode);
         if (!fromA.code || !toA.code) return [];
+        const depRaw = String(ctx.query?.travelDates?.depart || '');
+        const wantedDate = /^\d{4}-\d{2}-\d{2}$/.test(depRaw)
+          ? depRaw
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const depCompact = wantedDate.replace(/-/g, '');
+        const slug = (c: string) => String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, '').replace(/[^a-z0-9]+/g, '-');
+        const datedUrl = `https://www.goibibo.com/flights/${slug(rt.from)}-to-${slug(rt.to)}-flights/?depdate=${depCompact}`;
+        const out: any[] = [];
+        const problems: string[] = [];
+
+        // ---- (a) the REAL dated fare, from Goibibo's own fare calendar ----
+        try {
+          const fc = await cffiFetch(goibiboFareCalendarUrl(fromA.code, toA.code, depCompact), {
+            impersonate: 'chrome', timeoutMs: 20_000,
+            headers: goibiboCalendarHeaders(fromA.code, toA.code, depCompact),
+          });
+          if (fc.status === 200) {
+            out.push(...goibiboDayFareItems(parseGoibiboFareCalendar(fc.body || ''), ctx.source, rt.from, rt.to, fromA.code, toA.code, wantedDate));
+          } else {
+            problems.push(`fare-calendar HTTP ${fc.status}`);
+          }
+        } catch (e: any) {
+          problems.push(`fare-calendar ${String(e?.message || e).slice(0, 90)}`);
+        }
+
+        // The calendar row is a complete, priced answer. When it prices the EXACT requested date there is
+        // nothing left to prove, so the slow SSR ladder is skipped: the catalogue warmer stays fast and the
+        // schedule rows are only fetched when the calendar could not price this date.
+        if (out.some((i: any) => i.attributes?.price_basis === 'live_fare')) {
+          out.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+          return out.slice(0, 40);
+        }
+
+        // ---- (b) the SSR route page: per-flight schedule (date-blind, so its rows rarely survive) ----
         const url = goibiboRouteUrl(rt.from, rt.to);
         const giHeaders = {
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
           Referer: 'https://www.google.com/',
         };
-        // Self-healing retry ladder (owner rule 21 Oct): the Akamai edge in
-        // front of goibibo.com intermittently resets HTTP/2 streams (prod curl
-        // error 92, "stream 3 reset") or tarpits the first hit. Ladder:
-        // chrome/h2 -> chrome/HTTP1.1 -> safari, so a transient reset never
-        // loses Goibibo fares from a search.
-        let r;
+        // Self-healing retry ladder (owner rule 21 Oct): the Akamai edge in front of goibibo.com
+        // intermittently resets HTTP/2 streams (prod curl error 92, "stream 3 reset") or tarpits the
+        // first hit. Ladder: chrome/h2 -> chrome/HTTP1.1 -> safari.
+        let r: any;
         const lastErr: string[] = [];
         const attempts: Array<{ label: string; opts: any }> = [
           { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 30_000, headers: giHeaders } },
@@ -1557,7 +1596,7 @@ export const flightsWorker: VerticalWorker = {
         for (const a of attempts) {
           try {
             r = await cffiFetch(url, a.opts);
-            if (r.status < 500) break; // got a definitive answer (200/403/404/429)
+            if (r.status < 500) break; // definitive answer (200/403/404/429)
             lastErr.push(`${a.label}: HTTP ${r.status}`);
             r = undefined;
           } catch (e: any) {
@@ -1565,67 +1604,62 @@ export const flightsWorker: VerticalWorker = {
             r = undefined;
           }
         }
-        if (!r) throw new AcquisitionError('SERVER_ERROR', `Goibibo route page unreachable after 3 attempts (${lastErr.join(' | ')})`);
-        if (r.status === 404) return []; // route page does not exist — honest "no such route page"
-        if (r.status === 403 || r.status === 429) {
-          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Goibibo edge-blocked the route page (HTTP ${r.status}).`, r.status);
-        }
-        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Goibibo route page HTTP ${r.status}`, r.status);
-        const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
-        if (!items.length) return [];
-        // OWNER 19 Nov ("goibibo flights needed in flights vertical"): Goibibo was INVISIBLE on every dated
-        // search. Its SEO route page is date-blind - it always serves one far-future service date (measured
-        // 2026-11-19: every request, with or without depdate/date/itinerary params, returned 2027-01-11) - and
-        // the travel-date gate rightly drops a row whose date is not the requested one, so the seller vanished
-        // the moment the app sent a date.
-        // A dated search now keeps only the rows Goibibo actually dated for that day. When it has none, the
-        // seller is still shown for the requested date with NO price (never another day's fare dressed up as
-        // this one): the card links to Goibibo's own dated search and the fare is read there.
-        const depRaw = String(ctx.query?.travelDates?.depart || '');
-        const wantedDate = /^\d{4}-\d{2}-\d{2}$/.test(depRaw) ? depRaw : '';
-        if (wantedDate) {
-          const dated = items.filter((i: any) => String(i.travel?.date || '') === wantedDate);
-          if (dated.length) {
-            dated.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
-            return dated.slice(0, 40);
+        if (r && r.status === 200) {
+          const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
+          if (items.length) {
+            const dated = items.filter((i: any) => String(i.travel?.date || '') === wantedDate);
+            if (dated.length) {
+              dated.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+              out.push(...dated.slice(0, 40));
+            } else if (!out.length) {
+              // No priced row and no schedule for the requested date: still show Goibibo, with the real
+              // schedule of the date it DOES publish and NO price for the requested date (never another
+              // day's fare dressed up as this one). The button opens Goibibo's own dated search.
+              const bAttr: any = (items[0] as any)?.attributes || {};
+              out.push(newRawItem(ctx.source, {
+                title: `Goibibo ${bAttr.airline || 'flight'} ${bAttr.flight_number || ''} ${rt.from} → ${rt.to} on ${wantedDate} — check live fare`.replace(/\s+/g, ' ').slice(0, 200),
+                brand: String(bAttr.airline || 'Goibibo'),
+                seller: 'Goibibo',
+                sellerUrl: datedUrl,
+                travel: { route: `${String(rt.from).toLowerCase()} to ${String(rt.to).toLowerCase()}`, date: wantedDate },
+                attributes: {
+                  airline: String(bAttr.airline || ''),
+                  flight_number: String(bAttr.flight_number || ''),
+                  ...(bAttr.departure ? { departure: String(bAttr.departure) } : {}),
+                  ...(bAttr.arrival ? { arrival: String(bAttr.arrival) } : {}),
+                  ...(bAttr.duration ? { duration: String(bAttr.duration) } : {}),
+                  stops: String(bAttr.stops ?? ''),
+                  origin: String(bAttr.origin || ''),
+                  destination: String(bAttr.destination || ''),
+                  price_basis: 'live_fares_unavailable',
+                  seller_presence: 'true',
+                  booking_cta: 'Check Goibibo for this date',
+                  data_note: `Goibibo's server-rendered route page only carries a far-future service date, so no fare is shown for ${wantedDate} rather than another day's price. The airline and schedule are real; the button opens Goibibo's own search for this date.`,
+                  image: String(bAttr.image_url || ''),
+                },
+                identifiers: { sku: `gi-${slug(rt.from)}-${slug(rt.to)}-${wantedDate}` },
+                evidence: {
+                  sourceUrl: datedUrl,
+                  extractedFields: ['route page schedule (airline, flight number, times); no fare for the requested date'],
+                },
+              }));
+            }
           }
-          const slug = (c: string) => String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, '').replace(/[^a-z0-9]+/g, '-');
-          const datedUrl = `https://www.goibibo.com/flights/${slug(rt.from)}-to-${slug(rt.to)}-flights/?depdate=${wantedDate.replace(/-/g, '')}`;
-          // The cheapest Goibibo journey we can see, stripped of its fare: airline, flight number, times and
-          // stops are real schedule facts, the PRICE is not published for the requested date, so none is shown.
-          const base: any = items[0];
-          const bAttr = base?.attributes || {};
-          return [newRawItem(ctx.source, {
-            title: `Goibibo ${bAttr.airline || 'flight'} ${bAttr.flight_number || ''} ${rt.from} → ${rt.to} on ${wantedDate} — check live fare`.replace(/\s+/g, ' ').slice(0, 200),
-            brand: String(bAttr.airline || 'Goibibo'),
-            seller: 'Goibibo',
-            sellerUrl: datedUrl,
-            travel: { route: `${String(rt.from).toLowerCase()} to ${String(rt.to).toLowerCase()}`, date: wantedDate },
-            attributes: {
-              airline: String(bAttr.airline || ''),
-              flight_number: String(bAttr.flight_number || ''),
-              ...(bAttr.departure ? { departure: String(bAttr.departure) } : {}),
-              ...(bAttr.arrival ? { arrival: String(bAttr.arrival) } : {}),
-              ...(bAttr.duration ? { duration: String(bAttr.duration) } : {}),
-              stops: String(bAttr.stops ?? ''),
-              origin: String(bAttr.origin || ''),
-              destination: String(bAttr.destination || ''),
-              price_basis: 'live_fares_unavailable',
-              seller_presence: 'true',
-              booking_cta: 'Check Goibibo for this date',
-              data_note: `Goibibo's server-rendered route page only carries a far-future service date, so no fare is shown for ${wantedDate} rather than another day's price. The airline and schedule are real; the button opens Goibibo's own search for this date.`,
-              image: String(bAttr.image_url || ''),
-            },
-            identifiers: { sku: `gi-${slug(rt.from)}-${slug(rt.to)}-${wantedDate}` },
-            evidence: {
-              sourceUrl: datedUrl,
-              extractedFields: ['route page schedule (airline, flight number, times); no fare for the requested date'],
-            },
-          })];
+        } else if (r && r.status === 404) {
+          problems.push('route page 404 (no such route page)');
+        } else if (r) {
+          problems.push(`route page HTTP ${r.status}`);
+        } else {
+          problems.push(`route page unreachable (${lastErr.join(' | ')})`);
         }
-        // cheapest 40, like the other flights sources
-        items.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
-        return items.slice(0, 40);
+
+        if (!out.length) {
+          // Only now is Goibibo honestly unavailable - and the message says which surface said what.
+          throw new AcquisitionError('SERVER_ERROR', `Goibibo returned nothing: ${problems.join(' | ') || 'no rows'}`, r?.status);
+        }
+        // Cheapest first; a priced calendar row leads when it is the cheapest thing Goibibo has.
+        out.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+        return out.slice(0, 40);
       },
     },
     {

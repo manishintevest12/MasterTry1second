@@ -9,6 +9,7 @@ import type { ParsedQuery, SourceConfig, VerticalId } from '../types';
 import { settings } from '../common/settings';
 import { canAttempt, getHealth, mandatedProbeDue } from './health';
 import { allVerticalWorkers } from '../workers/verticals';
+import { log } from '../common/logger';
 
 const DEFAULT_FRESHNESS = { liveVerifiedTtlSec: 900, freshTtlSec: 3600, maxStaleSec: 86400 };
 
@@ -130,8 +131,10 @@ export async function loadSourcesFromDb(): Promise<{ loaded: number; dbKind: str
     const rows = await store.query<any>('SELECT id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency FROM source_adapters');
     for (const row of rows) {
       const existing = sources.find((s) => s.id === row.id);
+      // A mandated partner stays enabled whatever the stored row says (owner 23 Nov). Reported once below.
+      const wantsOff = existing && isMandatedSource(existing.id) && !Boolean(row.enabled);
       if (!existing) continue;
-      existing.enabled = Boolean(row.enabled);
+      existing.enabled = wantsOff ? true : Boolean(row.enabled);
       existing.priority = Number(row.priority);
       if (row.config) {
         try {
@@ -141,6 +144,7 @@ export async function loadSourcesFromDb(): Promise<{ loaded: number; dbKind: str
       }
       if (row.rate_limit_pm) existing.rateLimit.maxRequestsPerMinute = Number(row.rate_limit_pm);
       if (row.max_concurrency) existing.rateLimit.maxConcurrency = Number(row.max_concurrency);
+      if (wantsOff) log.warn('Registry', `mandated partner ${existing.id} was stored as disabled; kept enabled (owner mandate)`);
     }
     return { loaded: rows.length, dbKind: store.kind };
   } catch {
@@ -195,14 +199,17 @@ export function isSlowSource(id: string): boolean { return SLOW_SOURCE_IDS.has(i
 export function selectSources(query: ParsedQuery, opts: { allowStale?: boolean; includeSlow?: boolean } = {}): SourceConfig[] {
   const vertical: VerticalId | null = query.vertical;
   const candidates = sources.filter((s) => {
-    if (!s.enabled) return false;
+    // OWNER 23 Nov ("goibibo flights add kro"): a mandated partner must never be missing from an answer.
+    // A stale source_adapters row saying enabled=0 cannot hide a partner the owner requires (owner 22 Nov).
+    // It is still rate-limited (maxRequestsPerMinute), so this cannot stampede the partner.
+    const mandated = isMandatedSource(s.id);
+    if (!s.enabled && !mandated) return false;
     // A slow source is served from the catalogue warmer, never from the user's search.
     if (!opts.includeSlow && SLOW_SOURCE_IDS.has(s.id)) return false;
     if (vertical && s.verticals.length > 0 && !s.verticals.includes(vertical)) return false;
-    if (!canAttempt(s.id)) {
-      // A mandated partner is probed on its own clock instead of being skipped for the whole cooldown.
-      if (!(isMandatedSource(s.id) && mandatedProbeDue(s.id))) return false;
-    }
+    if (!mandated && !canAttempt(s.id)) return false;
+    // A mandated partner whose circuit is open is probed on its own clock instead of every search.
+    if (mandated && !canAttempt(s.id) && !mandatedProbeDue(s.id)) return false;
     // Required credentials must be present for authorized sources
     if (s.requiresAuthorization && !s.config.apiKey && s.method !== 'partner_feed') return false;
     return true;

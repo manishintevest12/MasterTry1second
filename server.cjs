@@ -12761,6 +12761,113 @@ var init_goibiboFlights = __esm({
   }
 });
 
+// server/workers/parsers/goibiboFareCalendar.ts
+function goibiboDeviceId() {
+  return "94338e88-73de-4bc6-b77c-b1baf7fdb58f";
+}
+function goibiboFareCalendarUrl(fromCode, toCode, depCompact) {
+  const did = goibiboDeviceId();
+  return `https://flights-cb.goibibo.com/api/fareCalendar?apiCallTimestamp=${Date.now()}&crId=${did}&it=${fromCode}-${toCode}-${depCompact}&tripType=O&pfm=DESKTOP&src=desktop&region=in&cur=INR&currency=INR&language=eng&pax=A-1_C-0_I-0&cc=E&cmpId=&dfs=0&forwardFlowRequired=true&shd=true&sortBy=rhino`;
+}
+function goibiboCalendarHeaders(fromCode, toCode, depCompact) {
+  const did = goibiboDeviceId();
+  return {
+    Accept: "application/json",
+    "app-ver": "1.0.0",
+    "device-id": did,
+    "entity-name": "india",
+    os: "Windows",
+    domain: "in",
+    "user-country": "IN",
+    currency: "INR",
+    mcid: did,
+    region: "in",
+    pfm: "DESKTOP",
+    src: "desktop",
+    "profile-type": "b2c",
+    Origin: "https://www.goibibo.com",
+    Referer: `https://www.goibibo.com/flight/search?itinerary=${fromCode}-${toCode}-${depCompact}`
+  };
+}
+function keyToIso(key) {
+  if (!/^\d{6}$/.test(key)) return null;
+  const dd = Number(key.slice(0, 2));
+  const mm = Number(key.slice(2, 4));
+  const yy = Number(key.slice(4, 6));
+  if (dd < 1 || dd > 31 || mm < 1 || mm > 12) return null;
+  const year = 2e3 + yy;
+  const iso3 = `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  const check = /* @__PURE__ */ new Date(`${iso3}T00:00:00Z`);
+  if (Number.isNaN(check.getTime()) || check.getUTCDate() !== dd || check.getUTCMonth() !== mm - 1) return null;
+  return iso3;
+}
+function parseGoibiboFareCalendar(body) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const fares = d?.fares;
+  if (!fares || typeof fares !== "object") return [];
+  const out = [];
+  for (const [key, fRaw] of Object.entries(fares)) {
+    const dt = keyToIso(key);
+    if (!dt) continue;
+    const pr = Number(String(fRaw?.fr ?? "").replace(/[^\d.]/g, ""));
+    if (!Number.isFinite(pr) || pr <= 0) continue;
+    const airline = fRaw?.airlineInfo?.name ? String(fRaw.airlineInfo.name) : void 0;
+    out.push({ dt, pr, airline, label: String(fRaw?.txt || "") });
+  }
+  return out;
+}
+function goibiboSearchUrl(fromCode, toCode, depIso) {
+  const depCompact = String(depIso || "").replace(/-/g, "");
+  return `https://www.goibibo.com/flight/search/?tripType=O&itinerary=${fromCode}-${toCode}-${depCompact}&paxType=A-1_C-0_I-0&cabinClass=E&sTime=0&forwardFlowRequired=true&intl=false&ssr=false`;
+}
+function goibiboDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const exact = fares.find((f) => f.dt === depIso);
+  const upcoming = [...fares].filter((f) => f.dt >= today2).sort((a, b) => a.pr - b.pr);
+  const chosen = exact || upcoming[0];
+  if (!chosen) return [];
+  const isExact = Boolean(exact);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  const airlineLabel = chosen.airline ? ` (${chosen.airline})` : "";
+  return [newRawItem(source, {
+    title: `Goibibo ${routeLabel} ${isExact ? `on ${chosen.dt}` : `(cheapest upcoming, ${chosen.dt})`} from \u20B9${Math.round(chosen.pr)}${airlineLabel}`,
+    brand: "Goibibo",
+    price: Math.round(chosen.pr),
+    currency: "INR",
+    seller: "Goibibo",
+    sellerUrl: goibiboSearchUrl(fromCode, toCode, chosen.dt),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: chosen.dt },
+    attributes: {
+      route: routeLabel,
+      travel_date: chosen.dt,
+      departure_date: chosen.dt,
+      airline: chosen.airline || "",
+      fare_detail: chosen.airline ? `lowest ${chosen.airline} economy fare published by Goibibo for ${chosen.dt}` : `lowest economy fare published by Goibibo for ${chosen.dt}`,
+      fare_class: chosen.airline ? `lowest economy fare on Goibibo's calendar, flown by ${chosen.airline}` : "lowest economy fare on Goibibo's fare calendar",
+      // Machine-readable for the cards (website + Flutter app read the same field), with the full sentence in
+      // data_note so no client has to parse prose.
+      price_basis: isExact ? "live_fare" : "cheapest_upcoming_fare",
+      data_note: `Lowest Goibibo fare from the fare-calendar API on ${today2} for this route${isExact ? " and date" : " within the returned calendar window"}. Fare acquired from Goibibo's fare calendar on ${today2} (date label "${chosen.label}"); the calendar publishes the per-date lowest fare and the cheapest airline only, so no flight number or time is claimed. Booking continues on Goibibo's own search page.`,
+      image: ""
+    },
+    identifiers: { sku: `gi-${fromCode}-${toCode}-${chosen.dt}` },
+    evidence: {
+      sourceUrl: goibiboFareCalendarUrl(fromCode, toCode, String(chosen.dt).replace(/-/g, "")),
+      extractedFields: ["per-date lowest INR fare", "cheapest airline name", "date label"]
+    }
+  })];
+}
+var init_goibiboFareCalendar = __esm({
+  "server/workers/parsers/goibiboFareCalendar.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/parsers/mmtFareCalendar.ts
 function mmtFareCalendarUrl(fromCode, toCode, depCompact) {
   return `https://flights-cb.makemytrip.com/api/fareCalendar?apiCallTimestamp=${Date.now()}&crId=${mmtCrid()}&it=${fromCode}-${toCode}-${depCompact}&tripType=O&pfm=DESKTOP&src=desktop&region=in&cur=INR&currency=INR&language=eng&pax=A-1_C-0_I-0&cc=E&cmpId=&dfs=0&forwardFlowRequired=true&shd=true&sortBy=rhino`;
@@ -12788,7 +12895,7 @@ function mmtCalendarHeaders(fromCode, toCode, depCompact) {
     Referer: `https://www.makemytrip.com/flight/search?itinerary=${fromCode}-${toCode}-${depCompact}`
   };
 }
-function keyToIso(key) {
+function keyToIso2(key) {
   if (!/^\d{6}$/.test(key)) return null;
   const dd = Number(key.slice(0, 2));
   const mm = Number(key.slice(2, 4));
@@ -12811,7 +12918,7 @@ function parseMmtFareCalendar(body) {
   if (!fares || typeof fares !== "object") return [];
   const out = [];
   for (const [key, fRaw] of Object.entries(fares)) {
-    const dt = keyToIso(key);
+    const dt = keyToIso2(key);
     if (!dt) continue;
     const pr = Number(String(fRaw?.fr ?? "").replace(/[^\d.]/g, ""));
     if (!Number.isFinite(pr) || pr <= 0) continue;
@@ -18804,6 +18911,7 @@ var init_flights = __esm({
     init_etraveliFlights();
     init_yatraFlights();
     init_goibiboFlights();
+    init_goibiboFareCalendar();
     init_mmtFareCalendar();
     init_aixLowFares();
     init_aixTripStatus();
@@ -20174,14 +20282,20 @@ var init_flights = __esm({
           }
         },
         {
-          // Goibibo LIVE (17 Oct 2026): the SPA search tarpits on datacenter IPs, but
-          // the SEO route landing pages are SERVER-RENDERED with the full listing
-          // state in __NEXT_DATA__ (props.pageProps.data.state.listing): real per-flight
-          // total INR fares, airline names, times, stops, and the page's own service
-          // date (itinerary DEL-BOM-20/10/2026). Every offer is labelled with that
-          // real date. Discovered via browser recon + verified browserless.
+          // Goibibo LIVE, TWO surfaces (owner 23 Nov: "goibibo flights add kro").
+          //
+          // (a) FARE CALENDAR (new 23 Nov 2026): flights-cb.goibibo.com/api/fareCalendar is open browserless
+          //     and publishes the per-date LOWEST INR fare with the cheapest airline named (verified live
+          //     from the sandbox: IDR-DEL 28 Nov 2026 -> Rs 7,337 Air India Express, 327 date keys). Until
+          //     this, Goibibo was the only flight seller in the answer with NO price at all.
+          // (b) SEO ROUTE PAGE (17 Oct 2026): server-rendered per-flight schedule (airline, flight number,
+          //     times) out of __NEXT_DATA__, but DATE-BLIND - it always serves one far-future service date.
+          //     Kept for the schedule row, and for the honest no-fare presence card on a date it lacks.
+          //
+          // Neither surface may make Goibibo vanish: a priced calendar row is a complete answer on its own,
+          // and a blocked route page then only costs the schedule rows.
           sourceId: "w_flights_goibibo",
-          name: "Flights worker: Goibibo SSR route-page fares",
+          name: "Flights worker: Goibibo dated fares (fare-calendar API) + SSR route-page schedule",
           priority: 9,
           maxPerMinute: 4,
           timeoutMs: 35e3,
@@ -20192,6 +20306,31 @@ var init_flights = __esm({
             const fromA = await resolveAirport(rt.from, rt.fromCode);
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
+            const depRaw = String(ctx.query?.travelDates?.depart || "");
+            const wantedDate = /^\d{4}-\d{2}-\d{2}$/.test(depRaw) ? depRaw : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const depCompact = wantedDate.replace(/-/g, "");
+            const slug5 = (c) => String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, "-");
+            const datedUrl = `https://www.goibibo.com/flights/${slug5(rt.from)}-to-${slug5(rt.to)}-flights/?depdate=${depCompact}`;
+            const out = [];
+            const problems = [];
+            try {
+              const fc = await cffiFetch(goibiboFareCalendarUrl(fromA.code, toA.code, depCompact), {
+                impersonate: "chrome",
+                timeoutMs: 2e4,
+                headers: goibiboCalendarHeaders(fromA.code, toA.code, depCompact)
+              });
+              if (fc.status === 200) {
+                out.push(...goibiboDayFareItems(parseGoibiboFareCalendar(fc.body || ""), ctx.source, rt.from, rt.to, fromA.code, toA.code, wantedDate));
+              } else {
+                problems.push(`fare-calendar HTTP ${fc.status}`);
+              }
+            } catch (e2) {
+              problems.push(`fare-calendar ${String(e2?.message || e2).slice(0, 90)}`);
+            }
+            if (out.some((i) => i.attributes?.price_basis === "live_fare")) {
+              out.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+              return out.slice(0, 40);
+            }
             const url = goibiboRouteUrl(rt.from, rt.to);
             const giHeaders = {
               Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -20216,56 +20355,56 @@ var init_flights = __esm({
                 r = void 0;
               }
             }
-            if (!r) throw new AcquisitionError("SERVER_ERROR", `Goibibo route page unreachable after 3 attempts (${lastErr.join(" | ")})`);
-            if (r.status === 404) return [];
-            if (r.status === 403 || r.status === 429) {
-              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Goibibo edge-blocked the route page (HTTP ${r.status}).`, r.status);
-            }
-            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Goibibo route page HTTP ${r.status}`, r.status);
-            const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
-            if (!items.length) return [];
-            const depRaw = String(ctx.query?.travelDates?.depart || "");
-            const wantedDate = /^\d{4}-\d{2}-\d{2}$/.test(depRaw) ? depRaw : "";
-            if (wantedDate) {
-              const dated = items.filter((i) => String(i.travel?.date || "") === wantedDate);
-              if (dated.length) {
-                dated.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
-                return dated.slice(0, 40);
-              }
-              const slug5 = (c) => String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, "-");
-              const datedUrl = `https://www.goibibo.com/flights/${slug5(rt.from)}-to-${slug5(rt.to)}-flights/?depdate=${wantedDate.replace(/-/g, "")}`;
-              const base = items[0];
-              const bAttr = base?.attributes || {};
-              return [newRawItem(ctx.source, {
-                title: `Goibibo ${bAttr.airline || "flight"} ${bAttr.flight_number || ""} ${rt.from} \u2192 ${rt.to} on ${wantedDate} \u2014 check live fare`.replace(/\s+/g, " ").slice(0, 200),
-                brand: String(bAttr.airline || "Goibibo"),
-                seller: "Goibibo",
-                sellerUrl: datedUrl,
-                travel: { route: `${String(rt.from).toLowerCase()} to ${String(rt.to).toLowerCase()}`, date: wantedDate },
-                attributes: {
-                  airline: String(bAttr.airline || ""),
-                  flight_number: String(bAttr.flight_number || ""),
-                  ...bAttr.departure ? { departure: String(bAttr.departure) } : {},
-                  ...bAttr.arrival ? { arrival: String(bAttr.arrival) } : {},
-                  ...bAttr.duration ? { duration: String(bAttr.duration) } : {},
-                  stops: String(bAttr.stops ?? ""),
-                  origin: String(bAttr.origin || ""),
-                  destination: String(bAttr.destination || ""),
-                  price_basis: "live_fares_unavailable",
-                  seller_presence: "true",
-                  booking_cta: "Check Goibibo for this date",
-                  data_note: `Goibibo's server-rendered route page only carries a far-future service date, so no fare is shown for ${wantedDate} rather than another day's price. The airline and schedule are real; the button opens Goibibo's own search for this date.`,
-                  image: String(bAttr.image_url || "")
-                },
-                identifiers: { sku: `gi-${slug5(rt.from)}-${slug5(rt.to)}-${wantedDate}` },
-                evidence: {
-                  sourceUrl: datedUrl,
-                  extractedFields: ["route page schedule (airline, flight number, times); no fare for the requested date"]
+            if (r && r.status === 200) {
+              const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
+              if (items.length) {
+                const dated = items.filter((i) => String(i.travel?.date || "") === wantedDate);
+                if (dated.length) {
+                  dated.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+                  out.push(...dated.slice(0, 40));
+                } else if (!out.length) {
+                  const bAttr = items[0]?.attributes || {};
+                  out.push(newRawItem(ctx.source, {
+                    title: `Goibibo ${bAttr.airline || "flight"} ${bAttr.flight_number || ""} ${rt.from} \u2192 ${rt.to} on ${wantedDate} \u2014 check live fare`.replace(/\s+/g, " ").slice(0, 200),
+                    brand: String(bAttr.airline || "Goibibo"),
+                    seller: "Goibibo",
+                    sellerUrl: datedUrl,
+                    travel: { route: `${String(rt.from).toLowerCase()} to ${String(rt.to).toLowerCase()}`, date: wantedDate },
+                    attributes: {
+                      airline: String(bAttr.airline || ""),
+                      flight_number: String(bAttr.flight_number || ""),
+                      ...bAttr.departure ? { departure: String(bAttr.departure) } : {},
+                      ...bAttr.arrival ? { arrival: String(bAttr.arrival) } : {},
+                      ...bAttr.duration ? { duration: String(bAttr.duration) } : {},
+                      stops: String(bAttr.stops ?? ""),
+                      origin: String(bAttr.origin || ""),
+                      destination: String(bAttr.destination || ""),
+                      price_basis: "live_fares_unavailable",
+                      seller_presence: "true",
+                      booking_cta: "Check Goibibo for this date",
+                      data_note: `Goibibo's server-rendered route page only carries a far-future service date, so no fare is shown for ${wantedDate} rather than another day's price. The airline and schedule are real; the button opens Goibibo's own search for this date.`,
+                      image: String(bAttr.image_url || "")
+                    },
+                    identifiers: { sku: `gi-${slug5(rt.from)}-${slug5(rt.to)}-${wantedDate}` },
+                    evidence: {
+                      sourceUrl: datedUrl,
+                      extractedFields: ["route page schedule (airline, flight number, times); no fare for the requested date"]
+                    }
+                  }));
                 }
-              })];
+              }
+            } else if (r && r.status === 404) {
+              problems.push("route page 404 (no such route page)");
+            } else if (r) {
+              problems.push(`route page HTTP ${r.status}`);
+            } else {
+              problems.push(`route page unreachable (${lastErr.join(" | ")})`);
             }
-            items.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
-            return items.slice(0, 40);
+            if (!out.length) {
+              throw new AcquisitionError("SERVER_ERROR", `Goibibo returned nothing: ${problems.join(" | ") || "no rows"}`, r?.status);
+            }
+            out.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+            return out.slice(0, 40);
           }
         },
         {
@@ -30835,8 +30974,9 @@ async function loadSourcesFromDb() {
     const rows = await store7.query("SELECT id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency FROM source_adapters");
     for (const row of rows) {
       const existing = sources.find((s) => s.id === row.id);
+      const wantsOff = existing && isMandatedSource(existing.id) && !Boolean(row.enabled);
       if (!existing) continue;
-      existing.enabled = Boolean(row.enabled);
+      existing.enabled = wantsOff ? true : Boolean(row.enabled);
       existing.priority = Number(row.priority);
       if (row.config) {
         try {
@@ -30847,6 +30987,7 @@ async function loadSourcesFromDb() {
       }
       if (row.rate_limit_pm) existing.rateLimit.maxRequestsPerMinute = Number(row.rate_limit_pm);
       if (row.max_concurrency) existing.rateLimit.maxConcurrency = Number(row.max_concurrency);
+      if (wantsOff) log.warn("Registry", `mandated partner ${existing.id} was stored as disabled; kept enabled (owner mandate)`);
     }
     return { loaded: rows.length, dbKind: store7.kind };
   } catch {
@@ -30881,12 +31022,12 @@ function isSlowSource(id) {
 function selectSources(query, opts = {}) {
   const vertical = query.vertical;
   const candidates = sources.filter((s) => {
-    if (!s.enabled) return false;
+    const mandated = isMandatedSource(s.id);
+    if (!s.enabled && !mandated) return false;
     if (!opts.includeSlow && SLOW_SOURCE_IDS.has(s.id)) return false;
     if (vertical && s.verticals.length > 0 && !s.verticals.includes(vertical)) return false;
-    if (!canAttempt(s.id)) {
-      if (!(isMandatedSource(s.id) && mandatedProbeDue(s.id))) return false;
-    }
+    if (!mandated && !canAttempt(s.id)) return false;
+    if (mandated && !canAttempt(s.id) && !mandatedProbeDue(s.id)) return false;
     if (s.requiresAuthorization && !s.config.apiKey && s.method !== "partner_feed") return false;
     return true;
   });
@@ -30928,6 +31069,7 @@ var init_registry = __esm({
     init_settings();
     init_health();
     init_verticals();
+    init_logger();
     DEFAULT_FRESHNESS = { liveVerifiedTtlSec: 900, freshTtlSec: 3600, maxStaleSec: 86400 };
     sources = seedSources();
     MANDATED_SOURCE_IDS = /* @__PURE__ */ new Set([
