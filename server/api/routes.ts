@@ -3395,12 +3395,22 @@ apiRouter.get('/notifications', authMiddleware, async (req, res) => {
   const user = (req as any).user;
   const key = user ? `notifications:user:${Number(user.id)}` : 'notifications:anon';
   try {
+    // OWNER 23 Nov ("bell notification ... usme kuch v notification ni aata"): fill the bell before reading it, so a
+    // new feature note or the day's real deal is actually there. Best-effort and cached: a feed that cannot be
+    // written leaves the drawer showing what already exists.
+    try {
+      const { ensureFeed } = await import('../notifications/feed');
+      await ensureFeed();
+    } catch { /* the bell still answers with whatever is stored */ }
     const body = await cachedRead(key, 15_000, async () => {
       if (user) {
         const { items, unread } = await userNotifications(Number(user.id));
         return { success: true, signedIn: true, items, unread };
       }
-      return { success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 };
+      const items = await broadcastNotifications();
+      // Anonymous visitors cannot persist read state, so the badge counts what is in the drawer — otherwise the bell
+      // looks dead even when it has news.
+      return { success: true, signedIn: false, items, unread: items.length };
     }, { maxStaleMs: 24 * 60 * 60_000 });
     res.setHeader('Cache-Control', 'private, max-age=15');
     res.json(body);

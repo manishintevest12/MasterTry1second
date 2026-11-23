@@ -2725,8 +2725,8 @@ async function probeOnce(platform, url) {
 async function seatTemplateTrusted(platform, sampleUrl) {
   const hit = probeCache.get(platform);
   if (hit && Date.now() - hit.at < PROBE_TTL_MS) return hit.ok;
-  const running2 = probing.get(platform);
-  if (running2) return running2;
+  const running3 = probing.get(platform);
+  if (running3) return running3;
   const p = probeOnce(platform, sampleUrl).finally(() => probing.delete(platform));
   probing.set(platform, p);
   return p;
@@ -3218,8 +3218,8 @@ function gatedPoolSize(file = GATED_POOL_FILE) {
   }
 }
 function healGatedSource(key, opts = {}) {
-  const running2 = healInFlight.get(key);
-  if (running2 && !opts.force) return running2;
+  const running3 = healInFlight.get(key);
+  if (running3 && !opts.force) return running3;
   const run = healGatedSourceInner(key, opts).finally(() => {
     if (healInFlight.get(key) === run) healInFlight.delete(key);
   });
@@ -27445,8 +27445,8 @@ function parseTicketNewMoviesPage(body, cityKey) {
     return [];
   }
   const serverState = d?.props?.pageProps?.data?.serverState;
-  const running2 = serverState?.currentlyRunningMovies;
-  const entry = running2?.[cityKey] || Object.values(running2 || {})[0];
+  const running3 = serverState?.currentlyRunningMovies;
+  const entry = running3?.[cityKey] || Object.values(running3 || {})[0];
   const movies = entry?.data?.movies || [];
   return movies.filter((mv) => mv && typeof mv.name === "string" && mv.name.length > 0);
 }
@@ -28228,8 +28228,8 @@ function matchAgg(aggs, title) {
 }
 function walkGwCity(city, maxCinemas = 6) {
   const key = `gw|${city}`;
-  const running2 = gwAggInflight.get(key);
-  if (running2) return running2;
+  const running3 = gwAggInflight.get(key);
+  if (running3) return running3;
   const p = (async () => {
     let host = "district";
     let aggs = await gwCityMovieAggregates("district", city, maxCinemas).catch(() => null);
@@ -32123,8 +32123,8 @@ function resolveLenderLogo(rawName) {
   const c = load7();
   const hit = c[key];
   if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS2)) return Promise.resolve(hit.url);
-  const running2 = inflight2.get(key);
-  if (running2) return running2;
+  const running3 = inflight2.get(key);
+  if (running3) return running3;
   const p = lookup(name).catch(() => null).then((url) => {
     c[key] = { url, at: Date.now() };
     persist2();
@@ -37817,8 +37817,8 @@ function harvestOnce(from, to, date) {
   if (hit && Date.now() - hit.at < (hit.ok ? HARVEST_OK_TTL_MS : HARVEST_FAIL_TTL_MS)) {
     return Promise.resolve(hit.learned);
   }
-  const running2 = harvestInflight.get(key);
-  if (running2) return running2;
+  const running3 = harvestInflight.get(key);
+  if (running3) return running3;
   const job = (async () => {
     let learned = 0;
     try {
@@ -39231,10 +39231,10 @@ async function runSearchPipeline(input) {
     }
     if (v.results.length) return v;
   }
-  const running2 = inflightPipelines.get(cacheKey2);
-  if (running2) {
+  const running3 = inflightPipelines.get(cacheKey2);
+  if (running3) {
     const early2 = await Promise.race([
-      running2.then((r) => ({ kind: "full", r }), () => null),
+      running3.then((r) => ({ kind: "full", r }), () => null),
       new Promise((res) => setTimeout(() => res(null), 600))
     ]);
     if (early2 && early2.kind === "full") return early2.r;
@@ -40219,8 +40219,8 @@ function cachedRead(key, ttlMs, loader, opts = {}) {
   const hit = store4.get(key);
   const fresh = !!hit && now - hit.at < ttlMs;
   if (fresh) return Promise.resolve(hit.value);
-  const running2 = inflight3.get(key);
-  if (running2) return running2;
+  const running3 = inflight3.get(key);
+  if (running3) return running3;
   const maxStale = opts.maxStaleMs ?? 6 * 60 * 6e4;
   const usableStale = !!hit && now - hit.at < maxStale;
   const run = loader().then((value) => {
@@ -43341,8 +43341,8 @@ function resolveMerchantCrispLogo(rawName) {
   const c = load8();
   const hit = c[key];
   if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS3)) return Promise.resolve(hit.url);
-  const running2 = inflight4.get(key);
-  if (running2) return running2;
+  const running3 = inflight4.get(key);
+  if (running3) return running3;
   const p = lookup3(name).catch(() => null).then((url) => {
     c[key] = { url, at: Date.now() };
     persist4();
@@ -53026,6 +53026,152 @@ var init_productCatalogue = __esm({
   }
 });
 
+// server/notifications/feed.ts
+var feed_exports = {};
+__export(feed_exports, {
+  FEATURE_NOTES: () => FEATURE_NOTES,
+  dealRow: () => dealRow,
+  ensureFeed: () => ensureFeed,
+  featureRow: () => featureRow
+});
+function featureRow(note) {
+  return {
+    kind: "feature",
+    title: String(note.title).slice(0, 200),
+    body: String(note.body).slice(0, 1e3),
+    image: null,
+    ctaUrl: /^https:\/\//i.test(String(note.ctaUrl || "")) || String(note.ctaUrl || "").startsWith("/") ? String(note.ctaUrl) : null,
+    productTitle: null,
+    priceNow: null,
+    seller: null,
+    createdBy: "system:whatsnew"
+  };
+}
+function dealRow(deal) {
+  const title = String(deal?.title || "").trim();
+  const merchant = String(deal?.merchantName || deal?.merchantKey || "").trim();
+  if (!title) return null;
+  const image = /^https:\/\//i.test(String(deal?.imageUrl || "")) ? String(deal.imageUrl) : null;
+  const cta = /^https:\/\//i.test(String(deal?.goUrl || "")) || String(deal?.goUrl || "").startsWith("/") ? String(deal.goUrl) : null;
+  return {
+    kind: "deal",
+    title: `Deal today: ${title}`.slice(0, 200),
+    body: `${merchant ? `${merchant} \u2014 ` : ""}${String(deal?.description || "Live offer on Try1Second right now.").slice(0, 300)}`.slice(0, 1e3),
+    image,
+    ctaUrl: cta,
+    productTitle: null,
+    priceNow: null,
+    seller: merchant || null,
+    createdBy: "system:daily-deal"
+  };
+}
+async function ensureFeed() {
+  if (Date.now() - lastRun < 10 * 6e4) return;
+  if (running) return running;
+  running = (async () => {
+    try {
+      const store7 = getStore();
+      const existing = await store7.query(
+        `SELECT title FROM notifications WHERE user_id IS NULL`
+      );
+      const titles = new Set((existing || []).map((r) => String(r.title || "")));
+      for (const note of FEATURE_NOTES) {
+        const row = featureRow(note);
+        if (titles.has(row.title)) continue;
+        await store7.execute(INSERT, [
+          row.kind,
+          row.title,
+          row.body,
+          row.image,
+          row.ctaUrl,
+          row.productTitle,
+          row.priceNow,
+          row.seller,
+          row.createdBy
+        ]);
+        titles.add(row.title);
+      }
+      const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const dealsToday = await store7.query(
+        `SELECT id FROM notifications WHERE kind = 'deal' AND DATE(created_at) = ? LIMIT 1`,
+        [today2]
+      );
+      if (!(dealsToday || []).length) {
+        const { getDealsWithCounts: getDealsWithCounts2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
+        const payload = await getDealsWithCounts2({ limit: 12, hasImage: "1" });
+        const list = Array.isArray(payload?.deals) ? payload.deals : [];
+        const ranked = [...list].sort((a, b) => Number(b?.kind === "bank_offer") - Number(a?.kind === "bank_offer"));
+        for (const deal of ranked) {
+          const row = dealRow(deal);
+          if (!row || titles.has(row.title)) continue;
+          await store7.execute(INSERT, [
+            row.kind,
+            row.title,
+            row.body,
+            row.image,
+            row.ctaUrl,
+            row.productTitle,
+            row.priceNow,
+            row.seller,
+            row.createdBy
+          ]);
+          titles.add(row.title);
+          break;
+        }
+      }
+      lastRun = Date.now();
+    } catch (e2) {
+      log.warn("Notifications", "what's-new feed not filled", { error: e2?.message });
+      lastRun = Date.now();
+    } finally {
+      running = null;
+    }
+  })();
+  return running;
+}
+var FEATURE_NOTES, INSERT, lastRun, running;
+var init_feed = __esm({
+  "server/notifications/feed.ts"() {
+    init_db();
+    init_logger();
+    FEATURE_NOTES = [
+      {
+        key: "related-real-photos",
+        date: "2026-11-23",
+        title: "Related products now show their real photos",
+        body: "Every card in Related Products carries the merchant's own photo of that product \u2014 no repeated picture, no seller logo. Tap a card to price that exact product.",
+        ctaUrl: "/"
+      },
+      {
+        key: "app-on-play",
+        date: "2026-11-22",
+        title: "The Try1Second app is on Google Play",
+        body: "Price comparisons, deal scores and price-drop alerts open faster in the app. Install it once and every search stays in your pocket.",
+        ctaUrl: "https://play.google.com/store/apps/details?id=com.try1second.try1second"
+      },
+      {
+        key: "digihaat-ecommerce",
+        date: "2026-11-22",
+        title: "Grocery results are cleaner",
+        body: "Marketplace listings that do not belong to the 10-minute grocery vertical no longer appear there. Grocery shows grocery; e-commerce shows e-commerce.",
+        ctaUrl: "/"
+      },
+      {
+        key: "faster-searches",
+        date: "2026-11-23",
+        title: "Faster, steadier live searches",
+        body: "Slow searches now answer with what is already verified instead of hanging, and older app versions no longer hit dead endpoints. Same prices, less waiting.",
+        ctaUrl: "/"
+      }
+    ];
+    INSERT = `INSERT INTO notifications
+  (user_id, kind, title, body, image, cta_url, product_title, price_now, seller, is_active, created_by)
+  VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`;
+    lastRun = 0;
+    running = null;
+  }
+});
+
 // server/marketing/adSafety.ts
 var adSafety_exports = {};
 __export(adSafety_exports, {
@@ -56639,12 +56785,18 @@ var init_routes = __esm({
       const user = req.user;
       const key = user ? `notifications:user:${Number(user.id)}` : "notifications:anon";
       try {
+        try {
+          const { ensureFeed: ensureFeed2 } = await Promise.resolve().then(() => (init_feed(), feed_exports));
+          await ensureFeed2();
+        } catch {
+        }
         const body = await cachedRead(key, 15e3, async () => {
           if (user) {
-            const { items, unread } = await userNotifications(Number(user.id));
-            return { success: true, signedIn: true, items, unread };
+            const { items: items2, unread } = await userNotifications(Number(user.id));
+            return { success: true, signedIn: true, items: items2, unread };
           }
-          return { success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 };
+          const items = await broadcastNotifications();
+          return { success: true, signedIn: false, items, unread: items.length };
         }, { maxStaleMs: 24 * 60 * 6e4 });
         res.setHeader("Cache-Control", "private, max-age=15");
         res.json(body);
@@ -61910,8 +62062,8 @@ __export(refreshWorker_exports, {
   stopWorkers: () => stopWorkers
 });
 function startWorkers() {
-  if (running) return;
-  running = true;
+  if (running2) return;
+  running2 = true;
   try {
     const mod = (init_recoveryScanner(), __toCommonJS(recoveryScanner_exports));
     mod.startRecoveryScanner();
@@ -62029,9 +62181,9 @@ function startWorkers() {
 function stopWorkers() {
   timers.forEach((t) => clearInterval(t));
   timers = [];
-  running = false;
+  running2 = false;
 }
-var timers, running;
+var timers, running2;
 var init_refreshWorker = __esm({
   "server/workers/refreshWorker.ts"() {
     init_settings();
@@ -62047,7 +62199,7 @@ var init_refreshWorker = __esm({
     init_pricing();
     init_freshness();
     timers = [];
-    running = false;
+    running2 = false;
   }
 });
 
@@ -67257,8 +67409,8 @@ function within(p, ms) {
 }
 async function snapshotForPath(path20) {
   const key0 = (path20 || "/").replace(/\/+$/, "") || "/";
-  const running2 = inFlight2.get(key0);
-  if (running2) return running2;
+  const running3 = inFlight2.get(key0);
+  if (running3) return running3;
   const build2 = buildSnapshotForPath(path20).finally(() => inFlight2.delete(key0));
   inFlight2.set(key0, build2);
   return build2;
