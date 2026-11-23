@@ -36,7 +36,7 @@ import { geoSearch, geoReverse, geoSuggest } from '../common/geoProxy';
 import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, requireAdmin, loginUser, registerUser, SESSION_TTL_SEC, issueSessionToken } from '../auth/authService';
-import { resolveCatalogueImage } from '../lens/productImage';
+import { resolveCatalogueImage, ogImageFromUrl } from '../lens/productImage';
 import { rowPhotos } from '../lens/relatedRowImages';
 import { requestAdminOtp, verifyAdminOtp, verifyAdminRecovery } from '../auth/otpService';
 import { verifyFirebaseIdTokenDetailed, verifyGoogleIdToken } from '../auth/firebaseAuth';
@@ -2970,8 +2970,12 @@ apiRouter.post('/product-page', async (req, res) => {
   // is the honest thumbnail; the seller's own logo is sent alongside it.
   const productImageUrls = [product?.image, ...(Array.isArray(product?.images) ? product.images : [])]
     .filter((u: any) => typeof u === 'string' && u.startsWith('https://'));
+  // The merchant page of each row, kept OUT of the response (the client gets the masked `goUrl` only). The photo
+  // fallback below needs the real page to read its `og:image`.
+  const sellerUrlById = new Map<string, string>();
   const toRow = ({ o, price }: any) => {
     const attrs = o.attributes || {};
+    if (o?.id && o?.sellerUrl) sellerUrlById.set(String(o.id), String(o.sellerUrl));
     // OWNER 7 Nov ("product page pr logo and image ni aa raha related products section mai"):
     // MEASURED on production - every related row came back with image: null while the same rows in
     // `offers` had photos, because this only read attrs.image_url. Each parser spells the product
@@ -3152,7 +3156,9 @@ apiRouter.post('/product-page', async (req, res) => {
     .filter((x) => !isSameProduct(lensQuery, String(x.o.title || ''), matchMode))
     .map(toRow)
     .filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase()))
-    .slice(0, 60);
+    // Wider than the 36 cards we show, because a row whose photo cannot be found anywhere is dropped rather than
+    // painted with a logo (owner 23 Nov). The grid still fills its 12 rows of 3 from what is left.
+    .slice(0, 90);
 
   // A related row whose own parser carried no photo borrows the photo of the SAME product title
   // already stored in the catalogue (identical name, real https URL - nothing is invented). Resolved
@@ -3199,10 +3205,34 @@ apiRouter.post('/product-page', async (req, res) => {
       filled: relatedPool.filter((r) => r.image).length,
     });
   }
-  // Images are compulsory (owner 8 Nov), and the photo must belong to THIS card (owner 23 Nov). Both clients paint
-  // the row's own photo, else the SELLER's real logo, so a row whose product photo the catalogue genuinely does not
-  // have still ships as a real image instead of a grey box — and the grid keeps its 12 rows.
-  const related = relatedPool.slice(0, 36);
+  // OWNER 23 Nov ("ab logo dikh raha hai muje bhai real photo chaiye ... kitni baar bolu"): a logo is not a product
+  // photo, so a row still without a real photo now goes to the product's OWN page and reads the merchant's `og:image`
+  // — the picture that merchant publishes for that exact product. Only a row that has no real photo anywhere is
+  // dropped; the grid then fills from the wider pool instead of showing logo cards.
+  const stillBare = relatedPool.filter((r) => !r.image && sellerUrlById.get(String(r.id)));
+  if (stillBare.length) {
+    const ogDeadline = Date.now() + 3500;
+    const q2: any[] = [...stillBare];
+    await Promise.all(Array.from({ length: 6 }, async () => {
+      while (q2.length && Date.now() < ogDeadline) {
+        const row: any = q2.shift();
+        if (!row) break;
+        try {
+          const url = await ogImageFromUrl(String(sellerUrlById.get(String(row.id)) || ''));
+          if (url && url.startsWith('https://')) {
+            row.image = url;
+            row.images = [url, ...(Array.isArray(row.images) ? row.images : [])].slice(0, 8);
+          }
+        } catch { /* no photo on the merchant page: the row is dropped below */ }
+      }
+    }));
+    log.info('ProductPage', 'Read product photos from the merchant pages', {
+      attempted: stillBare.length, filled: relatedPool.filter((r) => r.image).length,
+    });
+  }
+  // Every card carries a REAL photo of its own product. No logos, no parent picture: a row with no photo anywhere is
+  // dropped and the next priced row from the pool takes its place, so the grid still fills its rows.
+  const related = relatedPool.filter((r) => Boolean(r.image)).slice(0, 36);
 
   // Real history: first same-product offer that carries a canonical entity id with recorded points.
   let history: Array<{ price: number; capturedAt: string }> = [];

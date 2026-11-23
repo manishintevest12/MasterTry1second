@@ -41679,24 +41679,36 @@ function firstHttps(doc) {
   }
   return null;
 }
+function tokenScore(title, tokens3) {
+  const hay = String(title || "").toLowerCase();
+  if (!hay || !tokens3.length) return 0;
+  let hits = 0;
+  for (const t of tokens3) if (t && hay.includes(t)) hits += 1;
+  return hits;
+}
+function isPhotoMatch(title, tokens3) {
+  if (!tokens3.length) return false;
+  const hits = tokenScore(title, tokens3);
+  if (hits === 0) return false;
+  if (tokens3.length === 1) return tokens3[0].length >= 6;
+  return hits >= 2 && hits / tokens3.length >= 0.5;
+}
 async function resolveCatalogueImage(query, vertical, opts = {}) {
   const tokens3 = imageTokens(query);
   if (!tokens3.length) return null;
   const store7 = getStore();
-  const params = [vertical];
-  let where = `vertical = ? AND attributes IS NOT NULL AND attributes LIKE '%image%'`;
-  for (const t of tokens3) {
-    where += " AND LOWER(title) LIKE ?";
-    params.push(`%${t.replace(/[%_]/g, "")}%`);
-  }
+  const skip = String(opts.excludeSeller || "").toLowerCase().trim();
+  const probe = [...tokens3].sort((a, b) => b.length - a.length)[0];
+  const params = [vertical, `%${probe.replace(/[%_]/g, "")}%`];
   try {
     const rows = await store7.query(
-      `SELECT title, attributes FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT 40`,
+      `SELECT title, attributes FROM offers
+       WHERE vertical = ? AND attributes IS NOT NULL AND attributes LIKE '%image%' AND LOWER(title) LIKE ?
+       ORDER BY fetched_at DESC LIMIT 200`,
       params
     );
-    const skip = String(opts.excludeSeller || "").toLowerCase().trim();
-    for (const r of rows) {
-      if (skip && String(r.title || "").toLowerCase().includes(skip)) continue;
+    const scored = (rows || []).map((r) => ({ r, score: tokenScore(r.title, tokens3) })).filter(({ r }) => !(skip && String(r.title || "").toLowerCase().includes(skip))).filter(({ r }) => isPhotoMatch(String(r.title || ""), tokens3)).sort((a, b) => b.score - a.score);
+    for (const { r } of scored) {
       const url = firstHttps(typeof r.attributes === "string" ? JSON.parse(r.attributes) : r.attributes);
       if (url) return url;
     }
@@ -41704,7 +41716,56 @@ async function resolveCatalogueImage(query, vertical, opts = {}) {
   }
   return null;
 }
-var STOP4;
+function extractOgImage2(html) {
+  const source = String(html || "");
+  if (!source) return null;
+  const patterns = [
+    /<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]*content=["']([^"']+)["']/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:image(?::secure_url)?["']/gi,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]*content=["']([^"']+)["']/gi
+  ];
+  for (const re of patterns) {
+    for (const m of source.matchAll(re)) {
+      const url = String(m[1] || "").trim();
+      if (!/^https?:\/\//i.test(url)) continue;
+      if (NOT_A_PRODUCT_PHOTO.test(url)) continue;
+      return url;
+    }
+  }
+  return null;
+}
+async function ogImageFromUrl(pageUrl, timeoutMs = 2500) {
+  const url = String(pageUrl || "").trim();
+  if (!/^https?:\/\//i.test(url)) return null;
+  const hit = ogMemo.get(url);
+  if (hit && Date.now() - hit.at < 30 * 6e4) return hit.url;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36",
+        accept: "text/html,application/xhtml+xml"
+      }
+    });
+    if (!res.ok) {
+      ogMemo.set(url, { url: null, at: Date.now() });
+      return null;
+    }
+    const found = extractOgImage2((await res.text()).slice(0, 3e5));
+    ogMemo.set(url, { url: found, at: Date.now() });
+    if (ogMemo.size > 600) ogMemo.delete(ogMemo.keys().next().value);
+    return found;
+  } catch {
+    ogMemo.set(url, { url: null, at: Date.now() });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+var STOP4, NOT_A_PRODUCT_PHOTO, ogMemo;
 var init_productImage = __esm({
   "server/lens/productImage.ts"() {
     init_db();
@@ -41736,6 +41797,8 @@ var init_productImage = __esm({
       "fresh",
       "new"
     ]);
+    NOT_A_PRODUCT_PHOTO = /(logo|favicon|sprite|placeholder|default[-_]?image|share[-_]?image|social|brand[-_]?(mark|logo)|site[-_]?icon|opengraph[-_]?default)/i;
+    ogMemo = globalThis.__t1sOgMemo ??= /* @__PURE__ */ new Map();
   }
 });
 
@@ -56232,8 +56295,10 @@ var init_routes = __esm({
         });
       }
       const productImageUrls = [product?.image, ...Array.isArray(product?.images) ? product.images : []].filter((u) => typeof u === "string" && u.startsWith("https://"));
+      const sellerUrlById = /* @__PURE__ */ new Map();
       const toRow = ({ o, price: price2 }) => {
         const attrs = o.attributes || {};
+        if (o?.id && o?.sellerUrl) sellerUrlById.set(String(o.id), String(o.sellerUrl));
         const imgs = rowPhotos(o);
         const sellerName = String(o.seller || o.vendor || "");
         const logoKey = merchantKeyOf(sellerName);
@@ -56368,7 +56433,7 @@ var init_routes = __esm({
       }
       const cheapest2 = offers[0] || null;
       const seen = new Set(offers.map((r) => r.title.toLowerCase()));
-      const relatedPool = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 60);
+      const relatedPool = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 90);
       const photoMemo = globalThis.__t1sPhotoMemo ??= /* @__PURE__ */ new Map();
       const memoGet = (key) => {
         const hit = photoMemo.get(key);
@@ -56414,7 +56479,30 @@ var init_routes = __esm({
           filled: relatedPool.filter((r) => r.image).length
         });
       }
-      const related = relatedPool.slice(0, 36);
+      const stillBare = relatedPool.filter((r) => !r.image && sellerUrlById.get(String(r.id)));
+      if (stillBare.length) {
+        const ogDeadline = Date.now() + 3500;
+        const q22 = [...stillBare];
+        await Promise.all(Array.from({ length: 6 }, async () => {
+          while (q22.length && Date.now() < ogDeadline) {
+            const row = q22.shift();
+            if (!row) break;
+            try {
+              const url2 = await ogImageFromUrl(String(sellerUrlById.get(String(row.id)) || ""));
+              if (url2 && url2.startsWith("https://")) {
+                row.image = url2;
+                row.images = [url2, ...Array.isArray(row.images) ? row.images : []].slice(0, 8);
+              }
+            } catch {
+            }
+          }
+        }));
+        log.info("ProductPage", "Read product photos from the merchant pages", {
+          attempted: stillBare.length,
+          filled: relatedPool.filter((r) => r.image).length
+        });
+      }
+      const related = relatedPool.filter((r) => Boolean(r.image)).slice(0, 36);
       let history = [];
       let historyEntity = null;
       const historyLookup = (async () => {
