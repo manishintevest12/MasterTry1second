@@ -85,11 +85,49 @@ function readerEnabled(): boolean {
  *   CF_ACCOUNT_ID    + CF_BROWSER_TOKEN   -> Cloudflare browser-rendering/content (free tier, no server to run)
  * The rung sits BEFORE scraperapi: our own capacity is free at the margin, so it should always be spent first.
  */
+/**
+ * OWNER 23 Nov: "cloudflare wala diya tho tha" — the credentials were already supplied, under the names the panel and
+ * the Cloudflare dashboard use. Only CF_ACCOUNT_ID / CF_BROWSER_TOKEN were read, so a working account configured as
+ * CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN looked like "nothing configured" and the rung never ran. Every common
+ * spelling is accepted now, including Cloudflare's global-key pair (email + key), and the chosen names are reported so
+ * a mismatch is visible instead of silent.
+ */
+function envFirst(names: string[]): string {
+  for (const n of names) {
+    const v = String(process.env[n] || '').trim();
+    if (v) return v;
+  }
+  return '';
+}
+
+export const CF_ACCOUNT_ENV = ['CF_ACCOUNT_ID', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_ACCOUNT_TAG', 'CF_ACCOUNT_TAG'];
+export const CF_TOKEN_ENV = ['CF_BROWSER_TOKEN', 'CLOUDFLARE_BROWSER_TOKEN', 'CF_API_TOKEN', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_TOKEN'];
+export const CF_GLOBAL_KEY_ENV = ['CLOUDFLARE_API_KEY', 'CF_GLOBAL_API_KEY'];
+export const CF_EMAIL_ENV = ['CLOUDFLARE_EMAIL', 'CF_API_EMAIL'];
+
+function cfAccountId(): string { return envFirst(CF_ACCOUNT_ENV); }
+function cfBearer(): string { return envFirst(CF_TOKEN_ENV); }
+function cfGlobalKey(): { email: string; key: string } | null {
+  const key = envFirst(CF_GLOBAL_KEY_ENV);
+  const email = envFirst(CF_EMAIL_ENV);
+  return key && email ? { email, key } : null;
+}
+
+/** Which env names the Cloudflare path actually found (admin/diagnostic view; never the values). */
+export function ownRenderEnvNames(): { account: string | null; token: string | null; mode: 'render-service' | 'cloudflare-token' | 'cloudflare-global-key' | 'none' } {
+  if (String(process.env.T1S_RENDER_URL || '').trim()) {
+    return { account: null, token: process.env.T1S_RENDER_TOKEN ? 'T1S_RENDER_TOKEN' : null, mode: 'render-service' };
+  }
+  const account = CF_ACCOUNT_ENV.find((n) => String(process.env[n] || '').trim()) || null;
+  const token = CF_TOKEN_ENV.find((n) => String(process.env[n] || '').trim()) || null;
+  if (account && token) return { account, token, mode: 'cloudflare-token' };
+  const gk = cfGlobalKey();
+  if (account && gk) return { account, token: CF_GLOBAL_KEY_ENV.find((n) => String(process.env[n] || '').trim()) || null, mode: 'cloudflare-global-key' };
+  return { account, token, mode: 'none' };
+}
+
 function ownRenderConfigured(): boolean {
-  return Boolean(
-    String(process.env.T1S_RENDER_URL || '').trim()
-    || (String(process.env.CF_ACCOUNT_ID || '').trim() && String(process.env.CF_BROWSER_TOKEN || '').trim()),
-  );
+  return ownRenderEnvNames().mode !== 'none';
 }
 
 async function viaOwn(url: string, timeoutMs: number): Promise<{ status: number; body: string }> {
@@ -117,14 +155,18 @@ async function viaOwn(url: string, timeoutMs: number): Promise<{ status: number;
     } catch { /* not JSON: use as-is */ }
     return { status, body };
   }
-  const account = String(process.env.CF_ACCOUNT_ID || '').trim();
-  const token = String(process.env.CF_BROWSER_TOKEN || '').trim();
-  if (!account || !token) throw new Error('own render not configured');
+  const account = cfAccountId();
+  const token = cfBearer();
+  const globalKey = cfGlobalKey();
+  if (!account || (!token && !globalKey)) throw new Error('own render not configured');
+  const authHeaders: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : { 'X-Auth-Email': globalKey!.email, 'X-Auth-Key': globalKey!.key };
   const res = await cffiFetch(`https://api.cloudflare.com/client/v4/accounts/${account}/browser-rendering/content`, {
     method: 'POST',
     impersonate: 'chrome',
     timeoutMs: budget,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify({ url, gotoOptions: { waitUntil: 'networkidle0', timeout: budget } }),
   });
   const raw = String((res as any).body || '');
@@ -132,7 +174,12 @@ async function viaOwn(url: string, timeoutMs: number): Promise<{ status: number;
     const parsed = JSON.parse(raw);
     const html = parsed?.result;
     if (typeof html === 'string') return { status: 200, body: html };
-    if (parsed?.success === false) return { status: 500, body: raw.slice(0, 400) };
+    if (parsed?.success === false) {
+      // e.g. 10000 "Authentication error" (wrong key) or 10021 (Browser Rendering not enabled on the account)
+      const detail = Array.isArray(parsed?.errors) ? parsed.errors.map((x: any) => `${x?.code ?? ''} ${x?.message ?? ''}`.trim()).join('; ') : '';
+      log.warn('Rescue', 'Cloudflare Browser Rendering refused the request', { detail: detail.slice(0, 200) });
+      return { status: Number(parsed?.errors?.[0]?.code) === 10021 ? 403 : 502, body: detail || raw.slice(0, 300) };
+    }
   } catch { /* fall through */ }
   return { status: Number((res as any).status || 0), body: raw };
 }

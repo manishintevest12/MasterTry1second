@@ -84,6 +84,9 @@ adminRouter.get('/live-health', async (req, res) => {
     const verticals = String(req.query.vertical || 'flights,hotels').split(',').map((v) => v.trim()).filter(Boolean);
     const { governorStats } = await import('../common/loadGovernor');
     const { isMandatedSource } = await import('../sources/registry');
+    // Owner 23 Nov ("cloudflare wala diya tho tha"): say WHICH env names the browser rung found, so a key that is set
+    // under another spelling is visible instead of looking like "nothing configured".
+    const { ownRenderEnvNames, ownRenderAvailable } = await import('../sources/rescueFetch');
     const { liveGateStats } = await import('../search/liveSearchGate');
     const since = new Date(Date.now() - days * 24 * 60 * 60_000);
     const health = getAllHealth();
@@ -124,7 +127,12 @@ adminRouter.get('/live-health', async (req, res) => {
         .sort((a: any, b: any) => a.priority - b.priority || String(a.id).localeCompare(String(b.id)));
       out.push({ vertical: v, days, sources });
     }
-    res.json({ ok: true, governor: { ...governorStats(), liveGate: liveGateStats() }, verticals: out });
+    res.json({
+      ok: true,
+      governor: { ...governorStats(), liveGate: liveGateStats() },
+      ownRender: { available: ownRenderAvailable(), ...ownRenderEnvNames() },
+      verticals: out,
+    });
   } catch (e: any) {
     res.status(500).json({ ok: false, error: String(e?.message || e).slice(0, 200) });
   }

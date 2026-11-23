@@ -7148,16 +7148,58 @@ var init_mmtListing = __esm({
 });
 
 // server/sources/rescueFetch.ts
+var rescueFetch_exports = {};
+__export(rescueFetch_exports, {
+  CANONICAL_LADDER: () => CANONICAL_LADDER,
+  CF_ACCOUNT_ENV: () => CF_ACCOUNT_ENV,
+  CF_EMAIL_ENV: () => CF_EMAIL_ENV,
+  CF_GLOBAL_KEY_ENV: () => CF_GLOBAL_KEY_ENV,
+  CF_TOKEN_ENV: () => CF_TOKEN_ENV,
+  describeRescue: () => describeRescue,
+  learnedRescueOrder: () => learnedRescueOrder,
+  ownRenderAvailable: () => ownRenderAvailable,
+  ownRenderEnvNames: () => ownRenderEnvNames,
+  rescueFetch: () => rescueFetch,
+  rescueOrderFor: () => rescueOrderFor,
+  rescueRungs: () => rescueRungs
+});
 function scraperKey() {
   return String(process.env.SCRAPER_API_KEY || "").trim();
 }
 function readerEnabled() {
   return String(process.env.T1S_READER_RESCUE || "1").trim() !== "0";
 }
+function envFirst(names) {
+  for (const n of names) {
+    const v = String(process.env[n] || "").trim();
+    if (v) return v;
+  }
+  return "";
+}
+function cfAccountId() {
+  return envFirst(CF_ACCOUNT_ENV);
+}
+function cfBearer() {
+  return envFirst(CF_TOKEN_ENV);
+}
+function cfGlobalKey() {
+  const key = envFirst(CF_GLOBAL_KEY_ENV);
+  const email = envFirst(CF_EMAIL_ENV);
+  return key && email ? { email, key } : null;
+}
+function ownRenderEnvNames() {
+  if (String(process.env.T1S_RENDER_URL || "").trim()) {
+    return { account: null, token: process.env.T1S_RENDER_TOKEN ? "T1S_RENDER_TOKEN" : null, mode: "render-service" };
+  }
+  const account = CF_ACCOUNT_ENV.find((n) => String(process.env[n] || "").trim()) || null;
+  const token = CF_TOKEN_ENV.find((n) => String(process.env[n] || "").trim()) || null;
+  if (account && token) return { account, token, mode: "cloudflare-token" };
+  const gk = cfGlobalKey();
+  if (account && gk) return { account, token: CF_GLOBAL_KEY_ENV.find((n) => String(process.env[n] || "").trim()) || null, mode: "cloudflare-global-key" };
+  return { account, token, mode: "none" };
+}
 function ownRenderConfigured() {
-  return Boolean(
-    String(process.env.T1S_RENDER_URL || "").trim() || String(process.env.CF_ACCOUNT_ID || "").trim() && String(process.env.CF_BROWSER_TOKEN || "").trim()
-  );
+  return ownRenderEnvNames().mode !== "none";
 }
 async function viaOwn(url, timeoutMs) {
   const ownUrl = String(process.env.T1S_RENDER_URL || "").trim();
@@ -7184,14 +7226,16 @@ async function viaOwn(url, timeoutMs) {
     }
     return { status, body };
   }
-  const account = String(process.env.CF_ACCOUNT_ID || "").trim();
-  const token = String(process.env.CF_BROWSER_TOKEN || "").trim();
-  if (!account || !token) throw new Error("own render not configured");
+  const account = cfAccountId();
+  const token = cfBearer();
+  const globalKey = cfGlobalKey();
+  if (!account || !token && !globalKey) throw new Error("own render not configured");
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : { "X-Auth-Email": globalKey.email, "X-Auth-Key": globalKey.key };
   const res = await cffiFetch(`https://api.cloudflare.com/client/v4/accounts/${account}/browser-rendering/content`, {
     method: "POST",
     impersonate: "chrome",
     timeoutMs: budget2,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify({ url, gotoOptions: { waitUntil: "networkidle0", timeout: budget2 } })
   });
   const raw = String(res.body || "");
@@ -7199,10 +7243,17 @@ async function viaOwn(url, timeoutMs) {
     const parsed = JSON.parse(raw);
     const html = parsed?.result;
     if (typeof html === "string") return { status: 200, body: html };
-    if (parsed?.success === false) return { status: 500, body: raw.slice(0, 400) };
+    if (parsed?.success === false) {
+      const detail = Array.isArray(parsed?.errors) ? parsed.errors.map((x) => `${x?.code ?? ""} ${x?.message ?? ""}`.trim()).join("; ") : "";
+      log.warn("Rescue", "Cloudflare Browser Rendering refused the request", { detail: detail.slice(0, 200) });
+      return { status: Number(parsed?.errors?.[0]?.code) === 10021 ? 403 : 502, body: detail || raw.slice(0, 300) };
+    }
   } catch {
   }
   return { status: Number(res.status || 0), body: raw };
+}
+function ownRenderAvailable() {
+  return ownRenderConfigured();
 }
 function rescueRungs() {
   const out = ["direct"];
@@ -7337,15 +7388,24 @@ function describeRescue(r) {
   const tried = r.attempts.map((a) => `${a.via}:${a.ok ? "ok" : a.reason || "fail"}`).join("; ");
   return r.exhausted ? `all transports failed (${tried})` : `via ${r.via} (${tried})`;
 }
-var _order, schemaReady;
+function learnedRescueOrder(host) {
+  return rescueOrderFor(host.toLowerCase().replace(/^www\./, ""));
+}
+var CANONICAL, _order, CF_ACCOUNT_ENV, CF_TOKEN_ENV, CF_GLOBAL_KEY_ENV, CF_EMAIL_ENV, schemaReady, CANONICAL_LADDER;
 var init_rescueFetch = __esm({
   "server/sources/rescueFetch.ts"() {
     init_curlCffiFetch();
     init_edgeRelay();
     init_db();
     init_logger();
+    CANONICAL = ["direct", "relay", "own", "scraperapi", "reader"];
     _order = /* @__PURE__ */ new Map();
+    CF_ACCOUNT_ENV = ["CF_ACCOUNT_ID", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_ACCOUNT_TAG", "CF_ACCOUNT_TAG"];
+    CF_TOKEN_ENV = ["CF_BROWSER_TOKEN", "CLOUDFLARE_BROWSER_TOKEN", "CF_API_TOKEN", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_TOKEN"];
+    CF_GLOBAL_KEY_ENV = ["CLOUDFLARE_API_KEY", "CF_GLOBAL_API_KEY"];
+    CF_EMAIL_ENV = ["CLOUDFLARE_EMAIL", "CF_API_EMAIL"];
     schemaReady = false;
+    CANONICAL_LADDER = CANONICAL;
   }
 });
 
@@ -60467,6 +60527,7 @@ var init_adminRoutes = __esm({
         const verticals = String(req.query.vertical || "flights,hotels").split(",").map((v) => v.trim()).filter(Boolean);
         const { governorStats: governorStats2 } = await Promise.resolve().then(() => (init_loadGovernor(), loadGovernor_exports));
         const { isMandatedSource: isMandatedSource2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
+        const { ownRenderEnvNames: ownRenderEnvNames2, ownRenderAvailable: ownRenderAvailable2 } = await Promise.resolve().then(() => (init_rescueFetch(), rescueFetch_exports));
         const { liveGateStats: liveGateStats2 } = await Promise.resolve().then(() => (init_liveSearchGate(), liveSearchGate_exports));
         const since = new Date(Date.now() - days * 24 * 60 * 6e4);
         const health2 = getAllHealth();
@@ -60510,7 +60571,12 @@ var init_adminRoutes = __esm({
           }).sort((a, b) => a.priority - b.priority || String(a.id).localeCompare(String(b.id)));
           out.push({ vertical: v, days, sources: sources2 });
         }
-        res.json({ ok: true, governor: { ...governorStats2(), liveGate: liveGateStats2() }, verticals: out });
+        res.json({
+          ok: true,
+          governor: { ...governorStats2(), liveGate: liveGateStats2() },
+          ownRender: { available: ownRenderAvailable2(), ...ownRenderEnvNames2() },
+          verticals: out
+        });
       } catch (e2) {
         res.status(500).json({ ok: false, error: String(e2?.message || e2).slice(0, 200) });
       }
