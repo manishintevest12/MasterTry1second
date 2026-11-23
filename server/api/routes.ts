@@ -37,6 +37,7 @@ import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, requireAdmin, loginUser, registerUser, SESSION_TTL_SEC, issueSessionToken } from '../auth/authService';
 import { resolveCatalogueImage } from '../lens/productImage';
+import { rowPhotos } from '../lens/relatedRowImages';
 import { requestAdminOtp, verifyAdminOtp, verifyAdminRecovery } from '../auth/otpService';
 import { verifyFirebaseIdTokenDetailed, verifyGoogleIdToken } from '../auth/firebaseAuth';
 import crypto from 'crypto';
@@ -2977,15 +2978,11 @@ apiRouter.post('/product-page', async (req, res) => {
     // photo differently (Shopsy: attributes.image, others: attributes.image_urls / thumbnail /
     // o.imageUrl), so every honest spelling is read here. A row with no real photo still sends null -
     // the app then paints the seller's logo instead of an empty grey box.
-    const firstPhoto = [
-      attrs.image_url, attrs.image, o.image, o.imageUrl, o.thumbnail, o.thumbnail_url,
-      o.images?.[0],
-    ].map((u: any) => (typeof u === 'string' ? u : '')).find((u: string) => u.startsWith('https://')) || '';
-    const imgs = Array.from(new Set([
-      String(firstPhoto || ''),
-      ...String(attrs.image_urls || attrs.images || '').split('|'),
-      ...productImageUrls,
-    ].filter((u: string) => u.startsWith('https://'))));
+    // OWNER 23 Nov ("related products mai jiska link copy kiya hoon ussi ka image sb mai aa raha hai"): this list
+    // used to append the SEARCHED product's gallery (`productImageUrls`) to every related row, so any row without a
+    // photo of its own showed the parent's picture — twelve titles, one repeated image. Only the row's own photos
+    // are read now; a photo-less row falls back to the SELLER's real logo in both clients, never to the parent.
+    const imgs = rowPhotos(o);
     const sellerName = String(o.seller || o.vendor || '');
     const logoKey = merchantKeyOf(sellerName);
     return {
@@ -3202,8 +3199,10 @@ apiRouter.post('/product-page', async (req, res) => {
       filled: relatedPool.filter((r) => r.image).length,
     });
   }
-  // Images are compulsory: only rows that carry a real photo reach the grid.
-  const related = relatedPool.filter((r) => Boolean(r.image)).slice(0, 36);
+  // Images are compulsory (owner 8 Nov), and the photo must belong to THIS card (owner 23 Nov). Both clients paint
+  // the row's own photo, else the SELLER's real logo, so a row whose product photo the catalogue genuinely does not
+  // have still ships as a real image instead of a grey box — and the grid keeps its 12 rows.
+  const related = relatedPool.slice(0, 36);
 
   // Real history: first same-product offer that carries a canonical entity id with recorded points.
   let history: Array<{ price: number; capturedAt: string }> = [];
