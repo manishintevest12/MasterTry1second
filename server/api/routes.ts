@@ -4881,6 +4881,52 @@ apiRouter.post('/promo-offers/:id/copy', async (req, res) => {
   } catch { res.json({ success: false }); }
 });
 
+// ============ PARTNER ORDERS (owner 23 Nov) ============
+// "humere partner pr jo order dete hai wo order humere sites and flutter app pr dikhe" — a partner's ORDER lives in
+// the partner's system; what we can honestly receive is the network's CONVERSION report (order value, commission,
+// status, our subid). These two routes are the pipe: the network posts here, the shopper reads their own rows back.
+//
+// The postback answers 200 even when it stores nothing, because a network that gets an error retries forever and
+// eventually drops the merchant from our account.
+const postbackToken = () => String(process.env.AFFILIATE_POSTBACK_TOKEN || '');
+
+const handleAffiliatePostback = async (req: any, res: any) => {
+  try {
+    const expected = postbackToken();
+    const given = String(req.query?.token || req.headers?.['x-t1s-token'] || '');
+    if (expected && given !== expected) return res.status(401).json({ success: false, error: 'bad token' });
+    const { parsePostback, recordPartnerOrder } = await import('../orders/partnerOrders');
+    const order = parsePostback({ ...(req.query || {}), ...(req.body || {}) }, String(req.params?.network || ''));
+    if (!order) return res.json({ success: true, stored: false, reason: 'no order id in ping' });
+    const saved = await recordPartnerOrder(order);
+    return res.json({ success: true, stored: saved.stored });
+  } catch (e: any) {
+    log.warn('Orders', 'postback failed', { error: e?.message });
+    return res.json({ success: true, stored: false });
+  }
+};
+
+// GET because most networks ping with a GET; POST for the ones that send JSON.
+apiRouter.get('/postback/:network?', handleAffiliatePostback);
+apiRouter.post('/postback/:network?', handleAffiliatePostback);
+
+// A shopper's own reported orders. Signed-in only: an order belongs to the person whose exit link carried their id.
+apiRouter.get('/orders/mine', async (req, res) => {
+  const userId = await optionalUserId(req);
+  if (!userId) return res.status(401).json({ success: false, error: 'Sign in to see your orders' });
+  const { partnerOrdersForUser } = await import('../orders/partnerOrders');
+  const orders = await partnerOrdersForUser(userId, Number(req.query.limit) || 50);
+  // Honest labelling: these are conversions the NETWORK reported, not orders we fulfilled. The client says so.
+  return res.json({
+    success: true,
+    orders,
+    source: 'partner-network-report',
+    notice: orders.length
+      ? 'Orders you placed on a partner site after leaving Try1Second, as reported by the partner network. Delivery and item details stay with that partner.'
+      : 'No partner order has been reported for your account yet. Orders appear here once the partner network reports them, which can take a day or more.',
+  });
+});
+
 // ============ Auth ============
 apiRouter.post('/auth/register', async (req, res) => {
   const r = await registerUser(String(req.body.email || ''), String(req.body.password || ''), req.body.displayName);
