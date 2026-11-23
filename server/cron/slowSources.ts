@@ -29,7 +29,9 @@ import { recordSuccess, recordFailure } from '../sources/health';
 import type { VerticalId } from '../types';
 
 /** Slow sources: never attempted inline, always warmed here. */
-export const SLOW_SOURCE_IDS = new Set(['w_hotels_goibibo', 'w_hotels_booking', 'w_hotels_mmt', 'w_flights_goibibo']);
+// Goibibo FLIGHTS left this set on 23 Nov: its fare-calendar API answers in ~0.4 s, so it is attempted inline
+// (registry SLOW_SOURCE_IDS) and the user's own date is priced. Only the hotel surfaces stay here.
+export const SLOW_SOURCE_IDS = new Set(['w_hotels_goibibo', 'w_hotels_booking', 'w_hotels_mmt']);
 
 /** Cities warmed per cycle per vertical. Kept small so a cycle finishes well inside the 15-minute clock. */
 const CITIES_PER_CYCLE = Math.max(1, Number(process.env.T1S_SLOW_WARM_CITIES || 4));

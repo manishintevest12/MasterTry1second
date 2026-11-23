@@ -1588,10 +1588,13 @@ export const flightsWorker: VerticalWorker = {
         // first hit. Ladder: chrome/h2 -> chrome/HTTP1.1 -> safari.
         let r: any;
         const lastErr: string[] = [];
+        // The schedule page is a BONUS row: the fare-calendar call above is the answer, and it lands in ~0.4 s.
+        // The ladder therefore runs on a tight budget (3 rungs x 6 s worst case) so Goibibo can be attempted
+        // inline in a user's search - the flights sweep ceiling is 28 s and one partner may not eat it.
         const attempts: Array<{ label: string; opts: any }> = [
-          { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 30_000, headers: giHeaders } },
-          { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 25_000, headers: giHeaders, httpVersion: '1.1' as const } },
-          { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 25_000, headers: giHeaders } },
+          { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 6_000, headers: giHeaders } },
+          { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 6_000, headers: giHeaders, httpVersion: '1.1' as const } },
+          { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 6_000, headers: giHeaders } },
         ];
         for (const a of attempts) {
           try {

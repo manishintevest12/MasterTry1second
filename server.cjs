@@ -20340,9 +20340,9 @@ var init_flights = __esm({
             let r;
             const lastErr = [];
             const attempts = [
-              { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 3e4, headers: giHeaders } },
-              { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 25e3, headers: giHeaders, httpVersion: "1.1" } },
-              { label: "safari-h2", opts: { impersonate: "safari17_0", timeoutMs: 25e3, headers: giHeaders } }
+              { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 6e3, headers: giHeaders } },
+              { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 6e3, headers: giHeaders, httpVersion: "1.1" } },
+              { label: "safari-h2", opts: { impersonate: "safari17_0", timeoutMs: 6e3, headers: giHeaders } }
             ];
             for (const a of attempts) {
               try {
@@ -31080,7 +31080,7 @@ var init_registry = __esm({
       "w_flights_goibibo",
       "w_flights_booking"
     ]);
-    SLOW_SOURCE_IDS = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_hotels_mmt", "w_flights_goibibo"]);
+    SLOW_SOURCE_IDS = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_hotels_mmt"]);
   }
 });
 
@@ -62573,7 +62573,7 @@ var init_slowSources = __esm({
     init_entityMatching();
     init_catalogueService();
     init_health();
-    SLOW_SOURCE_IDS2 = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_hotels_mmt", "w_flights_goibibo"]);
+    SLOW_SOURCE_IDS2 = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_hotels_mmt"]);
     CITIES_PER_CYCLE = Math.max(1, Number(process.env.T1S_SLOW_WARM_CITIES || 4));
   }
 });
