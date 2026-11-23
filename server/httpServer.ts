@@ -26,6 +26,7 @@
  */
 import http from 'http';
 import type { Express, Request, Response, NextFunction } from 'express';
+import { RESPONSE_WALL_MS as WALL_MS } from './common/wallBudget';
 
 export const KEEP_ALIVE_TIMEOUT_MS = 65_000;
 
@@ -44,7 +45,7 @@ export const KEEP_ALIVE_TIMEOUT_MS = 65_000;
  *   - pages   -> 503 with `Retry-After`, because an HTML page has nothing honest to show half-rendered.
  * The wall sits far above the slowest legitimate handler (the API's own hard deadline is 10 s).
  */
-export const RESPONSE_WALL_MS = Math.max(15_000, Number(process.env.T1S_RESPONSE_WALL_MS || 30_000));
+export const RESPONSE_WALL_MS = WALL_MS;
 
 /**
  * Does this path belong to the JSON API? OWNER 22 Nov (access logs full of 5xx on /api/search/live,
@@ -58,13 +59,20 @@ export const isApiRequest = (path: string): boolean => {
   return p === '/api' || p.startsWith('/api/');
 };
 
+/**
+ * A request is an API request if ANY of its paths says so. Inside a mounted router req.path is route-relative
+ * ('/search'), which made the wall answer the human 503 page to /api/search — measured on production 23 Nov.
+ */
+export const requestIsApi = (req: Request): boolean =>
+  isApiRequest(req.path) || isApiRequest(req.originalUrl || '') || isApiRequest((req.baseUrl || '') + (req.path || ''));
+
 /** Build the wall for a given budget. Exported so a test can prove the behaviour without waiting 40 s. */
 export const makeResponseWall = (wallMs: number) => (req: Request, res: Response, next: NextFunction): void => {
   if (res.writableEnded) return next();
   const timer = setTimeout(() => {
     if (res.writableEnded || res.headersSent) return;
     try {
-      if (isApiRequest(req.path)) {
+      if (requestIsApi(req)) {
         res.status(200).json({
           ok: true,
           results: [],

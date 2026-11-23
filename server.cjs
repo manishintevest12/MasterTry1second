@@ -154,6 +154,19 @@ var init_jsonMemo = __esm({
   }
 });
 
+// server/common/wallBudget.ts
+function clampSweepMs(ms) {
+  const ceiling = Math.max(2e3, RESPONSE_WALL_MS - SWEEP_SAFETY_MS);
+  return Math.max(2e3, Math.min(Math.round(ms), ceiling));
+}
+var RESPONSE_WALL_MS, SWEEP_SAFETY_MS;
+var init_wallBudget = __esm({
+  "server/common/wallBudget.ts"() {
+    RESPONSE_WALL_MS = Math.max(15e3, Number(process.env.T1S_RESPONSE_WALL_MS || 45e3));
+    SWEEP_SAFETY_MS = 4e3;
+  }
+});
+
 // server/marketing/appLinkVerify.ts
 var appLinkVerify_exports = {};
 __export(appLinkVerify_exports, {
@@ -54988,6 +55001,7 @@ var init_routes = __esm({
     init_verticalAlias();
     init_searchOrchestrator();
     init_liveSearchGate();
+    init_wallBudget();
     init_moviesPriceFill();
     init_readPathCache();
     init_accountTypeGate();
@@ -55544,7 +55558,7 @@ var init_routes = __esm({
       const searched = runLiveSearch(input, { signal: searchAbort.signal });
       searched.catch(() => void 0);
       const sweepVertical = String(input.vertical || "");
-      const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (sweepVertical === "hotels" ? 34e3 : sweepVertical === "flights" ? 28e3 : sweepVertical === "bus" ? 22e3 : sweepVertical === "movies" || sweepVertical === "movie" ? 2e4 : 16e3)));
+      const sweepBudget = Math.max(budgetMs, clampSweepMs(Number(process.env.T1S_FULL_SWEEP_MS || (sweepVertical === "hotels" ? 34e3 : sweepVertical === "flights" ? 28e3 : sweepVertical === "bus" ? 22e3 : sweepVertical === "movies" || sweepVertical === "movie" ? 2e4 : 16e3))));
       let response = await awaitSettledAnswer(input, sweepBudget);
       if (response && response.results?.length) {
         const r = response;
@@ -68321,18 +68335,20 @@ function securityTxt() {
 
 // server/httpServer.ts
 var import_http = __toESM(require("http"), 1);
+init_wallBudget();
 var KEEP_ALIVE_TIMEOUT_MS = 65e3;
-var RESPONSE_WALL_MS = Math.max(15e3, Number(process.env.T1S_RESPONSE_WALL_MS || 3e4));
+var RESPONSE_WALL_MS2 = RESPONSE_WALL_MS;
 var isApiRequest = (path20) => {
   const p = String(path20 || "");
   return p === "/api" || p.startsWith("/api/");
 };
+var requestIsApi = (req) => isApiRequest(req.path) || isApiRequest(req.originalUrl || "") || isApiRequest((req.baseUrl || "") + (req.path || ""));
 var makeResponseWall = (wallMs) => (req, res, next) => {
   if (res.writableEnded) return next();
   const timer = setTimeout(() => {
     if (res.writableEnded || res.headersSent) return;
     try {
-      if (isApiRequest(req.path)) {
+      if (requestIsApi(req)) {
         res.status(200).json({
           ok: true,
           results: [],
@@ -68358,7 +68374,7 @@ var makeResponseWall = (wallMs) => (req, res, next) => {
   res.on("close", clear);
   next();
 };
-var responseWall = makeResponseWall(RESPONSE_WALL_MS);
+var responseWall = makeResponseWall(RESPONSE_WALL_MS2);
 var createListener = (app) => {
   const server = import_http.default.createServer(app);
   server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;

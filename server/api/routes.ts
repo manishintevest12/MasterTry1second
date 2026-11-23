@@ -11,6 +11,7 @@ import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { awaitSettledAnswer, runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
+import { clampSweepMs, RESPONSE_WALL_MS } from '../common/wallBudget';
 import { fillMoviePricesFromBand, movieAnswerIsUnpricedSnapshot } from '../search/moviesPriceFill';
 import { cachedRead } from './readPathCache';
 import { enforceAccountKind, requestedAccountKind } from '../search/accountTypeGate';
@@ -1131,10 +1132,13 @@ apiRouter.post('/search', async (req, res) => {
   // 16s, still inside the ~55s front-proxy wall that made larger budgets impossible. Whatever a
   // seller still does not deliver inside its own ceiling is covered by seller memory, so a late
   // seller never disappears from the seller set.
-  const sweepBudget = Math.max(budgetMs, Number(process.env.T1S_FULL_SWEEP_MS || (
+  // OWNER 23 Nov: the sweep is clamped to the response wall. Measured on production, hotels waited 34 s while the
+  // wall fired at 30 s, so a cold hotels search ALWAYS got the wall's answer and the slow sellers it was waiting for
+  // could never arrive. Now the sweep always settles first (wall - 4 s) and the wall is only the last resort.
+  const sweepBudget = Math.max(budgetMs, clampSweepMs(Number(process.env.T1S_FULL_SWEEP_MS || (
     sweepVertical === 'hotels' ? 34_000 : sweepVertical === 'flights' ? 28_000 : sweepVertical === 'bus' ? 22_000
       : (sweepVertical === 'movies' || sweepVertical === 'movie') ? 20_000 : 16_000
-  )));
+  ))));
   let response = (await awaitSettledAnswer(input, sweepBudget)) as Awaited<ReturnType<typeof runSearch>> | null;
   if (response && (response as any).results?.length) {
     // Everything the feed learns is remembered too, so "Ask Try1Second" starts from real history
