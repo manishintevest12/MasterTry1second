@@ -29,7 +29,7 @@ import { recordSuccess, recordFailure } from '../sources/health';
 import type { VerticalId } from '../types';
 
 /** Slow sources: never attempted inline, always warmed here. */
-export const SLOW_SOURCE_IDS = new Set(['w_hotels_goibibo', 'w_hotels_booking', 'w_flights_goibibo']);
+export const SLOW_SOURCE_IDS = new Set(['w_hotels_goibibo', 'w_hotels_booking', 'w_hotels_mmt', 'w_flights_goibibo']);
 
 /** Cities warmed per cycle per vertical. Kept small so a cycle finishes well inside the 15-minute clock. */
 const CITIES_PER_CYCLE = Math.max(1, Number(process.env.T1S_SLOW_WARM_CITIES || 4));
@@ -81,7 +81,16 @@ export async function refreshSlowSourcesOnce(): Promise<{ sources: number; rows:
         const started = Date.now();
         try {
           // Generous budget: this is background work, the user is not waiting on it.
-          const result = await runTask(worker, { ...task, timeoutMs: Number(process.env.T1S_SLOW_TASK_MS || 75_000) }, source, parsed);
+          // Background work may use the slower free rungs; a user search never does.
+          const previousFlag = process.env.T1S_FORCE_RESCUE;
+          process.env.T1S_FORCE_RESCUE = '1';
+          let result;
+          try {
+            result = await runTask(worker, { ...task, timeoutMs: Number(process.env.T1S_SLOW_TASK_MS || 75_000) }, source, parsed);
+          } finally {
+            if (previousFlag === undefined) delete process.env.T1S_FORCE_RESCUE;
+            else process.env.T1S_FORCE_RESCUE = previousFlag;
+          }
           if (!result.success || !result.rawItems?.length) {
             failed.push(`${task.sourceId}:${result.failureClass || 'EMPTY_RESPONSE'}`);
             recordFailure(task.sourceId, result.failureClass || 'EMPTY_RESPONSE', result.error || 'no rows');

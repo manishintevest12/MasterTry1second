@@ -379,8 +379,11 @@ export const hotelsWorker: VerticalWorker = {
         // OWNER 23 Nov: this block is skipped entirely when no browser transport is configured — otherwise the ladder
         // is [direct, reader] and the slow reader rung alone burns the task budget, producing a bare TIMEOUT that hid
         // the real cause (no transport). Without one, the direct recipes are the honest attempt.
+        // The background warmer sets T1S_FORCE_RESCUE=1: it is not on anyone's clock, so it may spend the slower
+        // (free) reader rung even when no browser transport is configured. A user search never sets it.
         const { ownRenderAvailable: browserConfigured } = await import('../../sources/rescueFetch');
-        for (const slug of browserConfigured() ? [`hotels-in-${base}-ct`, `hotels-in-${base}`] : []) {
+        const mayRescue = browserConfigured() || String(process.env.T1S_FORCE_RESCUE || '') === '1';
+        for (const slug of mayRescue ? [`hotels-in-${base}-ct`, `hotels-in-${base}`] : []) {
           const pageUrl = `https://www.goibibo.com/hotels/${slug}/`;
           try {
             const rr = await rescueFetch(pageUrl, {
@@ -841,7 +844,7 @@ export const hotelsWorker: VerticalWorker = {
         // FIRST with a fixed 12s slice (Booking only serves its cards to a real session), and the cookie session is
         // the fallback. Same page, same parser, honest prices.
         const { ownRenderAvailable: bookingBrowserConfigured } = await import('../../sources/rescueFetch');
-        if (bookingBrowserConfigured()) {
+        if (bookingBrowserConfigured() || String(process.env.T1S_FORCE_RESCUE || '') === '1') {
           try {
             const rr = await rescueFetch(url, {
               timeoutMs: 9_000,

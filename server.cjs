@@ -9606,7 +9606,8 @@ var init_hotels = __esm({
             if (!city || city.length < 3) return [];
             const base = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
             const { ownRenderAvailable: browserConfigured } = await Promise.resolve().then(() => (init_rescueFetch(), rescueFetch_exports));
-            for (const slug5 of browserConfigured() ? [`hotels-in-${base}-ct`, `hotels-in-${base}`] : []) {
+            const mayRescue = browserConfigured() || String(process.env.T1S_FORCE_RESCUE || "") === "1";
+            for (const slug5 of mayRescue ? [`hotels-in-${base}-ct`, `hotels-in-${base}`] : []) {
               const pageUrl = `https://www.goibibo.com/hotels/${slug5}/`;
               try {
                 const rr = await rescueFetch(pageUrl, {
@@ -10031,7 +10032,7 @@ var init_hotels = __esm({
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
             const UA8 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             const { ownRenderAvailable: bookingBrowserConfigured } = await Promise.resolve().then(() => (init_rescueFetch(), rescueFetch_exports));
-            if (bookingBrowserConfigured()) {
+            if (bookingBrowserConfigured() || String(process.env.T1S_FORCE_RESCUE || "") === "1") {
               try {
                 const rr = await rescueFetch(url, {
                   timeoutMs: 9e3,
@@ -30937,7 +30938,7 @@ var init_registry = __esm({
       "w_flights_goibibo",
       "w_flights_booking"
     ]);
-    SLOW_SOURCE_IDS = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_flights_goibibo"]);
+    SLOW_SOURCE_IDS = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_hotels_mmt", "w_flights_goibibo"]);
   }
 });
 
@@ -62356,7 +62357,15 @@ async function refreshSlowSourcesOnce() {
         sourcesRun += 1;
         const started3 = Date.now();
         try {
-          const result = await runTask(worker, { ...task, timeoutMs: Number(process.env.T1S_SLOW_TASK_MS || 75e3) }, source, parsed);
+          const previousFlag = process.env.T1S_FORCE_RESCUE;
+          process.env.T1S_FORCE_RESCUE = "1";
+          let result;
+          try {
+            result = await runTask(worker, { ...task, timeoutMs: Number(process.env.T1S_SLOW_TASK_MS || 75e3) }, source, parsed);
+          } finally {
+            if (previousFlag === void 0) delete process.env.T1S_FORCE_RESCUE;
+            else process.env.T1S_FORCE_RESCUE = previousFlag;
+          }
           if (!result.success || !result.rawItems?.length) {
             failed.push(`${task.sourceId}:${result.failureClass || "EMPTY_RESPONSE"}`);
             recordFailure(task.sourceId, result.failureClass || "EMPTY_RESPONSE", result.error || "no rows");
@@ -62422,7 +62431,7 @@ var init_slowSources = __esm({
     init_entityMatching();
     init_catalogueService();
     init_health();
-    SLOW_SOURCE_IDS2 = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_flights_goibibo"]);
+    SLOW_SOURCE_IDS2 = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_booking", "w_hotels_mmt", "w_flights_goibibo"]);
     CITIES_PER_CYCLE = Math.max(1, Number(process.env.T1S_SLOW_WARM_CITIES || 4));
   }
 });

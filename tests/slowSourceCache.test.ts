@@ -9,7 +9,7 @@ import { SLOW_SOURCE_IDS } from '../server/cron/slowSources';
  * 15-minute background clock and served from the catalogue instead.
  */
 test('slow partners are marked slow', () => {
-  for (const id of ['w_hotels_goibibo', 'w_hotels_booking', 'w_flights_goibibo']) {
+  for (const id of ['w_hotels_goibibo', 'w_hotels_booking', 'w_hotels_mmt', 'w_flights_goibibo']) {
     assert.equal(isSlowSource(id), true, id);
     assert.equal(SLOW_SOURCE_IDS.has(id), true, id);
   }
@@ -20,6 +20,7 @@ test("a search never attempts a slow partner, the warmer can", () => {
   const inline = selectSources({ vertical: 'hotels' } as any).map((s) => s.id);
   assert.equal(inline.includes('w_hotels_goibibo'), false, 'goibibo must not block a user search');
   assert.equal(inline.includes('w_hotels_booking'), false, 'booking must not block a user search');
+  assert.equal(inline.includes('w_hotels_mmt'), false, 'makemytrip must not block a user search');
   // the fast sellers are untouched
   assert.ok(inline.some((id) => id.startsWith('w_hotels_')), 'the rest of the hotel set still runs');
 

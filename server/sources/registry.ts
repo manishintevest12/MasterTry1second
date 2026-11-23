@@ -188,7 +188,7 @@ export function isMandatedSource(id: string): boolean { return MANDATED_SOURCE_I
  * search (they used to time out there and cost the user the whole sweep). server/cron/slowSources.ts refreshes them
  * every 15 minutes and writes their rows into the catalogue, which the search serves instantly.
  */
-const SLOW_SOURCE_IDS = new Set(['w_hotels_goibibo', 'w_hotels_booking', 'w_flights_goibibo']);
+const SLOW_SOURCE_IDS = new Set(['w_hotels_goibibo', 'w_hotels_booking', 'w_hotels_mmt', 'w_flights_goibibo']);
 
 export function isSlowSource(id: string): boolean { return SLOW_SOURCE_IDS.has(id); }
 
