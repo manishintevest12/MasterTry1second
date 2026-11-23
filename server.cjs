@@ -8419,7 +8419,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num15 = (x) => {
+  const num14 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -8440,17 +8440,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num15(rating.value),
-      ratingCount: num15(rating.count),
-      pricePerNight: num15(pricing.bookingPrice),
-      tax: num15(tax.total_tax),
-      priceInclusive: num15(tax.final_price_with_tax),
-      slashedPrice: num15(pricing.slashedPrice),
-      discountPercentage: num15(pricing.discountPercentage),
+      rating: num14(rating.value),
+      ratingCount: num14(rating.count),
+      pricePerNight: num14(pricing.bookingPrice),
+      tax: num14(tax.total_tax),
+      priceInclusive: num14(tax.final_price_with_tax),
+      slashedPrice: num14(pricing.slashedPrice),
+      discountPercentage: num14(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num15(geo.lat ?? geo.latitude),
-      lon: num15(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num14(geo.lat ?? geo.latitude),
+      lon: num14(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -11473,8 +11473,8 @@ function etraveliFlightsItems(flights, brand, source, route2, fromCode, toCode, 
     const carrier = String(segs[0].marketingCarrier?.name || carrierCode || brand.brand);
     const flightNos = segs.map((s) => {
       const code = String(s.marketingCarrier?.code || "");
-      const num15 = String(s.flightNumber || "");
-      return num15.startsWith(code) && code ? num15 : `${code}${num15}`;
+      const num14 = String(s.flightNumber || "");
+      return num14.startsWith(code) && code ? num14 : `${code}${num14}`;
     }).join("-");
     const depTime = String(segs[0].departuredAt || "").slice(11, 16);
     const arrTime = String(segs[segs.length - 1].arrivedAt || "").slice(11, 16);
@@ -13145,9 +13145,9 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     const last = legs2[legs2.length - 1];
     const depTime = localHm2(first?.origin?.departureLocalTime);
     const arrTime = localHm2(last?.destination?.arrivalLocalTime);
-    const num15 = String(first?.flightNumber || "").trim();
+    const num14 = String(first?.flightNumber || "").trim();
     const carrier = String(first?.carrierCode || "AI");
-    if (!depTime || !arrTime || !num15) continue;
+    if (!depTime || !arrTime || !num14) continue;
     const validity = first?.validityPeriod || {};
     const starts = String(validity.start || "").slice(0, 10);
     const ends = String(validity.end || "").slice(0, 10);
@@ -13160,7 +13160,7 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     }
     const durSecs = Number(entry?.duration ?? first?.flightDuration);
     out.push({
-      flightNo: `${carrier}${num15}`,
+      flightNo: `${carrier}${num14}`,
       dateIso: wantDateIso,
       depTime,
       arrTime,
@@ -22322,10 +22322,10 @@ function decodeRapidoFareQuotes(bytes) {
       const fn = tag >>> 3, wt = tag & 7;
       if (wt === 2) {
         const len = vint();
-        const str5 = new TextDecoder().decode(q3.slice(j, j + len));
+        const str4 = new TextDecoder().decode(q3.slice(j, j + len));
         j += len;
-        if (fn === 1) out.parentServiceId = str5;
-        if (fn === 2) out.serviceId = str5;
+        if (fn === 1) out.parentServiceId = str4;
+        if (fn === 2) out.serviceId = str4;
       } else if (wt === 1) {
         const val = qd.getFloat64(j, true);
         j += 8;
@@ -28721,7 +28721,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num15 = (key) => {
+  const num14 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -28732,8 +28732,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num15("servicecount")) || 0,
-    operators: field("operators") || num15("operators") || "",
+    servicecount: Number(num14("servicecount")) || 0,
+    operators: field("operators") || num14("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -43363,9 +43363,9 @@ function statedDiscountPct(attributes) {
   if (!att || typeof att !== "object") return 0;
   const raw = att.discount ?? att.discount_pct ?? att.discount_percentage;
   if (raw == null) return 0;
-  const str5 = String(raw);
-  if (/up\s*to/i.test(str5)) return 0;
-  const m = str5.match(/(\d+(?:\.\d+)?)\s*%?/);
+  const str4 = String(raw);
+  if (/up\s*to/i.test(str4)) return 0;
+  const m = str4.match(/(\d+(?:\.\d+)?)\s*%?/);
   const pct2 = m ? Math.round(parseFloat(m[1])) : 0;
   return pct2 >= 1 && pct2 <= 95 ? pct2 : 0;
 }
@@ -53484,171 +53484,6 @@ var init_promoOffers = __esm({
   }
 });
 
-// server/orders/partnerOrders.ts
-var partnerOrders_exports = {};
-__export(partnerOrders_exports, {
-  ensurePartnerOrdersTable: () => ensurePartnerOrdersTable,
-  normalizeStatus: () => normalizeStatus,
-  parsePostback: () => parsePostback,
-  partnerOrdersForUser: () => partnerOrdersForUser,
-  recordPartnerOrder: () => recordPartnerOrder,
-  userIdFromSubid: () => userIdFromSubid
-});
-function userIdFromSubid(subid) {
-  const raw = String(subid || "").trim();
-  if (!raw) return null;
-  const prefixed = raw.match(PUBLISHER_HINT);
-  const candidate = prefixed ? prefixed[2] : raw;
-  if (!/^\d{1,12}$/.test(candidate)) return null;
-  if (!prefixed && candidate === publisherId()) return null;
-  const id = Number(candidate);
-  return Number.isFinite(id) && id > 0 ? id : null;
-}
-function normalizeStatus(...values) {
-  const hay = values.filter(Boolean).map((v) => String(v).toLowerCase()).join(" ");
-  if (!hay) return "pending";
-  if (/cancel|reject|declin|refund|return|void|invalid|fraud/.test(hay)) return "cancelled";
-  if (/approv|confirm|paid|complete|success|settled/.test(hay)) return "approved";
-  return "pending";
-}
-function parsePostback(query, networkHint = "") {
-  const q3 = query || {};
-  const orderRef = str4(q3.order_id, q3.orderid, q3.oid, q3.order_ref, q3.orderRef, q3.transaction_id, q3.transactionid, q3.txn_id, q3.id);
-  if (!orderRef) return null;
-  const subid = str4(q3.subid, q3.sub_id, q3.subid1, q3.aff_sub, q3.aff_sub1, q3.click_id, q3.clickid, q3.clickref, q3.click_ref);
-  const status = normalizeStatus(q3.status, q3.order_status, q3.state, q3.payment_status, q3.txn_status, q3.conversion_status);
-  const orderValue = num14(q3.order_value, q3.orderValue, q3.sale_amount, q3.amount, q3.total, q3.sub_total, q3.subtotal, q3.price, q3.value);
-  const commission = num14(q3.commission, q3.payout, q3.earning, q3.reward, q3.commission_amount, q3.aff_commission);
-  const merchant = str4(q3.merchant, q3.advertiser, q3.store, q3.vendor, q3.merchant_name, q3.campaign_name);
-  const network = str4(q3.network, q3.affiliate_network, networkHint) || "affiliate";
-  const orderedAt = str4(q3.order_date, q3.ordered_at, q3.timestamp, q3.date, q3.created_at) || null;
-  return {
-    orderRef: orderRef.slice(0, 120),
-    network: network.slice(0, 60),
-    merchant: merchant.slice(0, 120),
-    subid: subid.slice(0, 120),
-    userId: userIdFromSubid(subid),
-    orderValue,
-    commission,
-    status,
-    orderedAt,
-    sourceReport: "postback",
-    raw: JSON.stringify(q3).slice(0, 4e3)
-  };
-}
-async function ensurePartnerOrdersTable() {
-  if (tableReady2) return;
-  const store7 = getStore();
-  await store7.execute(`
-    CREATE TABLE IF NOT EXISTS partner_orders (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      order_ref VARCHAR(120) NOT NULL,
-      network VARCHAR(60) NOT NULL DEFAULT '',
-      merchant VARCHAR(120) NOT NULL DEFAULT '',
-      user_id INT NULL,
-      subid VARCHAR(120) NOT NULL DEFAULT '',
-      order_value DECIMAL(12,2) NULL,
-      commission DECIMAL(12,2) NULL,
-      status VARCHAR(16) NOT NULL DEFAULT 'pending',
-      ordered_at DATETIME NULL,
-      source_report VARCHAR(40) NOT NULL DEFAULT 'postback',
-      raw TEXT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_order (order_ref, network),
-      KEY idx_user (user_id),
-      KEY idx_status (status)
-    )`);
-  tableReady2 = true;
-}
-async function recordPartnerOrder(order) {
-  try {
-    await ensurePartnerOrdersTable();
-    const store7 = getStore();
-    const orderedAt = order.orderedAt && /^\d{4}-\d{2}-\d{2}/.test(order.orderedAt) ? order.orderedAt.slice(0, 19).replace("T", " ") : null;
-    await store7.execute(
-      `INSERT INTO partner_orders (order_ref, network, merchant, user_id, subid, order_value, commission, status, ordered_at, source_report, raw)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()), ?, ?)
-       ON DUPLICATE KEY UPDATE
-         status = VALUES(status),
-         order_value = COALESCE(VALUES(order_value), order_value),
-         commission = COALESCE(VALUES(commission), commission),
-         user_id = COALESCE(VALUES(user_id), user_id),
-         merchant = IF(VALUES(merchant) = '', merchant, VALUES(merchant)),
-         raw = VALUES(raw)`,
-      [
-        order.orderRef,
-        order.network,
-        order.merchant,
-        order.userId,
-        order.subid,
-        order.orderValue,
-        order.commission,
-        order.status,
-        orderedAt,
-        order.sourceReport,
-        order.raw
-      ]
-    );
-    const rows = await store7.query(
-      `SELECT id FROM partner_orders WHERE order_ref = ? AND network = ? LIMIT 1`,
-      [order.orderRef, order.network]
-    );
-    return { stored: true, id: rows?.[0]?.id ?? null };
-  } catch (e2) {
-    log.warn("Orders", "partner order not stored", { error: e2?.message, orderRef: order.orderRef });
-    return { stored: false, id: null };
-  }
-}
-async function partnerOrdersForUser(userId, limit = 50) {
-  if (!userId) return [];
-  try {
-    await ensurePartnerOrdersTable();
-    const store7 = getStore();
-    const rows = await store7.query(
-      `SELECT order_ref, network, merchant, status, order_value, commission, ordered_at
-       FROM partner_orders WHERE user_id = ? ORDER BY COALESCE(ordered_at, created_at) DESC LIMIT ?`,
-      [userId, Math.max(1, Math.min(limit, 100))]
-    );
-    return (rows || []).map((r) => ({
-      orderRef: String(r.order_ref || ""),
-      network: String(r.network || ""),
-      merchant: String(r.merchant || ""),
-      status: String(r.status || "pending"),
-      orderValue: r.order_value === null || r.order_value === void 0 ? null : Number(r.order_value),
-      commission: r.commission === null || r.commission === void 0 ? null : Number(r.commission),
-      orderedAt: r.ordered_at ? new Date(r.ordered_at).toISOString() : null
-    }));
-  } catch (e2) {
-    log.warn("Orders", "partner orders unreadable", { error: e2?.message });
-    return [];
-  }
-}
-var PUBLISHER_HINT, publisherId, num14, str4, tableReady2;
-var init_partnerOrders = __esm({
-  "server/orders/partnerOrders.ts"() {
-    init_db();
-    init_logger();
-    PUBLISHER_HINT = /^(\d{3,})(?:[.\-_])(\d{1,12})$/;
-    publisherId = () => String(process.env.CUELINKS_PUBLISHER_ID || "278473").trim();
-    num14 = (...values) => {
-      for (const v of values) {
-        if (v === void 0 || v === null || v === "") continue;
-        const n = Number(String(v).replace(/[^0-9.\-]/g, ""));
-        if (Number.isFinite(n) && n >= 0) return n;
-      }
-      return null;
-    };
-    str4 = (...values) => {
-      for (const v of values) {
-        if (typeof v === "string" && v.trim()) return v.trim();
-      }
-      return "";
-    };
-    tableReady2 = false;
-  }
-});
-
 // server/home/bannerSlots.ts
 var bannerSlots_exports = {};
 __export(bannerSlots_exports, {
@@ -54785,7 +54620,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path9, import_express2, import_crypto32, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, cuelinksProbe, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN2, absoluteLogo, postbackToken, handleAffiliatePostback, validHex, bannerGradient;
+var import_promises2, import_node_path9, import_express2, import_crypto32, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, cuelinksProbe, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, PUBLIC_ORIGIN2, absoluteLogo, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
@@ -57636,36 +57471,6 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
         res.json({ success: false });
       }
     });
-    postbackToken = () => String(process.env.AFFILIATE_POSTBACK_TOKEN || "");
-    handleAffiliatePostback = async (req, res) => {
-      try {
-        const expected = postbackToken();
-        const given = String(req.query?.token || req.headers?.["x-t1s-token"] || "");
-        if (expected && given !== expected) return res.status(401).json({ success: false, error: "bad token" });
-        const { parsePostback: parsePostback2, recordPartnerOrder: recordPartnerOrder2 } = await Promise.resolve().then(() => (init_partnerOrders(), partnerOrders_exports));
-        const order = parsePostback2({ ...req.query || {}, ...req.body || {} }, String(req.params?.network || ""));
-        if (!order) return res.json({ success: true, stored: false, reason: "no order id in ping" });
-        const saved = await recordPartnerOrder2(order);
-        return res.json({ success: true, stored: saved.stored });
-      } catch (e2) {
-        log.warn("Orders", "postback failed", { error: e2?.message });
-        return res.json({ success: true, stored: false });
-      }
-    };
-    apiRouter.get("/postback/:network?", handleAffiliatePostback);
-    apiRouter.post("/postback/:network?", handleAffiliatePostback);
-    apiRouter.get("/orders/mine", async (req, res) => {
-      const userId = await optionalUserId(req);
-      if (!userId) return res.status(401).json({ success: false, error: "Sign in to see your orders" });
-      const { partnerOrdersForUser: partnerOrdersForUser2 } = await Promise.resolve().then(() => (init_partnerOrders(), partnerOrders_exports));
-      const orders = await partnerOrdersForUser2(userId, Number(req.query.limit) || 50);
-      return res.json({
-        success: true,
-        orders,
-        source: "partner-network-report",
-        notice: orders.length ? "Orders you placed on a partner site after leaving Try1Second, as reported by the partner network. Delivery and item details stay with that partner." : "No partner order has been reported for your account yet. Orders appear here once the partner network reports them, which can take a day or more."
-      });
-    });
     apiRouter.post("/auth/register", async (req, res) => {
       const r = await registerUser(String(req.body.email || ""), String(req.body.password || ""), req.body.displayName);
       if (!r.ok) return res.status(400).json({ success: false, error: r.error });
@@ -58583,7 +58388,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num15 = (v) => {
+    const num14 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -58594,8 +58399,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num15(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num15(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num14(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num14(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,
