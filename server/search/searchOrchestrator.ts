@@ -1453,6 +1453,50 @@ export async function rescueLateSellers(opts: {
         provenance: { sourceId: row.source_id, fetchedAt: row.fetched_at, sourceUrl: row.seller_url || undefined },
       });
     }
+    // LAST RESORT, AND THE ONE THAT ACTUALLY WORKS (owner 24 Nov, third time of asking: "jaise cleartrip,
+    // ixigo aa raha hai waise hi aertrip v aana chaiye"). Everything above depends on a row that was written
+    // somewhere else: the sweep's snapshot, the catalogue, another Passenger instance. Aertrip's own worker
+    // is right here and answers in ~4 s, so when the seller is still missing the answer fetches it directly,
+    // exactly like Cleartrip's rows arrive - no persistence, no cache, no cross-instance assumption.
+    // Memoised 10 minutes per route+date so a poll loop costs one fetch, not one per poll.
+    if (!sellersInAnswer.has('aertrip')) {
+      try {
+        const key = `aertrip|${routeTerms.join('-')}|${asked}`;
+        const memo = ((globalThis as any).__t1sAertripMemo ||= new Map<string, { at: number; rows: any[] }>());
+        let direct = memo.get(key);
+        if (!direct || Date.now() - direct.at > 10 * 60_000) {
+          const { flightsWorker } = await import('../workers/verticals/flights');
+          const { getSource } = await import('../sources/registry');
+          const { normalizeOffer } = await import('../pipeline/normalization');
+          const { computeEffectivePrice } = await import('../pipeline/pricing');
+          const task: any = (flightsWorker.tasks as any[]).find((t: any) => t.sourceId === 'w_flights_aertrip');
+          const source: any = getSource('w_flights_aertrip');
+          if (task && source) {
+            const raw: any[] = await task.run({
+              query: { vertical: 'flights', rawQuery: query, travelDates: { depart: asked } },
+              source,
+            });
+            const offers: any[] = [];
+            for (const item of raw || []) {
+              try {
+                const o: any = normalizeOffer(item, source, 'flights');
+                const band = computeEffectivePrice(o.prices?.fees, o.prices?.currency, {});
+                o.prices = { ...o.prices, effectivePrice: band.effectivePrice, mandatoryTotal: band.mandatoryTotal };
+                if (Number(o.prices.effectivePrice) > 0) offers.push(o);
+              } catch { /* one bad row never costs the seller */ }
+            }
+            direct = { at: Date.now(), rows: offers };
+            memo.set(key, direct);
+            log.info('Search', 'Aertrip fetched directly for the answer', { rows: offers.length, date: asked });
+          }
+        }
+        if (direct?.rows?.length) {
+          for (const o of direct.rows) picked.set(String(o.seller || 'aertrip').toLowerCase(), o);
+        }
+      } catch (e: any) {
+        log.debug('Search', 'Aertrip direct fetch skipped', { error: String(e?.message || e).slice(0, 120) });
+      }
+    }
     if (!picked.size) return combined;
     log.info('Search', 'catalogue rescue: restored rows for sellers whose sweep answer arrived late', {
       vertical, sellers: [...picked.keys()].slice(0, 6), sources: missingSources.slice(0, 6),
@@ -1910,3 +1954,4 @@ async function recordSearchMetrics(input: SearchInput, parsed: ParsedQuery, resp
     );
   } catch { /* observability is best-effort */ }
 }
+

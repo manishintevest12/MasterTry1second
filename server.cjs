@@ -18826,6 +18826,12 @@ var init_expediaFlights = __esm({
 });
 
 // server/workers/verticals/flights.ts
+var flights_exports = {};
+__export(flights_exports, {
+  expandCityToken: () => expandCityToken,
+  flightsWorker: () => flightsWorker,
+  routeFromQuery: () => routeFromQuery
+});
 function expandCityToken(token) {
   const t = token.trim();
   if (!t) return t;
@@ -32142,6 +32148,16 @@ var init_sellerMemory = __esm({
 });
 
 // server/pipeline/normalization.ts
+var normalization_exports = {};
+__export(normalization_exports, {
+  dedupeOffers: () => dedupeOffers,
+  normalizeAttributes: () => normalizeAttributes,
+  normalizeCurrency: () => normalizeCurrency,
+  normalizeIdentifier: () => normalizeIdentifier,
+  normalizeOffer: () => normalizeOffer,
+  normalizeTitle: () => normalizeTitle,
+  offerDedupKey: () => offerDedupKey
+});
 function normalizeTitle(raw) {
   return raw.replace(/\s+/g, " ").replace(NOISE_RE, "").trim().slice(0, 400);
 }
@@ -32268,6 +32284,13 @@ var init_normalization = __esm({
 });
 
 // server/pipeline/pricing.ts
+var pricing_exports = {};
+__export(pricing_exports, {
+  computeEffectivePrice: () => computeEffectivePrice,
+  computeMandatoryTotal: () => computeMandatoryTotal,
+  isSupportedCurrency: () => isSupportedCurrency,
+  round2: () => round2
+});
 function computeMandatoryTotal(fees) {
   const base = fees.basePrice;
   if (base === void 0 || base === null || !Number.isFinite(base)) return void 0;
@@ -39969,6 +39992,45 @@ async function rescueLateSellers(opts) {
         validationStatus: row.validation_status || "PARTIAL",
         provenance: { sourceId: row.source_id, fetchedAt: row.fetched_at, sourceUrl: row.seller_url || void 0 }
       });
+    }
+    if (!sellersInAnswer.has("aertrip")) {
+      try {
+        const key = `aertrip|${routeTerms.join("-")}|${asked}`;
+        const memo2 = globalThis.__t1sAertripMemo ||= /* @__PURE__ */ new Map();
+        let direct = memo2.get(key);
+        if (!direct || Date.now() - direct.at > 10 * 6e4) {
+          const { flightsWorker: flightsWorker2 } = await Promise.resolve().then(() => (init_flights(), flights_exports));
+          const { getSource: getSource2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
+          const { normalizeOffer: normalizeOffer2 } = await Promise.resolve().then(() => (init_normalization(), normalization_exports));
+          const { computeEffectivePrice: computeEffectivePrice2 } = await Promise.resolve().then(() => (init_pricing(), pricing_exports));
+          const task = flightsWorker2.tasks.find((t) => t.sourceId === "w_flights_aertrip");
+          const source = getSource2("w_flights_aertrip");
+          if (task && source) {
+            const raw = await task.run({
+              query: { vertical: "flights", rawQuery: query, travelDates: { depart: asked } },
+              source
+            });
+            const offers = [];
+            for (const item of raw || []) {
+              try {
+                const o = normalizeOffer2(item, source, "flights");
+                const band = computeEffectivePrice2(o.prices?.fees, o.prices?.currency, {});
+                o.prices = { ...o.prices, effectivePrice: band.effectivePrice, mandatoryTotal: band.mandatoryTotal };
+                if (Number(o.prices.effectivePrice) > 0) offers.push(o);
+              } catch {
+              }
+            }
+            direct = { at: Date.now(), rows: offers };
+            memo2.set(key, direct);
+            log.info("Search", "Aertrip fetched directly for the answer", { rows: offers.length, date: asked });
+          }
+        }
+        if (direct?.rows?.length) {
+          for (const o of direct.rows) picked.set(String(o.seller || "aertrip").toLowerCase(), o);
+        }
+      } catch (e2) {
+        log.debug("Search", "Aertrip direct fetch skipped", { error: String(e2?.message || e2).slice(0, 120) });
+      }
     }
     if (!picked.size) return combined;
     log.info("Search", "catalogue rescue: restored rows for sellers whose sweep answer arrived late", {
