@@ -29,7 +29,7 @@ import { liveSearchForVoice } from '../alexa/searchClient';
 import { orderFlightRowsLast } from '../search/feedOrder';
 import { resultDeadlineMs } from '../search/latencyBudget';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
-import { bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
+import { basketVerdict, bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
 import { parseRouteQuery, resolveCabQuery } from '../verticals/verticalEngine';
 import { enforceRequestedRoute } from '../search/routeGate';
@@ -4420,8 +4420,10 @@ apiRouter.post('/smart-cart/compare', async (req, res) => {
     }));
 
     const comparison = computeStoreTotals(searches);
+    // One sentence the cart prints as-is, so the website and the app answer "Blinkit or Zepto?" identically.
+    const verdict = basketVerdict(comparison);
     // Exits always route through /api/out for server-side affiliate injection.
-    res.json({ success: true, comparison });
+    res.json({ success: true, comparison: { ...comparison, verdict }, verdict });
   } catch (e: any) {
     res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 160) });
   }

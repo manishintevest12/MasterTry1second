@@ -95,17 +95,24 @@ export const SpendLensView: React.FC = () => {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
+  /** OWNER 24 Nov: a failed load used to fall through to the empty state, so the page showed ₹0 / "No purchases
+   *  logged yet" for an account that simply could not be read. That is a fabricated zero. Say it failed instead. */
+  const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ merchant: '', amount: '', itemTitle: '', entryDate: today() });
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const token = localStorage.getItem('try1_session') || '';
       const res = await fetch('/api/spend', { headers: { Authorization: `Bearer ${token}` } });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({} as any));
       if (res.ok && d.success) { setEntries(d.entries || []); setSummary(d.summary || null); }
-    } catch { /* honest empty state below */ }
+      else setLoadError(String(d?.error || (res.status === 401 ? 'Your session expired — sign in again to see your purchases.' : 'Could not load your purchases right now.')));
+    } catch {
+      setLoadError('Could not load your purchases — check your connection and try again.');
+    }
     setLoading(false);
   }, []);
 
@@ -194,13 +201,24 @@ export const SpendLensView: React.FC = () => {
         </div>
       </div>
 
+      {loadError && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <p className="text-xs font-bold text-amber-900">
+            {loadError} The figures below are not your spend — they are unknown until this loads.
+          </p>
+          <button type="button" onClick={() => load()} className="rounded-lg bg-amber-900 px-3 py-1.5 text-[11px] font-black text-white hover:bg-amber-800">
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Stat tiles */}
       <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { icon: Wallet, label: 'TOTAL SPEND', value: loading ? '…' : inr(summary?.total || 0) },
-          { icon: ReceiptText, label: 'PURCHASES', value: loading ? '…' : String(summary?.entries || 0) },
+          { icon: Wallet, label: 'TOTAL SPEND', value: loading ? '…' : (loadError ? '—' : inr(summary?.total || 0)) },
+          { icon: ReceiptText, label: 'PURCHASES', value: loading ? '…' : (loadError ? '—' : String(summary?.entries || 0)) },
           { icon: Store, label: 'TOP WEBSITE', value: loading ? '…' : (summary?.byMerchant[0]?.merchant || '—') },
-          { icon: CalendarDays, label: 'THIS MONTH', value: loading ? '…' : inr(thisMonth) },
+          { icon: CalendarDays, label: 'THIS MONTH', value: loading ? '…' : (loadError ? '—' : inr(thisMonth)) },
         ].map((t) => (
           <div key={t.label} className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex items-center gap-2 text-slate-400"><t.icon size={14} /><span className="text-[10px] font-bold tracking-wide">{t.label}</span></div>
@@ -215,6 +233,7 @@ export const SpendLensView: React.FC = () => {
           <div className="flex items-center gap-2 font-bold text-slate-800"><BarChart3 size={16} className="text-[#E7000B]" /> Spend by website</div>
           <div className="mt-4">
             {loading ? <p className="text-xs text-slate-400">Loading…</p>
+              : loadError ? <p className="text-xs text-slate-500">Could not load this chart — retry above.</p>
               : summary?.byMerchant.length ? <MerchantBars byMerchant={summary.byMerchant} />
               : <p className="text-xs text-slate-500">No purchases logged yet — add your first one and this chart builds from real entries only.</p>}
           </div>
@@ -225,6 +244,7 @@ export const SpendLensView: React.FC = () => {
           <div className="flex items-center gap-2 font-bold text-slate-800"><TrendingUp size={16} className="text-[#E7000B]" /> Monthly trend</div>
           <div className="mt-4">
             {loading ? <p className="text-xs text-slate-400">Loading…</p>
+              : loadError ? <p className="text-xs text-slate-500">Could not load this chart — retry above.</p>
               : <MonthTrend byMonth={summary?.byMonth || []} />}
           </div>
         </div>

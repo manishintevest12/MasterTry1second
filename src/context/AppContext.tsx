@@ -195,6 +195,17 @@ export type SmartCartCompare = {
   best?: { seller: string; total: number; itemsCovered: number; itemsMissing: number; missing: string[]; complete: boolean; itemized: { name: string; qty: number; price: number; unitPrice: number; url: string | null }[] };
   savingsVsWorst?: number;
   notFound: string[];
+  /** ONE sentence answering "Blinkit or Zepto?" — built server-side from the same totals, printed as-is. */
+  verdict?: {
+    kind: 'complete' | 'partial' | 'empty';
+    store: string | null;
+    total: number | null;
+    nextStore: string | null;
+    nextTotal: number | null;
+    savesVsNext: number | null;
+    headline: string;
+    detail: string;
+  };
 };
 
 interface AppContextType {
