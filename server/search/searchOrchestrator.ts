@@ -1403,7 +1403,10 @@ export async function rescueLateSellers(opts: {
     const missingSources = (succeeded || []).filter(
       (id) => !(liveOffers || []).some((o) => String(o?.provenance?.sourceId || '') === id),
     );
-    if (!missingSources.length) return combined;
+    // Do not bail out just because this answer's success list looks complete: the served (cached) answer is
+    // exactly the one that lost Aertrip, so its list can be clean while the seller is absent. The only
+    // question that matters is whether Aertrip has a row here.
+    if (!missingSources.length && sellersInAnswer.has('aertrip')) return combined;
     const asked = String(depart || '').slice(0, 10);
     const routeTerms = String(query || '')
       .toLowerCase()
@@ -1420,7 +1423,7 @@ export async function rescueLateSellers(opts: {
     const bySource = await findCatalogueOffers('flights', { limit: 400 });
     const seenIds = new Set((byTerms as any[]).map((r) => String(r.id)));
     const rows = [...(byTerms as any[]), ...(bySource as any[]).filter((r) => !seenIds.has(String(r.id)))];
-    const wanted = new Set(missingSources);
+    const wanted = new Set(missingSources.length ? missingSources : ['w_flights_aertrip']);
     const picked = new Map<string, any>();
     for (const row of rows as any[]) {
       if (!wanted.has(String(row.source_id || ''))) continue;

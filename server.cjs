@@ -39948,7 +39948,7 @@ async function rescueLateSellers(opts) {
     const missingSources = (succeeded || []).filter(
       (id) => !(liveOffers || []).some((o) => String(o?.provenance?.sourceId || "") === id)
     );
-    if (!missingSources.length) return combined;
+    if (!missingSources.length && sellersInAnswer.has("aertrip")) return combined;
     const asked = String(depart || "").slice(0, 10);
     const routeTerms = String(query || "").toLowerCase().replace(/\bflights?\b|\bto\b/g, " ").split(/\s+/).filter((t) => t.length >= 3).slice(0, 3);
     const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
@@ -39956,7 +39956,7 @@ async function rescueLateSellers(opts) {
     const bySource = await findCatalogueOffers2("flights", { limit: 400 });
     const seenIds = new Set(byTerms.map((r) => String(r.id)));
     const rows = [...byTerms, ...bySource.filter((r) => !seenIds.has(String(r.id)))];
-    const wanted = new Set(missingSources);
+    const wanted = new Set(missingSources.length ? missingSources : ["w_flights_aertrip"]);
     const picked = /* @__PURE__ */ new Map();
     for (const row of rows) {
       if (!wanted.has(String(row.source_id || ""))) continue;
