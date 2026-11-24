@@ -69502,6 +69502,9 @@ async function startWorker() {
       setHeaders: (res, filePath) => {
         if (filePath.endsWith("index.html")) res.setHeader("Cache-Control", "no-store, must-revalidate");
         else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        else if (/\.(?:png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf)$/i.test(filePath)) {
+          res.setHeader("Cache-Control", "public, max-age=2592000, stale-while-revalidate=86400");
+        }
       }
     }));
     app.get("*", (_req, res) => {

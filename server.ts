@@ -34,6 +34,13 @@ async function startPrimary() {
       setHeaders: (res: any, filePath: string) => {
         if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-store, must-revalidate');
         else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        // OWNER 24 Nov (Lighthouse mobile 63: "Use efficient cache lifetimes - 453 KiB"): the hashed
+        // /assets/* files were already immutable, but every image, font and icon in public/ went out with
+        // NO cache lifetime, so a repeat visit re-downloaded all of them. They are content-addressed by
+        // filename here, so a month plus stale-while-revalidate is safe and the byte saving is immediate.
+        else if (/\.(?:png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf)$/i.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=86400');
+        }
       },
     }));
       app.get('*', (_req: any, res: any) => { res.setHeader('Cache-Control', 'no-store, must-revalidate'); res.sendFile(path.join(dist, 'index.html')); });
