@@ -118,6 +118,13 @@ export function parseGoibiboSsr(
     const flightNo = stripTags(String(j.flightNumber || j.simpleAirlineHeading?.cd || '')).slice(0, 40);
     const depT = String(firstSeg.depTime || '');
     const arrT = String(lastSeg?.arrTime || '');
+    // OWNER 24 Nov ("seats left ye sb batao"): Goibibo publishes the seat count on the journey or on its first
+    // segment under several spellings. Only a real number is carried - an absent count stays absent.
+    const seatRaw = [
+      (j as any).seatsLeft, (j as any).seats, (j as any).availableSeats, (j as any).seatsAvailable,
+      firstSeg?.seatsLeft, firstSeg?.seats, firstSeg?.availableSeats, firstSeg?.seatsAvailable,
+    ].find((v: any) => v !== undefined && v !== null && String(v).trim() !== '');
+    const seats = seatRaw === undefined ? '' : String(seatRaw).replace(/[^0-9]/g, '');
     const routeLabel = `${fromCity} → ${toCity}`;
     // OWNER 24 Nov ("date ni aata"): the journey key itself carries the departure day
     // (`ORIG$DEST$YYYY-MM-DD HH:MM$FLNO`). The page-level itinerary date was the only source before, so a page whose
@@ -142,8 +149,9 @@ export function parseGoibiboSsr(
         ...(depT ? { departure: depT } : {}),
         ...(arrT ? { arrival: arrT } : {}),
         stops: String(stops),
+        ...(seats ? { seats_available: seats } : {}),
         origin: String(firstSeg.depCityCd || ''),
-        destination: String(lastSeg?.arrCityCd || ''),
+        destination: String(lastSeg?.arrCityCd || '') || String(toCity),
         ...(firstSeg.duration ? { duration: `${firstSeg.duration.h || '00'}h ${firstSeg.duration.m || '00'}m` } : {}),
         price_basis: `total Goibibo fare for 1 adult from Goibibo's own route-page listing on ${new Date().toISOString().slice(0, 10)}`,
         data_note: `Fare acquired from Goibibo's server-rendered route page on ${new Date().toISOString().slice(0, 10)}${rowDate ? ` for its service date ${rowDate}` : ''}; booking continues on Goibibo's own website.`,

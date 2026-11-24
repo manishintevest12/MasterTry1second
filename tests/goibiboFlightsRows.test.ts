@@ -88,3 +88,26 @@ test('a journey with no price is skipped, never shown as a free flight', () => {
   assert.equal(rows.length, 1);
   assert.equal((rows[0] as any).attributes.flight_number, 'AI-803');
 });
+
+test('seats left and destination are carried when Goibibo publishes them', () => {
+  const withSeats = {
+    fare: 7337,
+    flightNumber: '6E-2045',
+    simpleAirlineHeading: { cd: '6E', nm: 'IndiGo' },
+    journeyKeys: ['IDR$DEL$2026-11-28 06:50$6E-2045'],
+    seatsLeft: '9',
+  };
+  const html = page([[withSeats]]);
+  const rows: any[] = parseGoibiboSsr(html, source, 'https://x/', 'Indore', 'New Delhi') as any[];
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].attributes.seats_available, '9');
+  assert.equal(rows[0].attributes.destination, 'DEL');
+  assert.equal(rows[0].attributes.origin, 'IDR');
+  assert.ok(rows[0].attributes.departure && rows[0].attributes.arrival, 'clock times present');
+});
+
+test('no seat count on the page means no seat claim on the card', () => {
+  const html = page([[j(7337, 'IDR$DEL$2026-11-28 06:50$6E-2045', '6E-2045')]]);
+  const rows: any[] = parseGoibiboSsr(html, source, 'https://x/', 'Indore', 'New Delhi') as any[];
+  assert.equal(rows[0].attributes.seats_available, undefined, 'never invented');
+});

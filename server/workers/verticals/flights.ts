@@ -1571,9 +1571,15 @@ export const flightsWorker: VerticalWorker = {
         // The calendar row is a complete, priced answer. When it prices the EXACT requested date there is
         // nothing left to prove, so the slow SSR ladder is skipped: the catalogue warmer stays fast and the
         // schedule rows are only fetched when the calendar could not price this date.
-        if (out.some((i: any) => i.attributes?.price_basis === 'live_fare')) {
+        // OWNER 24 Nov ("abhi v goibibo ka ek hi results dikh raha hai ... like flight time, flight number,
+        // destination, date seats left ye sb batao"): this early return was the reason Goibibo showed ONE card.
+        // The fare-calendar answers with a single route-level price (no flight number, no clock time, no seats), and
+        // the moment it priced the requested date the per-flight schedule below was skipped entirely - so Goibibo
+        // could never look like the other sellers. The calendar row stays, and the schedule is still read on a
+        // tighter budget so the extra cards cost ~2 s, not the full 18 s ladder.
+        const calendarAnswered = out.some((i: any) => i.attributes?.price_basis === 'live_fare');
+        if (calendarAnswered) {
           out.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
-          return out.slice(0, 40);
         }
 
         // ---- (b) the SSR route page: per-flight schedule (date-blind, so its rows rarely survive) ----
@@ -1591,11 +1597,15 @@ export const flightsWorker: VerticalWorker = {
         // The schedule page is a BONUS row: the fare-calendar call above is the answer, and it lands in ~0.4 s.
         // The ladder therefore runs on a tight budget (3 rungs x 6 s worst case) so Goibibo can be attempted
         // inline in a user's search - the flights sweep ceiling is 28 s and one partner may not eat it.
-        const attempts: Array<{ label: string; opts: any }> = [
-          { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 6_000, headers: giHeaders } },
-          { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 6_000, headers: giHeaders, httpVersion: '1.1' as const } },
-          { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 6_000, headers: giHeaders } },
-        ];
+        // When the calendar already answered, one rung is enough: it only has to add the per-flight detail the
+        // calendar cannot carry. Without a price yet, the full ladder still runs.
+        const attempts: Array<{ label: string; opts: any }> = calendarAnswered
+          ? [{ label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 4_500, headers: giHeaders } }]
+          : [
+              { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 6_000, headers: giHeaders } },
+              { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 6_000, headers: giHeaders, httpVersion: '1.1' as const } },
+              { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 6_000, headers: giHeaders } },
+            ];
         for (const a of attempts) {
           try {
             r = await cffiFetch(url, a.opts);

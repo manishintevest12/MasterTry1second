@@ -12680,6 +12680,17 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
     const flightNo2 = stripTags2(String(j.flightNumber || j.simpleAirlineHeading?.cd || "")).slice(0, 40);
     const depT = String(firstSeg.depTime || "");
     const arrT = String(lastSeg?.arrTime || "");
+    const seatRaw = [
+      j.seatsLeft,
+      j.seats,
+      j.availableSeats,
+      j.seatsAvailable,
+      firstSeg?.seatsLeft,
+      firstSeg?.seats,
+      firstSeg?.availableSeats,
+      firstSeg?.seatsAvailable
+    ].find((v) => v !== void 0 && v !== null && String(v).trim() !== "");
+    const seats = seatRaw === void 0 ? "" : String(seatRaw).replace(/[^0-9]/g, "");
     const routeLabel = `${fromCity} \u2192 ${toCity}`;
     const keyDate = (String(firstKey).match(/(\d{4})-(\d{2})-(\d{2})/) || []).slice(1).join("-");
     const rowDate2 = keyDate || fareDate;
@@ -12698,8 +12709,9 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
         ...depT ? { departure: depT } : {},
         ...arrT ? { arrival: arrT } : {},
         stops: String(stops),
+        ...seats ? { seats_available: seats } : {},
         origin: String(firstSeg.depCityCd || ""),
-        destination: String(lastSeg?.arrCityCd || ""),
+        destination: String(lastSeg?.arrCityCd || "") || String(toCity),
         ...firstSeg.duration ? { duration: `${firstSeg.duration.h || "00"}h ${firstSeg.duration.m || "00"}m` } : {},
         price_basis: `total Goibibo fare for 1 adult from Goibibo's own route-page listing on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`,
         data_note: `Fare acquired from Goibibo's server-rendered route page on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}${rowDate2 ? ` for its service date ${rowDate2}` : ""}; booking continues on Goibibo's own website.`,
@@ -20333,9 +20345,9 @@ var init_flights = __esm({
             } catch (e2) {
               problems.push(`fare-calendar ${String(e2?.message || e2).slice(0, 90)}`);
             }
-            if (out.some((i) => i.attributes?.price_basis === "live_fare")) {
+            const calendarAnswered = out.some((i) => i.attributes?.price_basis === "live_fare");
+            if (calendarAnswered) {
               out.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
-              return out.slice(0, 40);
             }
             const url = goibiboRouteUrl(rt.from, rt.to);
             const giHeaders = {
@@ -20345,7 +20357,7 @@ var init_flights = __esm({
             };
             let r;
             const lastErr = [];
-            const attempts = [
+            const attempts = calendarAnswered ? [{ label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 4500, headers: giHeaders } }] : [
               { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 6e3, headers: giHeaders } },
               { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 6e3, headers: giHeaders, httpVersion: "1.1" } },
               { label: "safari-h2", opts: { impersonate: "safari17_0", timeoutMs: 6e3, headers: giHeaders } }
