@@ -92,7 +92,13 @@ export function parseGoibiboSsr(
   const jm: Record<string, any> = listing?.journeyMap?.data || {};
   const groups = listing?.journeys?.allJourneys;
   if (!Array.isArray(groups) || !groups.length) return [];
-  const journeys: GiJourney[] = Array.isArray(groups[0]) ? groups[0] : [];
+  // OWNER 24 Nov ("goibibo mai sirf ek card aa raha hai"): `allJourneys` is a list of GROUPS - one per cabin /
+  // fare family and, on a return search, one per leg. Only `groups[0]` was read, so a listing with 16 journeys
+  // could reach the page as a single card. Every group is read now and de-duplicated by its own journey key, so
+  // one flight is never shown twice and no flight is silently dropped.
+  const journeys: GiJourney[] = (Array.isArray(groups[0]) ? groups.flat(1) : groups)
+    .filter((j: any) => j && typeof j === 'object') as GiJourney[];
+  const seenKeys = new Set<string>();
 
   const out: RawSourceItem[] = [];
   for (const j of journeys) {
@@ -100,6 +106,9 @@ export function parseGoibiboSsr(
     if (!Number.isFinite(price) || price <= 0) continue;
     const keys = Array.isArray(j.journeyKeys) ? j.journeyKeys : [];
     if (!keys.length) continue;
+    const dedupeKey = String(keys[0]);
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
     const legs = String(keys[0]).split('|');
     const firstKey = legs[0]; const lastKey = legs[legs.length - 1];
     const firstSeg = jm[firstKey]; const lastSeg = jm[lastKey];
@@ -110,7 +119,14 @@ export function parseGoibiboSsr(
     const depT = String(firstSeg.depTime || '');
     const arrT = String(lastSeg?.arrTime || '');
     const routeLabel = `${fromCity} → ${toCity}`;
-    const dateLabel = fareDate ? `on ${fareDate}` : '';
+    // OWNER 24 Nov ("date ni aata"): the journey key itself carries the departure day
+    // (`ORIG$DEST$YYYY-MM-DD HH:MM$FLNO`). The page-level itinerary date was the only source before, so a page whose
+    // itinerary token was missing or stale produced a card with no date at all. The row's own key wins; the page date
+    // is the fallback.
+    const keyDate = (String(firstKey).match(/(\d{4})-(\d{2})-(\d{2})/) || [])
+      .slice(1).join('-');
+    const rowDate = keyDate || fareDate;
+    const dateLabel = rowDate ? `on ${rowDate}` : '';
 
     out.push(newRawItem(source, {
       title: `${name} ${flightNo} ${routeLabel} ${stops ? `(${stops} stop${stops > 1 ? 's' : ''})` : 'non-stop'} ${dateLabel}`.slice(0, 200),
@@ -119,7 +135,7 @@ export function parseGoibiboSsr(
       currency: 'INR',
       seller: 'Goibibo',
       sellerUrl: pageUrl,
-      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: fareDate },
+      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: rowDate },
       attributes: {
         airline: name,
         flight_number: flightNo,
@@ -130,7 +146,7 @@ export function parseGoibiboSsr(
         destination: String(lastSeg?.arrCityCd || ''),
         ...(firstSeg.duration ? { duration: `${firstSeg.duration.h || '00'}h ${firstSeg.duration.m || '00'}m` } : {}),
         price_basis: `total Goibibo fare for 1 adult from Goibibo's own route-page listing on ${new Date().toISOString().slice(0, 10)}`,
-        data_note: `Fare acquired from Goibibo's server-rendered route page on ${new Date().toISOString().slice(0, 10)}${fareDate ? ` for its service date ${fareDate}` : ''}; booking continues on Goibibo's own website.`,
+        data_note: `Fare acquired from Goibibo's server-rendered route page on ${new Date().toISOString().slice(0, 10)}${rowDate ? ` for its service date ${rowDate}` : ''}; booking continues on Goibibo's own website.`,
         image: '',
       },
       identifiers: { sku: `gi-${keys[0]}`.replace(/[^A-Za-z0-9$|.:-]/g, '-') },

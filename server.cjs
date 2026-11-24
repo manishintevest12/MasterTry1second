@@ -12658,13 +12658,17 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
   const jm = listing?.journeyMap?.data || {};
   const groups = listing?.journeys?.allJourneys;
   if (!Array.isArray(groups) || !groups.length) return [];
-  const journeys = Array.isArray(groups[0]) ? groups[0] : [];
+  const journeys = (Array.isArray(groups[0]) ? groups.flat(1) : groups).filter((j) => j && typeof j === "object");
+  const seenKeys = /* @__PURE__ */ new Set();
   const out = [];
   for (const j of journeys) {
     const price2 = Number(j.fare);
     if (!Number.isFinite(price2) || price2 <= 0) continue;
     const keys = Array.isArray(j.journeyKeys) ? j.journeyKeys : [];
     if (!keys.length) continue;
+    const dedupeKey = String(keys[0]);
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
     const legs2 = String(keys[0]).split("|");
     const firstKey = legs2[0];
     const lastKey = legs2[legs2.length - 1];
@@ -12677,7 +12681,9 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
     const depT = String(firstSeg.depTime || "");
     const arrT = String(lastSeg?.arrTime || "");
     const routeLabel = `${fromCity} \u2192 ${toCity}`;
-    const dateLabel = fareDate ? `on ${fareDate}` : "";
+    const keyDate = (String(firstKey).match(/(\d{4})-(\d{2})-(\d{2})/) || []).slice(1).join("-");
+    const rowDate2 = keyDate || fareDate;
+    const dateLabel = rowDate2 ? `on ${rowDate2}` : "";
     out.push(newRawItem(source, {
       title: `${name} ${flightNo2} ${routeLabel} ${stops ? `(${stops} stop${stops > 1 ? "s" : ""})` : "non-stop"} ${dateLabel}`.slice(0, 200),
       brand: name,
@@ -12685,7 +12691,7 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
       currency: "INR",
       seller: "Goibibo",
       sellerUrl: pageUrl,
-      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: fareDate },
+      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: rowDate2 },
       attributes: {
         airline: name,
         flight_number: flightNo2,
@@ -12696,7 +12702,7 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
         destination: String(lastSeg?.arrCityCd || ""),
         ...firstSeg.duration ? { duration: `${firstSeg.duration.h || "00"}h ${firstSeg.duration.m || "00"}m` } : {},
         price_basis: `total Goibibo fare for 1 adult from Goibibo's own route-page listing on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`,
-        data_note: `Fare acquired from Goibibo's server-rendered route page on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}${fareDate ? ` for its service date ${fareDate}` : ""}; booking continues on Goibibo's own website.`,
+        data_note: `Fare acquired from Goibibo's server-rendered route page on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}${rowDate2 ? ` for its service date ${rowDate2}` : ""}; booking continues on Goibibo's own website.`,
         image: ""
       },
       identifiers: { sku: `gi-${keys[0]}`.replace(/[^A-Za-z0-9$|.:-]/g, "-") },
