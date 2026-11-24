@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groceryProductKey, bestUnitPricesPerStore, computeStoreTotals } from '../server/smartcart/basket';
+import { groceryProductKey, bestUnitPricesPerStore, computeStoreTotals, basketVerdict } from '../server/smartcart/basket';
 
 // Owner rule: Smart Cart compares a basket across stores, totals it per store,
 // and the cheapest FULL basket wins the redirect.
@@ -69,4 +69,83 @@ test('computeStoreTotals: missing items are reported honestly', () => {
   assert.deepEqual(c.notFound, ['unicorn milk']);
   assert.ok(!c.best, 'no full basket when an item is nowhere');
   assert.equal(c.stores.length, 1);
+});
+
+/**
+ * OWNER 24 Nov ("agar maine aloo pyaaz add kiya tho wo bataye cart mai ki sbse sasta blinkit mai hai yaa zepto
+ * mai aise"): the cart must ANSWER the question in one sentence, not leave the shopper to read four store cards.
+ * The verdict is computed server-side so the website and the app print the same words for the same basket.
+ */
+const item = (name: string, prices: Record<string, number>) => ({
+  name, qty: 1, found: Object.keys(prices).length > 0,
+  unitPrices: Object.entries(prices).map(([seller, price]) => ({ seller, price, title: name, url: null })),
+});
+
+test('verdict: names the cheapest store for the whole basket and the gap to the runner-up', () => {
+  const c = computeStoreTotals([
+    item('aloo 1 kg', { Blinkit: 30, Zepto: 42 }),
+    item('pyaaz 1 kg', { Blinkit: 35, Zepto: 33 }),
+  ]);
+  const v = basketVerdict(c);
+  assert.equal(v.kind, 'complete');
+  assert.equal(v.store, 'Blinkit');       // 65 vs Zepto 75
+  assert.equal(v.total, 65);
+  assert.equal(v.nextStore, 'Zepto');
+  assert.equal(v.savesVsNext, 10);
+  assert.match(v.headline, /^Cheapest full basket: Blinkit/);
+  assert.match(v.headline, /65/);
+  assert.match(v.detail, /10/);
+  assert.match(v.detail, /Zepto/);
+});
+
+test('verdict: a single store carrying everything says so instead of inventing a comparison', () => {
+  const v = basketVerdict(computeStoreTotals([item('aloo 1 kg', { Blinkit: 30 })]));
+  assert.equal(v.kind, 'complete');
+  assert.equal(v.nextStore, null);
+  assert.equal(v.savesVsNext, null);
+  assert.match(v.detail, /only store/i);
+});
+
+test('verdict: when no store has the whole basket, names the closest and what it is missing', () => {
+  const c = computeStoreTotals([
+    item('aloo 1 kg', { Blinkit: 30 }),           // potato only at Blinkit
+    item('pyaaz 1 kg', { Zepto: 33 }),            // onion only at Zepto
+  ]);
+  assert.equal(c.best, undefined);                // nobody carries both
+  const v = basketVerdict(c);
+  assert.equal(v.kind, 'partial');
+  assert.equal(v.store, 'Blinkit');               // same coverage, cheaper total
+  assert.equal(v.total, 30);
+  assert.match(v.headline, /No single store/i);
+  assert.match(v.headline, /Blinkit/);
+  assert.match(v.headline, /1\/2 items/);
+  assert.match(v.detail, /pyaaz 1 kg/);           // says what is still missing
+  assert.equal(v.savesVsNext, null);
+});
+
+test('verdict: a store that carries both wins outright, even when it is dearer per item', () => {
+  const c = computeStoreTotals([
+    item('aloo 1 kg', { Blinkit: 30, Zepto: 42 }),
+    item('pyaaz 1 kg', { Zepto: 33 }),            // only Zepto has both items
+  ]);
+  const v = basketVerdict(c);
+  assert.equal(v.kind, 'complete');
+  assert.equal(v.store, 'Zepto');
+  assert.equal(v.total, 75);
+  assert.equal(v.nextStore, null);
+});
+
+test('verdict: an empty comparison is an honest empty answer, never a made-up winner', () => {
+  const v = basketVerdict(computeStoreTotals([item('aloo 1 kg', {})]));
+  assert.equal(v.kind, 'empty');
+  assert.equal(v.store, null);
+  assert.equal(v.total, null);
+  assert.match(v.headline, /No store returned/i);
+});
+
+test('verdict: identical totals are reported as equal, not as a saving', () => {
+  const v = basketVerdict(computeStoreTotals([item('aloo 1 kg', { Blinkit: 30, Zepto: 30 })]));
+  assert.equal(v.kind, 'complete');
+  assert.equal(v.savesVsNext, null);
+  assert.match(v.detail, /same/i);
 });

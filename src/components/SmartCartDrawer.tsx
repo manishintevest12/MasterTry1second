@@ -6,12 +6,26 @@ import { useApp, type SmartCartCompare } from '../context/AppContext';
  *  store server-side (POST /api/smart-cart/compare) and ranked by FULL-basket
  *  cost; 'Shop at <store>' hops through /api/out like every other deal link. */
 export const SmartCartDrawer: React.FC = () => {
-  const { smartCart, updateSmartCartQty, removeFromSmartCart, clearSmartCart, isSmartCartOpen, setIsSmartCartOpen, userLocation, addToast } = useApp();
+  const { smartCart, addToSmartCart, updateSmartCartQty, removeFromSmartCart, clearSmartCart, isSmartCartOpen, setIsSmartCartOpen, userLocation, addToast } = useApp();
   const [comparing, setComparing] = useState(false);
   const [result, setResult] = useState<SmartCartCompare | null>(null);
   const [error, setError] = useState('');
+  const [newItem, setNewItem] = useState('');
 
   if (!isSmartCartOpen) return null;
+
+  /** OWNER 24 Nov ("agar maine aloo pyaaz add kiya tho"): type the item and it is in the basket — the comparison
+   *  no longer requires finding the product in a feed first. Any previous result is cleared, because it was for a
+   *  different basket. */
+  const addByName = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    const name = newItem.trim();
+    if (!name) return;
+    addToSmartCart(name, 1);
+    setNewItem('');
+    setResult(null);
+    setError('');
+  };
 
   const compare = async () => {
     if (!smartCart.length) return;
@@ -52,12 +66,33 @@ export const SmartCartDrawer: React.FC = () => {
           </button>
         </div>
 
+        {/* Add by name — the basket is yours to type, not only what a feed happened to return */}
+        <form onSubmit={addByName} className="px-4 pt-3">
+          <div className="flex items-center gap-1.5">
+            <input
+              value={newItem}
+              onChange={(e) => setNewItem(e.target.value)}
+              placeholder="Add an item — e.g. aloo 1 kg, pyaaz"
+              maxLength={120}
+              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-800 placeholder:font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            />
+            <button
+              type="submit"
+              disabled={!newItem.trim()}
+              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white cursor-pointer"
+              aria-label="Add item to the basket"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </form>
+
         {/* Basket list */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
           {smartCart.length === 0 ? (
             <p className="text-xs text-slate-500 text-center py-8">
-              Search groceries and tap <span className="font-bold">+ Cart</span> on any product.
-              Smart Cart then totals your whole basket at every store and sends you to the cheapest one.
+              Type an item above (e.g. <span className="font-bold">aloo 1 kg</span>), or tap <span className="font-bold">+ Cart</span> on any grocery product.
+              Smart Cart then totals your whole basket at every store and tells you which one is cheapest.
             </p>
           ) : smartCart.map((it) => (
             <div key={it.name} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
@@ -92,6 +127,22 @@ export const SmartCartDrawer: React.FC = () => {
           )}
           {result && (
             <div className="space-y-2 pt-2">
+              {result.verdict && (
+                <div className={`rounded-xl px-3 py-2.5 border ${
+                  result.verdict.kind === 'complete'
+                    ? 'border-emerald-300 bg-emerald-50'
+                    : result.verdict.kind === 'partial'
+                      ? 'border-amber-300 bg-amber-50'
+                      : 'border-slate-200 bg-slate-50'
+                }`}>
+                  <p className={`text-xs font-black ${result.verdict.kind === 'complete' ? 'text-emerald-900' : result.verdict.kind === 'partial' ? 'text-amber-900' : 'text-slate-700'}`}>
+                    {result.verdict.headline}
+                  </p>
+                  <p className={`text-[10px] font-bold mt-0.5 ${result.verdict.kind === 'complete' ? 'text-emerald-700' : result.verdict.kind === 'partial' ? 'text-amber-700' : 'text-slate-500'}`}>
+                    {result.verdict.detail}
+                  </p>
+                </div>
+              )}
               <p className="text-[11px] font-black text-slate-500 uppercase tracking-wide">Basket totals by store</p>
               {result.best && (
                 <div className="rounded-xl border-2 border-emerald-500 bg-emerald-50 px-3 py-2.5">

@@ -150,3 +150,75 @@ export function computeStoreTotals(items: ItemCompare[]): BasketComparison {
     notFound,
   };
 }
+
+/**
+ * OWNER 24 Nov ("smart cart 10-min grocery mai smart comparison kre mtlb agar maine aloo pyaaz add kiya tho wo
+ * bataye cart mai ki sbse sasta blinkit mai hai yaa zepto mai aise"): the store cards already rank the basket, but
+ * the shopper had to read four cards and work out the answer. This turns the ranking into ONE sentence both clients
+ * print verbatim, so the website and the app can never phrase the same basket differently.
+ *
+ * Pure + deterministic: every number comes from the comparison, nothing is estimated.
+ */
+export interface BasketVerdict {
+  kind: 'complete' | 'partial' | 'empty';
+  /** The store to shop at, or null when no store priced anything. */
+  store: string | null;
+  total: number | null;
+  /** Runner-up complete store, when a second one carries the whole basket. */
+  nextStore: string | null;
+  nextTotal: number | null;
+  /** Rupees the winner saves on the SAME basket versus the runner-up. */
+  savesVsNext: number | null;
+  headline: string;
+  detail: string;
+}
+
+const rupees = (n: number) => `\u20B9${Math.round(n).toLocaleString('en-IN')}`;
+
+export function basketVerdict(c: BasketComparison): BasketVerdict {
+  const complete = c.stores.filter((s) => s.complete);          // already cheapest-first
+  const best = complete[0];
+  const items = c.items.length;
+
+  if (best) {
+    const next = complete[1] || null;
+    const saves = next ? Math.round((next.total - best.total) * 100) / 100 : null;
+    return {
+      kind: 'complete',
+      store: best.seller,
+      total: best.total,
+      nextStore: next ? next.seller : null,
+      nextTotal: next ? next.total : null,
+      savesVsNext: saves != null && saves > 0 ? saves : null,
+      headline: `Cheapest full basket: ${best.seller} \u2014 ${rupees(best.total)}`,
+      detail: next
+        ? saves != null && saves > 0
+          ? `${rupees(saves)} less than ${next.seller} for the same ${items} item${items > 1 ? 's' : ''}.`
+          : `${next.seller} costs the same for this basket.`
+        : `The only store carrying all ${items} item${items > 1 ? 's' : ''} right now.`,
+    };
+  }
+
+  // Nobody carries everything: say who gets closest instead of leaving the shopper to compare cards.
+  const priced = c.stores.filter((s) => s.itemsCovered > 0)
+    .sort((a, b) => b.itemsCovered - a.itemsCovered || a.total - b.total);
+  const closest = priced[0];
+  if (!closest) {
+    return {
+      kind: 'empty', store: null, total: null, nextStore: null, nextTotal: null, savesVsNext: null,
+      headline: 'No store returned a price for this basket right now.',
+      detail: 'Try a shorter product name (\u201catta\u201d instead of \u201cAashirvaad atta 5 kg\u201d) and compare again.',
+    };
+  }
+  const missing = closest.missing.slice(0, 3).join(', ') + (closest.missing.length > 3 ? '\u2026' : '');
+  return {
+    kind: 'partial',
+    store: closest.seller,
+    total: closest.total,
+    nextStore: null,
+    nextTotal: null,
+    savesVsNext: null,
+    headline: `No single store has the whole basket. Closest: ${closest.seller} \u2014 ${closest.itemsCovered}/${items} items, ${rupees(closest.total)}`,
+    detail: `Still missing there: ${missing}. The totals below show what each store does and does not carry.`,
+  };
+}
