@@ -39090,6 +39090,7 @@ __export(searchOrchestrator_exports, {
   gateTravelDateResponse: () => gateTravelDateResponse,
   namesOtherCity: () => namesOtherCity,
   questionKeyOf: () => questionKeyOf,
+  rescueLateSellers: () => rescueLateSellers,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
   runSearchFast: () => runSearchFast,
@@ -39914,6 +39915,70 @@ async function buildLiveCtx(parsedIn, input) {
   state.triggeredRefresh = !hasEligibleFresh || eligible.length < 5;
   return { state, vertical, enabledSources, catalogueOffers, eligibleCount: eligible.length, hasEligibleFresh };
 }
+async function rescueLateSellers(opts) {
+  const { vertical, combined, liveOffers, succeeded, query, depart } = opts;
+  if (String(vertical) !== "flights" || !Array.isArray(combined)) return combined;
+  try {
+    const sellersInAnswer = new Set(
+      combined.map((o) => String(o?.seller || o?.vendor || "").toLowerCase().trim()).filter(Boolean)
+    );
+    const missingSources = (succeeded || []).filter(
+      (id) => !(liveOffers || []).some((o) => String(o?.provenance?.sourceId || "") === id)
+    );
+    if (!missingSources.length) return combined;
+    const asked = String(depart || "").slice(0, 10);
+    const routeTerms = String(query || "").toLowerCase().replace(/\bflights?\b|\bto\b/g, " ").split(/\s+/).filter((t) => t.length >= 3).slice(0, 3);
+    const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+    const rows = await findCatalogueOffers2("flights", { queryTerms: routeTerms, limit: 120 });
+    const wanted = new Set(missingSources);
+    const picked = /* @__PURE__ */ new Map();
+    for (const row of rows) {
+      if (!wanted.has(String(row.source_id || ""))) continue;
+      const seller = String(row.seller || row.vendor || "").toLowerCase().trim();
+      if (!seller || sellersInAnswer.has(seller)) continue;
+      const price2 = Number(row.effective_price ?? row.mandatory_total ?? 0);
+      if (!(price2 > 0)) continue;
+      const age = (Date.now() - new Date(row.fetched_at).getTime()) / 1e3;
+      if (!(age < 3 * 3600)) continue;
+      let attrs = {};
+      try {
+        attrs = typeof row.attributes === "string" ? JSON.parse(row.attributes) : row.attributes || {};
+      } catch {
+        attrs = {};
+      }
+      const rowDate2 = String(attrs.travel_date || attrs["travel date"] || "").slice(0, 10);
+      if (asked && rowDate2 && rowDate2 !== asked) continue;
+      const seen = picked.get(seller);
+      if (seen && price2 >= Number(seen.prices.effectivePrice)) continue;
+      picked.set(seller, {
+        id: `cat-${row.id}`,
+        vertical: "flights",
+        title: String(row.title || ""),
+        seller: String(row.seller || row.vendor || ""),
+        vendor: String(row.vendor || row.seller || ""),
+        brand: row.brand || void 0,
+        sellerUrl: row.seller_url || void 0,
+        prices: { currency: row.currency || "INR", effectivePrice: price2, mandatoryTotal: price2, listPrice: price2 },
+        travel: { route: attrs.route || "", date: rowDate2 || asked },
+        attributes: attrs,
+        availability: row.availability || "unknown",
+        freshnessStatus: row.freshness_status || "FRESH",
+        validationStatus: row.validation_status || "PARTIAL",
+        provenance: { sourceId: row.source_id, fetchedAt: row.fetched_at, sourceUrl: row.seller_url || void 0 }
+      });
+    }
+    if (!picked.size) return combined;
+    log.info("Search", "catalogue rescue: restored rows for sellers whose sweep answer arrived late", {
+      vertical,
+      sellers: [...picked.keys()].slice(0, 6),
+      sources: missingSources.slice(0, 6)
+    });
+    return [...combined, ...picked.values()];
+  } catch (e2) {
+    log.debug("Search", "catalogue rescue skipped", { error: String(e2?.message || e2).slice(0, 120) });
+    return combined;
+  }
+}
 async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = true) {
   const { state, vertical, enabledSources, catalogueOffers, hasEligibleFresh } = ctx;
   let liveOffers = [];
@@ -40015,72 +40080,14 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
     }
   } catch {
   }
-  if (String(vertical) === "flights") {
-    try {
-      const sellersInAnswer = new Set(
-        combined.map((o) => String(o?.seller || o?.vendor || "").toLowerCase().trim()).filter(Boolean)
-      );
-      const answered = state.sourcesSucceeded || [];
-      const missingSources = answered.filter((id) => {
-        const rowsHere = liveOffers.some((o) => String(o?.provenance?.sourceId || "") === id);
-        return !rowsHere;
-      });
-      if (missingSources.length) {
-        const asked = String(parsed.travelDates?.depart || "").slice(0, 10);
-        const routeTerms = String(input.query || "").toLowerCase().replace(/\bflights?\b|\bto\b/g, " ").split(/\s+/).filter((t) => t.length >= 3).slice(0, 3);
-        const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
-        const rows = await findCatalogueOffers2("flights", { queryTerms: routeTerms, limit: 120 });
-        const wanted = new Set(missingSources);
-        const picked = /* @__PURE__ */ new Map();
-        for (const row of rows) {
-          if (!wanted.has(String(row.source_id || ""))) continue;
-          const seller = String(row.seller || row.vendor || "").toLowerCase().trim();
-          if (!seller || sellersInAnswer.has(seller)) continue;
-          const price2 = Number(row.effective_price ?? row.mandatory_total ?? 0);
-          if (!(price2 > 0)) continue;
-          const age = (Date.now() - new Date(row.fetched_at).getTime()) / 1e3;
-          if (!(age < 3 * 3600)) continue;
-          let attrs = {};
-          try {
-            attrs = typeof row.attributes === "string" ? JSON.parse(row.attributes) : row.attributes || {};
-          } catch {
-            attrs = {};
-          }
-          const rowDate2 = String(attrs.travel_date || attrs["travel date"] || "").slice(0, 10);
-          if (asked && rowDate2 && rowDate2 !== asked) continue;
-          const seen = picked.get(seller);
-          const seenPrice = seen ? Number(seen.prices.effectivePrice) : Infinity;
-          if (price2 >= seenPrice) continue;
-          picked.set(seller, {
-            id: `cat-${row.id}`,
-            vertical: "flights",
-            title: String(row.title || ""),
-            seller: String(row.seller || row.vendor || ""),
-            vendor: String(row.vendor || row.seller || ""),
-            brand: row.brand || void 0,
-            sellerUrl: row.seller_url || void 0,
-            prices: { currency: row.currency || "INR", effectivePrice: price2, mandatoryTotal: price2, listPrice: price2 },
-            travel: { route: attrs.route || "", date: rowDate2 || asked },
-            attributes: attrs,
-            availability: row.availability || "unknown",
-            freshnessStatus: row.freshness_status || "FRESH",
-            validationStatus: row.validation_status || "PARTIAL",
-            provenance: { sourceId: row.source_id, fetchedAt: row.fetched_at, sourceUrl: row.seller_url || void 0 }
-          });
-        }
-        if (picked.size) {
-          for (const o of picked.values()) combined.push(o);
-          log.info("Search", "catalogue rescue: restored rows for sellers whose sweep answer arrived late", {
-            vertical: String(vertical),
-            sellers: [...picked.keys()].slice(0, 6),
-            sources: missingSources.slice(0, 6)
-          });
-        }
-      }
-    } catch (e2) {
-      log.debug("Search", "catalogue rescue skipped", { error: String(e2?.message || e2).slice(0, 120) });
-    }
-  }
+  combined = await rescueLateSellers({
+    vertical: String(vertical),
+    combined,
+    liveOffers,
+    succeeded: state.sourcesSucceeded || [],
+    query: String(input.query || ""),
+    depart: String(parsed.travelDates?.depart || "")
+  });
   if (["loans", "creditcards", "insurance", "account"].includes(String(vertical))) {
     try {
       const { liveManualFinanceOffers: liveManualFinanceOffers2 } = await Promise.resolve().then(() => (init_financeOffers(), financeOffers_exports));
@@ -54800,6 +54807,21 @@ async function finaliseLiveAnswer(response, vertical, dates2, query) {
       response.pendingRefresh = true;
       log.info("Search", "movie answer is an unpriced snapshot: band source has not answered yet", { vertical, rows: (response.results || []).length });
     }
+  }
+  try {
+    const { rescueLateSellers: rescueLateSellers2 } = await Promise.resolve().then(() => (init_searchOrchestrator(), searchOrchestrator_exports));
+    const rescued = await rescueLateSellers2({
+      vertical: String(vertical),
+      combined: response.results || [],
+      liveOffers: [],
+      succeeded: response.state?.sourcesSucceeded || [],
+      query: String(query || ""),
+      depart: String(dates2?.depart || "")
+    });
+    if (rescued.length !== (response.results || []).length) {
+      response.results = rescued;
+    }
+  } catch {
   }
   const gated = gateRowsForDate(response.results || [], vertical, dates2 || {});
   if (query && ["flights", "bus", "cab"].includes(String(vertical))) {

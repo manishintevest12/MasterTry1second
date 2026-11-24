@@ -1005,6 +1005,22 @@ async function finaliseLiveAnswer(response: any, vertical: string, dates: any, q
       log.info('Search', 'movie answer is an unpriced snapshot: band source has not answered yet', { vertical, rows: (response.results || []).length });
     }
   }
+  // OWNER 24 Nov: a seller that answered after the answer snapshot is invisible on EVERY exit (cached or
+  // live), so the rescue runs here, at the one place both surfaces pass through, before the gates.
+  try {
+    const { rescueLateSellers } = await import('../search/searchOrchestrator');
+    const rescued = await rescueLateSellers({
+      vertical: String(vertical),
+      combined: (response.results || []) as any[],
+      liveOffers: [],
+      succeeded: ((response as any).state?.sourcesSucceeded || []) as string[],
+      query: String(query || ''),
+      depart: String((dates as any)?.depart || ''),
+    });
+    if (rescued.length !== (response.results || []).length) {
+      (response as any).results = rescued;
+    }
+  } catch { /* rescue is best-effort */ }
   const gated = gateRowsForDate((response.results || []) as any[], vertical, dates || {});
   // OWNER 9 Nov ("indore to hyderabad search par indore to delhi ka results"): a cached or last-verified
   // row for ANOTHER city pair must never be painted for this search. Same vertical scope as the date gate.
