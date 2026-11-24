@@ -1390,6 +1390,18 @@ async function finalizeLive(
 
     // 6. PARSING → NORMALIZATION → MATCHING → PRICING → VALIDATION → FRESHNESS → EVIDENCE
     liveOffers = await processAdapterResults(outcome.results, parsed, persist);
+    // DIAGNOSTIC (owner 24 Nov: "aertrip ka last mile fix aur w dikhe"): a source can answer, pass every
+    // gate on its own, and still not appear in the answer. This counter says how many rows each source
+    // actually produced BEFORE the date/route/price gates, so the exact stage a seller is lost at is
+    // visible from the API instead of guessed.
+    try {
+      const counts: Record<string, number> = {};
+      for (const o of liveOffers as any[]) {
+        const k = String(o?.provenance?.sourceId || 'unknown');
+        counts[k] = (counts[k] || 0) + 1;
+      }
+      (state as any).sourceRowCounts = counts;
+    } catch { /* diagnostics never fail a search */ }
     // LAST PRICE MEMORY: remember what each source last charged in this vertical so a
     // later blocked/empty search can show "Last: ₹X · when" instead of nothing.
     recordSourcePrices(String(vertical), String(input.query || ''), liveOffers as any);

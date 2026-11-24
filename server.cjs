@@ -39922,6 +39922,15 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));
     liveOffers = await processAdapterResults(outcome.results, parsed, persist5);
+    try {
+      const counts = {};
+      for (const o of liveOffers) {
+        const k = String(o?.provenance?.sourceId || "unknown");
+        counts[k] = (counts[k] || 0) + 1;
+      }
+      state.sourceRowCounts = counts;
+    } catch {
+    }
     recordSourcePrices(String(vertical), String(input.query || ""), liveOffers);
     state.sourcesFailed = enrichFailedWithLastPrice(String(vertical), state.sourcesFailed);
     try {
