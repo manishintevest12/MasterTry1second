@@ -39939,7 +39939,7 @@ async function buildLiveCtx(parsedIn, input) {
   return { state, vertical, enabledSources, catalogueOffers, eligibleCount: eligible.length, hasEligibleFresh };
 }
 async function rescueLateSellers(opts) {
-  const { vertical, combined, liveOffers, succeeded, query, depart } = opts;
+  const { vertical, combined, liveOffers, succeeded, query } = opts;
   if (String(vertical) !== "flights" || !Array.isArray(combined)) return combined;
   try {
     const sellersInAnswer = new Set(
@@ -39949,7 +39949,7 @@ async function rescueLateSellers(opts) {
       (id) => !(liveOffers || []).some((o) => String(o?.provenance?.sourceId || "") === id)
     );
     if (!missingSources.length && sellersInAnswer.has("aertrip")) return combined;
-    const asked = String(depart || "").slice(0, 10);
+    const asked = String(opts.depart || "").slice(0, 10) || String(combined.find((o) => /^\d{4}-\d{2}-\d{2}$/.test(String(o?.travel?.date || "")))?.travel?.date || "").slice(0, 10);
     const routeTerms = String(query || "").toLowerCase().replace(/\bflights?\b|\bto\b/g, " ").split(/\s+/).filter((t) => t.length >= 3).slice(0, 3);
     const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
     const byTerms = await findCatalogueOffers2("flights", { queryTerms: routeTerms, limit: 120 });

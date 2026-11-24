@@ -1394,7 +1394,7 @@ export async function rescueLateSellers(opts: {
   query: string;
   depart: string;
 }): Promise<any[]> {
-  const { vertical, combined, liveOffers, succeeded, query, depart } = opts;
+  const { vertical, combined, liveOffers, succeeded, query } = opts;
   if (String(vertical) !== 'flights' || !Array.isArray(combined)) return combined;
   try {
     const sellersInAnswer = new Set(
@@ -1407,7 +1407,11 @@ export async function rescueLateSellers(opts: {
     // exactly the one that lost Aertrip, so its list can be clean while the seller is absent. The only
     // question that matters is whether Aertrip has a row here.
     if (!missingSources.length && sellersInAnswer.has('aertrip')) return combined;
-    const asked = String(depart || '').slice(0, 10);
+    // The requested date can arrive empty at an exit that only carries a cached answer. Falling back to the
+    // date the answer's own rows carry keeps the repair pointed at the SAME date instead of letting the
+    // worker default to '+7 days', whose rows the date gate would then correctly throw away.
+    const asked = String(opts.depart || '').slice(0, 10)
+      || String((combined.find((o: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(o?.travel?.date || '')))?.travel?.date) || '').slice(0, 10);
     const routeTerms = String(query || '')
       .toLowerCase()
       .replace(/\bflights?\b|\bto\b/g, ' ')
