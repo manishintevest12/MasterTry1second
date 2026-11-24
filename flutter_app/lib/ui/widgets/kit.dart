@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
+import '../../core/partner_browser_policy.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../screens/in_app_browser_screen.dart';
@@ -283,6 +284,26 @@ Future<bool> openDeal(String url, {String? sellerName, double? price}) async {
   final full = exitUrl(url);
   final uri = Uri.tryParse(full);
   if (uri == null) return false;
+
+  // OWNER 23 Nov (screenshot: Flipkart's "Something went wrong. Please try again later." inside our in-app browser,
+  // title "My Orders"): "redirection krne ke baad jb flipkart pr jata hai tho ye error aata hai order mai isko fix
+  // kro". Marketplaces keep the shopping session in third-party cookies and refuse account / order / checkout pages
+  // to a WebView (Android blocks those cookies, and our UA carries the Try1SecondApp marker). A product page mostly
+  // survives; "My Orders" and checkout do not — so those partners are handed to the phone's own browser, where the
+  // shopper is signed in and the order actually goes through. Every other partner keeps the in-app browser.
+  if (mustOpenExternally(full) || mustOpenExternallyForSeller(sellerName)) {
+    try {
+      final resolved = await AppState.instance.api.resolveExitPointer(url);
+      final target = Uri.tryParse(resolved);
+      if (target != null && target.hasScheme) {
+        final opened = await launchUrl(target, mode: LaunchMode.externalApplication);
+        if (opened) return true;
+      }
+    } catch (_) {
+      // Resolution or the browser intent failed: fall through to the in-app browser rather than a dead button.
+    }
+  }
+
   final nav = AppState.instance.navigator.currentState;
   if (nav != null) {
     try {

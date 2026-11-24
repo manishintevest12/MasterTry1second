@@ -6,6 +6,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'product_screen.dart';
 import 'package:try1second/core/app_handoff.dart';
+import 'package:try1second/core/app_state.dart';
+import 'package:try1second/core/theme.dart';
 import 'package:try1second/core/nav_stack.dart';
 import 'package:try1second/ui/widgets/kit.dart';
 
@@ -128,6 +130,10 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
   /// bare white rectangle. That gap is now filled by the seller's logo + 'Opening …'
   /// (approved by the owner from the Ixigo video: 'Partner logo + Opening').
   bool _firstPaint = false;
+  /// OWNER 23 Nov: a partner page that fails inside the webview (Flipkart answers its own "Something went wrong"
+  /// page, or the resource itself fails) must offer a way OUT instead of a dead screen — the shopper's real browser
+  /// is where that partner works.
+  bool _failed = false;
   /// Own-history back/forward (webview canGoBack lies after redirect chains).
   late final BrowserNavStack _nav;
 
@@ -161,8 +167,15 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
       ..setBackgroundColor(const Color(0xFFFFFFFF))
       ..enableZoom(false)
       ..setNavigationDelegate(NavigationDelegate(
+        onWebResourceError: (err) {
+          // Only a main-frame failure means the page did not load; sub-resource noise is ignored.
+          if (err.isForMainFrame == false) return;
+          if (!mounted) return;
+          setState(() { _failed = true; _firstPaint = true; });
+        },
         onPageFinished: (url) {
           _syncState(url: url, loading: false);
+          if (mounted && _failed) setState(() => _failed = false);
           // First real paint: drop the "Opening <seller>" card. Refresh/navigation
           // later in the session does not bring it back.
           if (!_firstPaint) _set(firstPaint: true);
@@ -192,6 +205,18 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
       ));
     _controller = c;
     c.loadRequest(Uri.parse(widget.url));
+  }
+
+  /// Leaves for the phone's own browser, resolving our masking pointer first so the click is still recorded.
+  Future<void> _openExternally() async {
+    try {
+      final resolved = await AppState.instance.api.resolveExitPointer(_currentUrl.isEmpty ? widget.url : _currentUrl);
+      final uri = Uri.tryParse(resolved);
+      if (uri == null || !uri.hasScheme) return;
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Nothing else to try: the toolbar still offers Refresh and Expand.
+    }
   }
 
   /// Hands a partner app URL to the OS and keeps a paid fallback if the app is absent.
@@ -296,6 +321,33 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
           if (!_firstPaint && _controller != null)
             Positioned.fill(
               child: _OpeningCard(name: name, url: _currentUrl.isEmpty ? widget.url : _currentUrl),
+            ),
+          if (_failed)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.white,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('$name did not open here',
+                          textAlign: TextAlign.center,
+                          style: tx(context, 14, w: FontWeight.w900)),
+                      const SizedBox(height: 6),
+                      Text('This partner needs your own browser for login, orders and payment.',
+                          textAlign: TextAlign.center,
+                          style: tx(context, 11.5, color: T1SColors.slate500)),
+                      const SizedBox(height: 14),
+                      RedButton('Open in browser', icon: Icons.open_in_new_rounded, onTap: _openExternally),
+                      const SizedBox(height: 8),
+                      T1SOutlineButton('Try again', icon: Icons.refresh_rounded, onTap: () {
+                        setState(() { _failed = false; _firstPaint = false; });
+                        _controller?.reload();
+                      }),
+                    ]),
+                  ),
+                ),
+              ),
             ),
         ],
       ),
