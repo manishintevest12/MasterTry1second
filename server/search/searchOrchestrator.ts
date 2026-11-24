@@ -1545,6 +1545,81 @@ async function finalizeLive(
     }
   } catch { /* representation is best-effort, never a failure path */ }
 
+  // 7.87 CATALOGUE RESCUE (owner 24 Nov: "aertrip ko dikhao website and flutter app mai").
+  // WHY THIS EXISTS: Aertrip answers, reports success and its rows are PERSISTED — but it answers in ~4 s,
+  // and the first answer snapshot for a route+date is taken before that. The snapshot becomes the cached
+  // answer, so every later poll replays a set that never contained Aertrip: the seller looks "successful"
+  // and invisible at the same time, on the site and in the app. The live-offer repair above cannot help
+  // because those offers never entered this pass.
+  // So the answer is completed from the catalogue: for any source that SUCCEEDED in this sweep and has no
+  // row in the answer, its own freshest priced row for this route+date is restored. It is the same row the
+  // seller published minutes ago (never invented), and it still goes through the date/route/price gates.
+  if (String(vertical) === 'flights') {
+    try {
+      const sellersInAnswer = new Set(
+        (combined as any[]).map((o) => String(o?.seller || o?.vendor || '').toLowerCase().trim()).filter(Boolean),
+      );
+      const answered = (state.sourcesSucceeded || []) as string[];
+      const missingSources = answered.filter((id) => {
+        const rowsHere = (liveOffers as any[]).some((o) => String(o?.provenance?.sourceId || '') === id);
+        return !rowsHere;
+      });
+      if (missingSources.length) {
+        const asked = String((parsed.travelDates as any)?.depart || '').slice(0, 10);
+        const routeTerms = String(input.query || '')
+          .toLowerCase()
+          .replace(/\bflights?\b|\bto\b/g, ' ')
+          .split(/\s+/)
+          .filter((t) => t.length >= 3)
+          .slice(0, 3);
+        const { findCatalogueOffers } = await import('../catalogue/catalogueService');
+        const rows = await findCatalogueOffers('flights', { queryTerms: routeTerms, limit: 120 });
+        const wanted = new Set(missingSources);
+        const picked = new Map<string, any>();
+        for (const row of rows as any[]) {
+          if (!wanted.has(String(row.source_id || ''))) continue;
+          const seller = String(row.seller || row.vendor || '').toLowerCase().trim();
+          if (!seller || sellersInAnswer.has(seller)) continue;
+          const price = Number(row.effective_price ?? row.mandatory_total ?? 0);
+          if (!(price > 0)) continue;
+          const age = (Date.now() - new Date(row.fetched_at).getTime()) / 1000;
+          if (!(age < 3 * 3600)) continue; // only this sweep's own fresh rows
+          let attrs: any = {};
+          try { attrs = typeof row.attributes === 'string' ? JSON.parse(row.attributes) : (row.attributes || {}); } catch { attrs = {}; }
+          const rowDate = String(attrs.travel_date || attrs['travel date'] || '').slice(0, 10);
+          if (asked && rowDate && rowDate !== asked) continue;
+          const seen = picked.get(seller);
+          const seenPrice = seen ? Number(seen.prices.effectivePrice) : Infinity;
+          if (price >= seenPrice) continue;
+          picked.set(seller, {
+            id: `cat-${row.id}`,
+            vertical: 'flights',
+            title: String(row.title || ''),
+            seller: String(row.seller || row.vendor || ''),
+            vendor: String(row.vendor || row.seller || ''),
+            brand: row.brand || undefined,
+            sellerUrl: row.seller_url || undefined,
+            prices: { currency: row.currency || 'INR', effectivePrice: price, mandatoryTotal: price, listPrice: price },
+            travel: { route: attrs.route || '', date: rowDate || asked },
+            attributes: attrs,
+            availability: row.availability || 'unknown',
+            freshnessStatus: row.freshness_status || 'FRESH',
+            validationStatus: row.validation_status || 'PARTIAL',
+            provenance: { sourceId: row.source_id, fetchedAt: row.fetched_at, sourceUrl: row.seller_url || undefined },
+          });
+        }
+        if (picked.size) {
+          for (const o of picked.values()) (combined as any[]).push(o);
+          log.info('Search', 'catalogue rescue: restored rows for sellers whose sweep answer arrived late', {
+            vertical: String(vertical), sellers: [...picked.keys()].slice(0, 6), sources: missingSources.slice(0, 6),
+          });
+        }
+      }
+    } catch (e: any) {
+      log.debug('Search', 'catalogue rescue skipped', { error: String(e?.message || e).slice(0, 120) });
+    }
+  }
+
   // 7.9 MANUAL FINANCE INVENTORY (owner 27 Oct): entries the owner typed in the admin
   // panel (loans / credit cards / insurance / account) join the feed exactly like a
   // scraped row, so a gated source can never leave a vertical empty again.
