@@ -39929,7 +39929,10 @@ async function rescueLateSellers(opts) {
     const asked = String(depart || "").slice(0, 10);
     const routeTerms = String(query || "").toLowerCase().replace(/\bflights?\b|\bto\b/g, " ").split(/\s+/).filter((t) => t.length >= 3).slice(0, 3);
     const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
-    const rows = await findCatalogueOffers2("flights", { queryTerms: routeTerms, limit: 120 });
+    const byTerms = await findCatalogueOffers2("flights", { queryTerms: routeTerms, limit: 120 });
+    const bySource = await findCatalogueOffers2("flights", { limit: 400 });
+    const seenIds = new Set(byTerms.map((r) => String(r.id)));
+    const rows = [...byTerms, ...bySource.filter((r) => !seenIds.has(String(r.id)))];
     const wanted = new Set(missingSources);
     const picked = /* @__PURE__ */ new Map();
     for (const row of rows) {

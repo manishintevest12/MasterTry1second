@@ -1412,7 +1412,14 @@ export async function rescueLateSellers(opts: {
       .filter((t) => t.length >= 3)
       .slice(0, 3);
     const { findCatalogueOffers } = await import('../catalogue/catalogueService');
-    const rows = await findCatalogueOffers('flights', { queryTerms: routeTerms, limit: 120 });
+    // The title-term lookup is what hid Aertrip in the first place: its rows are titled by airline and flight
+    // number ("IndiGo 6E-6972 IDR to DEL"), so `title LIKE '%indore%'` never matched them even though the row
+    // is a perfect IDR->DEL fare for the requested date. The rescue therefore also reads the newest flights
+    // rows with NO title filter and selects by source_id + date instead - the columns that actually identify it.
+    const byTerms = await findCatalogueOffers('flights', { queryTerms: routeTerms, limit: 120 });
+    const bySource = await findCatalogueOffers('flights', { limit: 400 });
+    const seenIds = new Set((byTerms as any[]).map((r) => String(r.id)));
+    const rows = [...(byTerms as any[]), ...(bySource as any[]).filter((r) => !seenIds.has(String(r.id)))];
     const wanted = new Set(missingSources);
     const picked = new Map<string, any>();
     for (const row of rows as any[]) {
