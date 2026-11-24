@@ -5,10 +5,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
 import 'auth.dart';
+import 'deep_links.dart';
 
 /// Device alerts for the Android app (owner 29 Oct: "app par bhi push chahiye, image ke saath").
 ///
@@ -83,16 +83,19 @@ class PushAlerts {
     }
   }
 
-  /// Opens the notification's destination through the normal exit path (affiliate-safe).
+  /// Opens the notification's destination the same way the bell does.
+  ///
+  /// OWNER 24 Nov ("mai chata hoon notification pr click kr ke v redirection ho uss notification se related"): this
+  /// used to hand EVERY destination to the external browser, so tapping a "Goibibo flights now list every flight"
+  /// alert opened Chrome on a web page instead of the app's flights tab. DeepLinks.openTarget keeps app screens in
+  /// the app and still hands the merchant hop (/api/out) to the browser, where the affiliate redirect belongs.
   static Future<void> _openFromMessage(RemoteMessage message) async {
     final raw = (message.data['url'] ?? '').toString().trim();
     if (raw.isEmpty) return;
-    final uri = Uri.tryParse(raw.startsWith('/') ? '$kDefaultApiBase$raw' : raw);
-    if (uri == null) return;
     try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      await DeepLinks.openTarget(raw);
     } catch (e) {
-      debugPrint('[push] could not open $uri: $e');
+      debugPrint('[push] could not open $raw: $e');
     }
   }
 

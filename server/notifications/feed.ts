@@ -31,20 +31,26 @@ export interface FeatureNote {
   date: string;
 }
 
+/**
+ * OWNER 24 Nov ("notification pr click kr ke v redirection ho uss notification se related"): a note's ctaUrl is the
+ * screen the note is about, and it must be a path the readers actually understand — the website's path reader
+ * (src/utils/verticalRoutes.ts) and the app's DeepLinks both resolve `/flights`, `/grocery`, `/product/<slug>` and
+ * `/#vertical=<id>`. The earlier '/?vertical=flights' form is read by neither, so tapping that note landed on Home.
+ */
 export const FEATURE_NOTES: FeatureNote[] = [
   {
     key: 'goibibo-flight-schedule',
     date: '2026-11-24',
     title: 'Goibibo flights now list every flight, not just the cheapest',
     body: 'Goibibo rows show each flight with its number, departure and arrival time, stops, duration and seats left. Where Goibibo publishes no fare for a flight, the card says so and the button opens Goibibo\'s live fare instead of guessing a price.',
-    ctaUrl: '/?vertical=flights',
+    ctaUrl: '/flights',
   },
   {
     key: 'related-real-photos',
     date: '2026-11-23',
     title: 'Related products now show their real photos',
     body: 'Every card in Related Products carries the merchant\'s own photo of that product — no repeated picture, no seller logo. Tap a card to price that exact product.',
-    ctaUrl: '/',
+    ctaUrl: '/ecommerce',
   },
   {
     key: 'app-on-play',
@@ -58,7 +64,7 @@ export const FEATURE_NOTES: FeatureNote[] = [
     date: '2026-11-22',
     title: 'Grocery results are cleaner',
     body: 'Marketplace listings that do not belong to the 10-minute grocery vertical no longer appear there. Grocery shows grocery; e-commerce shows e-commerce.',
-    ctaUrl: '/',
+    ctaUrl: '/grocery',
   },
   {
     key: 'faster-searches',
@@ -145,7 +151,17 @@ export async function ensureFeed(): Promise<void> {
 
       for (const note of FEATURE_NOTES) {
         const row = featureRow(note);
-        if (titles.has(row.title)) continue;
+        if (titles.has(row.title)) {
+          // The row is already there but its link may be an older, unroutable form: correct it in place, so a note
+          // that shipped before the fix is tappable now instead of waiting for the title to change.
+          if (row.ctaUrl) {
+            await store.execute(
+              `UPDATE notifications SET cta_url = ? WHERE user_id IS NULL AND title = ? AND (cta_url IS NULL OR cta_url <> ?)`,
+              [row.ctaUrl, row.title, row.ctaUrl],
+            );
+          }
+          continue;
+        }
         await store.execute(INSERT, [row.kind, row.title, row.body, row.image, row.ctaUrl,
           row.productTitle, row.priceNow, row.seller, row.createdBy]);
         titles.add(row.title);

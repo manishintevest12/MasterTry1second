@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Bell, X, TrendingDown, Megaphone, CheckCheck, ExternalLink, RefreshCw, ArrowRight, BellRing, BellOff, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { enablePush, disablePush, pushStatus, type PushSupport } from '../utils/webPush';
+import { HOME_PATH, isProductPath, isVerticalPath, normalizePath } from '../utils/verticalRoutes';
 
 /**
  * Notifications drawer — one hub, two producers:
@@ -74,14 +75,66 @@ export const NotificationsDrawer: React.FC = () => {
     return `${Math.round(hrs / 24)}d ago`;
   };
 
+  /**
+   * OWNER 24 Nov ("mai chata hoon notification pr click kr ke v redirection ho uss notification se related. abhi
+   * sirf notification dikhta hai pr ye samj ni aata usko kaise kaha se le"): every row goes where it says it goes.
+   *   price drop   -> the Product page for that exact product (searchQuery)
+   *   app screen   -> that tab in THIS tab, through the site's own path reader (/flights, /product/<slug>)
+   *   merchant hop -> a real navigation to /api/out, so the click is recorded and the partner opens
+   *   real link    -> a new tab (the Play listing, an admin's https link)
+   * The old code sent everything to window.open, including the in-app paths — which opened a second tab on a
+   * page the reader could not route, so the tap looked like it did nothing at all.
+   */
+  const isAppScreen = (target: string) => {
+    const path = target.split(/[?#]/)[0] || HOME_PATH;
+    return normalizePath(path) === HOME_PATH || isVerticalPath(path) || isProductPath(path);
+  };
+
+  const goToAppScreen = (target: string) => {
+    try {
+      window.history.pushState({}, '', target);
+    } catch {
+      window.location.assign(target);
+      return;
+    }
+    // The site's reader listens for popstate/hashchange; pushState alone fires neither.
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /** Where this row leads, and what the row should promise. Null = no destination (never a dead tap). */
+  const destinationOf = (n: any): { label: string; target: string; external: boolean } | null => {
+    if (String(n.searchQuery || '').trim()) {
+      return { label: 'Open product', target: String(n.searchQuery).trim(), external: false };
+    }
+    const raw = String(n.ctaUrl || '').trim();
+    if (!raw) return null;
+    if (/^https?:\/\//i.test(raw)) {
+      const isPlay = /play\.google\.com/i.test(raw);
+      return { label: isPlay ? 'Install app' : 'Open deal', target: raw, external: true };
+    }
+    if (raw.startsWith('/')) {
+      return isAppScreen(raw)
+        ? { label: 'Open in app', target: raw, external: false }
+        : { label: 'Open deal', target: raw, external: true };
+    }
+    return null;
+  };
+
   const handleOpenNotification = async (n: any) => {
     await markNotificationsRead(n.id);
+    const dest = destinationOf(n);
+    if (!dest) return; // nothing to open: the row stays put instead of pretending to redirect
     setIsNotificationsOpen(false);
-    if (n.searchQuery) {
-      openProductPage({ query: n.searchQuery });
-    } else if (n.ctaUrl) {
-      window.open(n.ctaUrl, '_blank', 'noopener,noreferrer');
+    if (String(n.searchQuery || '').trim()) {
+      openProductPage({ query: String(n.searchQuery).trim() });
+      return;
     }
+    if (dest.external) {
+      window.open(dest.target, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    goToAppScreen(dest.target);
   };
 
   const handleOpenItem = (vertical: any) => {
@@ -255,10 +308,16 @@ export const NotificationsDrawer: React.FC = () => {
                   </p>
                 )}
 
-                <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-red-600">
-                  {n.searchQuery ? 'Open product' : 'Open link'}
-                  {n.searchQuery ? <ArrowRight className="w-3 h-3" /> : <ExternalLink className="w-3 h-3" />}
-                </span>
+                {(() => {
+                  const dest = destinationOf(n);
+                  if (!dest) return null;
+                  return (
+                    <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-red-600">
+                      {dest.label}
+                      {dest.external ? <ExternalLink className="w-3 h-3" /> : <ArrowRight className="w-3 h-3" />}
+                    </span>
+                  );
+                })()}
               </div>
 
               {!n.read && <span className="w-2 h-2 rounded-full bg-red-600 shrink-0 mt-1" />}

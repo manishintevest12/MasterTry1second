@@ -226,6 +226,26 @@ class DeepLinks {
     app.openVertical(vertical, search: _searchFor(vertical, query, uri));
   }
 
+  /// One rule for every destination a notification hands us — the in-app row the person taps and the system push
+  /// they tap from the shade behave the same way:
+  ///   an app screen (/flights, /grocery, /product/<slug>)  -> opens in the app
+  ///   anything else (/api/out merchant hop, Play listing)  -> the phone's browser
+  ///
+  /// OWNER 24 Nov ("notification pr click kr ke v redirection ho uss notification se related"): the push tap used to
+  /// send every destination to Chrome, so a "Goibibo flights" alert opened a browser page instead of the app's
+  /// flights tab. Routing through here means a push and the bell can never disagree.
+  static Future<void> openTarget(String raw) async {
+    final target = raw.trim();
+    if (target.isEmpty) return;
+    final uri = Uri.tryParse(target.startsWith('/') ? 'https://www.try1second.com$target' : target);
+    if (uri == null || !uri.hasScheme) return;
+    if (_isAppUri(uri) && _appOwns(uri)) {
+      await handle(uri);
+      return;
+    }
+    await _openInSystemBrowser(uri);
+  }
+
   /// True for links this app owns: the custom scheme, or an https link on our hosts.
   static bool _isAppUri(Uri uri) {
     if (uri.scheme == scheme) return true;
