@@ -1514,6 +1514,37 @@ async function finalizeLive(
     }
   }
 
+  // 7.85 EVERY ANSWERING SELLER IS REPRESENTED (owner 24 Nov: "aertrip ka last mile fix aur w dikhe").
+  // A source can answer, validate, price and persist — and still be absent from the answer because one of
+  // the later stages (schedule completion, backfill, hide, dedupe, memory merge) kept a different row for
+  // that flight. Aertrip's 14 IDR-DEL fares did exactly that while reporting success. Whatever produced a
+  // priced, in-date row in this sweep must keep at least its cheapest one in the answer: the row is the
+  // same live data every other seller's card comes from, so nothing is invented by restoring it.
+  try {
+    const sellersInAnswer = new Set(
+      (combined as any[]).map((o) => String(o?.seller || o?.vendor || '').toLowerCase().trim()).filter(Boolean),
+    );
+    const cheapestBySeller = new Map<string, any>();
+    for (const o of (liveOffers as any[])) {
+      const seller = String(o?.seller || o?.vendor || '').toLowerCase().trim();
+      if (!seller || sellersInAnswer.has(seller)) continue;
+      const price = Number(o?.prices?.effectivePrice ?? o?.prices?.fees?.basePrice ?? 0);
+      if (!(price > 0)) continue;
+      const date = String(o?.travel?.date || '').slice(0, 10);
+      const asked = String((parsed.travelDates as any)?.depart || '').slice(0, 10);
+      if (asked && date && date !== asked) continue; // never restore a wrong-date row
+      const seen = cheapestBySeller.get(seller);
+      const seenPrice = seen ? Number(seen?.prices?.effectivePrice ?? seen?.prices?.fees?.basePrice ?? 0) : Infinity;
+      if (price < seenPrice) cheapestBySeller.set(seller, o);
+    }
+    if (cheapestBySeller.size) {
+      for (const o of cheapestBySeller.values()) (combined as any[]).push(o);
+      log.info('Search', 'restored a row for a seller the answer had lost', {
+        vertical: String(vertical), sellers: [...cheapestBySeller.keys()].slice(0, 6),
+      });
+    }
+  } catch { /* representation is best-effort, never a failure path */ }
+
   // 7.9 MANUAL FINANCE INVENTORY (owner 27 Oct): entries the owner typed in the admin
   // panel (loans / credit cards / insurance / account) join the feed exactly like a
   // scraped row, so a gated source can never leave a vertical empty again.

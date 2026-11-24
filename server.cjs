@@ -39989,6 +39989,32 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
       combined = timed.kept;
     }
   }
+  try {
+    const sellersInAnswer = new Set(
+      combined.map((o) => String(o?.seller || o?.vendor || "").toLowerCase().trim()).filter(Boolean)
+    );
+    const cheapestBySeller = /* @__PURE__ */ new Map();
+    for (const o of liveOffers) {
+      const seller = String(o?.seller || o?.vendor || "").toLowerCase().trim();
+      if (!seller || sellersInAnswer.has(seller)) continue;
+      const price2 = Number(o?.prices?.effectivePrice ?? o?.prices?.fees?.basePrice ?? 0);
+      if (!(price2 > 0)) continue;
+      const date = String(o?.travel?.date || "").slice(0, 10);
+      const asked = String(parsed.travelDates?.depart || "").slice(0, 10);
+      if (asked && date && date !== asked) continue;
+      const seen = cheapestBySeller.get(seller);
+      const seenPrice = seen ? Number(seen?.prices?.effectivePrice ?? seen?.prices?.fees?.basePrice ?? 0) : Infinity;
+      if (price2 < seenPrice) cheapestBySeller.set(seller, o);
+    }
+    if (cheapestBySeller.size) {
+      for (const o of cheapestBySeller.values()) combined.push(o);
+      log.info("Search", "restored a row for a seller the answer had lost", {
+        vertical: String(vertical),
+        sellers: [...cheapestBySeller.keys()].slice(0, 6)
+      });
+    }
+  } catch {
+  }
   if (["loans", "creditcards", "insurance", "account"].includes(String(vertical))) {
     try {
       const { liveManualFinanceOffers: liveManualFinanceOffers2 } = await Promise.resolve().then(() => (init_financeOffers(), financeOffers_exports));
