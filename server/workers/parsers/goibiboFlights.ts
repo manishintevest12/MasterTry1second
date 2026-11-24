@@ -36,6 +36,93 @@ const SLUG_ALIASES: Record<string, string> = {
   ranchi: 'ranchi', bhubaneswar: 'bhubaneswar', imphal: 'imphal', agartala: 'agartala',
 };
 
+
+/**
+ * Goibibo's route page changed shape (measured 24 Nov 2026). The old
+ * `state.listing.journeys.allJourneys` tree is gone; the page now carries
+ *   state.Listing.listingResponse.journeyMap
+ * keyed by a journey key `ORIG$DEST$YYYY-MM-DD HH:MM$FLNO|LEG2...`, whose value holds
+ * depTime/arrTime/stops/duration/seatsLeft/airlineCodes/journeyHeader (airline, HTML).
+ * `fareDetails.rtFareMap` is EMPTY: the page publishes SCHEDULES but no per-flight fares.
+ *
+ * OWNER 24 Nov ("Goibibo ka pura schedule dikhaun ... par price na likhun, sirf Check live fare"):
+ * these rows therefore carry NO price and say so (`price_basis: live_fares_unavailable`,
+ * `seller_presence: true`). Every field is the page's own; the date on each row is the date the
+ * page really publishes, never the date the user searched.
+ */
+export function parseGoibiboSchedule(
+  html: string,
+  source: SourceConfig,
+  pageUrl: string,
+  fromCity: string,
+  toCity: string,
+): RawSourceItem[] {
+  let root: any = null;
+  const m = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (m) { try { root = JSON.parse(m[1]); } catch { root = null; } }
+  const listing = root?.props?.pageProps?.data?.state?.Listing?.listingResponse;
+  const jm: Record<string, any> = listing?.journeyMap || {};
+  const keys = Object.keys(jm);
+  if (!keys.length) return [];
+
+  const out: RawSourceItem[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    const seg = jm[key] || {};
+    const legs = String(key).split('|');
+    const first = legs[0] || '';
+    const parts = first.split('$');
+    const flightNo = String(parts[3] || '').replace(/_/g, ' ').trim();
+    const when = String(parts[2] || '').trim();
+    const serviceDate = (when.match(/^(\d{4}-\d{2}-\d{2})/) || [])[1] || '';
+    const stops = Number(seg.stops ?? (legs.length - 1));
+    const airline = stripTags(String(seg.journeyHeader || seg.airlineNamesOnly || '')).trim()
+      || EMT_AIRLINES[String((seg.airlineCodes || [])[0] || '')]?.name || 'Flight';
+    const depT = String(seg.depTime || '').trim();
+    const arrT = String(seg.arrTime || '').trim();
+    if (!depT || !arrT) continue;
+    const dur = seg.duration && (seg.duration.h || seg.duration.m)
+      ? `${seg.duration.h || '00'}h ${seg.duration.m || '00'}m` : '';
+    const seats = String(seg.seatsLeft || '').replace(/[^0-9]/g, '');
+    const dedupe = `${flightNo}|${depT}|${arrT}|${serviceDate}`;
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+
+    out.push(newRawItem(source, {
+      title: `${airline} ${flightNo} ${fromCity} → ${toCity} ${stops ? `(${stops} stop${stops > 1 ? 's' : ''})` : 'non-stop'}${serviceDate ? ` on ${serviceDate}` : ''}`
+        .replace(/\s+/g, ' ').slice(0, 200),
+      brand: airline,
+      seller: 'Goibibo',
+      sellerUrl: pageUrl,
+      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, ...(serviceDate ? { date: serviceDate } : {}) },
+      availability: 'unknown',
+      attributes: {
+        airline,
+        flight_number: flightNo,
+        departure: depT,
+        arrival: arrT,
+        stops: String(stops),
+        ...(dur ? { duration: dur } : {}),
+        ...(seats ? { seats_available: seats } : {}),
+        origin: String(seg.depCityCd || parts[0] || ''),
+        destination: String(seg.arrCityCd || '') || String(toCity),
+        ...(serviceDate ? { schedule_date: serviceDate } : {}),
+        price_basis: 'live_fares_unavailable',
+        seller_presence: 'true',
+        booking_cta: 'Check live fare',
+        data_note: `Goibibo's own route page publishes this flight's schedule (times, stops, airline) but no fare for it${serviceDate ? ` on its ${serviceDate} listing` : ''}; no price is claimed here. The button opens Goibibo's own dated search.`,
+        image: '',
+      },
+      identifiers: { sku: `gi-sched-${dedupe}`.replace(/[^A-Za-z0-9.-]/g, '-') },
+      evidence: {
+        sourceUrl: pageUrl,
+        extractedFields: ['state.Listing.listingResponse.journeyMap (times, stops, airline, seats) — no fare published'],
+      },
+    }));
+  }
+  return out;
+}
+
 export function goibiboRouteUrl(fromCity: string, toCity: string): string {
   const slug = (c: string) => {
     const k = String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, '').trim();

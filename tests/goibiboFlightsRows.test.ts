@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseGoibiboSsr } from '../server/workers/parsers/goibiboFlights';
+import { parseGoibiboSsr, parseGoibiboSchedule } from '../server/workers/parsers/goibiboFlights';
 
 /**
  * OWNER 24 Nov: "goibibo mai sirf ek card aa raha hai. flight number, date ni aata isko fix kro".
@@ -110,4 +110,66 @@ test('no seat count on the page means no seat claim on the card', () => {
   const html = page([[j(7337, 'IDR$DEL$2026-11-28 06:50$6E-2045', '6E-2045')]]);
   const rows: any[] = parseGoibiboSsr(html, source, 'https://x/', 'Indore', 'New Delhi') as any[];
   assert.equal(rows[0].attributes.seats_available, undefined, 'never invented');
+});
+
+/** The shape Goibibo actually serves today (24 Nov 2026): schedules in journeyMap, NO fares. */
+function schedulePage(map: Record<string, any>) {
+  const data = {
+    props: {
+      pageProps: {
+        data: {
+          state: {
+            Listing: {
+              listingResponse: {
+                journeyMap: map,
+                fareDetails: { rtFareMap: {} },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+  return `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script></html>`;
+}
+
+const seg = (dep: string, arr: string, stops: number, airline: string, seats = '') => ({
+  depTime: dep, arrTime: arr, stops, seatsLeft: seats,
+  duration: { h: '02', m: '05' }, depCityCd: 'IDR', arrCityCd: 'DEL',
+  journeyHeader: `<b><font color="#222222">${airline}</font></b>`, airlineCodes: ['6E'],
+});
+
+test('the current page shape yields every flight with time, stops and airline but NO price', () => {
+  const html = schedulePage({
+    'IDR$DEL$2026-12-11 06:50$6E-2045': seg('06:50', '08:15', 0, 'IndiGo'),
+    'IDR$AMD$2026-12-11 08:25$6E-7174|AMD$DEL$2026-12-11 12:20$6E-6788': seg('08:25', '13:55', 1, 'IndiGo', '9'),
+    'IDR$DEL$2026-12-11 14:10$AI-803': seg('14:10', '15:40', 0, 'Air India'),
+  });
+  const rows: any[] = parseGoibiboSchedule(html, source, 'https://x/', 'Indore', 'New Delhi') as any[];
+  assert.equal(rows.length, 3, 'all three flights');
+  for (const r of rows) {
+    assert.equal(r.price, undefined, 'no price is claimed');
+    assert.equal(r.attributes.price_basis, 'live_fares_unavailable');
+    assert.equal(r.attributes.seller_presence, 'true');
+    assert.equal(r.attributes.booking_cta, 'Check live fare');
+    assert.ok(r.attributes.departure && r.attributes.arrival, 'time');
+    assert.ok(r.attributes.airline, 'airline');
+    assert.equal(r.travel.date, '2026-12-11', 'the date Goibibo really publishes');
+  }
+  assert.deepEqual(rows.map((r) => r.attributes.flight_number), ['6E-2045', '6E-7174', 'AI-803']);
+  const stop = rows.find((r) => r.attributes.flight_number === '6E-7174')!;
+  assert.equal(stop.attributes.stops, '1');
+  assert.equal(stop.attributes.seats_available, '9');
+  assert.match(stop.title, /1 stop/);
+});
+
+test('a journey without clock times is not shown', () => {
+  const html = schedulePage({ 'IDR$DEL$2026-12-11 06:50$6E-2045': { stops: 0 } });
+  assert.equal((parseGoibiboSchedule(html, source, 'https://x/', 'Indore', 'New Delhi') as any[]).length, 0);
+});
+
+test('the old page shape still parses and the schedule parser stays silent on it', () => {
+  const html = page([[j(7337, 'IDR$DEL$2026-11-28 06:50$6E-2045', '6E-2045')]]);
+  assert.equal((parseGoibiboSchedule(html, source, 'https://x/', 'Indore', 'New Delhi') as any[]).length, 0);
+  assert.equal((parseGoibiboSsr(html, source, 'https://x/', 'Indore', 'New Delhi') as any[]).length, 1);
 });

@@ -32,7 +32,7 @@ import { agodaSearchBody, AGODA_SEARCH_URL, parseAgodaFlights, agodaFlightsItems
 import { parseBookingFlights, bookingFlightsApiUrl, bookingFlightsSrpUrl } from '../parsers/bookingFlights';
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems, parseViaSearchJourneys, viaSearchItems, viaSearchApiUrl, viaSearchRequestBody } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
-import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
+import { parseGoibiboSsr, parseGoibiboSchedule, goibiboRouteUrl } from '../parsers/goibiboFlights';
 import { parseGoibiboFareCalendar, goibiboDayFareItems, goibiboFareCalendarUrl, goibiboCalendarHeaders } from '../parsers/goibiboFareCalendar';
 import { parseMmtFareCalendar, mmtFareCalendarUrl, mmtCalendarHeaders, mmtDayFareItems } from '../parsers/mmtFareCalendar';
 import { parseAixLowFares, aixLowFaresUrl, aixLowFaresHeaders, aixLowFaresBody, aixDayFareItems } from '../parsers/aixLowFares';
@@ -1618,7 +1618,25 @@ export const flightsWorker: VerticalWorker = {
           }
         }
         if (r && r.status === 200) {
+          // OWNER 24 Nov ("Goibibo ka pura schedule dikhaun (saari flights: time, stops, airline) par price na likhun,
+          // sirf Check live fare"): the route page now publishes schedules only (fareDetails.rtFareMap is empty), so
+          // its rows are read by the schedule parser and merged as unpriced "Check live fare" cards. They never claim a
+          // price and always print the date Goibibo really publishes.
+          const scheduleItems = parseGoibiboSchedule(r.body, ctx.source, url, rt.from, rt.to);
           const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
+          if (scheduleItems.length) {
+            // Cap the schedule cards so a partner can never bury the priced offers: at most 12, priced rows stay first.
+            const cap = 12;
+            const picked = scheduleItems
+              .sort((a: any, b: any) => String(a.attributes?.departure || '').localeCompare(String(b.attributes?.departure || '')))
+              .slice(0, cap);
+            const have = new Set(out.map((i: any) => String(i.attributes?.flight_number || '')).filter(Boolean));
+            for (const si of picked) {
+              const fn = String((si as any).attributes?.flight_number || '');
+              if (fn && have.has(fn)) continue;
+              out.push(si);
+            }
+          }
           if (items.length) {
             const dated = items.filter((i: any) => String(i.travel?.date || '') === wantedDate);
             if (dated.length) {

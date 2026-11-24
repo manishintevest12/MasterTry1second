@@ -12618,6 +12618,73 @@ var init_yatraFlights = __esm({
 });
 
 // server/workers/parsers/goibiboFlights.ts
+function parseGoibiboSchedule(html, source, pageUrl, fromCity, toCity) {
+  let root = null;
+  const m = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (m) {
+    try {
+      root = JSON.parse(m[1]);
+    } catch {
+      root = null;
+    }
+  }
+  const listing = root?.props?.pageProps?.data?.state?.Listing?.listingResponse;
+  const jm = listing?.journeyMap || {};
+  const keys = Object.keys(jm);
+  if (!keys.length) return [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const key of keys) {
+    const seg = jm[key] || {};
+    const legs2 = String(key).split("|");
+    const first = legs2[0] || "";
+    const parts = first.split("$");
+    const flightNo2 = String(parts[3] || "").replace(/_/g, " ").trim();
+    const when = String(parts[2] || "").trim();
+    const serviceDate = (when.match(/^(\d{4}-\d{2}-\d{2})/) || [])[1] || "";
+    const stops = Number(seg.stops ?? legs2.length - 1);
+    const airline = stripTags2(String(seg.journeyHeader || seg.airlineNamesOnly || "")).trim() || EMT_AIRLINES[String((seg.airlineCodes || [])[0] || "")]?.name || "Flight";
+    const depT = String(seg.depTime || "").trim();
+    const arrT = String(seg.arrTime || "").trim();
+    if (!depT || !arrT) continue;
+    const dur = seg.duration && (seg.duration.h || seg.duration.m) ? `${seg.duration.h || "00"}h ${seg.duration.m || "00"}m` : "";
+    const seats = String(seg.seatsLeft || "").replace(/[^0-9]/g, "");
+    const dedupe2 = `${flightNo2}|${depT}|${arrT}|${serviceDate}`;
+    if (seen.has(dedupe2)) continue;
+    seen.add(dedupe2);
+    out.push(newRawItem(source, {
+      title: `${airline} ${flightNo2} ${fromCity} \u2192 ${toCity} ${stops ? `(${stops} stop${stops > 1 ? "s" : ""})` : "non-stop"}${serviceDate ? ` on ${serviceDate}` : ""}`.replace(/\s+/g, " ").slice(0, 200),
+      brand: airline,
+      seller: "Goibibo",
+      sellerUrl: pageUrl,
+      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, ...serviceDate ? { date: serviceDate } : {} },
+      availability: "unknown",
+      attributes: {
+        airline,
+        flight_number: flightNo2,
+        departure: depT,
+        arrival: arrT,
+        stops: String(stops),
+        ...dur ? { duration: dur } : {},
+        ...seats ? { seats_available: seats } : {},
+        origin: String(seg.depCityCd || parts[0] || ""),
+        destination: String(seg.arrCityCd || "") || String(toCity),
+        ...serviceDate ? { schedule_date: serviceDate } : {},
+        price_basis: "live_fares_unavailable",
+        seller_presence: "true",
+        booking_cta: "Check live fare",
+        data_note: `Goibibo's own route page publishes this flight's schedule (times, stops, airline) but no fare for it${serviceDate ? ` on its ${serviceDate} listing` : ""}; no price is claimed here. The button opens Goibibo's own dated search.`,
+        image: ""
+      },
+      identifiers: { sku: `gi-sched-${dedupe2}`.replace(/[^A-Za-z0-9.-]/g, "-") },
+      evidence: {
+        sourceUrl: pageUrl,
+        extractedFields: ["state.Listing.listingResponse.journeyMap (times, stops, airline, seats) \u2014 no fare published"]
+      }
+    }));
+  }
+  return out;
+}
 function goibiboRouteUrl(fromCity, toCity) {
   const slug5 = (c) => {
     const k = String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").trim();
@@ -20374,7 +20441,18 @@ var init_flights = __esm({
               }
             }
             if (r && r.status === 200) {
+              const scheduleItems = parseGoibiboSchedule(r.body, ctx.source, url, rt.from, rt.to);
               const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
+              if (scheduleItems.length) {
+                const cap2 = 12;
+                const picked = scheduleItems.sort((a, b) => String(a.attributes?.departure || "").localeCompare(String(b.attributes?.departure || ""))).slice(0, cap2);
+                const have = new Set(out.map((i) => String(i.attributes?.flight_number || "")).filter(Boolean));
+                for (const si of picked) {
+                  const fn = String(si.attributes?.flight_number || "");
+                  if (fn && have.has(fn)) continue;
+                  out.push(si);
+                }
+              }
               if (items.length) {
                 const dated = items.filter((i) => String(i.travel?.date || "") === wantedDate);
                 if (dated.length) {
@@ -53576,6 +53654,13 @@ var init_feed = __esm({
     init_db();
     init_logger();
     FEATURE_NOTES = [
+      {
+        key: "goibibo-flight-schedule",
+        date: "2026-11-24",
+        title: "Goibibo flights now list every flight, not just the cheapest",
+        body: "Goibibo rows show each flight with its number, departure and arrival time, stops, duration and seats left. Where Goibibo publishes no fare for a flight, the card says so and the button opens Goibibo's live fare instead of guessing a price.",
+        ctaUrl: "/?vertical=flights"
+      },
       {
         key: "related-real-photos",
         date: "2026-11-23",

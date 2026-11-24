@@ -33,6 +33,13 @@ export interface FeatureNote {
 
 export const FEATURE_NOTES: FeatureNote[] = [
   {
+    key: 'goibibo-flight-schedule',
+    date: '2026-11-24',
+    title: 'Goibibo flights now list every flight, not just the cheapest',
+    body: 'Goibibo rows show each flight with its number, departure and arrival time, stops, duration and seats left. Where Goibibo publishes no fare for a flight, the card says so and the button opens Goibibo\'s live fare instead of guessing a price.',
+    ctaUrl: '/?vertical=flights',
+  },
+  {
     key: 'related-real-photos',
     date: '2026-11-23',
     title: 'Related products now show their real photos',
