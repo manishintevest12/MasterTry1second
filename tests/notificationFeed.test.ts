@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FEATURE_NOTES, featureRow, dealRow } from '../server/notifications/feed';
+import { isProductPath, isVerticalPath } from '../src/utils/verticalRoutes';
 
 /**
  * OWNER 23 Nov: "bell notification jo hai app website mai usme kuch v notification ni aata jaise maan lo koi new
@@ -71,4 +72,25 @@ test('long text is cut to the column sizes instead of failing the insert', () =>
   assert.ok(row);
   assert.ok(row!.title.length <= 200);
   assert.ok(row!.body.length <= 1000);
+});
+
+/**
+ * OWNER 24 Nov: "notification pr click kr ke v redirection ho uss notification se related. abhi sirf notification
+ * dikhta hai pr ye samj ni aata usko kaise kaha se le". A note whose link the readers cannot route is exactly that
+ * dead tap: the drawer used to open '/?vertical=flights' in a new tab, and the site's reader only understands
+ * '/flights' or '#vertical=flights', so the visitor landed on Home. This pins the link shape.
+ */
+test('every feature note links to a screen the site and the app can actually route', () => {
+  for (const note of FEATURE_NOTES) {
+    const row = featureRow(note);
+    assert.ok(row.ctaUrl, `note ${note.key} has no destination`);
+    const link = String(row.ctaUrl);
+    assert.ok(!/\?vertical=/.test(link), `${note.key} uses the query form the readers ignore`);
+    if (/^https:\/\//i.test(link)) continue; // a real external page, e.g. the Play listing
+    const path = link.split(/[?#]/)[0] || '/';
+    assert.ok(
+      path === '/' || isVerticalPath(path) || isProductPath(path),
+      `${note.key} points at ${link}, which is neither Home, a vertical, nor a product page`,
+    );
+  }
 });

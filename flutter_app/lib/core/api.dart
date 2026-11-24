@@ -1079,8 +1079,35 @@ class AppNotification {
   final String kind;
   final String? createdAt;
   final bool read;
+
+  /// OWNER 24 Nov ("mai chata hoon notification pr click kr ke v redirection ho uss notification se related. abhi
+  /// sirf notification dikhta hai pr ye samj ni aata usko kaise kaha se le"): a row that cannot be opened is only
+  /// half a notification. The API has always sent these three fields — the app simply threw them away, so a deal's
+  /// merchant link and a price drop's product name never reached the screen. They are kept here verbatim.
+  ///   searchQuery — the exact product this row is about (price drops): opens the Product page.
+  ///   ctaUrl      — an app screen (/flights, /grocery, /product/<slug>), the merchant hop (/api/out?t=...),
+  ///                 or a real link (Play listing). Never invented, never rewritten here.
+  ///   seller      — who is selling, shown on the row and passed to the browser header.
+  final String? ctaUrl;
+  final String? searchQuery;
+  final String? seller;
+  final double? priceNow;
+
   const AppNotification(
-      this.id, this.title, this.body, this.kind, this.createdAt, this.read);
+      this.id, this.title, this.body, this.kind, this.createdAt, this.read,
+      {this.ctaUrl, this.searchQuery, this.seller, this.priceNow});
+
+  static String? _s(dynamic v) {
+    final t = v?.toString().trim() ?? '';
+    return t.isEmpty ? null : t;
+  }
+
+  static double? _n(dynamic v) {
+    if (v is num) return v.toDouble();
+    final p = double.tryParse('${v ?? ''}');
+    return p;
+  }
+
   factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
         '${j['id'] ?? ''}',
         '${j['title'] ?? ''}',
@@ -1088,6 +1115,10 @@ class AppNotification {
         '${j['kind'] ?? j['type'] ?? ''}',
         (j['createdAt'] ?? j['created_at'])?.toString(),
         j['read'] == true || j['isRead'] == true,
+        ctaUrl: _s(j['ctaUrl'] ?? j['cta_url']),
+        searchQuery: _s(j['searchQuery'] ?? j['search_query']),
+        seller: _s(j['seller']),
+        priceNow: _n(j['priceNow'] ?? j['price_now']),
       );
 }
 
