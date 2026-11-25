@@ -4,6 +4,7 @@
  * listings (same SSR markup as the ecommerce worker, grocery-scoped queries).
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
+import { resolveDeliveryPoint } from '../../common/deliveryLocation';
 import { parseAmazonIn } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
 import { parseBlinkit } from '../parsers/blinkit';
@@ -322,12 +323,16 @@ export const groceryWorker: VerticalWorker = {
         const term = q(ctx);
         if (!term) return [];
         const loc = ctx.query.location || {};
-        const coords =
-          (typeof loc.lat === 'number' && typeof loc.lng === 'number' && loc.lat)
-            ? ([loc.lat, loc.lng] as [number, number])
-            : GCITY_COORDS[String(loc.city || '').toLowerCase()] || GCITY_COORDS['mumbai'];
-        const cityLabel = loc.city ? String(loc.city) : 'Mumbai';
-        const [lat, lng] = coords;
+        // OWNER 25 Nov ("wahi issue 10-min grocery mai v"): a quick-commerce price only exists inside the
+        // delivery polygon of the point it was quoted at. The shopper's own GPS fix wins; the city they typed is
+        // the stand-in; another city's point (the old silent Mumbai fallback) is never used, because that is how
+        // a dark store that cannot reach the address ended up in the results.
+        const point = resolveDeliveryPoint(loc, GCITY_COORDS);
+        if (!point) {
+          throw new AcquisitionError('EMPTY_RESPONSE', `Blinkit prices per delivery zone — no point for "${loc.city || 'this area'}" without a locality or GPS fix.`);
+        }
+        const cityLabel = point.label;
+        const [lat, lng] = [point.lat, point.lng];
         // PRIMARY (17 Oct, APK-extracted XAPK v17.65 via APKFab): the Android app's Kong gateway
         // api3.blinkit.com (config/domains rollout target for api2.grofers.com) is NOT behind the
         // website's Cloudflare edge. POST /v1/layout/search with app headers (lat/lon + Grofers UA)
@@ -388,12 +393,16 @@ export const groceryWorker: VerticalWorker = {
         const term = q(ctx);
         if (!term) return [];
         const loc = ctx.query.location || {};
-        const coords =
-          (typeof loc.lat === 'number' && typeof loc.lng === 'number' && loc.lat)
-            ? ([loc.lat, loc.lng] as [number, number])
-            : GCITY_COORDS[String(loc.city || '').toLowerCase()] || GCITY_COORDS['mumbai'];
-        const cityLabel = loc.city ? String(loc.city) : 'Mumbai';
-        const [lat, lng] = coords;
+        // OWNER 25 Nov ("wahi issue 10-min grocery mai v"): a quick-commerce price only exists inside the
+        // delivery polygon of the point it was quoted at. The shopper's own GPS fix wins; the city they typed is
+        // the stand-in; another city's point (the old silent Mumbai fallback) is never used, because that is how
+        // a dark store that cannot reach the address ended up in the results.
+        const point = resolveDeliveryPoint(loc, GCITY_COORDS);
+        if (!point) {
+          throw new AcquisitionError('EMPTY_RESPONSE', `Blinkit prices per delivery zone — no point for "${loc.city || 'this area'}" without a locality or GPS fix.`);
+        }
+        const cityLabel = point.label;
+        const [lat, lng] = [point.lat, point.lng];
         const BB = 'https://www.bigbasket.com';
         const baseHeaders = {
           Accept: 'application/json',
@@ -458,12 +467,16 @@ export const groceryWorker: VerticalWorker = {
         const term = q(ctx);
         if (!term) return [];
         const loc = ctx.query.location || {};
-        const coords =
-          (typeof loc.lat === 'number' && typeof loc.lng === 'number' && loc.lat)
-            ? ([loc.lat, loc.lng] as [number, number])
-            : GCITY_COORDS[String(loc.city || '').toLowerCase()] || GCITY_COORDS['mumbai'];
-        const cityLabel = loc.city ? String(loc.city) : 'Mumbai';
-        const [lat, lng] = coords;
+        // OWNER 25 Nov ("wahi issue 10-min grocery mai v"): a quick-commerce price only exists inside the
+        // delivery polygon of the point it was quoted at. The shopper's own GPS fix wins; the city they typed is
+        // the stand-in; another city's point (the old silent Mumbai fallback) is never used, because that is how
+        // a dark store that cannot reach the address ended up in the results.
+        const point = resolveDeliveryPoint(loc, GCITY_COORDS);
+        if (!point) {
+          throw new AcquisitionError('EMPTY_RESPONSE', `Blinkit prices per delivery zone — no point for "${loc.city || 'this area'}" without a locality or GPS fix.`);
+        }
+        const cityLabel = point.label;
+        const [lat, lng] = [point.lat, point.lng];
 
         const homeUrl = `${IM_BASE}/api/instamart/home/v2?clientId=INSTAMART-APP&lat=${lat}&lng=${lng}`;
         const home = await cffiFetch(homeUrl, { impersonate: 'chrome', headers: IM_HEADERS, timeoutMs: 20_000 });

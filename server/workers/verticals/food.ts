@@ -4,6 +4,7 @@
  * exposed to plain HTTP; they stay unknown (never invented).
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
+import { resolveDeliveryPoint } from '../../common/deliveryLocation';
 import { parseZomatoRestaurants, parseZomatoMenuPage } from '../parsers/zomato';
 import { newRawItem } from '../../sources/contract';
 import type { RawSourceItem, SourceConfig } from '../../types';
@@ -151,12 +152,17 @@ export const foodWorker: VerticalWorker = {
         const raw = String(ctx.query.rawQuery || '');
         const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, '').trim();
         if (!term) return [];
-        const cityKey = String(ctx.query.location?.city || '').toLowerCase().trim();
-        const c = CITY_COORDS[cityKey] || CITY_COORDS['new delhi'];
-        const url = `https://www.swiggy.com/dapi/restaurants/search/v3?lat=${c[0]}&lng=${c[1]}&str=${encodeURIComponent(term)}&trackingId=undefined&submitAction=ENTER&queryUniqueId=t1s${Date.now() % 100000}`;
+        // OWNER 25 Nov ("swiggy pr jata hoon tho wo mere area mai delivery ni krta"): price the menu at the
+        // shopper's OWN point. Swiggy returns only what serves that point, so a city-centre (or another city's)
+        // point is exactly how a dish appeared in search and then refused delivery at the redirect.
+        const point = resolveDeliveryPoint(ctx.query.location, CITY_COORDS);
+        if (!point) {
+          throw new AcquisitionError('EMPTY_RESPONSE', `Swiggy prices a menu per delivery point — no point for "${ctx.query.location?.city || 'this area'}" without a locality or GPS fix.`);
+        }
+        const url = `https://www.swiggy.com/dapi/restaurants/search/v3?lat=${point.lat}&lng=${point.lng}&str=${encodeURIComponent(term)}&trackingId=undefined&submitAction=ENTER&queryUniqueId=t1s${Date.now() % 100000}`;
         const r = await ctx.fetch(url, { expectJson: true, maxBytes: 8_000_000, timeoutMs: 20_000, headers: { Accept: 'application/json' } });
         if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Swiggy HTTP ${r.status}`, r.status);
-        return parseSwiggyDishes(r.body, ctx.source, url, ctx.query.location?.city || 'New Delhi');
+        return parseSwiggyDishes(r.body, ctx.source, url, point.label);
       },
     },
 
@@ -284,10 +290,11 @@ export const foodWorker: VerticalWorker = {
         const raw = String(ctx.query.rawQuery || '');
         const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, '').trim();
         if (!term) return [];
-        const cityKey = String(ctx.query.location?.city || '').toLowerCase().trim();
-        const c = CITY_COORDS[cityKey] || CITY_COORDS['new delhi'];
-        const city = ctx.query.location?.city || 'New Delhi';
-        const shellUrl = `https://disc.swiggy.com/api/v1/json/shell/toing-app?lat=${c[0]}&lng=${c[1]}`;
+        // Same rule as the Swiggy dish search above: the shopper's own point, never a borrowed city centre.
+        const point = resolveDeliveryPoint(ctx.query.location, CITY_COORDS);
+        if (!point) return [];
+        const city = point.label;
+        const shellUrl = `https://disc.swiggy.com/api/v1/json/shell/toing-app?lat=${point.lat}&lng=${point.lng}`;
         const H = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
         const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
         // Page 1 + up to 2 cursor pages of the Toing shell feed.
@@ -334,7 +341,7 @@ export const foodWorker: VerticalWorker = {
             if (items.length >= 24) break;
             if (left() < 5_500) break; // out of task budget — ship the dishes we already have
             try {
-              const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: 'chrome', method: 'POST', body: '{}', timeoutMs: 5_000, headers: H });
+              const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${point.lat}&lng=${point.lng}`, { impersonate: 'chrome', method: 'POST', body: '{}', timeoutMs: 5_000, headers: H });
               if (m.status !== 200) continue;
               const dishes = toingMenuDishes(m.body);
               for (const d of dishes) {
