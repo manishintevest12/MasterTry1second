@@ -22,6 +22,9 @@ import { useApp } from '../context/AppContext';
 import { Try1SecondLogo } from './Try1SecondLogo';
 import { useAppLinks } from '../utils/useAppLinks';
 
+/** The live Play Store listing for the Android app (owner 25 Nov). */
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.try1second.try1second&hl=en_IN';
+
 export const Footer: React.FC = () => {
   const { setVertical, setActiveNavTab, openInfoModal, openPartnerModal, openExtensionModal } = useApp();
   const { links } = useAppLinks();
@@ -100,7 +103,11 @@ export const Footer: React.FC = () => {
               { key: 'android_app', label: 'Android App', sub: 'Get it on Android', icon: <Smartphone className="w-4 h-4" /> },
               { key: 'ios_app', label: 'iOS App', sub: 'Get it on iPhone', icon: <Apple className="w-4 h-4" /> },
             ] as const).map((b) => {
-              const link = links[b.key];
+              // OWNER 25 Nov: the Android app is on Play, so the button must stop saying "Coming soon" even
+              // before the admin Extension & App Links entry is filled in. An admin-supplied URL still wins.
+              const link = links[b.key] || (b.key === 'android_app'
+                ? ({ url: PLAY_STORE_URL, sub: 'Get it on Play Store' } as any)
+                : null);
               const inner = (
                 <>
                   <span className="shrink-0">{b.icon}</span>
