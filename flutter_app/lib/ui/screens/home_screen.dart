@@ -73,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_apps.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-            child: _QuickAppsRail(apps: _apps),
+            child: _QuickAppsRail(apps: _apps, onViewAll: () => _state.go(NavTab.quickApps)),
           ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -106,8 +106,13 @@ class _HomeScreenState extends State<HomeScreen> {
 // ---------------------------------------------------------------------------
 
 class _QuickAppsRail extends StatelessWidget {
-  const _QuickAppsRail({required this.apps});
+  const _QuickAppsRail({required this.apps, required this.onViewAll});
   final List<QuickApp> apps;
+
+  /// OWNER 25 Nov ("app mai quick apps ke saamne view all hai wo kaam ni kr raha"): the label was a bare
+  /// Text, so it looked like a link and did nothing. It now opens the Quick Apps tab, where every partner
+  /// is listed (the home rail is deliberately capped at 6 tiles).
+  final VoidCallback onViewAll;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +121,14 @@ class _QuickAppsRail extends StatelessWidget {
         Container(width: 8, height: 8, decoration: const BoxDecoration(color: T1SColors.red, shape: BoxShape.circle)),
         const SizedBox(width: 8),
         Expanded(child: Text('QUICK APPS', style: tx(context, 12, w: FontWeight.w900, ls: 0.8))),
-        Text('View all →', style: tx(context, 11, w: FontWeight.w800, color: T1SColors.red)),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onViewAll,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Text('View all →', style: tx(context, 11, w: FontWeight.w800, color: T1SColors.red)),
+          ),
+        ),
       ]),
       const SizedBox(height: 10),
       SizedBox(
