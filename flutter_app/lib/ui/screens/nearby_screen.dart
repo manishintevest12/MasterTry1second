@@ -265,6 +265,47 @@ class _NearbyScreenState extends State<NearbyScreen> {
   /// surface — like the mobile site, its Visit/book hands the shopper to the partner in their own browser:
   /// externalApplication, same as the site's target=_blank. The `/api/out?t=` pointer still records the click
   /// server-side because the partner page is loaded through it.
+  /// True when a link already IS a map page: Google Maps, Apple/OSM, or a `geo:` intent.
+  static bool _isMapUrl(String url) {
+    final u = Uri.tryParse(url.trim());
+    if (u == null) return false;
+    final scheme = u.scheme.toLowerCase();
+    if (scheme == 'geo' || scheme == 'maps') return true;
+    final host = u.host.toLowerCase();
+    final path = u.path.toLowerCase();
+    if (host.startsWith('maps.google.')) return true;
+    if (host.contains('google.') && path.contains('maps')) return true;
+    if (host == 'goo.gl' || host == 'maps.app.goo.gl') return true;
+    if (host.contains('openstreetmap.org')) return true;
+    return false;
+  }
+
+  /// The ONE place a card's "Get directions" may go: Google Maps.
+  ///
+  /// OWNER 25 Nov ("directin google map pr le jaayega, abhi kahi kahi ni le jata"): the button fell back to
+  /// `exitUrl` whenever the feed sent no directionsUrl, so it opened the merchant's own page instead of a map.
+  /// When there is no usable map link, the destination is built from what the card already shows (name + address),
+  /// so the tap always lands on directions and never on a shop.
+  static Uri _directionsUri(NearbyPlace p) {
+    final raw = p.directionsUrl.trim();
+    if (raw.isNotEmpty && _isMapUrl(raw)) {
+      final u = Uri.tryParse(raw);
+      if (u != null) return u;
+    }
+    final query = [p.name, p.address].where((x) => x != null && x.trim().isNotEmpty).join(', ');
+    return Uri.parse('https://www.google.com/maps/search/?api=1&query=${Uri.encodeQueryComponent(query)}');
+  }
+
+  /// Directions leave the app for the maps app; a failure falls back to the plain intent, never to a dead button.
+  Future<void> _openMap(NearbyPlace p) async {
+    final uri = _directionsUri(p);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      try { await launchUrl(uri); } catch (_) {}
+    }
+  }
+
   Future<void> _open(String url) async {
     // A map link must leave the app for the maps app: an in-app browser would only show a map inside our own chrome.
     final parsed = Uri.tryParse(url);
@@ -588,8 +629,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
                     style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFFB45309)))
               else
                 Text('rating unknown', style: TextStyle(fontSize: 11, color: const Color(0xFF64748B))),
-              if (p.priceLabel != null) Text(p.priceLabel!, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: const Color(0xFF0F172A))),
-              if (p.price != null) Text('₹${p.price!.round()}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: const Color(0xFF0F172A))),
+              // OWNER 25 Nov ("price 2 dikh raha hai ek hi dikhana chaiye"): the label already carries the amount
+              // ("₹150 for two") and the bare number was printed again right beside it. One price per card: the
+              // labelled one when the feed sent a label, otherwise the amount.
+              if (p.priceLabel != null)
+                Text(p.priceLabel!, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: const Color(0xFF0F172A)))
+              else if (p.price != null)
+                Text('₹${p.price!.round()}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: const Color(0xFF0F172A))),
             ],
           ),
           if (p.address != null) ...[
@@ -605,14 +651,14 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 FilledButton(
                   // OWNER 17 Nov: a place that only exists on the map opens the MAP. The old code handed this row a
                   // link to our own site, the App Link swallowed it and the person landed on the Bus tab.
-                  onPressed: () => _open(p.mapOnly ? (p.directionsUrl.isNotEmpty ? p.directionsUrl : p.exitUrl) : p.exitUrl),
+                  onPressed: () => p.mapOnly ? _openMap(p) : _open(p.exitUrl),
                   style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F172A), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                   child: Text(p.mapOnly ? 'Open in Maps' : 'Visit / book',
                       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
                 ),
               const SizedBox(width: 8),
               OutlinedButton(
-                onPressed: () => _open(p.directionsUrl.isNotEmpty ? p.directionsUrl : p.exitUrl),
+                onPressed: () => _openMap(p),
                 style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
                 child: const Text('Get directions', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
               ),

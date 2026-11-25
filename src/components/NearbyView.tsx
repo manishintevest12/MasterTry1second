@@ -64,6 +64,26 @@ const VEHICLE_PILLS: { key: Category; label: string }[] = [
   { key: 'scrapping', label: 'Vehicle Scrapping' },
 ];
 
+/**
+ * OWNER 25 Nov ("directin google map pr le jaayega, abhi kahi kahi ni le jata"): both buttons fell back to
+ * `exitUrl` when the feed sent no directionsUrl, so "Get directions" opened the merchant's own page instead of a
+ * map. A link is only used when it really is a map; otherwise directions are built from what the card already
+ * shows (name + address), so the tap always lands on Google Maps and never on a shop.
+ */
+const isMapUrl = (url: string): boolean => {
+  const raw = (url || '').trim();
+  if (!raw) return false;
+  if (/^geo:|^maps:/i.test(raw)) return true;
+  return /^https?:\/\/(maps\.google\.[a-z.]+|(www\.)?google\.[a-z.]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps|(www\.)?openstreetmap\.org)/i.test(raw);
+};
+
+const directionsHref = (r: { name: string; address: string | null; directionsUrl: string }): string => {
+  const raw = (r.directionsUrl || '').trim();
+  if (raw && isMapUrl(raw)) return raw;
+  const query = [r.name, r.address].filter(Boolean).join(', ');
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+};
+
 export default function NearbyView() {
   const [category, setCategory] = useState<Category>('all');
   const [city, setCity] = useState('');
@@ -360,8 +380,14 @@ export default function NearbyView() {
                 ) : (
                   <span className="text-slate-400">rating unknown</span>
                 )}
-                {r.priceLabel ? <span className="text-slate-600 font-semibold">{r.priceLabel}</span> : null}
-                {r.price !== null ? <span className="text-slate-900 font-black">₹{Math.round(r.price).toLocaleString('en-IN')}</span> : null}
+                {/* OWNER 25 Nov ("price 2 dikh raha hai ek hi dikhana chaiye"): the label already carries the
+                    amount ("₹150 for two"), so printing the bare number beside it showed the same price twice.
+                    One price per card: the labelled one, else the amount. */}
+                {r.priceLabel ? (
+                  <span className="text-slate-900 font-black">{r.priceLabel}</span>
+                ) : r.price !== null ? (
+                  <span className="text-slate-900 font-black">₹{Math.round(r.price).toLocaleString('en-IN')}</span>
+                ) : null}
               </div>
               {r.address ? <p className="text-[11px] text-slate-500 flex items-start gap-1"><MapPin className="w-3 h-3 mt-0.5 shrink-0" /> {r.address}</p> : null}
               <p className="text-[10px] text-slate-400 leading-snug">{r.honesty}</p>
@@ -371,7 +397,7 @@ export default function NearbyView() {
                     exist. Real shops keep their partner link. */}
                 {r.exitUrl && !r.serviceOnly ? (
                   r.mapOnly ? (
-                    <a href={r.directionsUrl || r.exitUrl} rel="nofollow noopener" className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold">
+                    <a href={directionsHref(r)} target="_blank" rel="nofollow noopener" className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold">
                       Open in Maps
                     </a>
                   ) : (
@@ -380,7 +406,7 @@ export default function NearbyView() {
                     </a>
                   )
                 ) : null}
-                <a href={r.directionsUrl || r.exitUrl} rel="nofollow noopener" className="px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700">
+                <a href={directionsHref(r)} target="_blank" rel="nofollow noopener" className="px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700">
                   Get directions
                 </a>
               </div>
