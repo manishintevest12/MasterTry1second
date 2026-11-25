@@ -1821,7 +1821,16 @@ async function nearbyHandler(req: any, res: Response): Promise<void> {
     // OWNER 19 Nov: the app answer carries `app=1` exits, so a shared cache entry would hand a browser those
     // exits (or the app the interstitial ones). Keep the two variants apart.
     res.setHeader('Vary', 'User-Agent');
-    res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(answer.results) } : answer);
+    // OWNER 25 Nov ("directin google map pr le jaayega, abhi kahi kahi ni le jata"): a few producers build rows
+    // with an empty directionsUrl (aggregator.ts:810/1429), so "Get directions" had nothing to open and fell back
+    // to the merchant page. Fill it once, here, for every client — the map is built from the row's own name and
+    // address, so the button always lands on Google Maps.
+    const withMaps = answer.results.map((r: any) => {
+      if (r.directionsUrl && /^https?:\/\//i.test(String(r.directionsUrl))) return r;
+      const q = [r.name, r.address].filter((x: any) => x && String(x).trim()).join(', ');
+      return { ...r, directionsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` };
+    });
+    res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(withMaps) } : { ...answer, results: withMaps });
   } catch (e: any) {
     // OWNER 17 Nov: this used to answer the whole tab with an apology. A city that has real hotels must never be
     // answered with an error wall, so the failure now falls back to a small honest map-only answer while keeping the
