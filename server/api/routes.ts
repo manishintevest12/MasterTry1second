@@ -2093,6 +2093,21 @@ apiRouter.all(['/scrape/live', '/search/live'], async (req, res) => {
   if (!input.query?.trim()) {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });
   }
+  // OWNER 25 Nov ("app performance improve kro"): when the event loop is already blocked, opening another scrape
+  // only lengthens the queue that produced the 503s. Answer at once with the same honest pendingRefresh payload the
+  // deadline wall sends — the app is built to poll it — and start the scrape on a later tick when the box has room.
+  {
+    const { shouldShedExpensive, currentLagMs } = await import('../common/loadShed');
+    if (shouldShedExpensive()) {
+      res.setHeader('Retry-After', '3');
+      return res.json({
+        ok: true, results: [], pendingRefresh: true, degraded: true, shed: true,
+        honestNotice: 'The engine is busy. Results appear here automatically in a few seconds.',
+        sourcesAttempted: [], sourcesSucceeded: [], sourcesFailed: [],
+        servedFrom: 'load-shed', resultsCount: 0, latencyMs: currentLagMs(),
+      });
+    }
+  }
   // OWNER 31 Oct (mobile "SocketConnection reset by peer" report): ONE scrape per session.
   // A second search from the same device while its own search is still running is refused
   // with 429 + Retry-After instead of starting another scrape; when the global queue is at
@@ -3602,17 +3617,24 @@ apiRouter.post('/track', async (req, res) => {
     body.sessionId || req.headers['x-t1s-session'] || sessionKeyOf(req) || '',
   ).slice(0, 64);
   if (!withinBudget(`track:${sessionId}`)) return res.status(429).json({ ok: false, error: 'Too many events, slow down' });
-  const userId = await optionalUserId(req);
-  const accepted = await recordEvents(
-    list.map((e: any) => ({ ...e, sessionId: e?.sessionId || sessionId })),
-    { userId },
-  );
-  // OWNER 19 Nov: a share is a real user action, so it can be the moment a referral earns its point.
-  // Fire-and-forget: the reward must never slow or break telemetry.
-  if (userId && list.some((e: any) => String(e?.event) === 'share')) {
-    void qualifyReferral(userId, 'share', getStore()).catch(() => null);
-  }
-  res.json({ ok: true, accepted });
+  // OWNER 25 Nov (production 503s on /api/track with 83 s and 8,356 s response times): telemetry answered only
+  // after a token lookup and a database write, so a slow MySQL held the shopper's socket. The events are accepted
+  // here and written afterwards — the client never waits on telemetry, and a failed write is logged, not surfaced.
+  res.json({ ok: true, accepted: list.length });
+  void (async () => {
+    try {
+      const userId = await optionalUserId(req);
+      await recordEvents(
+        list.map((e: any) => ({ ...e, sessionId: e?.sessionId || sessionId })),
+        { userId },
+      );
+      // OWNER 19 Nov: a share is a real user action, so it can be the moment a referral earns its point.
+      // Fire-and-forget: the reward must never slow or break telemetry.
+      if (userId && list.some((e: any) => String(e?.event) === 'share')) {
+        void qualifyReferral(userId, 'share', getStore()).catch(() => null);
+      }
+    } catch { /* telemetry is best-effort: the response has already been sent */ }
+  })();
 });
 
 // OWNER 18 Nov: the master system prompt is wired in here. The rule-based interpreter answers first and
