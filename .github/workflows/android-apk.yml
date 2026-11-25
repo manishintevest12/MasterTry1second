@@ -1,0 +1,69 @@
+name: Android APK
+
+# OWNER 25 Nov ("app build latest wala do"): this repo had NO build pipeline — every APK in flutter_app/ was
+# produced by hand on one machine, so a phone could not be given a build carrying the fixes already on main.
+#
+# The signing keystores and their passwords are committed in flutter_app/android/app, so a clean runner
+# reproduces the SAME release signature Play already trusts: nothing has to be configured as a secret.
+# Any branch that touches the app builds, so a PR can be installed and tested before it merges; tagged
+# pushes also publish a Release with the APK attached.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    tags: ['v*']
+    paths:
+      - 'flutter_app/**'
+      - '.github/workflows/android-apk.yml'
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Version being built
+        run: grep '^version:' pubspec.yaml
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Name the artifact after the version
+        run: |
+          V=$(grep '^version:' pubspec.yaml | sed 's/version: *//')
+          cp build/app/outputs/flutter-apk/app-release.apk "Try1Second-v${V}-apk.apk"
+          ls -lh "Try1Second-v${V}-apk.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: try1second-apk
+          path: flutter_app/Try1Second-v*-apk.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish the APK on the Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: flutter_app/Try1Second-v*-apk.apk
+          generate_release_notes: true
