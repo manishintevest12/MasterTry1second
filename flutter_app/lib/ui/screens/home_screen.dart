@@ -52,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.only(bottom: 24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // OWNER 21 Nov (mobile site vs app screenshots): the site carries the vertical strip directly
-        // under the header — Home · Nearby · Flights (20) · Hotels · … — and the app home page had no
+        // under the header — Home · Flights (20) · Hotels · … · Nearby — and the app home page had no
         // such row, because the strip was built inside the Compare screen. Same widget as that screen,
         // so the two can never drift: Home is active here, a vertical tap opens its feed.
         VerticalTabs(current: '', onPick: (id) => _state.openVertical(id)),

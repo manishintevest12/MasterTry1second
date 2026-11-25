@@ -93,14 +93,6 @@ class VerticalTabs extends StatelessWidget {
                   active: app.tab == NavTab.home,
                   onTap: () => app.go(NavTab.home),
                 ),
-                const SizedBox(width: 8),
-                // Nearby: the thirteenth vertical, second in the strip exactly as on the site.
-                chip(
-                  icon: Icons.place_rounded,
-                  label: 'Nearby',
-                  active: current == 'nearby',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyScreen())),
-                ),
                 for (final v in kVerticals) ...[
                   const SizedBox(width: 8),
                   chip(
@@ -111,6 +103,17 @@ class VerticalTabs extends StatelessWidget {
                     onTap: () => onPick(v.id),
                   ),
                 ],
+                // OWNER 25 Nov ("muje flutter app mai nearby bilkul last mai chaiye home ke baad ni header ke
+                // neeche jo horizontal bar hai usme"): Nearby sat second, right after Home, where it pushed the
+                // comparison verticals one chip further away. It is not a vertical feed — it opens its own screen —
+                // so it closes the strip instead of interrupting the shop-by-category run.
+                const SizedBox(width: 8),
+                chip(
+                  icon: Icons.place_rounded,
+                  label: 'Nearby',
+                  active: current == 'nearby',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyScreen())),
+                ),
               ],
             );
           },
