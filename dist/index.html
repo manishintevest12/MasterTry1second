@@ -49,11 +49,35 @@
     <!-- Non-blocking font load (PageSpeed render-blocking fix): swap media on
          onload; fallback keeps text visible with system fonts until ready. -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
-    <script type="module" crossorigin src="/assets/index-ZyyldOvA.js"></script>
+    <!-- OWNER 25 Nov: the Android app is live on Play, so the site advertises the installable app in the
+         metadata crawlers actually read (app-indexing meta + MobileApplication structured data). This is what
+         lets Google tie the site to the listing and offer "install app" instead of only a web result. -->
+    <meta property="al:android:package" content="com.try1second.try1second" />
+    <meta property="al:android:app_name" content="Try1Second" />
+    <meta property="al:android:url" content="https://play.google.com/store/apps/details?id=com.try1second.try1second" />
+    <script type="application/ld+json" id="t1s-app-seo">
+      {
+        "@context": "https://schema.org",
+        "@type": "MobileApplication",
+        "name": "Try1Second",
+        "operatingSystem": "Android",
+        "applicationCategory": "ShoppingApplication",
+        "installUrl": "https://play.google.com/store/apps/details?id=com.try1second.try1second",
+        "downloadUrl": "https://play.google.com/store/apps/details?id=com.try1second.try1second",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "Try1Second",
+          "legalName": "Standard Petro India Private Limited",
+          "url": "https://www.try1second.com/"
+        }
+      }
+    </script>
+    <script type="module" crossorigin src="/assets/index-DS3nJpqB.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-hePW80VL.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-VYgPZedP.js">
     <link rel="modulepreload" crossorigin href="/assets/react-BTUnF52f.js">
-    <link rel="preload" as="style" href="/assets/index-DWXOPW3d.css" onload="this.rel='stylesheet';this.onload=null"><noscript><link rel="stylesheet" crossorigin href="/assets/index-DWXOPW3d.css"></noscript>
+    <link rel="preload" as="style" href="/assets/index-BTPXecZH.css" onload="this.rel='stylesheet';this.onload=null"><noscript><link rel="stylesheet" crossorigin href="/assets/index-BTPXecZH.css"></noscript>
   </head>
     <!-- PageSpeed round-3 (21 Oct): the splash headline is deliberately rendered
          LARGER than the SPA hero H1 at every breakpoint. The splash paints at
