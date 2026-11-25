@@ -7,6 +7,14 @@ import '../widgets/kit.dart';
 /// Smart Cart (owner rule): the grocery basket is totalled at EVERY store
 /// server-side (/api/smart-cart/compare) and ranked by FULL-basket cost.
 /// 'Shop at store' hops through the /api/out pointer like every other deal.
+///
+/// OWNER 24 Nov ("smart cart 10-min grocery mai smart comparison kre mtlb agar maine aloo pyaaz add kiya tho wo
+/// bataye cart mai ki sbse sasta blinkit mai hai yaa zepto mai aise"): two things were missing for that sentence.
+///   1. The basket could only be filled from a feed card. It can now be TYPED ("aloo 1 kg"), so the comparison
+///      starts from what the shopper actually wants to buy.
+///   2. The answer was spread over four store cards. The server now returns ONE verdict sentence
+///      ("Cheapest full basket: Blinkit — ₹65 · ₹10 less than Zepto") and this screen prints it verbatim, so the
+///      website and the app can never phrase the same basket differently.
 class SmartCartScreen extends StatefulWidget {
   const SmartCartScreen({super.key});
 
@@ -18,6 +26,24 @@ class _SmartCartScreenState extends State<SmartCartScreen> {
   bool _comparing = false;
   Map<String, dynamic>? _result;
   String _error = '';
+
+  /// The item the shopper is typing into the basket.
+  final _newItem = TextEditingController();
+
+  @override
+  void dispose() {
+    _newItem.dispose();
+    super.dispose();
+  }
+
+  void _addByName() {
+    final name = _newItem.text.trim();
+    if (name.isEmpty) return;
+    AppState.instance.addToSmartCart(name);
+    _newItem.clear();
+    setState(() => _result = null); // an old total belongs to a different basket
+    FocusScope.of(context).unfocus();
+  }
 
   Future<void> _compare() async {
     final app = AppState.instance;
@@ -49,6 +75,7 @@ class _SmartCartScreenState extends State<SmartCartScreen> {
     final stores = List<Map<String, dynamic>>.from(
         (_result?['stores'] as List?)?.map((x) => Map<String, dynamic>.from(x as Map)) ?? const <Map<String, dynamic>>[]);
     final notFound = List<String>.from((_result?['notFound'] as List?) ?? const []);
+    final verdict = _result?['verdict'] is Map ? Map<String, dynamic>.from(_result!['verdict'] as Map) : null;
     final bestIdx = stores.indexWhere((s) => s['complete'] == true);
     final partial = stores.where((s) => s['complete'] != true).toList();
 
@@ -65,71 +92,94 @@ class _SmartCartScreenState extends State<SmartCartScreen> {
       ),
       body: Column(
         children: [
-          // Basket list
+          // Add by name
+          Padding(
+            padding: const EdgeInsets.fromLTRB(11, 10, 11, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _newItem,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _addByName(),
+                    style: tx(context, 11.5, w: FontWeight.w800),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'Add an item \u2014 e.g. aloo 1 kg, pyaaz',
+                      hintStyle: tx(context, 11.5, color: muted(context)),
+                      filled: true,
+                      fillColor: surface(context),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: BorderSide(color: border(context))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(11), borderSide: BorderSide(color: border(context))),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                GestureDetector(
+                  onTap: _addByName,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: T1SColors.slate900, borderRadius: BorderRadius.circular(11)),
+                    child: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Basket + comparison
           Expanded(
             child: app.smartCart.isEmpty
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: Text(
-                        'Search groceries and tap "+ Cart" on any product.\nSmart Cart totals your whole basket at every store and sends you to the cheapest one.',
+                        'Type an item above (e.g. "aloo 1 kg"), or tap "+ Cart" on any grocery product.\nSmart Cart totals your whole basket at every store and tells you which one is cheapest.',
                         textAlign: TextAlign.center,
                         style: tx(context, 11.5, color: muted(context), h: 1.5),
                       ),
                     ),
                   )
-                : ListView.builder(
+                : ListView(
                     padding: const EdgeInsets.all(11),
-                    itemCount: app.smartCart.length + (stores.isEmpty ? 0 : 1 + partial.length) + (_error.isNotEmpty || notFound.isNotEmpty ? 1 : 0),
-                    itemBuilder: (c, i) {
-                      if (i < app.smartCart.length) {
-                        final it = app.smartCart[i];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 7),
-                          child: Box(
-                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                          child: Row(
-                            children: [
-                              Expanded(child: Text(it.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 11.5, w: FontWeight.w800))),
-                              _qtyBtn(Icons.remove_rounded, () => app.updateSmartCartQty(it.name, it.qty - 1)),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 9),
-                                child: Text('${it.qty}', style: tx(context, 12, w: FontWeight.w900, mono: true)),
+                    children: [
+                      ...app.smartCart.map((it) => Padding(
+                            padding: const EdgeInsets.only(bottom: 7),
+                            child: Box(
+                              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text(it.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 11.5, w: FontWeight.w800))),
+                                  _qtyBtn(Icons.remove_rounded, () => app.updateSmartCartQty(it.name, it.qty - 1)),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 9),
+                                    child: Text('${it.qty}', style: tx(context, 12, w: FontWeight.w900, mono: true)),
+                                  ),
+                                  _qtyBtn(Icons.add_rounded, () => app.updateSmartCartQty(it.name, it.qty + 1)),
+                                  const SizedBox(width: 7),
+                                  GestureDetector(
+                                    onTap: () => app.removeFromSmartCart(it.name),
+                                    child: Icon(Icons.close_rounded, size: 16, color: muted(context)),
+                                  ),
+                                ],
                               ),
-                              _qtyBtn(Icons.add_rounded, () => app.updateSmartCartQty(it.name, it.qty + 1)),
-                              const SizedBox(width: 7),
-                              GestureDetector(
-                                onTap: () => app.removeFromSmartCart(it.name),
-                                child: Icon(Icons.close_rounded, size: 16, color: muted(context)),
-                              ),
-                            ],
-                          ),
-                          ),
-                        );
-                      }
-                      final r = i - app.smartCart.length;
-                      if (_error.isNotEmpty || notFound.isNotEmpty) {
-                        final last = r == (stores.isEmpty ? 0 : partial.length);
-                        if (last) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              if (_error.isNotEmpty)
-                                Text(_error, style: tx(context, 10.5, w: FontWeight.w700, color: T1SColors.amber500)),
-                              if (notFound.isNotEmpty)
-                                Text('No store returned: ${notFound.join(', ')} — try a shorter product name.',
-                                    style: tx(context, 10.5, w: FontWeight.w700, color: T1SColors.amber500)),
-                            ]),
-                          );
-                        }
-                      }
-                      // Best full basket
-                      if (r == 0 && bestIdx >= 0) return _storeCard(stores[bestIdx], true, items.length);
-                      // Partial stores
-                      final pi = (bestIdx >= 0 ? r - 1 : r);
-                      if (pi < 0 || pi >= partial.length) return const SizedBox.shrink();
-                      return _storeCard(partial[pi], false, items.length);
-                    },
+                            ),
+                          )),
+                      if (verdict != null) _verdictCard(verdict),
+                      if (bestIdx >= 0) _storeCard(stores[bestIdx], true, items.length),
+                      ...partial.map((s) => _storeCard(s, false, items.length)),
+                      if (_error.isNotEmpty || notFound.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            if (_error.isNotEmpty)
+                              Text(_error, style: tx(context, 10.5, w: FontWeight.w700, color: T1SColors.amber500)),
+                            if (notFound.isNotEmpty)
+                              Text('No store returned: ${notFound.join(', ')} \u2014 try a shorter product name.',
+                                  style: tx(context, 10.5, w: FontWeight.w700, color: T1SColors.amber500)),
+                          ]),
+                        ),
+                    ],
                   ),
           ),
           // Footer CTA
@@ -156,6 +206,33 @@ class _SmartCartScreenState extends State<SmartCartScreen> {
               label: Text('${app.smartCart.length} items', style: tx(context, 11, w: FontWeight.w900, color: Colors.white)),
             )
           : null,
+    );
+  }
+
+  /// The server's one-sentence answer, printed verbatim (headline + detail).
+  Widget _verdictCard(Map<String, dynamic> v) {
+    final kind = '${v['kind']}';
+    final isBest = kind == 'complete';
+    final isPartial = kind == 'partial';
+    final fg = isBest ? T1SColors.green : (isPartial ? T1SColors.amber500 : T1SColors.slate600);
+    final bg = isBest ? T1SColors.greenBg : (isPartial ? const Color(0xFFFFFBEB) : T1SColors.slate100);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: fg.withValues(alpha: 0.35)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${v['headline'] ?? ''}', style: tx(context, 11.5, w: FontWeight.w900, color: fg)),
+          if ('${v['detail'] ?? ''}'.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text('${v['detail']}', style: tx(context, 10, w: FontWeight.w700, color: fg)),
+          ],
+        ]),
+      ),
     );
   }
 
