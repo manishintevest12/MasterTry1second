@@ -21,8 +21,8 @@ const MASKED = new Set([400, 404, 405, 408, 409, 413, 415, 421, 422, 425, 429, 5
 
 /**
  * POST endpoints whose failure means REAL data loss or a REAL auth answer, so they keep their status.
- * Everything else under /api is a read/scan and is masked. Inverted from the old whitelist after the
- * owner reported the box still appearing: any method/path combination the installed build might use
+ * Everything else under /api is a read/scan and is masked. Inverted from the old whitelist after
+ * the owner reported the box still appearing: any method/path combination the installed build might use
  * (GET/POST/PUT on a vertical, a stale path, a scan endpoint we renamed) now answers 200 + retry hint
  * instead of an error the old client cannot interpret.
  */
@@ -67,6 +67,10 @@ export function gracefulPublicStatus(app: Express, options: GracefulOptions = {}
 
     const sendJson = res.json.bind(res);
     res.json = function gracefulJson(body: any) {
+      // The response wall or another middleware may have already answered this request.
+      // Returning without calling the original json prevents ERR_HTTP_HEADERS_SENT and worker crashes.
+      if (res.headersSent || res.writableEnded) return res;
+
       const code = res.statusCode;
       if (!MASKED.has(code)) return sendJson(body);
       try {
@@ -104,7 +108,7 @@ export function gracefulPublicStatus(app: Express, options: GracefulOptions = {}
         }
       }
       return sendJson(masked);
-    } as any;
+    } as any);
 
     next();
   });
