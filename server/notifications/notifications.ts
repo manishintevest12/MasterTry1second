@@ -10,7 +10,7 @@
  * person until they open it. Anonymous visitors see broadcasts too, but read state
  * only persists for signed-in users.
  */
-import { getStore } from '../common/db';
+import { getStore, type DataStore } from '../common/db';
 import { log } from '../common/logger';
 import { pushNotificationRow } from '../push/push';
 
@@ -51,6 +51,25 @@ export function validateNotification(i: Partial<NotificationInput>): { ok: boole
   return { ok: true };
 }
 
+/**
+ * OWNER 25 Nov (production 503s on /api/notifications, 83 s and 8,356 s response times): every installed app polled
+ * this endpoint and every poll re-read the entire active-notifications table, then filtered it in JS. The broadcast
+ * list is identical for every shopper, so one read now serves the whole fleet for 30 s. The per-user read set is
+ * never cached, so read/unread is always this shopper's own state.
+ */
+const BROADCAST_TTL_MS = 30_000;
+let broadcastCache: { at: number; rows: any[] } | undefined;
+
+/** Drop the cached broadcast list — an admin push or a deactivation must not wait out the TTL. */
+export function invalidateBroadcastCache(): void { broadcastCache = undefined; }
+
+async function activeBroadcasts(store: DataStore): Promise<any[]> {
+  if (broadcastCache && Date.now() - broadcastCache.at < BROADCAST_TTL_MS) return broadcastCache.rows;
+  const rows = await store.query<any>('SELECT * FROM notifications WHERE is_active = ?', [1]);
+  broadcastCache = { at: Date.now(), rows };
+  return rows;
+}
+
 /** Insert one notification row. FileStore parity: INSERT with explicit column list. */
 export async function createNotification(i: NotificationInput): Promise<{ ok: boolean; id?: number; error?: string }> {
   const v = validateNotification(i);
@@ -66,6 +85,7 @@ export async function createNotification(i: NotificationInput): Promise<{ ok: bo
      i.targetPrice != null ? Math.round(i.targetPrice) : null, (i.seller || '').slice(0, 120) || null,
      i.isActive === false ? 0 : 1, (i.createdBy || 'system').slice(0, 190)],
   );
+  invalidateBroadcastCache();
   const rows = await store.query<any>('SELECT id FROM notifications');
   const id = Number(res?.insertId ?? rows[rows.length - 1]?.id ?? 0);
   log.info('Notifications', `Created ${i.kind} notification ${id}${i.userId ? ` for user ${i.userId}` : ' (broadcast)'}`);
@@ -133,6 +153,7 @@ export async function deactivateNotification(id: number): Promise<boolean> {
   const rows = await store.query<any>('SELECT id FROM notifications WHERE id = ?', [Number(id)]);
   if (!rows.length) return false;
   await store.execute('UPDATE notifications SET is_active = ? WHERE id = ?', [0, Number(id)]);
+  invalidateBroadcastCache();
   return true;
 }
 
@@ -142,7 +163,7 @@ export async function deactivateNotification(id: number): Promise<boolean> {
  */
 export async function userNotifications(userId: number, limit = 50): Promise<{ items: any[]; unread: number }> {
   const store = getStore();
-  const rows = await store.query<any>('SELECT * FROM notifications WHERE is_active = ?', [1]);
+  const rows = await activeBroadcasts(store);
   const reads = new Set(
     (await store.query<any>('SELECT notification_id FROM notification_reads WHERE user_id = ?', [Number(userId)]))
       .map((r: any) => Number(r.notification_id)),

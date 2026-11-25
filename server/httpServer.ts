@@ -27,6 +27,7 @@
 import http from 'http';
 import type { Express, Request, Response, NextFunction } from 'express';
 import { RESPONSE_WALL_MS as WALL_MS } from './common/wallBudget';
+import { startLoopMonitor } from './common/loadShed';
 
 export const KEEP_ALIVE_TIMEOUT_MS = 65_000;
 
@@ -101,6 +102,12 @@ export const responseWall = makeResponseWall(RESPONSE_WALL_MS);
 
 export const createListener = (app: Express): http.Server => {
   const server = http.createServer(app);
+  // OWNER 25 Nov (production 503s with response times of 8,356 s): an unbounded accept queue is how a wedged
+  // process turns into hours-long waits at the edge. Past this many open sockets Node stops accepting, so the
+  // edge fails the request at once instead of holding it — a fast honest failure beats a two-hour hang.
+  server.maxConnections = Math.max(20, Number(process.env.T1S_MAX_CONNECTIONS || 160));
+  // Watch the event loop from the moment the listener exists: the live-search shed reads this.
+  startLoopMonitor();
   server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
   server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1_000;
   server.requestTimeout = 0;
