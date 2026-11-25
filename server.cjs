@@ -167,6 +167,55 @@ var init_wallBudget = __esm({
   }
 });
 
+// server/common/loadShed.ts
+var loadShed_exports = {};
+__export(loadShed_exports, {
+  __setLagForTest: () => __setLagForTest,
+  currentLagMs: () => currentLagMs,
+  lagLimitMs: () => lagLimitMs,
+  loadShedSnapshot: () => loadShedSnapshot,
+  shouldShedExpensive: () => shouldShedExpensive,
+  startLoopMonitor: () => startLoopMonitor,
+  stopLoopMonitor: () => stopLoopMonitor
+});
+function startLoopMonitor(intervalMs = 1e3) {
+  if (started) return;
+  started = true;
+  const tick2 = () => {
+    const expected = Date.now() + intervalMs;
+    monitorTimer = setTimeout(() => {
+      const drift = Math.max(0, Date.now() - expected);
+      lagMs = drift;
+      if (drift >= lagLimitMs()) shedSignals += 1;
+      tick2();
+    }, intervalMs);
+    if (typeof monitorTimer.unref === "function") monitorTimer.unref();
+  };
+  tick2();
+}
+function stopLoopMonitor() {
+  if (monitorTimer) clearTimeout(monitorTimer);
+  monitorTimer = void 0;
+  started = false;
+}
+function __setLagForTest(ms) {
+  lagMs = Math.max(0, Number(ms) || 0);
+}
+function loadShedSnapshot() {
+  return { lagMs, lagLimitMs: lagLimitMs(), shedSignals, started };
+}
+var lagMs, monitorTimer, started, shedSignals, lagLimitMs, currentLagMs, shouldShedExpensive;
+var init_loadShed = __esm({
+  "server/common/loadShed.ts"() {
+    lagMs = 0;
+    started = false;
+    shedSignals = 0;
+    lagLimitMs = () => Math.max(250, Number(process.env.T1S_SHED_LAG_MS || 1500));
+    currentLagMs = () => lagMs;
+    shouldShedExpensive = () => lagMs >= lagLimitMs();
+  }
+});
+
 // server/marketing/appLinkVerify.ts
 var appLinkVerify_exports = {};
 __export(appLinkVerify_exports, {
@@ -3451,7 +3500,7 @@ function looksLikeChallenge(body) {
   return markers.test(head3) && !/application\/ld\+json/i.test(head3) || shell2 && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
 }
 async function runTask(worker, task, source, query) {
-  const started3 = Date.now();
+  const started4 = Date.now();
   const fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
   const ctx = {
     query,
@@ -3478,7 +3527,7 @@ async function runTask(worker, task, source, query) {
       new Promise((_, rej) => setTimeout(() => rej(new AcquisitionError("TIMEOUT", `worker task exceeded ${(task.timeoutMs ?? 18e3) / 1e3}s`)), task.timeoutMs ?? 18e3))
     ]);
     if (!rawItems.length) {
-      return failedResult(source, "EMPTY_RESPONSE", `${worker.vertical} worker: source returned no parseable offers`, Date.now() - started3);
+      return failedResult(source, "EMPTY_RESPONSE", `${worker.vertical} worker: source returned no parseable offers`, Date.now() - started4);
     }
     let items = rawItems;
     if (worker.vertical === "bus") {
@@ -3498,7 +3547,7 @@ async function runTask(worker, task, source, query) {
         items = rawItems;
       }
     }
-    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: items, latencyMs: Date.now() - started3, fetchedAt };
+    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: items, latencyMs: Date.now() - started4, fetchedAt };
   } catch (e2) {
     const fc = e2 instanceof AcquisitionError ? e2.failureClass : "UNKNOWN";
     log.debug("VerticalWorker", `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e2?.message || e2).slice(0, 140) });
@@ -3508,9 +3557,9 @@ async function runTask(worker, task, source, query) {
     const fixtures = buildDevFixtures(source, worker.vertical, String(query.rawQuery || query.entityName || ""));
     if (fixtures.length) {
       log.warn("VerticalWorker", `Using DEV fixture for ${source.id} (dev-mode fallback for ${fc})`);
-      return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: fixtures, latencyMs: Date.now() - started3, fetchedAt };
+      return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: fixtures, latencyMs: Date.now() - started4, fetchedAt };
     }
-    return failedResult(source, fc, String(e2?.message || e2).slice(0, 200), Date.now() - started3, e2?.httpStatus);
+    return failedResult(source, fc, String(e2?.message || e2).slice(0, 200), Date.now() - started4, e2?.httpStatus);
   }
 }
 function registerVerticalWorker(worker) {
@@ -7381,20 +7430,20 @@ async function rescueFetch(url, opts = {}) {
   const attempts = [];
   let best = { status: 0, body: "" };
   for (const via of order) {
-    const started3 = Date.now();
+    const started4 = Date.now();
     try {
       const res = via === "direct" ? await viaDirect(url, timeoutMs) : via === "relay" ? await viaRelay(url, timeoutMs) : via === "own" ? await viaOwn(url, timeoutMs) : via === "scraperapi" ? await viaScraperApi(url, timeoutMs, opts.render) : await viaReader(url, timeoutMs);
       const verdict = looksUsable(res.status, res.body, minHtmlBytes, opts.validate);
       if (res.body.length > best.body.length) best = res;
-      attempts.push({ via, ok: verdict.ok, status: res.status, bytes: res.body.length, reason: verdict.reason, ms: Date.now() - started3 });
+      attempts.push({ via, ok: verdict.ok, status: res.status, bytes: res.body.length, reason: verdict.reason, ms: Date.now() - started4 });
       if (verdict.ok) {
         if (via !== "direct") await learn(host, via);
-        log.info("Rescue", `${host} answered via ${via}`, { bytes: res.body.length, ms: Date.now() - started3 });
+        log.info("Rescue", `${host} answered via ${via}`, { bytes: res.body.length, ms: Date.now() - started4 });
         return { status: res.status, body: res.body, via, attempts, exhausted: false };
       }
       if (via !== "direct") await penalise(host, via);
     } catch (e2) {
-      attempts.push({ via, ok: false, status: 0, bytes: 0, reason: String(e2?.message || e2).slice(0, 120), ms: Date.now() - started3 });
+      attempts.push({ via, ok: false, status: 0, bytes: 0, reason: String(e2?.message || e2).slice(0, 120), ms: Date.now() - started4 });
       if (via !== "direct") await penalise(host, via);
     }
   }
@@ -9467,7 +9516,7 @@ var init_hotels = __esm({
               const hit = mmtRenderCache.get(`${city.toLowerCase()}|${checkin}|${checkout}`);
               const cached3 = hit && Date.now() - hit.at < MMT_RENDER_TTL_MS ? hit.items : null;
               if (cached3 && cached3.length) return cached3;
-              const started3 = Date.now();
+              const started4 = Date.now();
               try {
                 let res = null;
                 let rows = [];
@@ -9505,7 +9554,7 @@ var init_hotels = __esm({
                     }
                   }));
                   mmtRenderCache.set(`${city.toLowerCase()}|${checkin}|${checkout}`, { at: Date.now(), items: offers });
-                  log.info("MMT render", `${rows.length} priced hotels for ${city} ${checkin}`, { ms: Date.now() - started3, via: res?.via });
+                  log.info("MMT render", `${rows.length} priced hotels for ${city} ${checkin}`, { ms: Date.now() - started4, via: res?.via });
                   return offers;
                 }
                 renderErr = new AcquisitionError("EMPTY_RESPONSE", `MakeMyTrip rendered listing carried no priced cards for "${city}" (${String(res?.body || "").length}B via ${res?.via || "none"})`);
@@ -20971,6 +21020,35 @@ var init_flights = __esm({
   }
 });
 
+// server/common/deliveryLocation.ts
+function finiteCoord(v) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function resolveDeliveryPoint(location, cityTable) {
+  const loc = location || {};
+  const lat = finiteCoord(loc.lat);
+  const lng = finiteCoord(loc.lng);
+  if (lat !== null && lng !== null && !(Math.abs(lat) < 0.01 && Math.abs(lng) < 0.01)) {
+    const label = String(loc.locality || loc.city || "").trim() || "your location";
+    return { lat, lng, label, exact: true };
+  }
+  const city = String(loc.city || "").trim().toLowerCase();
+  const hit = city ? cityTable[city] : void 0;
+  if (hit) return { lat: hit[0], lng: hit[1], label: String(loc.city || city), exact: false };
+  for (const [name, coords] of Object.entries(cityTable)) {
+    if (!city) break;
+    if (city.includes(name) || name.includes(city)) {
+      return { lat: coords[0], lng: coords[1], label: String(loc.city || name), exact: false };
+    }
+  }
+  return null;
+}
+var init_deliveryLocation = __esm({
+  "server/common/deliveryLocation.ts"() {
+  }
+});
+
 // server/workers/parsers/zomato.ts
 function parseZomatoRestaurants(html, source, searchUrl, platform) {
   const fingerprint = (0, import_crypto9.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
@@ -21522,6 +21600,7 @@ var ZOMATO_SLUGS, CITY_COORDS, foodWorker;
 var init_food = __esm({
   "server/workers/verticals/food.ts"() {
     init_verticalWorker();
+    init_deliveryLocation();
     init_zomato();
     init_contract();
     init_swiggy();
@@ -21659,12 +21738,14 @@ var init_food = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
             if (!term) return [];
-            const cityKey = String(ctx.query.location?.city || "").toLowerCase().trim();
-            const c = CITY_COORDS[cityKey] || CITY_COORDS["new delhi"];
-            const url = `https://www.swiggy.com/dapi/restaurants/search/v3?lat=${c[0]}&lng=${c[1]}&str=${encodeURIComponent(term)}&trackingId=undefined&submitAction=ENTER&queryUniqueId=t1s${Date.now() % 1e5}`;
+            const point = resolveDeliveryPoint(ctx.query.location, CITY_COORDS);
+            if (!point) {
+              throw new AcquisitionError("EMPTY_RESPONSE", `Swiggy prices a menu per delivery point \u2014 no point for "${ctx.query.location?.city || "this area"}" without a locality or GPS fix.`);
+            }
+            const url = `https://www.swiggy.com/dapi/restaurants/search/v3?lat=${point.lat}&lng=${point.lng}&str=${encodeURIComponent(term)}&trackingId=undefined&submitAction=ENTER&queryUniqueId=t1s${Date.now() % 1e5}`;
             const r = await ctx.fetch(url, { expectJson: true, maxBytes: 8e6, timeoutMs: 2e4, headers: { Accept: "application/json" } });
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Swiggy HTTP ${r.status}`, r.status);
-            return parseSwiggyDishes(r.body, ctx.source, url, ctx.query.location?.city || "New Delhi");
+            return parseSwiggyDishes(r.body, ctx.source, url, point.label);
           }
         },
         /**
@@ -21770,10 +21851,10 @@ var init_food = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
             if (!term) return [];
-            const cityKey = String(ctx.query.location?.city || "").toLowerCase().trim();
-            const c = CITY_COORDS[cityKey] || CITY_COORDS["new delhi"];
-            const city = ctx.query.location?.city || "New Delhi";
-            const shellUrl = `https://disc.swiggy.com/api/v1/json/shell/toing-app?lat=${c[0]}&lng=${c[1]}`;
+            const point = resolveDeliveryPoint(ctx.query.location, CITY_COORDS);
+            if (!point) return [];
+            const city = point.label;
+            const shellUrl = `https://disc.swiggy.com/api/v1/json/shell/toing-app?lat=${point.lat}&lng=${point.lng}`;
             const H2 = { "Accept": "application/json", "Content-Type": "application/json" };
             const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
             const groups = /* @__PURE__ */ new Map();
@@ -21817,7 +21898,7 @@ var init_food = __esm({
                 if (items.length >= 24) break;
                 if (left() < 5500) break;
                 try {
-                  const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: "chrome", method: "POST", body: "{}", timeoutMs: 5e3, headers: H2 });
+                  const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${point.lat}&lng=${point.lng}`, { impersonate: "chrome", method: "POST", body: "{}", timeoutMs: 5e3, headers: H2 });
                   if (m.status !== 200) continue;
                   const dishes = toingMenuDishes(m.body);
                   for (const d of dishes) {
@@ -26984,6 +27065,7 @@ var GCITY_COORDS, zepSolver, ZEPTO_TERM_BRANDS, q2, QUICK_FAILS, IM_BASE, IM_HEA
 var init_grocery = __esm({
   "server/workers/verticals/grocery.ts"() {
     init_verticalWorker();
+    init_deliveryLocation();
     init_amazonIn();
     init_flipkart();
     init_blinkit();
@@ -27175,9 +27257,12 @@ var init_grocery = __esm({
             const term = q2(ctx);
             if (!term) return [];
             const loc = ctx.query.location || {};
-            const coords = typeof loc.lat === "number" && typeof loc.lng === "number" && loc.lat ? [loc.lat, loc.lng] : GCITY_COORDS[String(loc.city || "").toLowerCase()] || GCITY_COORDS["mumbai"];
-            const cityLabel = loc.city ? String(loc.city) : "Mumbai";
-            const [lat, lng] = coords;
+            const point = resolveDeliveryPoint(loc, GCITY_COORDS);
+            if (!point) {
+              throw new AcquisitionError("EMPTY_RESPONSE", `Blinkit prices per delivery zone \u2014 no point for "${loc.city || "this area"}" without a locality or GPS fix.`);
+            }
+            const cityLabel = point.label;
+            const [lat, lng] = [point.lat, point.lng];
             const appUrl = `https://api3.blinkit.com/v1/layout/search?q=${encodeURIComponent(term)}&search_type=type_to_search`;
             const appHeaders = {
               lat: String(lat),
@@ -27230,9 +27315,12 @@ var init_grocery = __esm({
             const term = q2(ctx);
             if (!term) return [];
             const loc = ctx.query.location || {};
-            const coords = typeof loc.lat === "number" && typeof loc.lng === "number" && loc.lat ? [loc.lat, loc.lng] : GCITY_COORDS[String(loc.city || "").toLowerCase()] || GCITY_COORDS["mumbai"];
-            const cityLabel = loc.city ? String(loc.city) : "Mumbai";
-            const [lat, lng] = coords;
+            const point = resolveDeliveryPoint(loc, GCITY_COORDS);
+            if (!point) {
+              throw new AcquisitionError("EMPTY_RESPONSE", `Blinkit prices per delivery zone \u2014 no point for "${loc.city || "this area"}" without a locality or GPS fix.`);
+            }
+            const cityLabel = point.label;
+            const [lat, lng] = [point.lat, point.lng];
             const BB = "https://www.bigbasket.com";
             const baseHeaders = {
               Accept: "application/json",
@@ -27291,9 +27379,12 @@ var init_grocery = __esm({
             const term = q2(ctx);
             if (!term) return [];
             const loc = ctx.query.location || {};
-            const coords = typeof loc.lat === "number" && typeof loc.lng === "number" && loc.lat ? [loc.lat, loc.lng] : GCITY_COORDS[String(loc.city || "").toLowerCase()] || GCITY_COORDS["mumbai"];
-            const cityLabel = loc.city ? String(loc.city) : "Mumbai";
-            const [lat, lng] = coords;
+            const point = resolveDeliveryPoint(loc, GCITY_COORDS);
+            if (!point) {
+              throw new AcquisitionError("EMPTY_RESPONSE", `Blinkit prices per delivery zone \u2014 no point for "${loc.city || "this area"}" without a locality or GPS fix.`);
+            }
+            const cityLabel = point.label;
+            const [lat, lng] = [point.lat, point.lng];
             const homeUrl = `${IM_BASE}/api/instamart/home/v2?clientId=INSTAMART-APP&lat=${lat}&lng=${lng}`;
             const home = await cffiFetch(homeUrl, { impersonate: "chrome", headers: IM_HEADERS, timeoutMs: 2e4 });
             if (home.status !== 200 || !home.body) throw new AcquisitionError("ACCESS_CHALLENGE", `Instamart home/v2 HTTP ${home.status}`);
@@ -31728,7 +31819,7 @@ var init_browserRenderAdapter = __esm({
       }
       async search(ctx) {
         const { source, query } = ctx;
-        const started3 = Date.now();
+        const started4 = Date.now();
         let playwright;
         try {
           playwright = await import(
@@ -31740,12 +31831,12 @@ var init_browserRenderAdapter = __esm({
             source,
             "CAPABILITY_UNAVAILABLE",
             "Headless browser fallback unavailable: Playwright/Chromium not installed on this runtime",
-            Date.now() - started3
+            Date.now() - started4
           );
         }
         const url = String(source.config.url || source.config.baseUrl || "");
         if (!/^https:\/\//i.test(url)) {
-          return failedResult(source, "MISSING_REQUIRED_FIELD", "Browser render requires an https:// target URL", Date.now() - started3);
+          return failedResult(source, "MISSING_REQUIRED_FIELD", "Browser render requires an https:// target URL", Date.now() - started4);
         }
         let browser = null;
         try {
@@ -31758,7 +31849,7 @@ var init_browserRenderAdapter = __esm({
               source,
               res && res.status() === 429 ? "QUOTA_EXHAUSTED" : "SERVER_ERROR",
               `Rendered page HTTP ${res ? res.status() : "unknown"}`,
-              Date.now() - started3,
+              Date.now() - started4,
               res && res.status ? res.status() : void 0
             );
           }
@@ -31774,13 +31865,13 @@ var init_browserRenderAdapter = __esm({
             const title = document.title || "";
             return { jsonLd: out, title, htmlLen: document.documentElement.outerHTML.length, html: document.documentElement.outerHTML.slice(0, maxLen) };
           }, MAX_HTML);
-          const rawItems = this.mapJsonLd(extracted.jsonLd, source, url, started3);
+          const rawItems = this.mapJsonLd(extracted.jsonLd, source, url, started4);
           if (rawItems.length === 0) {
             return failedResult(
               source,
               "EMPTY_RESPONSE",
               "Page rendered but exposed no public structured product data",
-              Date.now() - started3,
+              Date.now() - started4,
               res.status()
             );
           }
@@ -31790,13 +31881,13 @@ var init_browserRenderAdapter = __esm({
             sourceMethod: this.method,
             rawItems,
             httpStatus: res.status(),
-            latencyMs: Date.now() - started3,
+            latencyMs: Date.now() - started4,
             fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
           };
         } catch (e2) {
           const msg = String(e2?.message || e2).slice(0, 160);
           const klass = /Timeout|timed out/i.test(msg) ? "TIMEOUT" : /net::|ERR_/.test(msg) ? "CONNECTION_FAILURE" : "PARSER_FAILURE";
-          return failedResult(source, klass, `Browser render failed: ${msg}`, Date.now() - started3);
+          return failedResult(source, klass, `Browser render failed: ${msg}`, Date.now() - started4);
         } finally {
           if (browser) {
             try {
@@ -31807,7 +31898,7 @@ var init_browserRenderAdapter = __esm({
         }
       }
       /** JSON-LD → RawSourceItem. Only evidence-backed fields are extracted. */
-      mapJsonLd(blocks, source, url, started3) {
+      mapJsonLd(blocks, source, url, started4) {
         const items = [];
         const push = (node) => {
           if (!node || typeof node !== "object") return;
@@ -39395,9 +39486,9 @@ async function runSearchFast(input, coldBudgetMs = 1500) {
   return gateTravelDateResponse(input, gateEcommerceResponse(input, fast));
 }
 async function settleSearchComplete(input, budgetMs = Number(process.env.T1S_FULL_SWEEP_MS || 18e3)) {
-  const started3 = Date.now();
+  const started4 = Date.now();
   let last = null;
-  while (Date.now() - started3 < Math.max(1e3, budgetMs)) {
+  while (Date.now() - started4 < Math.max(1e3, budgetMs)) {
     let attempt = null;
     try {
       attempt = await runSearch({ ...input, coldDeadlineMs: 1500 });
@@ -39413,7 +39504,7 @@ async function settleSearchComplete(input, budgetMs = Number(process.env.T1S_FUL
   return last;
 }
 async function settleForRequestedDate(input, budgetMs = Number(process.env.T1S_DATE_SETTLE_MS || 9e3)) {
-  const started3 = Date.now();
+  const started4 = Date.now();
   const gate = (r) => {
     if (!r) return { rows: [], response: r };
     const g = enforceRequestedTravelDate(r.results || [], String(input.vertical || ""), {
@@ -39425,7 +39516,7 @@ async function settleForRequestedDate(input, budgetMs = Number(process.env.T1S_D
     return { rows: g.kept, response: r };
   };
   let last = null;
-  while (Date.now() - started3 < Math.max(600, budgetMs)) {
+  while (Date.now() - started4 < Math.max(600, budgetMs)) {
     let attempt = null;
     try {
       attempt = await runSearch({ ...input, coldDeadlineMs: 1200 });
@@ -39540,11 +39631,11 @@ function gateTravelDateResponseUncached(input, response) {
   return response;
 }
 async function runSearchFastInner(input, coldBudgetMs = 1500) {
-  const started3 = Date.now();
+  const started4 = Date.now();
   let best = await runSearch(input);
   const rows = (r) => (r.results || []).length;
   if (rows(best) > 0) return best;
-  const hardStop = started3 + Math.max(coldBudgetMs, 400);
+  const hardStop = started4 + Math.max(coldBudgetMs, 400);
   while (Date.now() < hardStop) {
     await new Promise((r) => setTimeout(r, 200));
     const left = hardStop - Date.now();
@@ -40677,12 +40768,12 @@ async function runGated(key, work, opts = {}) {
   const job = { key, enqueuedAt, startedAt: 0, runner: work, promise: null, waiters: [] };
   if (activeCount() < liveConcurrencyLimit()) {
     jobs.set(key, job);
-    const started3 = new Promise((resolve) => {
+    const started4 = new Promise((resolve) => {
       const waiter = { resolve, timer: null, settled: false };
       job.waiters.push(waiter);
       startJob(job);
     });
-    return started3;
+    return started4;
   }
   if (queuedJobs().length >= liveQueueMax()) {
     counters.busyRequests += 1;
@@ -41827,8 +41918,54 @@ function computeStoreTotals(items) {
     notFound
   };
 }
+function basketVerdict(c) {
+  const complete = c.stores.filter((s) => s.complete);
+  const best = complete[0];
+  const items = c.items.length;
+  if (best) {
+    const next = complete[1] || null;
+    const saves = next ? Math.round((next.total - best.total) * 100) / 100 : null;
+    return {
+      kind: "complete",
+      store: best.seller,
+      total: best.total,
+      nextStore: next ? next.seller : null,
+      nextTotal: next ? next.total : null,
+      savesVsNext: saves != null && saves > 0 ? saves : null,
+      headline: `Cheapest full basket: ${best.seller} \u2014 ${rupees3(best.total)}`,
+      detail: next ? saves != null && saves > 0 ? `${rupees3(saves)} less than ${next.seller} for the same ${items} item${items > 1 ? "s" : ""}.` : `${next.seller} costs the same for this basket.` : `The only store carrying all ${items} item${items > 1 ? "s" : ""} right now.`
+    };
+  }
+  const priced = c.stores.filter((s) => s.itemsCovered > 0).sort((a, b) => b.itemsCovered - a.itemsCovered || a.total - b.total);
+  const closest = priced[0];
+  if (!closest) {
+    return {
+      kind: "empty",
+      store: null,
+      total: null,
+      nextStore: null,
+      nextTotal: null,
+      savesVsNext: null,
+      headline: "No store returned a price for this basket right now.",
+      detail: "Try a shorter product name (\u201Catta\u201D instead of \u201CAashirvaad atta 5 kg\u201D) and compare again."
+    };
+  }
+  const missing = closest.missing.slice(0, 3).join(", ") + (closest.missing.length > 3 ? "\u2026" : "");
+  return {
+    kind: "partial",
+    store: closest.seller,
+    total: closest.total,
+    nextStore: null,
+    nextTotal: null,
+    savesVsNext: null,
+    headline: `No single store has the whole basket. Closest: ${closest.seller} \u2014 ${closest.itemsCovered}/${items} items, ${rupees3(closest.total)}`,
+    detail: `Still missing there: ${missing}. The totals below show what each store does and does not carry.`
+  };
+}
+var rupees3;
 var init_basket = __esm({
   "server/smartcart/basket.ts"() {
+    rupees3 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
   }
 });
 
@@ -47642,7 +47779,7 @@ __export(shareLinks_exports, {
   renderInvitePage: () => renderInvitePage,
   renderSharePage: () => renderSharePage,
   resultsPath: () => resultsPath,
-  rupees: () => rupees3,
+  rupees: () => rupees4,
   seenLabel: () => seenLabel
 });
 function secret3() {
@@ -47703,9 +47840,9 @@ function resultsPath(payload) {
 function previewCopy(payload) {
   const price2 = typeof payload.p === "number" ? payload.p : null;
   const head3 = payload.t || payload.q || "Live prices on Try1Second";
-  const title = price2 ? `${head3} at ${rupees3(price2)}${payload.s ? ` on ${payload.s}` : ""}` : `${head3} \xB7 compare live prices`;
+  const title = price2 ? `${head3} at ${rupees4(price2)}${payload.s ? ` on ${payload.s}` : ""}` : `${head3} \xB7 compare live prices`;
   const bits = [];
-  if (price2) bits.push(`Seen at ${rupees3(price2)}${payload.s ? ` on ${payload.s}` : ""} on ${seenLabel(payload.ts)}.`);
+  if (price2) bits.push(`Seen at ${rupees4(price2)}${payload.s ? ` on ${payload.s}` : ""} on ${seenLabel(payload.ts)}.`);
   if (payload.c) bits.push(`Prices for ${payload.c}.`);
   bits.push("Open to check the live price now \u2014 sellers change it every minute.");
   return { title: title.slice(0, 110), description: bits.join(" ").slice(0, 220) };
@@ -47718,7 +47855,7 @@ function renderSharePage({ origin: origin2, payload, image }) {
   const { title, description } = previewCopy(payload);
   const target = `${origin2}${resultsPath(payload)}`;
   const img = image || imageForVertical(payload.v, origin2);
-  const priceLine = typeof payload.p === "number" ? `<p class="price">${esc3(rupees3(payload.p))}<span class="seen">${esc3(payload.s ? `on ${payload.s}` : "")}${payload.s ? " \xB7 " : ""}seen ${esc3(seenLabel(payload.ts))}</span></p>` : "";
+  const priceLine = typeof payload.p === "number" ? `<p class="price">${esc3(rupees4(payload.p))}<span class="seen">${esc3(payload.s ? `on ${payload.s}` : "")}${payload.s ? " \xB7 " : ""}seen ${esc3(seenLabel(payload.ts))}</span></p>` : "";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -47828,14 +47965,14 @@ function isLinkPreviewBot(userAgent) {
   const ua = String(userAgent || "");
   return /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|pinterest|embedly|redditbot|skypeuripreview|vkshare|w3c_validator|googlebot|bingbot|applebot|iframely|quora link preview|outbrain|nuzzel|qwantify|bitlybot|tumblr/i.test(ua);
 }
-var import_node_crypto6, MAX_TOKEN, b64u, unb64u, rupees3, VERTICAL_OG;
+var import_node_crypto6, MAX_TOKEN, b64u, unb64u, rupees4, VERTICAL_OG;
 var init_shareLinks = __esm({
   "server/share/shareLinks.ts"() {
     import_node_crypto6 = __toESM(require("node:crypto"), 1);
     MAX_TOKEN = 900;
     b64u = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     unb64u = (s) => Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
-    rupees3 = (n) => `\u20B9${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+    rupees4 = (n) => `\u20B9${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
     VERTICAL_OG = {
       flights: "flights",
       hotels: "hotels",
@@ -49575,6 +49712,15 @@ function validateNotification(i) {
   if (cta && !/^https:\/\//i.test(cta)) return { ok: false, error: "Link must start with https://" };
   return { ok: true };
 }
+function invalidateBroadcastCache() {
+  broadcastCache = void 0;
+}
+async function activeBroadcasts(store7) {
+  if (broadcastCache && Date.now() - broadcastCache.at < BROADCAST_TTL_MS) return broadcastCache.rows;
+  const rows = await store7.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  broadcastCache = { at: Date.now(), rows };
+  return rows;
+}
 async function createNotification(i) {
   const v = validateNotification(i);
   if (!v.ok) return v;
@@ -49599,6 +49745,7 @@ async function createNotification(i) {
       (i.createdBy || "system").slice(0, 190)
     ]
   );
+  invalidateBroadcastCache();
   const rows = await store7.query("SELECT id FROM notifications");
   const id = Number(res?.insertId ?? rows[rows.length - 1]?.id ?? 0);
   log.info("Notifications", `Created ${i.kind} notification ${id}${i.userId ? ` for user ${i.userId}` : " (broadcast)"}`);
@@ -49648,11 +49795,12 @@ async function deactivateNotification(id) {
   const rows = await store7.query("SELECT id FROM notifications WHERE id = ?", [Number(id)]);
   if (!rows.length) return false;
   await store7.execute("UPDATE notifications SET is_active = ? WHERE id = ?", [0, Number(id)]);
+  invalidateBroadcastCache();
   return true;
 }
 async function userNotifications(userId, limit = 50) {
   const store7 = getStore();
-  const rows = await store7.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  const rows = await activeBroadcasts(store7);
   const reads = new Set(
     (await store7.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
   );
@@ -49713,7 +49861,7 @@ async function markAllRead(userId) {
   }
   return n;
 }
-var httpsOnly;
+var httpsOnly, BROADCAST_TTL_MS, broadcastCache;
 var init_notifications = __esm({
   "server/notifications/notifications.ts"() {
     init_db();
@@ -49725,6 +49873,7 @@ var init_notifications = __esm({
       if (!/^https:\/\//i.test(s)) return null;
       return s.slice(0, 1e3);
     };
+    BROADCAST_TTL_MS = 3e4;
   }
 });
 
@@ -53007,7 +53156,7 @@ async function prewarmNearby(limitCities = PREWARM_CITIES.length) {
 }
 async function nearbyEmergencyAnswer(input) {
   const category = normalizeNearbyCategory(input.category);
-  const started3 = Date.now();
+  const started4 = Date.now();
   let location;
   try {
     location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
@@ -53073,11 +53222,11 @@ async function nearbyEmergencyAnswer(input) {
     servedFrom: "emergency",
     notes: ["Answered from the map feed while the partner feeds are being repaired."],
     counts: { google: 0, osm: rows.length, catalogue: 0 },
-    ms: Date.now() - started3
+    ms: Date.now() - started4
   };
 }
 async function nearbyAnswer(input) {
-  const started3 = Date.now();
+  const started4 = Date.now();
   const category = normalizeNearbyCategory(input.category);
   const location = await resolveNearbyLocation(input.lat ?? null, input.lng ?? null, input.city ?? null);
   const page = nearPage(input);
@@ -53106,7 +53255,7 @@ async function nearbyAnswer(input) {
   const serve = (answer, extra) => {
     memoryPut(cacheKey2, answer);
     if (answer.partial || tileShare(answer) > 0.3) finishInBackground();
-    return { ...answer, ...extra, ms: Date.now() - started3 };
+    return { ...answer, ...extra, ms: Date.now() - started4 };
   };
   const warm2 = memoryGet(cacheKey2);
   if (warm2 && warm2.ageMs <= CACHE_TTL_MS5) {
@@ -53136,14 +53285,14 @@ async function nearbyAnswer(input) {
       const cap2 = Math.max(800, Math.min(input.budgetMs ?? FULL_BUDGET_MS, FULL_BUDGET_MS));
       const full = await buildNearbyAnswer(input, cap2);
       memoryPut(cacheKey2, full);
-      return { ...full, ms: Date.now() - started3 };
+      return { ...full, ms: Date.now() - started4 };
     } catch {
     }
   }
   const stale = warm2 && warm2.ageMs > CACHE_TTL_MS5 && warm2.ageMs <= STALE_TTL_MS ? warm2 : await readCacheAny(cacheKey2);
   if (stale) {
     finishInBackground();
-    return { ...stale.answer, cached: true, stale: true, ms: Date.now() - started3 };
+    return { ...stale.answer, cached: true, stale: true, ms: Date.now() - started4 };
   }
   return build2();
 }
@@ -53769,7 +53918,15 @@ async function ensureFeed() {
       const titles = new Set((existing || []).map((r) => String(r.title || "")));
       for (const note of FEATURE_NOTES) {
         const row = featureRow(note);
-        if (titles.has(row.title)) continue;
+        if (titles.has(row.title)) {
+          if (row.ctaUrl) {
+            await store7.execute(
+              `UPDATE notifications SET cta_url = ? WHERE user_id IS NULL AND title = ? AND (cta_url IS NULL OR cta_url <> ?)`,
+              [row.ctaUrl, row.title, row.ctaUrl]
+            );
+          }
+          continue;
+        }
         await store7.execute(INSERT, [
           row.kind,
           row.title,
@@ -53832,14 +53989,14 @@ var init_feed = __esm({
         date: "2026-11-24",
         title: "Goibibo flights now list every flight, not just the cheapest",
         body: "Goibibo rows show each flight with its number, departure and arrival time, stops, duration and seats left. Where Goibibo publishes no fare for a flight, the card says so and the button opens Goibibo's live fare instead of guessing a price.",
-        ctaUrl: "/?vertical=flights"
+        ctaUrl: "/flights"
       },
       {
         key: "related-real-photos",
         date: "2026-11-23",
         title: "Related products now show their real photos",
         body: "Every card in Related Products carries the merchant's own photo of that product \u2014 no repeated picture, no seller logo. Tap a card to price that exact product.",
-        ctaUrl: "/"
+        ctaUrl: "/ecommerce"
       },
       {
         key: "app-on-play",
@@ -53853,7 +54010,7 @@ var init_feed = __esm({
         date: "2026-11-22",
         title: "Grocery results are cleaner",
         body: "Marketplace listings that do not belong to the 10-minute grocery vertical no longer appear there. Grocery shows grocery; e-commerce shows e-commerce.",
-        ctaUrl: "/"
+        ctaUrl: "/grocery"
       },
       {
         key: "faster-searches",
@@ -55205,7 +55362,12 @@ async function nearbyHandler(req, res) {
     });
     res.setHeader("Cache-Control", "public, max-age=300");
     res.setHeader("Vary", "User-Agent");
-    res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(answer.results) } : answer);
+    const withMaps = answer.results.map((r) => {
+      if (r.directionsUrl && /^https?:\/\//i.test(String(r.directionsUrl))) return r;
+      const q3 = [r.name, r.address].filter((x) => x && String(x).trim()).join(", ");
+      return { ...r, directionsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q3)}` };
+    });
+    res.json(isAppApiCall(req) ? { ...answer, results: markAppExits(withMaps) } : { ...answer, results: withMaps });
   } catch (e2) {
     const message = String(e2?.message || e2).slice(0, 300);
     const stack = String(e2?.stack || "").split("\n").slice(1, 4).join(" | ").slice(0, 400);
@@ -55256,7 +55418,7 @@ async function optionalUserId(req) {
   }
 }
 async function answerFollowUp(res, args) {
-  const { subject, verdict, sessionId, started: started3 } = args;
+  const { subject, verdict, sessionId, started: started4 } = args;
   const vertical = normalizeVerticalId(subject.vertical);
   const base = {
     query: subject.query,
@@ -55358,7 +55520,7 @@ async function answerFollowUp(res, args) {
     pendingRefresh: pending,
     sourcesSucceeded: [...sources2],
     followUp: { kind: verdict.kind, about: subject.query },
-    latencyMs: Date.now() - started3
+    latencyMs: Date.now() - started4
   });
 }
 async function buildTopPicksList() {
@@ -56526,6 +56688,26 @@ var init_routes = __esm({
       if (!input.query?.trim()) {
         return res.json({ results: [], honestNotice: "No query provided", latencyMs: 0 });
       }
+      {
+        const { shouldShedExpensive: shouldShedExpensive2, currentLagMs: currentLagMs2 } = await Promise.resolve().then(() => (init_loadShed(), loadShed_exports));
+        if (shouldShedExpensive2()) {
+          res.setHeader("Retry-After", "3");
+          return res.json({
+            ok: true,
+            results: [],
+            pendingRefresh: true,
+            degraded: true,
+            shed: true,
+            honestNotice: "The engine is busy. Results appear here automatically in a few seconds.",
+            sourcesAttempted: [],
+            sourcesSucceeded: [],
+            sourcesFailed: [],
+            servedFrom: "load-shed",
+            resultsCount: 0,
+            latencyMs: currentLagMs2()
+          });
+        }
+      }
       const slot2 = beginScrape(req, String(input.vertical), `${input.query}|${input.city || ""}|${input.pincode || ""}|${input.travelDates?.depart || ""}`);
       if (!slot2.ok) return send429(res, slot2, String(input.vertical));
       res.on("close", slot2.release);
@@ -56871,7 +57053,7 @@ var init_routes = __esm({
     apiRouter.post("/scan/url", async (req, res) => {
       const url = String(req.body.url || "").trim();
       if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ success: false, error: "A valid http(s) URL is required." });
-      const started3 = Date.now();
+      const started4 = Date.now();
       const product = await resolveProductFromLink(url);
       if (!product.title) {
         return res.json({
@@ -56938,14 +57120,14 @@ var init_routes = __esm({
         sellerQuotes,
         isLiveScraped: true,
         scrapedTimestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        scrapedLatencyMs: Date.now() - started3
+        scrapedLatencyMs: Date.now() - started4
       };
       saveItemToCatalogue(catalogueItem);
       res.json({
         success: true,
         found: true,
         item: catalogueItem,
-        rawScan: { vertical, title: product.title, titleSource: product.titleSource, fetchStatus: product.fetchStatus, latencyMs: Date.now() - started3 }
+        rawScan: { vertical, title: product.title, titleSource: product.titleSource, fetchStatus: product.fetchStatus, latencyMs: Date.now() - started4 }
       });
     });
     apiRouter.post("/lens", async (req, res) => {
@@ -57630,15 +57812,20 @@ var init_routes = __esm({
         body.sessionId || req.headers["x-t1s-session"] || sessionKeyOf(req) || ""
       ).slice(0, 64);
       if (!withinBudget2(`track:${sessionId}`)) return res.status(429).json({ ok: false, error: "Too many events, slow down" });
-      const userId = await optionalUserId(req);
-      const accepted = await recordEvents(
-        list.map((e2) => ({ ...e2, sessionId: e2?.sessionId || sessionId })),
-        { userId }
-      );
-      if (userId && list.some((e2) => String(e2?.event) === "share")) {
-        void qualifyReferral(userId, "share", getStore()).catch(() => null);
-      }
-      res.json({ ok: true, accepted });
+      res.json({ ok: true, accepted: list.length });
+      void (async () => {
+        try {
+          const userId = await optionalUserId(req);
+          await recordEvents(
+            list.map((e2) => ({ ...e2, sessionId: e2?.sessionId || sessionId })),
+            { userId }
+          );
+          if (userId && list.some((e2) => String(e2?.event) === "share")) {
+            void qualifyReferral(userId, "share", getStore()).catch(() => null);
+          }
+        } catch {
+        }
+      })();
     });
     apiRouter.post("/assist/intent", async (req, res) => {
       const text = String(req.body?.text || "").slice(0, 300);
@@ -57649,7 +57836,7 @@ var init_routes = __esm({
       res.json({ success: true, ...mergeAiIntent(base, ai), aiAssisted: true });
     });
     apiRouter.post("/assist/answer", async (req, res) => {
-      const started3 = Date.now();
+      const started4 = Date.now();
       const text = String(req.body?.text || "").slice(0, 300);
       const sessionId = String(
         req.headers["x-t1s-session"] || req.body?.sessionId || ""
@@ -57657,7 +57844,7 @@ var init_routes = __esm({
       const subject = readSubject(sessionId);
       const verdict = classifyFollowUp(text, subject);
       if (verdict.follow && subject) {
-        return answerFollowUp(res, { subject, verdict, sessionId, text, started: started3 });
+        return answerFollowUp(res, { subject, verdict, sessionId, text, started: started4 });
       }
       if (subject) {
         const refinement = refineSubjectQuery(text, subject, (t) => findPlaces(t)[0] || null);
@@ -57672,7 +57859,7 @@ var init_routes = __esm({
             verdict: { follow: true, kind: "repeat", query: refinement.query, vertical: subject.vertical, reason: "refinement" },
             sessionId,
             text,
-            started: started3
+            started: started4
           });
         }
       }
@@ -57708,7 +57895,7 @@ var init_routes = __esm({
           };
         }
       }
-      if (!input) return res.json({ success: true, ...meta, results: [], count: 0, latencyMs: Date.now() - started3 });
+      if (!input) return res.json({ success: true, ...meta, results: [], count: 0, latencyMs: Date.now() - started4 });
       if (String(input.vertical) === "nearby") {
         const { nearbyAnswer: nearbyAnswer2 } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
         const { nearbyIntentFrom: nearbyIntentFrom2 } = await Promise.resolve().then(() => (init_assistantAnswer(), assistantAnswer_exports));
@@ -57744,7 +57931,7 @@ var init_routes = __esm({
           results: nearbyRows,
           count: nearbyRows.length,
           sourcesSucceeded: answer ? Object.entries(answer.counts).filter(([, n]) => Number(n) > 0).map(([k]) => k) : [],
-          latencyMs: Date.now() - started3
+          latencyMs: Date.now() - started4
         });
       }
       const searchInput = {
@@ -57944,11 +58131,11 @@ var init_routes = __esm({
               notice: memoryNotice(remembered)
             }
           } : {},
-          latencyMs: Date.now() - started3
+          latencyMs: Date.now() - started4
         });
       } catch (e2) {
         log.warn("Assistant", `assist/answer failed: ${e2?.message || e2}`);
-        res.status(200).json({ success: false, ...meta, results: [], count: 0, error: e2?.message || "Could not answer", latencyMs: Date.now() - started3 });
+        res.status(200).json({ success: false, ...meta, results: [], count: 0, error: e2?.message || "Could not answer", latencyMs: Date.now() - started4 });
       }
     });
     apiRouter.get("/catalogue", authMiddleware, requireAdmin, async (_req, res) => {
@@ -58055,7 +58242,8 @@ var init_routes = __esm({
           }
         }));
         const comparison = computeStoreTotals(searches);
-        res.json({ success: true, comparison });
+        const verdict = basketVerdict(comparison);
+        res.json({ success: true, comparison: { ...comparison, verdict }, verdict });
       } catch (e2) {
         res.status(500).json({ success: false, error: String(e2?.message || e2).slice(0, 160) });
       }
@@ -62712,8 +62900,8 @@ async function recoveryScanPass(now = Date.now()) {
   return { probed: candidates.length, recovered, recoveredSources };
 }
 function startRecoveryScanner() {
-  if (started) return;
-  started = true;
+  if (started2) return;
+  started2 = true;
   const SCAN_MS = 10 * 6e4;
   const timer = setInterval(() => {
     if (!backgroundAllowed()) {
@@ -62733,9 +62921,9 @@ function startRecoveryScanner() {
 }
 function resetRecoveryScannerForTests() {
   lastProbedAt.clear();
-  started = false;
+  started2 = false;
 }
-var DOWN_CLASSES, STALE_AFTER_MS, DEGRADED_REPROBE_GAP_MS, MAX_PROBES_PER_PASS, PROBE_BUDGET_MS, RECOVERY_SEEDS, lastProbedAt, started;
+var DOWN_CLASSES, STALE_AFTER_MS, DEGRADED_REPROBE_GAP_MS, MAX_PROBES_PER_PASS, PROBE_BUDGET_MS, RECOVERY_SEEDS, lastProbedAt, started2;
 var init_recoveryScanner = __esm({
   "server/sources/recoveryScanner.ts"() {
     init_logger();
@@ -62772,7 +62960,7 @@ var init_recoveryScanner = __esm({
       { query: "savings account", vertical: "banking", city: "Indore", pincode: "452001" }
     ];
     lastProbedAt = /* @__PURE__ */ new Map();
-    started = false;
+    started2 = false;
   }
 });
 
@@ -62819,7 +63007,7 @@ async function refreshSlowSourcesOnce() {
         const source = getSource(task.sourceId);
         if (!source || !source.enabled) continue;
         sourcesRun += 1;
-        const started3 = Date.now();
+        const started4 = Date.now();
         try {
           const previousFlag = process.env.T1S_FORCE_RESCUE;
           process.env.T1S_FORCE_RESCUE = "1";
@@ -62868,8 +63056,8 @@ async function refreshSlowSourcesOnce() {
             }
           }
           rowsWritten += kept;
-          recordSuccess(task.sourceId, Date.now() - started3);
-          log.info("SlowWarm", `${task.sourceId} ${vertical}/${city}`, { rows: kept, ms: Date.now() - started3 });
+          recordSuccess(task.sourceId, Date.now() - started4);
+          log.info("SlowWarm", `${task.sourceId} ${vertical}/${city}`, { rows: kept, ms: Date.now() - started4 });
         } catch (e2) {
           failed.push(`${task.sourceId}:${String(e2?.message || e2).slice(0, 60)}`);
           recordFailure(task.sourceId, "SERVER_ERROR", String(e2?.message || e2).slice(0, 160));
@@ -63709,12 +63897,12 @@ function tick() {
   }
 }
 function startLoopWatchdog() {
-  if (started2) return;
-  started2 = true;
+  if (started3) return;
+  started3 = true;
   setInterval(tick, TICK_MS).unref();
   log.info("Watchdog", `Event-loop watchdog armed (stall >${SINGLE_STALL_MS / 1e3}s or ${WINDOW_BUSY_RATIO * 100}% over ${WINDOW_MS2 / 1e3}s -> self-restart)`);
 }
-var TICK_MS, BOOT_GRACE_MS, SINGLE_STALL_MS, WINDOW_MS2, WINDOW_BUSY_RATIO, bootedAt, lastTick, windowStart, windowBlockedMs, started2;
+var TICK_MS, BOOT_GRACE_MS, SINGLE_STALL_MS, WINDOW_MS2, WINDOW_BUSY_RATIO, bootedAt, lastTick, windowStart, windowBlockedMs, started3;
 var init_loopWatchdog = __esm({
   "server/common/loopWatchdog.ts"() {
     init_logger();
@@ -63727,7 +63915,7 @@ var init_loopWatchdog = __esm({
     lastTick = Date.now();
     windowStart = Date.now();
     windowBlockedMs = 0;
-    started2 = false;
+    started3 = false;
   }
 });
 
@@ -69035,6 +69223,7 @@ function securityTxt() {
 // server/httpServer.ts
 var import_http = __toESM(require("http"), 1);
 init_wallBudget();
+init_loadShed();
 var KEEP_ALIVE_TIMEOUT_MS = 65e3;
 var RESPONSE_WALL_MS2 = RESPONSE_WALL_MS;
 var isApiRequest = (path20) => {
@@ -69076,6 +69265,8 @@ var makeResponseWall = (wallMs) => (req, res, next) => {
 var responseWall = makeResponseWall(RESPONSE_WALL_MS2);
 var createListener = (app) => {
   const server = import_http.default.createServer(app);
+  server.maxConnections = Math.max(20, Number(process.env.T1S_MAX_CONNECTIONS || 160));
+  startLoopMonitor();
   server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
   server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1e3;
   server.requestTimeout = 0;
