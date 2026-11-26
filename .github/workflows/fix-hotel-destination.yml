@@ -1,0 +1,48 @@
+name: Patch hotel destination handling
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch hotel destination selection
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('server/workers/verticals/hotels.ts')
+          text = path.read_text()
+          old = 'const city = cityFromQuery(ctx);'
+          new = '''const city = String(\n          (ctx.query as any)?.cityName ||\n          (ctx.query as any)?.city ||\n          (ctx.query as any)?.destination ||\n          (ctx.query as any)?.rawQuery ||\n          ''\n        ).trim();'''
+          count = text.count(old)
+          if count == 0:
+              raise SystemExit('Expected hotel destination selector was not found')
+          path.write_text(text.replace(old, new))
+          print(f'Patched {count} hotel destination selector(s)')
+          PY
+
+      - name: Type-check
+        run: |
+          npm ci
+          npx tsc --noEmit
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name 'Hostinger Agent'
+          git config user.email 'hostinger-agent@users.noreply.github.com'
+          git add server/workers/verticals/hotels.ts
+          git commit -m 'fix(hotels): honor requested destination'
+          git push origin HEAD:main
