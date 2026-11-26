@@ -83,7 +83,7 @@ export function gracefulPublicStatus(app: Express, options: GracefulOptions = {}
       }
 
       return sendJson(masked);
-    } as any);
+    } as any;
 
     next();
   }) as any);
