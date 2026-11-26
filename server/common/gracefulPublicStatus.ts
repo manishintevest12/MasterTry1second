@@ -26,9 +26,8 @@ const isMaskable = (req: Request): boolean => {
   if (path.startsWith('/api/version') || path.startsWith('/api/health')) return false;
   if (path.startsWith('/api/client-diag')) return false;
   if (req.method === 'GET' || req.method === 'HEAD') return true;
-  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH')
     return !TRUTH_POST_PATHS.some((p) => path.startsWith(p));
-  }
   return false;
 };
 
@@ -37,7 +36,7 @@ export interface GracefulOptions {
 }
 
 export function gracefulPublicStatus(app: Express, options: GracefulOptions = {}): void {
-  app.use((req: Request, res: Response, next: NextFunction) => {
+  app.use(((req: Request, res: Response, next: NextFunction) => {
     if (!isMaskable(req)) return next();
 
     const sendJson = res.json.bind(res);
@@ -46,14 +45,15 @@ export function gracefulPublicStatus(app: Express, options: GracefulOptions = {}
 
       const code = res.statusCode;
       if (!MASKED.has(code)) return sendJson(body);
+
       try {
         recordBadRequest(req as any, `status_masked:${code}`, JSON.stringify(body ?? {}).slice(0, 300));
       } catch (_) {
         // diagnostics must never change the answer
       }
+
       res.status(200);
       const base = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
-      const path = String((req as any).path || (req as any).originalUrl || '').split('?')[0];
       const masked: any = {
         ...base,
         success: false,
@@ -63,7 +63,9 @@ export function gracefulPublicStatus(app: Express, options: GracefulOptions = {}
         retryAfterSec: 4,
         notice: 'Still gathering results from the sources. Retrying automatically.',
       };
-      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path)) {
+
+      const path = String((req as any).path || (req as any).originalUrl || '').split('?')[0];
+      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)\//.test(path)) {
         const current = Array.isArray(masked.results) ? masked.results : [];
         if (!current.length) {
           try {
@@ -79,9 +81,10 @@ export function gracefulPublicStatus(app: Express, options: GracefulOptions = {}
           }
         }
       }
+
       return sendJson(masked);
-    } as any;
+    } as any);
 
     next();
-  });
+  }) as any);
 }
