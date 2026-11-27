@@ -14,7 +14,10 @@ export const DEFAULT_QUERY_FOR = (vertical: string, city?: string): string => {
   const v = vertical === 'movies' ? 'movie' : vertical;
   switch (v) {
     case 'flights': return `${target} to New Delhi`;
-    case 'hotels': return 'Goa';
+    // OWNER 27 Nov ("indore daala hoon phir v result goa ka aa raha hai"): a literal 'Goa' seed meant the
+    // Hotels box kept saying Goa while the destination field said Indore, and the server answered the BOX.
+    // The hotels field IS a destination picker, so the picked destination is the seed.
+    case 'hotels': return target;
     case 'bus': return `${target} to Nagpur`;
     case 'cab': return `Rajwada ${target} to Airport ${target}`;
     case 'ecommerce': return 'mobile phone';

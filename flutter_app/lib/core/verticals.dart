@@ -208,7 +208,10 @@ String defaultQueryFor(String vertical, [String? city]) {
     case 'flights':
       return 'Indore to New Delhi';
     case 'hotels':
-      return 'Goa';
+      // OWNER 27 Nov ("indore daala hoon phir v result goa ka aa raha hai"): this was a literal 'Goa', so the
+      // Hotels box kept saying Goa while the destination chip said Indore and the server answered the box. The
+      // hotels chip is a destination picker, not a village address, so the picked destination is the seed.
+      return (city != null && city.trim().isNotEmpty) ? city.trim() : 'Goa';
     case 'bus':
       return 'Indore to Nagpur';
     case 'cab':
