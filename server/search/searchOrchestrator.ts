@@ -979,6 +979,20 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     parsed.vertical = vertical;
   }
 
+  // OWNER 27 Nov ("abhi v result goa ka aa raha hai dusre city ka nahi, indore daala hoon phir v"): for hotels the
+  // location field IS the destination - the page prints it as "Target: Chappan Dukan / MG Road (452001)". An
+  // older client (and the web seed) still sends query "Goa" next to city "Indore", and the pipeline answered the
+  // QUERY: 213 Goa hotels under an Indore header. The field the shopper set wins, in the search term and in the
+  // destination gate alike, so this holds for every client including builds already installed.
+  if (vertical === 'hotels' && parsed.location?.city) {
+    const wantCity = String(parsed.location.city).trim();
+    const asked = String(parsed.rawQuery || '');
+    if (wantCity && !asked.toLowerCase().includes(wantCity.toLowerCase())) {
+      parsed = { ...parsed, rawQuery: wantCity, entityName: wantCity };
+      input = { ...input, query: wantCity } as SearchInput;
+    }
+  }
+
   const state: SearchStateFlags = {
     servedFrom: 'unavailable',
     sourcesAttempted: [],
@@ -1007,7 +1021,9 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     // rev 6 (3 Nov): cache-key isolation completed - the pickup/drop pair (cab) joins the key
     // alongside origin/destination-in-query + depart + return, and every snapshot minted before
     // that is retired, so no legacy answer can be replayed for an itinerary it never answered.
-    rev: 6,
+    // rev 7 (27 Nov): the hotels destination field overrides a stale seed query; cached answers built
+    // before it still hold the Goa rows for an Indore search.
+    rev: 7,
     vertical,
     q: input.query,
     pin: input.pincode,
