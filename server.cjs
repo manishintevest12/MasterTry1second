@@ -22358,8 +22358,35 @@ async function geoReverse(lat, lng) {
     pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
   };
 }
+function photonQuery(path20) {
+  try {
+    return new URLSearchParams(path20.replace(/^\?/, "")).get("q")?.trim().slice(0, 120) || "";
+  } catch {
+    return "";
+  }
+}
+async function nominatimFallbackForPhoton(path20) {
+  const q3 = photonQuery(path20);
+  if (!q3) return null;
+  const rows = await throttledNominatim(`/search?q=${encodeURIComponent(q3)}&countrycodes=in&format=jsonv2&limit=10&addressdetails=1`);
+  if (!Array.isArray(rows)) return null;
+  return {
+    features: rows.filter((r) => r?.lat && r?.lon).map((r) => ({
+      geometry: { coordinates: [Number(r.lon), Number(r.lat)] },
+      properties: {
+        name: String(r.name || r.display_name || "").split(",")[0].trim(),
+        street: r.address?.road || r.address?.pedestrian,
+        district: r.address?.suburb || r.address?.neighbourhood || r.address?.city_district,
+        city: r.address?.city || r.address?.town || r.address?.village || r.address?.county,
+        state: r.address?.state,
+        postcode: r.address?.postcode,
+        type: r.type || "place"
+      }
+    }))
+  };
+}
 async function throttledPhoton(path20) {
-  const hit = cache6.get(path20);
+  const hit = cache6.get(`photon:${path20}`);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastPhotonAt + PHOTON_MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -22369,18 +22396,19 @@ async function throttledPhoton(path20) {
       headers: { "User-Agent": UA3, Accept: "application/json" },
       signal: AbortSignal.timeout(6e3)
     });
-    if (!r.ok) {
-      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path20.slice(0, 60)}`);
-      return null;
+    if (r.ok) {
+      const value = await r.json();
+      if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
+      cache6.set(`photon:${path20}`, { at: Date.now(), value });
+      return value;
     }
-    const value = await r.json();
-    if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
-    cache6.set(`photon:${path20}`, { at: Date.now(), value });
-    return value;
+    log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path20.slice(0, 60)}; using Nominatim fallback`);
   } catch (e2) {
-    log.warn("GeoProxy", `Photon unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
-    return null;
+    log.warn("GeoProxy", `Photon unreachable: ${String(e2?.message || e2).slice(0, 80)}; using Nominatim fallback`);
   }
+  const fallback = await nominatimFallbackForPhoton(path20);
+  if (fallback && cache6.size < CACHE_MAX) cache6.set(`photon:${path20}`, { at: Date.now(), value: fallback });
+  return fallback;
 }
 function photonFeatureToPlace(f, near) {
   const c = Array.isArray(f?.geometry?.coordinates) ? f.geometry.coordinates : [];
@@ -22441,7 +22469,7 @@ var UA3, NOMINATIM, cache6, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS, PH
 var init_geoProxy = __esm({
   "server/common/geoProxy.ts"() {
     init_logger();
-    UA3 = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
+    UA3 = "Try1SecondBot/1.0 (https://www.try1second.com; independent metasearch)";
     NOMINATIM = "https://nominatim.openstreetmap.org";
     cache6 = /* @__PURE__ */ new Map();
     CACHE_MS = 24 * 60 * 6e4;
@@ -38230,15 +38258,23 @@ function enforceRequestedTravelDate(offers, vertical, requested, opts = {}) {
 function enforceRequestedCity(offers, vertical, city) {
   const want = String(city || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (String(vertical) !== "hotels" || !want) return { kept: offers, dropped: 0, droppedCities: {} };
+  const aliases = /* @__PURE__ */ new Set([want]);
+  for (const g of CITY_ALIAS_GROUPS) if (g.some((x) => want === x || want.startsWith(x + " "))) g.forEach((x) => aliases.add(x));
   const kept = [];
   const droppedCities = {};
   const firstToken = want.split(" ")[0];
   for (const o of offers) {
     const src2 = o;
-    const named = String(
-      src2?.attributes?.city ?? src2?.travel?.city ?? src2?.city ?? src2?.attributes?.destination ?? ""
-    ).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-    if (named && !named.includes(want) && !(firstToken.length > 3 && named.includes(firstToken))) {
+    const named = [
+      src2?.attributes?.city,
+      src2?.attributes?.destination,
+      src2?.travel?.city,
+      src2?.city,
+      src2?.location?.city,
+      src2?.location?.address
+    ].map((v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()).filter(Boolean).join(" ");
+    const hit = [...aliases].some((n) => named.includes(n)) || firstToken.length > 3 && named.includes(firstToken);
+    if (named && !hit) {
       droppedCities[named] = (droppedCities[named] || 0) + 1;
       continue;
     }
@@ -38296,7 +38332,7 @@ function reconcileVerifiedSources(rows, sourcesSucceeded) {
   const visible = distinctSellerCount(rows);
   return visible > 0 ? declared.slice(0, Math.min(declared.length, visible)) : [];
 }
-var DATE_ANSWERING_VERTICALS, iso2, DATE_KEYS, NO_PRICE_VERTICALS, SOURCE_ALIASES;
+var DATE_ANSWERING_VERTICALS, iso2, DATE_KEYS, CITY_ALIAS_GROUPS, NO_PRICE_VERTICALS, SOURCE_ALIASES;
 var init_travelDateGate = __esm({
   "server/search/travelDateGate.ts"() {
     DATE_ANSWERING_VERTICALS = ["flights", "hotels", "bus"];
@@ -38319,6 +38355,23 @@ var init_travelDateGate = __esm({
       "check in",
       "date"
     ].map((k) => k);
+    CITY_ALIAS_GROUPS = [
+      ["bengaluru", "bangalore"],
+      ["gurugram", "gurgaon"],
+      ["mumbai", "bombay"],
+      ["kolkata", "calcutta"],
+      ["chennai", "madras"],
+      ["delhi", "new delhi"],
+      ["mysuru", "mysore"],
+      ["puducherry", "pondicherry"],
+      ["prayagraj", "allahabad"],
+      ["kochi", "cochin"],
+      ["thiruvananthapuram", "trivandrum"],
+      ["mangaluru", "mangalore"],
+      ["visakhapatnam", "vizag"],
+      ["varanasi", "banaras"],
+      ["ahmedabad", "amdavad"]
+    ];
     NO_PRICE_VERTICALS = ["loans", "insurance", "creditcards", "account", "banking"];
     SOURCE_ALIASES = {
       emt: "easemytrip",
@@ -69041,10 +69094,8 @@ init_badRequestLog();
 var MASKED = /* @__PURE__ */ new Set([400, 404, 405, 408, 409, 413, 415, 421, 422, 425, 429, 500, 502, 503, 504]);
 var TRUTH_POST_PATHS = [
   "/api/leads",
-  // a lost lead must never look like success
   "/api/partner-inquiry",
   "/api/auth/",
-  // register/login/otp must keep honest answers
   "/api/alerts",
   "/api/spend",
   "/api/rewards/",
@@ -69060,29 +69111,24 @@ var isMaskable = (req) => {
   if (path20.startsWith("/api/version") || path20.startsWith("/api/health")) return false;
   if (path20.startsWith("/api/client-diag")) return false;
   if (req.method === "GET" || req.method === "HEAD") return true;
-  if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
+  if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH")
     return !TRUTH_POST_PATHS.some((p) => path20.startsWith(p));
-  }
   return false;
 };
 function gracefulPublicStatus(app, options = {}) {
-  app.use((req, res, next) => {
+  app.use(((req, res, next) => {
     if (!isMaskable(req)) return next();
     const sendJson = res.json.bind(res);
     res.json = function gracefulJson(body) {
+      if (res.headersSent || res.writableEnded) return res;
       const code = res.statusCode;
       if (!MASKED.has(code)) return sendJson(body);
       try {
-        recordBadRequest(
-          req,
-          `status_masked:${code}`,
-          JSON.stringify(body ?? {}).slice(0, 300)
-        );
+        recordBadRequest(req, `status_masked:${code}`, JSON.stringify(body ?? {}).slice(0, 300));
       } catch (_) {
       }
       res.status(200);
       const base = body && typeof body === "object" && !Array.isArray(body) ? body : {};
-      const path20 = String(req.path || req.originalUrl || "").split("?")[0];
       const masked = {
         ...base,
         success: false,
@@ -69092,7 +69138,8 @@ function gracefulPublicStatus(app, options = {}) {
         retryAfterSec: 4,
         notice: "Still gathering results from the sources. Retrying automatically."
       };
-      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path20)) {
+      const path20 = String(req.path || req.originalUrl || "").split("?")[0];
+      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)\//.test(path20)) {
         const current = Array.isArray(masked.results) ? masked.results : [];
         if (!current.length) {
           try {
@@ -69110,7 +69157,7 @@ function gracefulPublicStatus(app, options = {}) {
       return sendJson(masked);
     };
     next();
-  });
+  }));
 }
 
 // server/index.ts
