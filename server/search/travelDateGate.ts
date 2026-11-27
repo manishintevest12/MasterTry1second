@@ -260,18 +260,40 @@ export function enforceRequestedTravelDate<T>(
  * not the requested one. A row with no city attribute is left alone (unproven is not wrong), and
  * no other vertical is touched.
  */
+/** Two spellings of one city. Sellers split roughly evenly, so the gate must accept both. */
+const CITY_ALIAS_GROUPS: string[][] = [
+  ['bengaluru', 'bangalore'], ['gurugram', 'gurgaon'], ['mumbai', 'bombay'], ['kolkata', 'calcutta'],
+  ['chennai', 'madras'], ['delhi', 'new delhi'], ['mysuru', 'mysore'], ['puducherry', 'pondicherry'],
+  ['prayagraj', 'allahabad'], ['kochi', 'cochin'], ['thiruvananthapuram', 'trivandrum'],
+  ['mangaluru', 'mangalore'], ['visakhapatnam', 'vizag'], ['varanasi', 'banaras'], ['ahmedabad', 'amdavad'],
+];
+
 export function enforceRequestedCity<T>(offers: T[], vertical: string, city: string | undefined): { kept: T[]; dropped: number; droppedCities: Record<string, number> } {
   const want = String(city || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   if (String(vertical) !== 'hotels' || !want) return { kept: offers, dropped: 0, droppedCities: {} };
+  // OWNER 27 Nov: the same city is spelled differently by different sellers ("Bangalore" / "Bengaluru",
+  // "Gurgaon" / "Gurugram"). Without this, a correct hotel is dropped for being spelled the other way.
+  const aliases = new Set<string>([want]);
+  for (const g of CITY_ALIAS_GROUPS) if (g.some((x) => want === x || want.startsWith(x + ' '))) g.forEach((x) => aliases.add(x));
   const kept: T[] = [];
   const droppedCities: Record<string, number> = {};
   const firstToken = want.split(' ')[0];
   for (const o of offers) {
     const src: any = o;
-    const named = String(
-      src?.attributes?.city ?? src?.travel?.city ?? src?.city ?? src?.attributes?.destination ?? '',
-    ).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    if (named && !named.includes(want) && !(firstToken.length > 3 && named.includes(firstToken))) {
+    // OWNER 27 Nov ("mai yaha search kr raha hoon indore ke Liye, results goa ke Liye aa raha hai"): the gate
+    // only looked at attributes/travel/city, so a catalogue hotel whose city lived in `location.city` (or in
+    // `location.address`) counted as "names no city" and was KEPT - an Agoda Goa property reached an Indore
+    // answer. Every field a card can print its location from is read now; a row that still names no city at all
+    // is left alone, because dropping unknown rows would empty honest feeds.
+    const named = [
+      src?.attributes?.city, src?.attributes?.destination, src?.travel?.city,
+      src?.city, src?.location?.city, src?.location?.address,
+    ]
+      .map((v) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())
+      .filter(Boolean)
+      .join(' ');
+    const hit = [...aliases].some((n) => named.includes(n)) || (firstToken.length > 3 && named.includes(firstToken));
+    if (named && !hit) {
       droppedCities[named] = (droppedCities[named] || 0) + 1;
       continue;
     }
