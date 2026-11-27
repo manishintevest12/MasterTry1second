@@ -39746,11 +39746,22 @@ function gateEcommerceResponse(input, response, parsedVertical) {
   return response;
 }
 async function runSearch(input) {
+  const repeatKey = REPEAT_COOLDOWN_MS > 0 ? questionKeyOf(input) : "";
+  if (repeatKey) {
+    const hit = recentEmptyAnswers.get(repeatKey);
+    if (hit && Date.now() - hit.at < REPEAT_COOLDOWN_MS) return hit.response;
+  }
   const response = gateEcommerceResponse(input, await runSearchPipeline(input));
   const vertical = response.query?.vertical || input.vertical;
   const results = dropExcludedOffers(vertical, response.results || []);
-  if (results.length === (response.results || []).length) return response;
-  return { ...response, results };
+  const answer = results.length === (response.results || []).length ? response : { ...response, results };
+  if (repeatKey && (answer.results || []).length === 0) {
+    if (recentEmptyAnswers.size > REPEAT_MAP_LIMIT) recentEmptyAnswers.clear();
+    recentEmptyAnswers.set(repeatKey, { at: Date.now(), response: answer });
+  } else if (repeatKey) {
+    recentEmptyAnswers.delete(repeatKey);
+  }
+  return answer;
 }
 async function runSearchPolled(input, deadlineMs = 15e3) {
   const deadline = Date.now() + deadlineMs;
@@ -40517,7 +40528,7 @@ async function recordSearchMetrics(input, parsed, response) {
   } catch {
   }
 }
-var BUS_PRIMARY_LIVE_SELLERS, inflightPipelines, pipelineByQuestion, inflightPartials, RELEVANCE_GATED_CATALOGUE, MAJOR_CITIES2, gatePassMemo;
+var BUS_PRIMARY_LIVE_SELLERS, inflightPipelines, pipelineByQuestion, inflightPartials, RELEVANCE_GATED_CATALOGUE, MAJOR_CITIES2, gatePassMemo, recentEmptyAnswers, REPEAT_COOLDOWN_MS, REPEAT_MAP_LIMIT;
 var init_searchOrchestrator = __esm({
   "server/search/searchOrchestrator.ts"() {
     init_lastPrice();
@@ -40644,6 +40655,9 @@ var init_searchOrchestrator = __esm({
       "siliguri"
     ];
     gatePassMemo = /* @__PURE__ */ new WeakMap();
+    recentEmptyAnswers = /* @__PURE__ */ new Map();
+    REPEAT_COOLDOWN_MS = Math.max(0, Number(process.env.T1S_REPEAT_COOLDOWN_MS ?? 15e3));
+    REPEAT_MAP_LIMIT = 500;
   }
 });
 
