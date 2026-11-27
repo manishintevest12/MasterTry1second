@@ -76,10 +76,14 @@ export function cityFromQuery(ctx: { query: any }): string | null {
   // city-slug source (OYO, Yatra, Goibibo, Cleartrip, EaseMyTrip, Agoda) 404s on it. Reduce the
   // destination to the city it contains; genuinely unknown towns keep their own name.
   if (cleaned.length >= 3 && cleaned.length <= 40) return canonicalCity(cleaned) || cleaned;
-  if (q.location?.city) {
-    const loc = String(q.location.city);
-    return canonicalCity(loc) || loc;
-  }
+  // OWNER 27 Nov ("sirf indore ka aa raha hai hotels site pr, jb ki maine kaha muje hr city ka chaiye"):
+  // the hotels page sends the destination the shopper picked in its own field, and it never reached this
+  // function - the search fell through to the profile/device city, so every destination showed Indore.
+  // The picked destination now wins over the profile city, in the order the UI supplies it.
+  const picked = [q.destination, q.city, q.destCity, q.location?.destination, q.location?.city]
+    .map((x) => String(x ?? '').trim())
+    .find((x) => x.length >= 3 && x.length <= 40);
+  if (picked) return canonicalCity(picked) || picked;
   return null;
 }
 

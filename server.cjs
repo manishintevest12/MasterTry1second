@@ -9340,10 +9340,8 @@ function cityFromQuery(ctx) {
   const strip2 = (x) => x.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, " ").replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{0,4}\b/gi, " ").replace(/\b(under|below|above|upto|up to|max|min|budget)\s*\d+/gi, " ").replace(/\b\d{1,2}(st|nd|rd|th)?\b/g, " ").replace(/\b\d{3,6}\b/g, " ").replace(/\b(19|20)\d{2}\b/g, " ").replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|check-?out:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price|from|to|till|until|onwards|and|with|a|an|the|some|any|show|find|get|see|need|want|looking|search|compare)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join(" ");
   const cleaned = strip2(raw);
   if (cleaned.length >= 3 && cleaned.length <= 40) return canonicalCity(cleaned) || cleaned;
-  if (q3.location?.city) {
-    const loc = String(q3.location.city);
-    return canonicalCity(loc) || loc;
-  }
+  const picked = [q3.destination, q3.city, q3.destCity, q3.location?.destination, q3.location?.city].map((x) => String(x ?? "").trim()).find((x) => x.length >= 3 && x.length <= 40);
+  if (picked) return canonicalCity(picked) || picked;
   return null;
 }
 function stampStayDates(items, checkin, checkout) {
