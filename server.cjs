@@ -55034,6 +55034,13 @@ async function buildQuickAppsList() {
     throw new Error("quick_apps_build_failed");
   }
 }
+function cityFromTypedQuery(query, fallback) {
+  const raw = String(query ?? "");
+  const cleaned = raw.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, " ").replace(/\b(hotels?|stays?|rooms?|resorts?|hostels?|villas?|flights?|buses?|in|near|at|for|book|booking|cheap|best|budget|luxury|tonight|night|nights|today|tomorrow|this|next|weekend|under|price|from|to|compare|search|find|show|get|see|and|with|the)\b/gi, " ").replace(/[^a-zA-Z\s]/g, " ").replace(/\s+/g, " ").trim();
+  const city = cleaned.split(" ").filter((t) => t.length >= 3).slice(0, 3).join(" ").trim();
+  if (city.length >= 3 && city.length <= 40) return city;
+  return String(fallback ?? "");
+}
 function reconcileResponseSources(response) {
   if (!response) return response;
   const state = response.state || {};
@@ -56318,7 +56325,7 @@ var init_routes = __esm({
         query: String(req.body.query || "").slice(0, 300),
         vertical: normalizeVerticalId(req.body.vertical),
         pincode: req.body.pincode,
-        city: req.body.city,
+        city: cityFromTypedQuery(req.body.query, req.body.city),
         locality: req.body.locality,
         lat: req.body.lat,
         lng: req.body.lng,

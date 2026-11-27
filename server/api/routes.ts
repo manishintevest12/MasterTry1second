@@ -899,6 +899,29 @@ apiRouter.get('/history', async (req, res) => {
  * scanning" state for its own date instead of another date's prices.
  */
 /** Header honesty on every exit path: verified sources must equal the shops on screen. */
+
+/**
+ * OWNER 27 Nov ("bengaluru select kiya response indore ka aa raha hai ... website mai ni aa raha"):
+ * the web feed sends the picked destination in `query` and the profile city in `city`. Every catalogue
+ * lookup, floor and presence check keyed off `city`, so the page kept answering Indore whatever was
+ * picked - while the app (which sends the destination AS the city) was already correct.
+ * The typed city therefore replaces the profile city at the API boundary, for both /api/search/live and
+ * /api/scrape/live, so every downstream layer sees the same destination.
+ */
+function cityFromTypedQuery(query: unknown, fallback: unknown): string {
+  const raw = String(query ?? '');
+  const cleaned = raw
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ')
+    .replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, ' ')
+    .replace(/\b(hotels?|stays?|rooms?|resorts?|hostels?|villas?|flights?|buses?|in|near|at|for|book|booking|cheap|best|budget|luxury|tonight|night|nights|today|tomorrow|this|next|weekend|under|price|from|to|compare|search|find|show|get|see|and|with|the)\b/gi, ' ')
+    .replace(/[^a-zA-Z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const city = cleaned.split(' ').filter((t) => t.length >= 3).slice(0, 3).join(' ').trim();
+  if (city.length >= 3 && city.length <= 40) return city;
+  return String(fallback ?? '');
+}
+
 function reconcileResponseSources<T extends Record<string, any>>(response: any): any {
   if (!response) return response;
   const state = (response.state || {}) as any;
@@ -1075,7 +1098,7 @@ apiRouter.post('/search', async (req, res) => {
     query: String(req.body.query || '').slice(0, 300),
     vertical: normalizeVerticalId(req.body.vertical) as SearchInput['vertical'],
     pincode: req.body.pincode,
-    city: req.body.city,
+    city: cityFromTypedQuery(req.body.query, req.body.city),
     locality: req.body.locality,
     lat: req.body.lat,
     lng: req.body.lng,
