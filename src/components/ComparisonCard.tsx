@@ -3,7 +3,7 @@ import { trackFunnel } from '../lib/funnel';
 import { useGroceryCart } from '../context/GroceryCartContext';
 import { cartKey } from '../lib/groceryCart';
 import { movieVenueLine } from '../lib/movieVenue';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Heart,
   Play,
@@ -248,6 +248,10 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
   // Real gallery: the source's own photos of THIS listing (never other products).
   const gallery: string[] = Array.from(new Set([item.imageUrl, ...(item.images || [])].filter(Boolean) as string[]));
   const [photoIdx, setPhotoIdx] = useState<number>(0);
+  // OWNER 27 Nov ("image ni aa raha"): a row can carry several photo URLs and the FIRST one can be dead (the KAS
+  // Store ONDC bucket 404s one of its two). The card fell straight to a blank tile while a live photo sat next in
+  // the same gallery, so the dead photo count is tracked and the next one is tried before giving up on real art.
+  const deadPhotos = useRef(0);
   const photoSrc = gallery.length ? gallery[photoIdx % gallery.length] : getItemImage(item);
   const stepPhoto = (e: React.MouseEvent, d: number) => {
     e.stopPropagation();
@@ -471,6 +475,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     if (raw && img.src !== raw) {
                       img.dataset.raw = '';
                       img.src = raw;
+                      return;
+                    }
+                    if (gallery.length > 1 && deadPhotos.current < gallery.length - 1) {
+                      deadPhotos.current += 1;
+                      setPhotoIdx((i) => i + 1);
                       return;
                     }
                     img.onerror = null;
