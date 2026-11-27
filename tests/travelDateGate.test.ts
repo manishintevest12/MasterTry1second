@@ -264,3 +264,28 @@ test('a bus row is dated from attributes.journey_date, and a dateless row stays 
   assert.equal(offerTravelDate(dateless), '', 'free text is never mistaken for a date');
   assert.equal(enforceRequestedTravelDate([dateless], 'bus', { depart: '2026-11-25' }, { strictUndated: true }).kept.length, 0);
 });
+
+// OWNER 27 Nov ("mai yaha search kr raha hoon indore ke Liye, results goa ke Liye aa raha hai"): a hotel whose
+// city only lives in `location.city` used to read as "names no city" and was kept, so a Goa property could
+// answer an Indore search. The card printed Goa; the gate must read the same field the card reads.
+test('city gate: a row whose city sits in location (not attributes) is still gated', () => {
+  const rows: any[] = [
+    { id: 'loc_indore', location: { city: 'Indore' } },
+    { id: 'loc_goa', location: { city: 'Goa' } },
+    { id: 'addr_goa', location: { address: 'Anjuna Beach Road, Goa' } },
+    { id: 'attr_goa', attributes: { city: 'Goa' } },
+    { id: 'no_city', title: 'Art Tribe House' },
+  ];
+  const g = enforceRequestedCity(rows, 'hotels', 'Indore');
+  assert.deepEqual(g.kept.map((r: any) => r.id), ['loc_indore', 'no_city']);
+  assert.equal(g.dropped, 3);
+});
+
+test('city gate: the asked city is matched on every spelling and every field', () => {
+  const rows: any[] = [
+    { id: 'bengaluru', location: { city: 'Bengaluru' } },
+    { id: 'bangalore', attributes: { city: 'Bangalore' } },
+  ];
+  assert.equal(enforceRequestedCity(rows, 'hotels', 'Bangalore').kept.length, 2);
+  assert.equal(enforceRequestedCity(rows, 'hotels', 'Mumbai').kept.length, 0);
+});
