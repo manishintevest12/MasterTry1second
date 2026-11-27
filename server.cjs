@@ -39500,8 +39500,8 @@ function filterRowsByAge(rows, maxAgeSec, now = Date.now()) {
 async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, fallbackMaxAgeSec) {
   const STOPWORDS3 = /* @__PURE__ */ new Set(["to", "from", "in", "at", "for", "the", "and", "near", "me", "on", "of", "a", "an", "best", "cheap", "cheapest", "price", "under", "hotels", "hotel", "bus", "buses", "flights", "movies", "tickets"]);
   const queryTerms = String(parsed.rawQuery || input.query || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOPWORDS3.has(w));
-  let rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40, queryTerms });
-  if (!rows.length) rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  let rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: queryCityOf(input), limit: 40, queryTerms });
+  if (!rows.length) rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: queryCityOf(input), limit: 40 });
   const now = Date.now();
   const cityGate = (r) => !namesOtherCity(`${r.title || ""} ${r.subtitle || ""} ${typeof r.attributes === "string" ? r.attributes : JSON.stringify(r.attributes || {})}`, input.city);
   const cityRows = rows.filter(cityGate);
@@ -39786,7 +39786,7 @@ async function runSearchPipeline(input) {
   const totalStart = Date.now();
   let parsed = understandQuery(input.query, {
     pincode: input.pincode,
-    city: input.city,
+    city: queryCityOf(input),
     lat: input.lat,
     lng: input.lng
   });
@@ -39804,7 +39804,7 @@ async function runSearchPipeline(input) {
   if (browseDept) {
     input = { ...input, query: browseDept.acquisition };
     input.browseDepartmentId = browseDept.id;
-    parsed = understandQuery(input.query, { pincode: input.pincode, city: input.city, lat: input.lat, lng: input.lng });
+    parsed = understandQuery(input.query, { pincode: input.pincode, city: queryCityOf(input), lat: input.lat, lng: input.lng });
     if (input.vertical) parsed.vertical = input.vertical;
     parsed.vertical = vertical;
   }
@@ -39848,7 +39848,7 @@ async function runSearchPipeline(input) {
     vertical,
     q: input.query,
     pin: input.pincode,
-    city: input.city,
+    city: queryCityOf(input),
     dates: parsed.travelDates?.depart,
     ret: parsed.travelDates?.return,
     from: parsed.pudo?.from || "",
@@ -40069,7 +40069,7 @@ async function buildLiveCtx(parsedIn, input) {
   const reqDate = String(parsed.travelDates?.depart || "").slice(0, 10);
   const catalogueRows = await findCatalogueOffers(vertical, {
     pincode: input.pincode,
-    city: input.city,
+    city: queryCityOf(input),
     limit: 40,
     date: reqDate || void 0
   });
@@ -40207,6 +40207,13 @@ async function rescueLateSellers(opts) {
     return combined;
   }
 }
+function queryCityOf(input) {
+  const raw = String(input?.query || "");
+  const cleaned = raw.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, " ").replace(/\b(hotels?|stays?|rooms?|resorts?|hostels?|villas?|in|near|at|for|book|booking|cheap|best|budget|luxury|tonight|night|nights|today|tomorrow|this|next|weekend|under|price|from|to|compare|search|find|show|get|see|and|with|the)\b/gi, " ").replace(/[^a-zA-Z\s]/g, " ").replace(/\s+/g, " ").trim();
+  const city = cleaned.split(" ").filter((t) => t.length >= 3).slice(0, 3).join(" ").trim();
+  if (city.length >= 3 && city.length <= 40) return city;
+  return input?.city ? String(input.city) : void 0;
+}
 async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = true) {
   const { state, vertical, enabledSources, catalogueOffers, hasEligibleFresh } = ctx;
   let liveOffers = [];
@@ -40229,7 +40236,7 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
     try {
       const memKey = {
         vertical: String(vertical),
-        routeKey: routeKeyOf({ query: input.query, city: input.city, pincode: input.pincode }),
+        routeKey: routeKeyOf({ query: input.query, city: queryCityOf(input), pincode: input.pincode }),
         dateKey: dateKeyOf(input.travelDates?.depart, input.travelDates?.return)
       };
       if (liveOffers.length) void saveSellerMemory(memKey, liveOffers);
@@ -40431,7 +40438,7 @@ async function runLivePipeline(input, parsedIn, hooks) {
   const totalStart = Date.now();
   let parsed = parsedIn ?? understandQuery(input.query, {
     pincode: input.pincode,
-    city: input.city,
+    city: queryCityOf(input),
     lat: input.lat,
     lng: input.lng
   });

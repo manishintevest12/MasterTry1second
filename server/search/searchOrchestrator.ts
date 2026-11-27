@@ -528,8 +528,8 @@ async function freshCatalogueOffers(
   // search, and when the catalogue words the row differently ("DEL → BOM" for "delhi to
   // mumbai", "HP 15s" for "Laptops") the plain lookup still runs, so the floor can never be
   // emptier than it was before.
-  let rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40, queryTerms });
-  if (!rows.length) rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  let rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: queryCityOf(input), limit: 40, queryTerms });
+  if (!rows.length) rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: queryCityOf(input), limit: 40 });
   const now = Date.now();
   // Drop rows that name a different major city (Goa properties under an Indore search).
   // Rows whose city is simply unknown stay: they are the ones that carry real photos.
@@ -974,7 +974,7 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
   // 1. QUERY UNDERSTANDING (deterministic core + optional AI assist)
   let parsed: ParsedQuery = understandQuery(input.query, {
     pincode: input.pincode,
-    city: input.city,
+    city: queryCityOf(input),
     lat: input.lat,
     lng: input.lng,
   });
@@ -1003,7 +1003,7 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
   if (browseDept) {
     input = { ...input, query: browseDept.acquisition } as SearchInput;
     (input as any).browseDepartmentId = browseDept.id;
-    parsed = understandQuery(input.query, { pincode: input.pincode, city: input.city, lat: input.lat, lng: input.lng });
+    parsed = understandQuery(input.query, { pincode: input.pincode, city: queryCityOf(input), lat: input.lat, lng: input.lng });
     if (input.vertical) parsed.vertical = input.vertical as any;
     parsed.vertical = vertical;
   }
@@ -1056,7 +1056,7 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     vertical,
     q: input.query,
     pin: input.pincode,
-    city: input.city,
+    city: queryCityOf(input),
     dates: parsed.travelDates?.depart,
     ret: parsed.travelDates?.return,
     from: parsed.pudo?.from || '',
@@ -1369,7 +1369,7 @@ async function buildLiveCtx(parsedIn: ParsedQuery, input: SearchInput): Promise<
   const reqDate = String(parsed.travelDates?.depart || '').slice(0, 10);
   const catalogueRows = await findCatalogueOffers(vertical, {
     pincode: input.pincode,
-    city: input.city,
+    city: queryCityOf(input),
     limit: 40,
     date: reqDate || undefined,
   });
@@ -1560,6 +1560,28 @@ export async function rescueLateSellers(opts: {
   }
 }
 
+
+/**
+ * OWNER 27 Nov (third report of the same thing: hotels show Indore whatever destination is picked).
+ * The hotels page sends the typed destination as the QUERY ("Goa") and the profile city in `city`
+ * ("Indore"). Every catalogue lookup below asked for `city`, so the floor answered with Indore rows and
+ * the page never changed. The typed city now wins wherever a city is needed, exactly like the live
+ * workers already do (cityFromQuery), so both halves of the answer agree on the destination.
+ */
+function queryCityOf(input: any): string | undefined {
+  const raw = String(input?.query || '');
+  const cleaned = raw
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ')
+    .replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, ' ')
+    .replace(/\b(hotels?|stays?|rooms?|resorts?|hostels?|villas?|in|near|at|for|book|booking|cheap|best|budget|luxury|tonight|night|nights|today|tomorrow|this|next|weekend|under|price|from|to|compare|search|find|show|get|see|and|with|the)\b/gi, ' ')
+    .replace(/[^a-zA-Z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const city = cleaned.split(' ').filter((t) => t.length >= 3).slice(0, 3).join(' ').trim();
+  if (city.length >= 3 && city.length <= 40) return city;
+  return input?.city ? String(input.city) : undefined;
+}
+
 async function finalizeLive(
   totalStart: number,
   input: SearchInput,
@@ -1603,7 +1625,7 @@ async function finalizeLive(
     try {
       const memKey = {
         vertical: String(vertical),
-        routeKey: routeKeyOf({ query: input.query, city: input.city, pincode: (input as any).pincode }),
+        routeKey: routeKeyOf({ query: input.query, city: queryCityOf(input), pincode: (input as any).pincode }),
         dateKey: dateKeyOf(input.travelDates?.depart, input.travelDates?.return),
       };
       if (liveOffers.length) void saveSellerMemory(memKey, liveOffers as any[]);
@@ -1888,7 +1910,7 @@ async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery, hooks
   const totalStart = Date.now();
   let parsed: ParsedQuery = parsedIn ?? understandQuery(input.query, {
     pincode: input.pincode,
-    city: input.city,
+    city: queryCityOf(input),
     lat: input.lat,
     lng: input.lng,
   });
