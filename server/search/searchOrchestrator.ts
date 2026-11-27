@@ -911,7 +911,30 @@ function gateEcommerceResponse(
   return response;
 }
 
+/**
+ * REPEAT COOLDOWN (owner 27 Nov, production log: "Withheld off-product e-commerce rows" for the SAME query
+ * 10 times in 20 s, and the hotels floor date gate re-running every 3 s).
+ *
+ * A poller, a warm pass and a client retry can all ask the identical question inside a few seconds. When that
+ * question answers EMPTY, nothing is cached, so every repeat re-runs the whole pipeline: catalogue reads, floor
+ * gates, worker fan-out and a DB write - for an answer that cannot have changed in three seconds. Measured on
+ * production that was ~10 identical runs per 20 s per query.
+ *
+ * An empty answer is therefore reused for REPEAT_COOLDOWN_MS. A non-empty answer needs no help here (the response
+ * cache already serves it), and freshness is untouched: the cooldown is far shorter than any source TTL, and a
+ * different query/vertical/city is a different key.
+ */
+const recentEmptyAnswers = new Map<string, { at: number; response: SearchResponse }>();
+const REPEAT_COOLDOWN_MS = Math.max(0, Number(process.env.T1S_REPEAT_COOLDOWN_MS ?? 15_000));
+const REPEAT_MAP_LIMIT = 500;
+
 export async function runSearch(input: SearchInput): Promise<SearchResponse> {
+  const repeatKey = REPEAT_COOLDOWN_MS > 0 ? questionKeyOf(input) : '';
+  if (repeatKey) {
+    const hit = recentEmptyAnswers.get(repeatKey);
+    if (hit && Date.now() - hit.at < REPEAT_COOLDOWN_MS) return hit.response;
+  }
+
   const response = gateEcommerceResponse(input, await runSearchPipeline(input));
   // OWNER 21 Nov: "digihaat.in ko aap food delivery, 10 min grocery se hata do". Enforced at the single choke point
   // every caller passes through, so a cached catalogue row, a last-known-good snapshot or a response-cache replay
@@ -919,8 +942,14 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // changes: surviving offers keep their prices, ranks and reasons.
   const vertical = response.query?.vertical || input.vertical;
   const results = dropExcludedOffers(vertical, response.results || []);
-  if (results.length === (response.results || []).length) return response;
-  return { ...response, results };
+  const answer = results.length === (response.results || []).length ? response : { ...response, results };
+  if (repeatKey && (answer.results || []).length === 0) {
+    if (recentEmptyAnswers.size > REPEAT_MAP_LIMIT) recentEmptyAnswers.clear();
+    recentEmptyAnswers.set(repeatKey, { at: Date.now(), response: answer });
+  } else if (repeatKey) {
+    recentEmptyAnswers.delete(repeatKey);
+  }
+  return answer;
 }
 
 export async function runSearchPolled(input: SearchInput, deadlineMs = 15_000): Promise<SearchResponse> {
