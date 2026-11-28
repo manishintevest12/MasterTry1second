@@ -1111,7 +1111,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           pincode: targetLoc.pincode,
           city: targetLoc.city,
           locality: targetLoc.locality,
-          coordinates: targetLoc.coordinates,
+          // OWNER 28 Nov: a typed destination (hotels) has no GPS fix; {0,0} would geocode to the Gulf of
+          // Guinea and drag the delivery point away from the chosen city, so only a real fix is sent.
+          ...(targetLoc.coordinates && (targetLoc.coordinates.lat || targetLoc.coordinates.lng)
+            ? { coordinates: targetLoc.coordinates }
+            : {}),
           ...(dateSensitive ? { travelDates: travel } : {}),
           // OWNER 18 Nov: the app has always sent `settle` on a user press (the server then waits on
           // the SAME in-flight pipeline instead of handing back whatever landed in 2s). The website
@@ -1176,7 +1180,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             city: targetLoc.city,
             pincode: targetLoc.pincode,
             locality: targetLoc.locality,
-            coordinates: targetLoc.coordinates,
+            ...(targetLoc.coordinates && (targetLoc.coordinates.lat || targetLoc.coordinates.lng)
+              ? { coordinates: targetLoc.coordinates }
+              : {}),
             travelDates: dateSensitive ? travel : undefined,
           });
         }

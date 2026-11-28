@@ -1086,8 +1086,21 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   <button
                     type="button"
                     onClick={() => {
+                      // OWNER 28 Nov ("maine bengaluru choose kiya, mai goa v select kiya tb v indore hi aa raha hai"):
+                      // this button searched the committed user location, never the destination typed in the field
+                      // above it - so every stay search was answered for Indore (452001) no matter what was chosen.
+                      // The typed destination IS the search location; the old city's pincode and GPS point must not
+                      // ride along, or the catalogue lookup and the delivery point stay in the previous city.
+                      const stayCity = hotelDestination.replace(/,\s*india\s*$/i, '').trim();
                       setSearchQuery(hotelDestination);
-                      triggerLiveLocationScrape(hotelDestination, undefined, travelDatesFor('hotels', hotelDates));
+                      triggerLiveLocationScrape(hotelDestination, {
+                        address: stayCity,
+                        locality: '',
+                        city: stayCity,
+                        pincode: '',
+                        coordinates: { lat: 0, lng: 0 },
+                        isGps: false,
+                      }, travelDatesFor('hotels', hotelDates));
                     }}
                     className="w-full py-2.5 bg-[#003580] hover:bg-[#00224f] text-white font-black text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                   >
