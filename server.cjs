@@ -39753,11 +39753,9 @@ async function runSearch(input) {
   const vertical = response.query?.vertical || input.vertical;
   const results = dropExcludedOffers(vertical, response.results || []);
   const answer = results.length === (response.results || []).length ? response : { ...response, results };
-  if (repeatKey && (answer.results || []).length === 0) {
+  if (repeatKey && answer.state?.pendingRefresh !== true) {
     if (recentEmptyAnswers.size > REPEAT_MAP_LIMIT) recentEmptyAnswers.clear();
     recentEmptyAnswers.set(repeatKey, { at: Date.now(), response: answer });
-  } else if (repeatKey) {
-    recentEmptyAnswers.delete(repeatKey);
   }
   return answer;
 }
