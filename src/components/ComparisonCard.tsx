@@ -87,6 +87,11 @@ const getLogoStyle = (item: ComparisonItem) => {
 };
 
 interface ComparisonCardProps {
+  /** OWNER 28 Nov (PageSpeed 39 mobile, LCP 8.2 s): the largest element on a results page is the first
+   *  card's photo, and it carried loading="lazy" like every other card - so the browser deferred exactly
+   *  the image that decides LCP until layout was done. The first card asks for it eagerly at high priority;
+   *  every later card stays lazy. */
+  priority?: boolean;
   item?: ComparisonItem;
   /** Grouped mode: one product published by several websites = ONE card, cheapest on top. */
   group?: OfferGroup;
@@ -213,7 +218,7 @@ function FlightInfoStrip({ specs }: { specs: Record<string, string> }) {
   );
 }
 
-export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, group }) => {
+export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, group, priority }) => {
   // In grouped mode the card is the product's richest listing, priced and linked by its CHEAPEST site.
   const item: ComparisonItem = group
     ? ({
@@ -466,7 +471,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   width={480}
                   height={320}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  loading="lazy"
+                  loading={priority ? 'eager' : 'lazy'}
+                  fetchPriority={priority ? 'high' : 'auto'}
                   decoding="async"
                   onError={(e) => {
                     const img = e.currentTarget as HTMLImageElement;

@@ -38,7 +38,7 @@ const amenityIcon = (a: string) => {
   return null;
 };
 
-export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = ({ group, nights }) => {
+export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number; priority?: boolean }> = ({ group, nights, priority }) => {
   const { trackedItemIds, toggleTrackPrice, startRedirection } = useApp();
   const [imgIdx, setImgIdx] = useState(0);
   // Photos are tried in order: when one fails to load in the visitor's browser
@@ -68,7 +68,7 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
       {/* PHOTO */}
       <button type="button" onClick={() => setDetail(true)} aria-label={`Open ${group.name} details and photos`} className="relative w-full md:w-60 h-48 md:h-auto md:min-h-[220px] shrink-0 bg-slate-100 group block cursor-pointer">
         {shown.length > 0 ? (
-          <img src={shown[imgIdx % shown.length]} alt={group.name} loading="lazy" referrerPolicy="no-referrer"
+          <img src={shown[imgIdx % shown.length]} alt={group.name} loading={priority ? 'eager' : 'lazy'} fetchPriority={priority ? 'high' : 'auto'} referrerPolicy="no-referrer"
             className="absolute inset-0 w-full h-full object-cover" onError={() => setSkip((v) => v + 1)} />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">

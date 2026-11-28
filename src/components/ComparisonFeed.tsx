@@ -481,7 +481,7 @@ export const ComparisonFeed: React.FC = () => {
               {RETAIL_GRID_VERTICALS.includes(vertical) && <ProductGrid groups={visibleGroups} vertical={vertical} />}
 
               {RETAIL_GRID_VERTICALS.includes(vertical) ? null : isHotels
-                ? visibleHotels.map((g) => <HotelDealCard key={g.key + g.best.item.id} group={g} />)
+                ? visibleHotels.map((g, i) => <HotelDealCard key={g.key + g.best.item.id} group={g} priority={i === 0} />)
                 : (vertical === 'creditcards' ? visibleGroups : visibleGroups).map((g, i) => (
                     <React.Fragment key={g.key + g.best.item.id}>
                       {vertical === 'creditcards'
@@ -492,7 +492,7 @@ export const ComparisonFeed: React.FC = () => {
                           />
                         : ['flights', 'bus', 'cab'].includes(g.vertical)
                           ? <TravelDealRow group={g} />
-                          : <ComparisonCard group={g} />}
+                          : <ComparisonCard group={g} priority={i === 0} />}
                       {i === IN_FEED_AD_AFTER && inFeedAdVisible && (
                         <div className="my-3"><AdBannerSlot slotKey={`vertical_${vertical}`} onActiveChange={setInFeedAdActive} /></div>
                       )}
