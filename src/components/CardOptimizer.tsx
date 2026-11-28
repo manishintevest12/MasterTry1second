@@ -170,7 +170,7 @@ export const CardOptimizer: React.FC = () => {
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
                 {o.logo_url ? (
-                  <img src={o.logo_url} alt="" className="w-9 h-9 rounded-xl object-contain border border-slate-200 bg-white p-1" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  <img src={o.logo_url} alt="" width={36} height={36} className="w-9 h-9 rounded-xl object-contain border border-slate-200 bg-white p-1" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 ) : (
                   <div className="w-9 h-9 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
                     <CreditCard className="w-4 h-4 text-slate-500" />
