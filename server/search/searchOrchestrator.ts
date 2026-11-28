@@ -920,11 +920,14 @@ function gateEcommerceResponse(
  * gates, worker fan-out and a DB write - for an answer that cannot have changed in three seconds. Measured on
  * production that was ~10 identical runs per 20 s per query.
  *
- * An empty answer is therefore reused for REPEAT_COOLDOWN_MS. A non-empty answer needs no help here (the response
- * cache already serves it), and freshness is untouched: the cooldown is far shorter than any source TTL, and a
- * different query/vertical/city is a different key.
+ * OWNER 28 Nov ("fix it", second log): the repeats continued - the hotels floor gate ran every ~2 s for the same
+ * question (asked 2026-11-28, dropped 12, kept 28, ten times in 20 s) because only EMPTY answers were reused and
+ * /api/scrape/live answers through awaitSettledAnswer, which re-ran the pipeline for every poll. A SETTLED answer
+ * (pendingRefresh false) of any size is now reused. A pending answer is never memoized, so a cold search still
+ * fills as its sources land, and freshness is untouched: the window is far shorter than any source TTL, and a
+ * different query/vertical/city/pincode/date is a different key.
  */
-const recentEmptyAnswers = new Map<string, { at: number; response: SearchResponse }>();
+const recentEmptyAnswers = new Map<string, { at: number; response: SearchResponse }>();  // settled answers, any size
 const REPEAT_COOLDOWN_MS = Math.max(0, Number(process.env.T1S_REPEAT_COOLDOWN_MS ?? 15_000));
 const REPEAT_MAP_LIMIT = 500;
 
@@ -943,11 +946,9 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   const vertical = response.query?.vertical || input.vertical;
   const results = dropExcludedOffers(vertical, response.results || []);
   const answer = results.length === (response.results || []).length ? response : { ...response, results };
-  if (repeatKey && (answer.results || []).length === 0) {
+  if (repeatKey && answer.state?.pendingRefresh !== true) {
     if (recentEmptyAnswers.size > REPEAT_MAP_LIMIT) recentEmptyAnswers.clear();
     recentEmptyAnswers.set(repeatKey, { at: Date.now(), response: answer });
-  } else if (repeatKey) {
-    recentEmptyAnswers.delete(repeatKey);
   }
   return answer;
 }
