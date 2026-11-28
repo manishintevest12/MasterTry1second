@@ -94,7 +94,7 @@ export const AdBannerSlot: React.FC<{
               className="flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2 hover:border-slate-300"
             >
               {d.image ? (
-                <img src={d.image} alt="" className="w-7 h-7 rounded object-contain bg-white" loading="lazy" referrerPolicy="no-referrer" />
+                <img src={d.image} alt="" width={28} height={28} className="w-7 h-7 rounded object-contain bg-white" loading="lazy" referrerPolicy="no-referrer" />
               ) : null}
               <span className="min-w-0">
                 <span className="block text-[12px] font-bold text-slate-800 truncate">{d.merchant}</span>
